@@ -39,7 +39,8 @@
         "C137",
         "C143",
         "C145",
-        "C147"
+        "C147",
+        "C148"
       ]
     },
     "PricingEngine": {
@@ -1502,6 +1503,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
       "file": "docs/devel/change/C147.json"
+    },
+    "C148": {
+      "title": "消除面板高度与卡片折叠/Tab 切换的弹簧抖动（窗口单一高度动画源、内容填满窗口、显式交换态高度）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C148.json"
     }
   }
 }

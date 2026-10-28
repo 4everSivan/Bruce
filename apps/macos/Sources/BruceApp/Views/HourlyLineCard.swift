@@ -27,6 +27,8 @@ struct HourlyLineCard: View {
     /// 面板可见性 (C044): 隐藏时生长动画直接落定终值, 不播动画.
     var panelVisible: Bool = true
     @Environment(\.motionSuppressed) private var motionSuppressed
+    /// 展开态正文的自然高度 (C148); 折叠时容器按显式高度动画收到 0.
+    @State private var expandedHeight: CGFloat = 0
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
@@ -65,11 +67,22 @@ struct HourlyLineCard: View {
             } mini: {
                 collapsedMini
             }
-            if !isCollapsed {
-                expandedContent
-                    .clipped()
-                    .transition(.opacity)
+            // C148: 正文高度是显式可动画值, 由标题行按钮的同一条 withAnimation 驱动.
+            ZStack(alignment: .top) {
+                if !isCollapsed {
+                    expandedContent
+                        .readingNaturalHeight(into: $expandedHeight)
+                        // C148: 正文淡出比外框收拢更快收尾, 避免半透明文字在收拢过程中拖成残影.
+                        .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.22)))
+                }
             }
+            .frame(
+                height: isCollapsed
+                    ? DashboardSwapHeight.collapsed
+                    : DashboardSwapHeight.target(measured: expandedHeight),
+                alignment: .top
+            )
+            .clipped()
         }
         .clipped()
     }

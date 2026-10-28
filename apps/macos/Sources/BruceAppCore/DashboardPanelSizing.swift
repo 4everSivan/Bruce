@@ -50,3 +50,22 @@ package enum DashboardPanelSizingPolicy {
         return CGRect(x: x, y: top - height, width: size.width, height: height)
     }
 }
+
+/// 交换态容器的高度目标 (C148).
+///
+/// 折叠/展开与 Tab 单卡切换都把「现在应该多高」收敛成一个显式、可动画的数值:
+/// 内容始终按自然高度布局, 由外层 `.frame(height:)` 负责裁切与插值. 这样高度
+/// 轨迹只有一条单调曲线; 若依赖 `if`/`else` 分支增删布局空间的隐式插值, 新旧
+/// 内容会先并存再回落, 读起来就是窗口被弹一下.
+package enum DashboardSwapHeight {
+    /// 已测自然高度对应的容器目标高度.
+    ///
+    /// 尚未测量 (不足半个点) 时返回 `nil`, 让容器退回自然高度; **禁止返回 0**,
+    /// 否则刚插入的内容会被永久裁成 0 高.
+    package static func target(measured: CGFloat) -> CGFloat? {
+        measured > 0.5 ? measured : nil
+    }
+
+    /// 折叠态目标高度: 正文整段收起时恒为 0, 与「尚未测量」区分开.
+    package static let collapsed: CGFloat = 0
+}

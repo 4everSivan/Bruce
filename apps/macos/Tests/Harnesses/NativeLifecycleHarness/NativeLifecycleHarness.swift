@@ -76,7 +76,29 @@ struct NativeLifecycleHarness {
         try menuBarContentUsesRefreshAndFailureIcons()
         try dashboardPlacementFallsBackFromInvalidStatusItemCoordinates()
         try panelSizingKeepsTopAnchoredWithinScreen()
-        print("Native lifecycle tests passed: 15")
+        try swapHeightNeverClampsUnmeasuredContent()
+        print("Native lifecycle tests passed: 16")
+    }
+
+    /// C148: 交换态容器的高度目标 —— 未测量时退回自然高度, 绝不用 0 裁死内容;
+    /// 折叠是显式的 0, 与被测内容无关.
+    private static func swapHeightNeverClampsUnmeasuredContent() throws {
+        try expect(
+            DashboardSwapHeight.target(measured: 0) == nil,
+            "unmeasured content must fall back to natural height, never 0"
+        )
+        try expect(
+            DashboardSwapHeight.target(measured: 0.4) == nil,
+            "sub-pixel noise must not count as a measured height"
+        )
+        try expect(
+            DashboardSwapHeight.target(measured: 212.4) == 212.4,
+            "a measured natural height must be used verbatim as the container target"
+        )
+        try expect(
+            DashboardSwapHeight.collapsed == 0,
+            "the collapsed target is an explicit zero, not the unmeasured fallback"
+        )
     }
 
     /// C147: 面板尺寸裁决 —— 顶边锚定、屏幕夹取、超高压缩、水平夹取.

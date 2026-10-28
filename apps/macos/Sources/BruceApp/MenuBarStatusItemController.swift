@@ -58,10 +58,11 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// 过度中/隐藏期间被抑制的上报尺寸 (C147); 动画结束或面板重新可见时补应用一次,
     /// 避免「值只在变化时上报」把错位永久固化.
     private var pendingContentSize: CGSize?
-    /// 高度应用是否已排队 (C147). `onGeometryChange` 在 SwiftUI 布局过程中回调,
-    /// 动画期间逐帧上报; 在同一轮里合并、并在布局周期结束后再改窗口/强制布局,
-    /// 避免重入把动画中间态写成最终态.
+    /// 高度应用是否已排队 (C147/C148). `onGeometryChange` 在 SwiftUI 布局过程中回调,
+    /// 在同一轮里合并、并在布局周期结束后再改窗口, 避免重入把动画中间态写成最终态;
+    /// C148 起窗口自己承担高度动画, 排队只负责把一次交互的多条上报并成一个目标.
     private var contentSizeApplyScheduled = false
+    private var contentSizeApplyWorkItem: DispatchWorkItem?
 
     init(
         model: AppModel,
@@ -198,6 +199,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
+        // 屏幕参数变化 (换屏/分辨率/菜单栏高度) 后重新按可见区夹取面板;
+        // C148 起内容理想高度不再依赖屏幕, 这里只需把已记录的尺寸再落一次.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
         // 监听系统深色/浅色外观切换, 立即触发状态项重绘
         DistributedNotificationCenter.default().addObserver(
             self,
@@ -205,6 +214,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil
         )
+    }
+
+    @objc private func screenParametersDidChange(_ note: Notification) {
+        Task { @MainActor [weak self] in
+            guard let self, self.panel.isVisible else { return }
+            self.pendingContentSize = self.lastContentSize
+            self.scheduleContentSizeApply()
+        }
     }
 
     @objc private func systemAppearanceDidChange() {
@@ -477,6 +494,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         labelSubscription = nil
         statusItemVisibilityObservation?.invalidate()
         statusItemVisibilityObservation = nil
+        contentSizeApplyWorkItem?.cancel()
+        contentSizeApplyWorkItem = nil
         closeDashboard(restorePreviousFrontmostApp: false)
         panel.delegate = nil
         dashboardGlassController = nil
@@ -537,7 +556,6 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             currentX: placement.origin.x,
             visibleFrame: screen?.visibleFrame ?? .zero
         )
-        dashboardGlassController?.updateContentHeight(targetFrame.height)
 
         // 面板关闭期间主题可能已切换且 SwiftUI onChange 尚未触发 (视图未加载),
         // 打开前兜底刷新一次面板级属性.
@@ -553,7 +571,6 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             panel.setFrame(targetFrame, display: false)
             panel.alphaValue = 1.0
             panel.makeKeyAndOrderFront(nil)
-            dashboardGlassController?.realignContentToTop()
             return
         }
 
@@ -586,7 +603,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                     self.panel.alphaValue = 1.0
                     // 动画期间被抑制的内容高度上报在此补应用, 不再回落到可能过期的 targetFrame.
                     self.flushPendingContentSize()
-                }
+                        }
             }
         })
     }
@@ -682,18 +699,28 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         scheduleContentSizeApply()
     }
 
-    /// 合并同一轮布局内的多帧上报, 延后到当前布局周期之后再应用 (C147).
+    /// 合并同一轮布局内的多帧上报, 延后到当前布局周期之后再应用 (C147/C148).
+    /// C148: 一次交互可能在一拍内连报两次 (终值 + 修正值), 这里用 30ms 小窗口合并成
+    /// 一个目标再起一次窗口动画; 每条上报各起一条动画会让窗口边缘反复重新起步,
+    /// 读起来就是弹簧回弹.
     private func scheduleContentSizeApply() {
-        guard !contentSizeApplyScheduled else { return }
+        contentSizeApplyWorkItem?.cancel()
         contentSizeApplyScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.contentSizeApplyScheduled = false
             self.flushPendingContentSize()
         }
+        contentSizeApplyWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: workItem)
     }
 
-    /// 把内容尺寸落成面板 frame: 顶边锚定 + 屏幕夹取, 并与宿主视图的内容高度同源刷新.
+    /// 把内容尺寸落成面板 frame: 顶边锚定 + 屏幕夹取.
+    ///
+    /// C148: 面板高度是**唯一**的高度动画源 —— SwiftUI 侧的高度变化在布局上只是
+    /// 跳到终值 (几何上报只给终值), 所以由窗口自己用一条与内容同长的曲线过渡;
+    /// 宿主视图四边贴合窗口, 底栏与视口因此逐帧跟着窗口下边缘一起走, 不会出现
+    /// 「底栏先跳到位、窗口边缘随后追赶」的错位.
     private func applyContentSize(_ size: CGSize) {
         let screen = panel.screen ?? NSScreen.main
         let frame = DashboardPanelSizingPolicy.topAnchoredFrame(
@@ -702,13 +729,24 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             currentX: panel.frame.minX,
             visibleFrame: screen?.visibleFrame ?? .zero
         )
-        if abs(frame.height - panel.frame.height) > 1
-            || abs(frame.minY - panel.frame.minY) > 1
-            || abs(frame.minX - panel.frame.minX) > 1 {
+        let heightDelta = abs(frame.height - panel.frame.height)
+        let yDelta = abs(frame.minY - panel.frame.minY)
+        let xDelta = abs(frame.minX - panel.frame.minX)
+        guard heightDelta > 1.0 || yDelta > 1.0 || xDelta > 1.0 else { return }
+
+        let shouldAnimate = panel.isVisible
+            && !coordinator.motionSuppressed
+            && heightDelta > 2.0
+            && xDelta <= 1.0
+        guard shouldAnimate else {
             panel.setFrame(frame, display: true)
+            return
         }
-        dashboardGlassController?.updateContentHeight(frame.height)
-        dashboardGlassController?.realignContentToTop()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = DashboardMotionTiming.contentResize
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(frame, display: true)
+        }
     }
 
     /// 补应用被过渡/隐藏抑制的高度上报 (C147). 同一轮里最多应用一次.
@@ -740,6 +778,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             return
         }
         // 用户点击了其他应用 → 关闭面板, 不强制归还前台.
+        contentSizeApplyWorkItem?.cancel()
+        contentSizeApplyWorkItem = nil
         closeDashboard(restorePreviousFrontmostApp: false)
     }
 

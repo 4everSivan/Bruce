@@ -86,6 +86,9 @@ struct SubscriptionCard: View {
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.motionSuppressed) private var motionSuppressed
+    /// 展开态正文的自然高度 (C148); 折叠时容器按显式高度动画收到 0.
+    @State private var expandedHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -111,11 +114,22 @@ struct SubscriptionCard: View {
                 collapsedMini
             }
 
-            if !isCollapsed {
-                expandedContent
-                    .clipped()
-                    .transition(.opacity)
+            // C148: 正文高度是显式可动画值, 由标题行按钮的同一条 withAnimation 驱动.
+            ZStack(alignment: .top) {
+                if !isCollapsed {
+                    expandedContent
+                        .readingNaturalHeight(into: $expandedHeight)
+                        // C148: 正文淡出比外框收拢更快收尾, 避免半透明文字在收拢过程中拖成残影.
+                        .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.22)))
+                }
             }
+            .frame(
+                height: isCollapsed
+                    ? DashboardSwapHeight.collapsed
+                    : DashboardSwapHeight.target(measured: expandedHeight),
+                alignment: .top
+            )
+            .clipped()
         }
         .clipped()
     }
@@ -213,6 +227,10 @@ private struct ProviderSectionView: View {
     var panelVisible: Bool = true
     @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var expanded = false
+    /// 展开态账号列表的自然高度 (C148).
+    @State private var accountsHeight: CGFloat = 0
+    /// 折叠态摘要行的自然高度 (C148).
+    @State private var collapsedRowHeight: CGFloat = 0
 
     /// 是否为纯余额型 Provider (无周期窗口, 且具备余额数据; 如 DeepSeek)
     private var isBalanceBased: Bool {
@@ -226,6 +244,7 @@ private struct ProviderSectionView: View {
 
             if section.isMultiAccount {
                 multiAccountContent
+                    .animation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve, value: expanded)
             } else {
                 singleAccountContent
             }
@@ -246,17 +265,32 @@ private struct ProviderSectionView: View {
 
     @ViewBuilder
     private var multiAccountContent: some View {
-        if expanded {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(section.accounts, id: \.id) { account in
-                    ProviderAccountCard(account: account)
+        // C148: 两种状态的正文都保持自然高度, 容器高度只跟当前状态走一个数值,
+        // 由外层 scope 的 `.animation(value: expanded)` 插值 —— 展开与收起都是单向行程.
+        ZStack(alignment: .top) {
+            if expanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(section.accounts, id: \.id) { account in
+                        ProviderAccountCard(account: account)
+                    }
                 }
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+                .readingNaturalHeight(into: $accountsHeight)
+                .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.20)))
+            } else if let collapsed = section.collapsedWindow {
+                WindowRowView(row: collapsed)
+                    .readingNaturalHeight(into: $collapsedRowHeight)
+                    .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.20)))
             }
-            .padding(.top, 4)
-            .padding(.bottom, 2)
-        } else if let collapsed = section.collapsedWindow {
-            WindowRowView(row: collapsed)
         }
+        .frame(
+            height: DashboardSwapHeight.target(
+                measured: expanded ? accountsHeight : collapsedRowHeight
+            ),
+            alignment: .top
+        )
+        .clipped()
     }
 
     // MARK: 单账号内容
@@ -280,16 +314,15 @@ private struct ProviderSectionView: View {
                 .accessibilityHidden(true)
             if section.isMultiAccount {
                 Button {
-                    withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.2)) {
-                        expanded.toggle()
-                    }
+                    expanded.toggle()
                 } label: {
                     HStack(spacing: 4) {
                         Text(section.name)
                             .font(.system(size: 11, weight: .semibold))
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        Image(systemName: "chevron.down")
                             .font(.system(size: 8))
                             .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(expanded ? 180 : 0))
                     }
                 }
                 .buttonStyle(.plain)
@@ -493,6 +526,7 @@ private struct BalanceDualSlotView: View {
 /// ownRow 行在本布局中天然独占一行, 不做缩进或并排处理.
 private struct WindowRowView: View {
     let row: SubscriptionWindowRow
+    var animateEntrance: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -510,7 +544,8 @@ private struct WindowRowView: View {
             let meterLevel = MeterLevel(usedPercent: row.usedPercent)
             MeterBar(
                 usedFraction: row.usedPercent / 100,
-                level: meterLevel
+                level: meterLevel,
+                animateEntrance: animateEntrance
             )
             // Nothing 下百分比按档位取阈值色 (定稿 .meter-head .v),
             // classic / liquidGlass 保持默认前景色不变.
@@ -623,6 +658,7 @@ private enum MeterLevel {
 private struct MeterBar: View {
     let usedFraction: Double
     let level: MeterLevel
+    var animateEntrance: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -644,6 +680,7 @@ private struct MeterBar: View {
             }
         }
         .onAppear {
+            guard animateEntrance else { return }
             withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.45)) {
                 appeared = true
             }
@@ -667,7 +704,7 @@ private struct MeterBar: View {
     }
 
     private var fillWidth: CGFloat {
-        guard appeared else {
+        guard animateEntrance ? appeared : true else {
             return 0
         }
         return CGFloat(min(max(usedFraction, 0), 1))
@@ -748,7 +785,7 @@ private struct ProviderAccountCard: View {
             .padding(.bottom, 2)
 
             ForEach(Array(account.windows.enumerated()), id: \.offset) { _, row in
-                WindowRowView(row: row)
+                WindowRowView(row: row, animateEntrance: false)
             }
 
             // 分组段本身不带 note, 账号级 error 说明在子卡内展示.

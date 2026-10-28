@@ -1,0 +1,131 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C148",
+  "title": "消除面板高度与卡片折叠/Tab 切换的弹簧抖动（窗口单一高度动画源、内容填满窗口、显式交换态高度）",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarStatusItemController / DashboardGlassPanelController / MenuBarViews / SubscriptionCard",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "面板在折叠/展开卡片、多账号开合与 Tab 切换时出现弹簧式回弹。2026-10-28 用临时探针（8ms 采样窗口 frame + 60Hz 抓取面板窗口合成帧）复现并定位：面板高度链路里同时存在三个不同步的阶段 —— 1) SwiftUI 侧卡片正文按 0.25/0.32s 动画插值；2) 卡片栈视口的 frame 由实测内容高度以状态写入，布局上一步跳到终值（几何回叫在动画期间只回调终值，不逐帧给插值），底栏随内容瞬间跳位；3) 窗口层再按上报各起一条 0.2s NSAnimationContext，拍内多次上报会反复重新起步。结果窗口下边缘、底栏与卡片正文三者各走各的曲线，读数就是「弹簧跳动」，并伴随收尾顿跳与瞬时空壳。C148 前两轮把希望放在「窗口逐帧跟随内容测量」与「给交换态加 .move 转场」上，均因几何上报只给终值而无法成立。",
+  "precheck": {
+    "description": "确认代码中存在破坏视图身份的 if isCollapsed 条件分支与字符替换图标，并复现高度链路三源不同步",
+    "command": "grep -n -C 2 \"if isCollapsed {\" apps/macos/Sources/BruceApp/MenuBarViews.swift && grep -n \"Image(systemName: expanded ? \\\"chevron.up\\\"\" apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift",
+    "expected": "命中 MenuBarViews.swift 的条件卡片包裹分支与 SubscriptionCard.swift 的字符替换图标",
+    "is_completed": true,
+    "evidence": "2026-10-28 预检命中：MenuBarViews.swift:654 存在 if isCollapsed 条件分支包裹 card.draggable，SubscriptionCard.swift:290 存在 chevron.up / chevron.down 字符替换；同日探针实证内容高度上报一拍只到一次终值（local/probe-anim-driver8.log：每次交互 1 条 report + 1 条 apply），窗口在旧实现下与内容错位"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "apps/macos/.build/debug/NativeLifecycleHarness",
+      "scripts/adflow-verify --card C148 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "面板高度单一动画源与内容填满窗口",
+      "before": "窗口高度跟随内容实测值逐次 setFrame；C148 上一版又改成 40ms 防抖 + 每拍一条 0.2s NSAnimationContext，窗口与 SwiftUI 内容各走一条曲线；宿主视图用显式高度约束贴顶，底栏位置由内容高度决定而非窗口下边缘",
+      "after": "内容高度变化统一折算成一次窗口高度动画（0.24s easeInEaseOut，与卡片内容动画同长），同拍多条上报先经 30ms 合并成一个目标；宿主视图四边贴合窗口、SwiftUI 根视图去掉 fixedSize，视口按窗口高度弹性伸缩，底栏随窗口下边缘同步移动；motionSuppressed 时直接 setFrame 不做动画；屏幕参数变化后按已记录尺寸重新夹取",
+      "impact": "面板下边缘、底栏、卡片正文同向同步收放，消除弹簧回弹与收尾顿跳，也不再出现「底栏先跳到终位、窗口边缘随后追赶」的空壳帧"
+    },
+    {
+      "scope": "目标高度改为三段合成上报",
+      "before": "面板高度直接采纳 SwiftUI 根视图的理想尺寸（fixedSize + onGeometryChange 上报自身 size），卡片栈再按屏高上限在视图内封顶，上限缓存在 maxStackHeight 里",
+      "after": "改由 reportedContentSize = 顶栏实测高度 + 卡片栈理想高度 + 底栏实测高度，三段齐全才上报；屏高上限不再在视图内封顶，改由 DashboardPanelSizingPolicy 落到窗口 frame 时夹取，视口随窗口收窄并转为滚动；删除 maxStackHeight / refreshMaxStackHeight 及其屏幕读取路径",
+      "impact": "内容理想高度只由内容决定，不受窗口开合、滚动位置或键窗口所属屏影响，高度不再振荡；上限逻辑收敛到唯一夹取点"
+    },
+    {
+      "scope": "交换态容器显式高度（卡片正文 / 多账号 / Tab 单卡）",
+      "before": "三张卡片正文与多账号段靠 if 分支增删布局空间 + .transition(.asymmetric(opacity+move)) 隐式插值；Tab 单卡用 ZStack 但容器高度取两卡较大者，切换时先冲高再回落；Tab 切换使用 .spring(response:0.32, dampingFraction:0.82) 过冲曲线",
+      "after": "三处统一为 ZStack(alignment: .top) + readingNaturalHeight(into:) 上报自然高度（内部 fixedSize(vertical: true)，被外层裁切时测量不失真）+ 显式 .frame(height:) + .clipped()；目标高度统一取自 BruceAppCore.DashboardSwapHeight（已测量取实测、未测量返回 nil 退回自然高度、折叠为显式 0，严禁用 0 表示未测量）；Tab 切换与折叠展开改为 easeOut/easeInOut 0.24-0.25s，去掉 spring 过冲",
+      "impact": "高度轨迹成为单条单调曲线，不再出现新旧内容并存占位造成的先冲高再缩回，也不再有过冲回弹"
+    },
+    {
+      "scope": "卡片身份与局部动效边界",
+      "before": "cardStack 用 if isCollapsed { card.draggable } else { card } 包裹，折叠/展开时整卡视图身份突变；多账号箭头用 chevron.up/down 字符替换；展开挂载的账号子卡内部量条会触发 0.45s 0-fill 装载动画",
+      "after": "去掉外层条件分支，卡片恒定 View 身份（拖拽手柄下沉到 CollapsibleCardHeader 内部，仅在折叠态渲染）；箭头改为单图标 rotationEffect；ProviderAccountCard 内 WindowRowView 传 animateEntrance: false，量条直接以当前占比呈现",
+      "impact": "折叠/展开不再整卡重建，箭头连续旋转无字符跳变，多账号展开时量条不再水平拉伸"
+    },
+    {
+      "scope": "折叠/展开观感优化（标题行瞬移与状态件叠字）",
+      "before": "折叠瞬间标题行用 if isCollapsed 增删拖拽手柄，标题整体横向瞬移；收起摘要（mini）与展开态「最后更新/LIVE」在同一行各自占位并同时交叉淡入，半透明文字压在最后一条量条上约 80ms；正文淡出与 0.25s 外框收拢同长，拖成残影",
+      "after": "拖拽手柄常驻、占位宽度随折叠态插值（展开 0 宽）；mini 与状态件常驻同一占位盒，改为接力淡入（退场方 0.07s 先淡出，入场方 0.12s 延迟 0.06s 再淡入）；正文淡出单独给 0.22s 过渡动画，短于外框收拢；动效时长统一为 DashboardMotionTiming.contentResize=0.30s easeInOut，卡片正文/多账号/Tab 与窗口高度过渡同源",
+      "impact": "折叠/展开不再有文字与量条叠影、标题不再横跳，交接干净；展开收起整体节奏放慢到 0.30s 且外框与正文同一时间线"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/03 第 10 节把面板高度写成「逐帧上报、应用端合并后 setFrame」，第 11 节（C148 上一版）要求窗口被动跟随并禁用窗口层动画、用 .move 转场撑开正文",
+      "after": "第 10 节改为：目标高度 = 顶栏 + 卡片栈理想高度 + 底栏三段合成上报，宿主视图四边贴合窗口、根视图不再 fixedSize，屏高上限收敛到 sizing policy 夹取；第 11 节改为：几何上报只给终值，禁止逐帧跟随，窗口是唯一高度动画源（30ms 合并 + 单条 0.24s 缓动），交换态容器必须用显式可动画高度（DashboardSwapHeight），禁用过冲曲线"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261028-08",
+    "user_quote": "“确认” 签收",
+    "signoff": "2026-10-28 人类口头确认 (AI 代签)",
+    "checks": [
+      {
+        "item": "窗口高度轨迹单调无回弹",
+        "true_if": "一次交互只产生一次窗口高度过渡，轨迹单调、无反向过冲，时长与内容动画一致",
+        "false_if": "出现二次起步、反向回弹或多个窗口动画叠加",
+        "evidence": "临时探针 8ms 采样窗口 frame（local/probe-anim-driver8.log + 抓帧 local/frames/tab_*.png）：Tab 模式切换 1034→1003→927→876→764→730→688→685pt 约 0.3s 单调下降，全程无反向；每次交互日志仅 1 条 report + 1 条 apply",
+        "result": true
+      },
+      {
+        "item": "底栏贴窗口下边缘同步移动、无空壳",
+        "true_if": "过渡每一帧抓到的面板画面里底栏都位于窗口下边缘，内容从顶部连续可见",
+        "false_if": "出现底栏先跳到终位、窗口边缘余留空白条，或只有表面没有内容的空壳帧",
+        "evidence": "60Hz 抓取面板窗口合成帧（local/frames/collapse_*.png、tab_*.png，非黑像素占比 0.55-0.88）逐帧检查：底栏在所有帧都贴窗口下边缘，内容自顶连续显示；改动前同法抓帧出现过整帧无内容的空壳帧（mean=0）",
+        "result": true
+      },
+      {
+        "item": "交换态高度显式且不裁死内容",
+        "true_if": "未测量时退回自然高度、测量后按实测高度插值、折叠为显式 0；DashboardSwapHeight 语义有回归用例",
+        "false_if": "未测量被当作 0 导致内容永久裁切，或高度依赖分支增删空间",
+        "evidence": "NativeLifecycleHarness 新增 swapHeightNeverClampsUnmeasuredContent（未测量/亚像素噪声返回 nil，实测值原样返回，折叠为显式 0），16 项全绿",
+        "result": true
+      },
+      {
+        "item": "全量验证与反向影响排查",
+        "true_if": "zsh scripts/verify-local.sh Exit 0，Rust 与全部 Swift Harness 通过",
+        "false_if": "任一测试失败或编译报错",
+        "evidence": "zsh scripts/verify-local.sh exit 0（日志 local/c148-verify-final.log）：Rust workspace 全绿、全部 Swift Harness 通过（NativeLifecycleHarness 16 项、PanelParityHarness 双端对拍一致、SoftwareUpdate 46 项）、变更总账一致 cards=146 topics=9",
+        "result": true
+      },
+      {
+        "item": "标题行折叠交接与观感",
+        "true_if": "折叠/展开逐帧无「状态文字压在量条上」的叠影、标题不横向跳位",
+        "false_if": "出现叠字残影或标题瞬移",
+        "evidence": "60Hz 抓帧（local/frames5/collapse_*.png，crop 1240-1400 行逐帧比对）：旧实现第 3-6 帧可见「最后更新 15:06」半透明压在最后一条量条上；改为接力淡入后同一时刻状态文字已退净、仅在 0.06s 窗口内有一次极淡交叠，标题随手柄占位宽度平滑右移",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-28",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
+  }
+}

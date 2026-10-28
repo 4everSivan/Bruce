@@ -25,6 +25,8 @@ struct UsageHeroCard: View {
     /// 模型用量: 展开态与周期选择 (窗口档位 或 点击按月卡指定自然月).
     @State private var modelsExpanded = false
     @State private var modelSelection: ModelUsageSelection = .tier(0)
+    /// 展开态正文的自然高度 (C148); 折叠时容器按显式高度动画收到 0.
+    @State private var expandedHeight: CGFloat = 0
 
     enum ModelUsageSelection: Equatable {
         case tier(Int)
@@ -61,11 +63,22 @@ struct UsageHeroCard: View {
             } mini: {
                 collapsedMini
             }
-            if !isCollapsed {
-                expandedContent
-                    .clipped()
-                    .transition(.opacity)
+            // C148: 正文高度是显式可动画值, 由标题行按钮的同一条 withAnimation 驱动.
+            ZStack(alignment: .top) {
+                if !isCollapsed {
+                    expandedContent
+                        .readingNaturalHeight(into: $expandedHeight)
+                        // C148: 正文淡出比外框收拢更快收尾, 避免半透明文字在收拢过程中拖成残影.
+                        .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.22)))
+                }
             }
+            .frame(
+                height: isCollapsed
+                    ? DashboardSwapHeight.collapsed
+                    : DashboardSwapHeight.target(measured: expandedHeight),
+                alignment: .top
+            )
+            .clipped()
         }
         .clipped()
         .background {

@@ -113,19 +113,20 @@ struct MenuBarDashboardView: View {
     /// 顶部 Header 实测高度 (Header + 发线); 0 表示尚未测量, 预留 32 兜底.
     @State private var headerHeight: CGFloat = 0
 
-    /// 卡片栈实测理想高度; 0 表示尚未测量到 (首帧), 此时不加高度约束保持自适应.
+    /// 卡片栈实测理想高度; 0 表示尚未测量到 (首帧), 此时不上报面板尺寸.
     @State private var cardStackHeight: CGFloat = 0
 
-    /// 底栏实测高度 (发线+操作行); 0 表示尚未测量, 封顶时用 49 兜底预留, 保证底栏不被挤出屏幕.
-    @State private var footerHeight: CGFloat = 0
+    /// 卡片栈视口实测高度 (C148): 内容填满窗口后由窗口高度决定, 仅用于溢出提示.
+    @State private var cardStackViewportHeight: CGFloat = 0
 
-    /// 卡片栈高度上限缓存 (C147). 只在视图出现、面板重新可见、屏幕参数变更时刷新,
-    /// 避免滚动/开合期间实时读 `NSApp.keyWindow?.screen` 让上限跳变、引发高度振荡.
-    @State private var maxStackHeight: CGFloat = 0
+    /// 底栏实测高度 (发线+操作行); 0 表示尚未测量, 上报前以 49 兜底预留.
+    @State private var footerHeight: CGFloat = 0
 
     /// Tab 模式方案 1 水平定向滑动方向
     @State private var slideDirection: Edge = .trailing
     @Namespace private var tabPillNamespace
+    /// Tab 模式当前卡片的自然高度 (C148); 容器高度只跟它走一个数值, 切换时单程插值.
+    @State private var tabCardHeight: CGFloat = 0
 
     var body: some View {
         let panel = model.makePanelViewModel()
@@ -156,22 +157,22 @@ struct MenuBarDashboardView: View {
                     glassCardStack(panel)
                 }
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
-                    // 仅变化时更新, 并忽略亚像素抖动, 避免回环引起布局振荡.
-                    guard height > 0, abs(height - cardStackHeight) > 0.5 else { return }
+                    // 仅变化时更新, 并忽略微小抖动, 避免回环引起布局振荡.
+                    guard height > 0, abs(height - cardStackHeight) > 1.0 else { return }
                     cardStackHeight = height
                 }
             }
-            // 窗口自动尺寸时 ScrollView 理想高度塌陷, maxHeight 不解决理想高度;
-            // 用 onGeometryChange 实测内容高度驱动 frame: 未测量 (首帧) 不加约束,
-            // 测量后取 min(内容高, 屏上限扣除顶底栏), 确保顶底栏始终留在屏幕内.
-            .frame(height: cardStackHeight > 0
-                ? min(cardStackHeight, resolvedMaxStackHeight - max(footerHeight, 49) - max(headerHeight, 32))
-                : nil)
+            // C148: 视口高度由窗口高度决定 (内容填满窗口, 底栏贴窗口底边),
+            // 因此这里不再按内容高度封顶; 内容超出视口时由 ScrollView 滚动.
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                guard height >= 0, abs(height - cardStackViewportHeight) > 0.5 else { return }
+                cardStackViewportHeight = height
+            }
             // 隐藏滚动指示条, 滚轮/触控板滚动不受影响.
             .scrollIndicators(.hidden)
             .overlay(alignment: .bottom) {
                 // 内容溢出视口时呈现轻柔渐隐下潜提示, 杜绝卡片被生硬腰斩
-                if cardStackHeight > (resolvedMaxStackHeight - max(footerHeight, 49) - max(headerHeight, 32)) {
+                if cardStackViewportHeight > 0.5, cardStackHeight > cardStackViewportHeight + 0.5 {
                     LinearGradient(
                         colors: [.clear, Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06)],
                         startPoint: .top,
@@ -205,22 +206,12 @@ struct MenuBarDashboardView: View {
         .clipShape(panelShape)
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.BruceResolvedTheme, coordinator.resolvedTheme)
-        // 垂直方向按理想高度布局 (而非采纳宿主提议尺寸), 使 onGeometryChange
-        // 上报真实理想高度; 内容高度变化时宿主据此调整面板尺寸.
-        .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGSize.self, of: { $0.size }) { size in
+        // C148: 内容填满面板窗口 (顶栏 + 弹性视口 + 底栏), 面板高度的唯一动画源
+        // 交给窗口层. 目标高度按三段实测值合成后上报, 不再让窗口采纳 SwiftUI
+        // 的理想高度 —— 理想高度会在动画期间先跳到终值, 窗口只能被动跳变.
+        .onChange(of: reportedContentSize, initial: true) { _, size in
+            guard let size else { return }
             onContentSizeChange?(size)
-        }
-        .onAppear { refreshMaxStackHeight() }
-        .onChange(of: model.dashboardPanelVisible) { _, visible in
-            if visible { refreshMaxStackHeight() }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: NSApplication.didChangeScreenParametersNotification
-            )
-        ) { _ in
-            refreshMaxStackHeight()
         }
         .onChange(of: coordinator.resolvedTheme) { _, theme in
             onSurfaceThemeChange?(theme, coordinator.appearanceMode.colorScheme)
@@ -271,28 +262,18 @@ struct MenuBarDashboardView: View {
         )
     }
 
-    /// 卡片栈高度上限: 铺满面板窗口所在屏 visibleFrame, 只留约 10pt 小边距;
-    /// 内容不足时高度自适应不出滚动条, 超出时滚动条自动出现.
-    /// C147: 结果缓存在 `maxStackHeight`, 仅在视图出现/面板重新可见/屏幕参数变更时刷新,
-    /// 布局过程中不再实时读取键窗口所属屏.
-    private static func maxCardStackHeight(on screen: NSScreen?) -> CGFloat {
-        guard let visibleHeight = screen?.visibleFrame.height else {
-            return 640
-        }
-        return max(visibleHeight - 10, 320)
-    }
-
-    /// 上限缓存的当前值; 尚未采样时用 640 兜底, 与旧的无屏回退一致.
-    private var resolvedMaxStackHeight: CGFloat {
-        maxStackHeight > 0 ? maxStackHeight : 640
-    }
-
-    /// 采样面板所在屏并刷新高度上限缓存.
-    private func refreshMaxStackHeight() {
-        let screen = NSApp.keyWindow?.screen ?? NSApp.mainWindow?.screen ?? NSScreen.main
-        let height = Self.maxCardStackHeight(on: screen)
-        guard abs(height - maxStackHeight) > 0.5 else { return }
-        maxStackHeight = height
+    /// 面板目标尺寸 (C148): 顶栏 + 卡片栈理想高度 + 底栏.
+    ///
+    /// 三段都测到值之后才上报 —— 缺一段就上报会把窗口压成一条或让底栏悬空.
+    /// 超过屏幕可用高度时不在这里封顶: 上限由 `DashboardPanelSizingPolicy` 落到
+    /// 窗口 frame 时夹取, 视口随窗口收窄, 卡片栈转为滚动. 这样内容的理想高度
+    /// 只由内容决定, 不会因为窗口开合或滚动位置跳变.
+    private var reportedContentSize: CGSize? {
+        guard headerHeight > 0, footerHeight > 0, cardStackHeight > 0 else { return nil }
+        return CGSize(
+            width: 440,
+            height: headerHeight + cardStackHeight + footerHeight
+        )
     }
 
     // MARK: - 全局顶部 Header (方案 3: HUD 终端点阵状态栏 · 全风格适配)
@@ -330,8 +311,10 @@ struct MenuBarDashboardView: View {
             // 右侧：Tab 模式下展示三图标分段切换（角标融合），Stack 模式下展示 Agent 运行状态
             if model.layoutMode == .tabbed {
                 headerTabSwitcher(activeCount: activeCount)
+                    .transition(.opacity)
             } else {
                 headerAgentStatusText(activeCount: activeCount)
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, 14)
@@ -509,20 +492,26 @@ struct MenuBarDashboardView: View {
         // and charts through a container that spans the full scroll content.
         if model.layoutMode == .tabbed {
             tabbedCardView(panel)
+                .transition(.opacity)
         } else {
             cardStack(panel)
+                .transition(.opacity)
         }
     }
 
     /// Tab 模式：单卡渲染 + 方案 1 水平定向滑动过渡
+    /// C148: 容器高度由当前卡片自然高度显式驱动并单向插值; 若交给 `if`/`else`
+    /// 增删布局空间的隐式插值, 新旧卡片会先按较高者占位、旧卡退场后再回落,
+    /// 面板高度因此先冲高再缩回, 读起来就是被弹一下.
     @ViewBuilder
     private func tabbedCardView(_ panel: PanelViewModel) -> some View {
         let hasCards = panel.usage != nil
             || panel.subscription != nil
             || panel.hourly != nil
-        Group {
+        ZStack(alignment: .top) {
             if hasCards {
                 renderSingleTabCard(model.selectedCardID, panel: panel)
+                    .readingNaturalHeight(into: $tabCardHeight)
                     .id(model.selectedCardID)
                     .transition(
                         .asymmetric(
@@ -534,6 +523,14 @@ struct MenuBarDashboardView: View {
                 emptyPanelState
             }
         }
+        .frame(
+            height: hasCards
+                ? DashboardSwapHeight.target(measured: tabCardHeight)
+                : nil,
+            alignment: .top
+        )
+        .animation(motionSuppressed ? nil : .easeOut(duration: 0.24), value: tabCardHeight)
+        .clipped()
         .padding(.horizontal, isNothingTheme ? 10 : 12)
         .padding(.top, isNothingTheme ? 8 : 10)
         .padding(.bottom, 10)
@@ -630,14 +627,16 @@ struct MenuBarDashboardView: View {
         }
     }
 
-    /// 切换 Tab 并自动判定水平滑入方向
+    /// 切换 Tab 并自动判定水平滑入方向.
+    /// C148: 不用 spring —— 过冲曲线叠在高度切换上就是肉眼可见的"弹簧跳动",
+    /// 收尾还会反向回弹一次.
     private func selectTab(_ target: DashboardCardID) {
         guard target != model.selectedCardID else { return }
         let order: [DashboardCardID] = [.usage, .subscription, .hourly]
         let fromIndex = order.firstIndex(of: model.selectedCardID) ?? 0
         let toIndex = order.firstIndex(of: target) ?? 0
         slideDirection = toIndex > fromIndex ? .trailing : .leading
-        withAnimation(motionSuppressed ? nil : .spring(response: 0.32, dampingFraction: 0.82)) {
+        withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.24)) {
             model.selectCard(target)
         }
     }
@@ -649,22 +648,16 @@ struct MenuBarDashboardView: View {
             || panel.hourly != nil
         VStack(spacing: isNothingTheme ? 8 : 10) {
             ForEach(model.cardOrder) { cardID in
-                let isCollapsed = model.isCardCollapsed(cardID)
-                let card = renderCard(cardID, panel: panel)
-                if isCollapsed {
-                    card
-                        .draggable(cardID.rawValue)
-                        .onDrop(
-                            of: [.text],
-                            delegate: DashboardCardDropDelegate(
-                                target: cardID,
-                                motionSuppressed: motionSuppressed,
-                                move: { model.moveCard(from: $0, to: $1) }
-                            )
+                renderCard(cardID, panel: panel)
+                    .id(cardID)
+                    .onDrop(
+                        of: [.text],
+                        delegate: DashboardCardDropDelegate(
+                            target: cardID,
+                            motionSuppressed: motionSuppressed,
+                            move: { model.moveCard(from: $0, to: $1) }
                         )
-                } else {
-                    card
-                }
+                    )
             }
             if !hasCards {
                 emptyPanelState

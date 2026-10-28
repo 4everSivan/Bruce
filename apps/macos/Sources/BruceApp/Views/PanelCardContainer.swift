@@ -172,6 +172,43 @@ private struct DashboardPanelGlassButtonStyle: ButtonStyle {
     }
 }
 
+/// 面板内容高度相关动效的统一时长与曲线 (C148).
+///
+/// 卡片折叠/展开、多账号开合、Tab 单卡切换与面板窗口高度过渡共用同一时长,
+/// 保证「外框收放」与「正文收放」是同一条时间线; 各自为政的时长会让两者互相追尾.
+enum DashboardMotionTiming {
+    /// 内容高度过渡时长 (秒).
+    static let contentResize: TimeInterval = 0.30
+    /// 内容高度过渡曲线; 窗口层用同名 CAMediaTimingFunction 对齐.
+    static var contentResizeCurve: Animation { .easeInOut(duration: contentResize) }
+}
+
+// MARK: - 交换态高度测量 (C148)
+
+/// 上报视图的自然高度 (C148).
+///
+/// 被测内容被外层 `.frame(height:)` 与 `.clipped()` 裁切时仍按自然高度完成布局:
+/// 否则容器一收, 测量值就跟着变小, 形成「越量越矮」的回环, 展开动画会在半途失速.
+private struct NaturalHeightReader: ViewModifier {
+    @Binding var height: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { measured in
+                guard measured > 0, abs(measured - height) > 0.5 else { return }
+                height = measured
+            }
+    }
+}
+
+extension View {
+    /// 把视图的自然高度写入 `height`, 供外层容器做显式高度动画 (C148).
+    func readingNaturalHeight(into height: Binding<CGFloat>) -> some View {
+        modifier(NaturalHeightReader(height: height))
+    }
+}
+
 // MARK: - 可收起卡片标题行
 
 /// 卡片可收起标题行 (定稿: card-collapse-demo.html 方案 C 变体 2).
@@ -202,20 +239,13 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: isNothing ? 8 : 10) {
-            // 专职拖拽手柄: 仅在卡片缩小/折叠状态下展示, 且物理独立于展开 Button 之外,
-            // 彻底避免拖拽手势被 Button 的点击捕获或误触发展开.
-            if isCollapsed {
-                if let cardID {
-                    DashboardDragHandle(isNothing: isNothing)
-                        .draggable(cardID.rawValue)
-                } else {
-                    DashboardDragHandle(isNothing: isNothing)
-                }
-            }
+        HStack(spacing: 0) {
+            // 专职拖拽手柄: 物理独立于展开 Button 之外, 避免拖拽手势被按钮点击捕获.
+            // C148: 常驻但占位宽度随折叠态插值 (展开时 0 宽), 折叠瞬间标题不会横向瞬移.
+            handleSlot
 
             Button {
-                withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.25)) {
+                withAnimation(motionSuppressed ? nil : .easeInOut(duration: DashboardMotionTiming.contentResize)) {
                     onToggle()
                 }
             } label: {
@@ -226,14 +256,18 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                             : .system(size: 12.5, weight: .semibold))
                         .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
                         .frame(width: resolvedTitleWidth, alignment: .leading)
-                    if isCollapsed {
+                    // C148: 收起摘要与展开态状态件常驻同一个占位盒, 但不同时交叉淡入 ——
+                    // 两者都贴右缘, 同时半透明会让「最后更新 …」压在最后一条量条上, 读作糊成一团.
+                    // 改为接力: 先让退场的一方快速淡出, 再让入场的一方淡入.
+                    ZStack(alignment: .trailing) {
                         mini
                             .frame(maxWidth: .infinity)
-                            .transition(.opacity)
-                    } else {
-                        Spacer(minLength: 0)
+                            .opacity(isCollapsed ? 1 : 0)
+                            .allowsHitTesting(false)
+                            .animation(miniSwapAnimation, value: isCollapsed)
                         status
-                            .transition(.opacity)
+                            .opacity(isCollapsed ? 0 : 1)
+                            .animation(statusSwapAnimation, value: isCollapsed)
                     }
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
@@ -253,6 +287,39 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
             .accessibilityHint(isCollapsed ? "展开卡片" : "收起卡片")
             .accessibilityValue(isCollapsed ? "已收起" : "已展开")
         }
+    }
+
+    /// 收起摘要的接力淡入: 折叠时先等状态件退出再淡入, 展开时立刻让位.
+    private var miniSwapAnimation: Animation? {
+        guard !motionSuppressed else { return nil }
+        return isCollapsed
+            ? .easeOut(duration: 0.12).delay(0.06)
+            : .easeOut(duration: 0.07)
+    }
+
+    /// 展开态状态件 (LIVE / 更新时间) 的接力淡入: 折叠时立刻退出, 展开时等摘要退出后再淡入.
+    private var statusSwapAnimation: Animation? {
+        guard !motionSuppressed else { return nil }
+        return isCollapsed
+            ? .easeOut(duration: 0.07)
+            : .easeOut(duration: 0.12).delay(0.06)
+    }
+
+    /// 拖拽手柄占位 (C148): 展开态宽度为 0, 折叠态让出「手柄 + 间距」.
+    /// 宽度随折叠态插值, 标题不会在手柄出现的瞬间横向跳一下.
+    private var handleSlot: some View {
+        Group {
+            if let cardID {
+                DashboardDragHandle(isNothing: isNothing)
+                    .draggable(cardID.rawValue)
+            } else {
+                DashboardDragHandle(isNothing: isNothing)
+            }
+        }
+        .frame(width: isCollapsed ? (isNothing ? 24 : 26) : 0, alignment: .leading)
+        .opacity(isCollapsed ? 1 : 0)
+        .allowsHitTesting(isCollapsed)
+        .clipped()
     }
 
     /// Nothing 标题色: secondary (dark #999999 / light #666666), 与定稿 token 一致.

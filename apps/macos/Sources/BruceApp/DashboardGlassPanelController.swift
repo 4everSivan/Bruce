@@ -12,8 +12,6 @@ final class DashboardGlassPanelController: NSViewController {
     private var surfaceView: NSView?
     private var surfacePlan: DashboardGlassSurfacePlan
     private var surfaceStyle: DashboardGlassSurfaceStyle
-    /// 宿主视图显式内容高度约束 (C147); 与面板窗口高度同源刷新.
-    private var contentHeightConstraint: NSLayoutConstraint?
     /// 面板配色模式映射; nil 表示跟随系统, 由 effectiveAppearance 决定 tint 明暗.
     private var preferredColorScheme: ColorScheme?
 
@@ -124,46 +122,22 @@ final class DashboardGlassPanelController: NSViewController {
         // makes text/chart rendering too soft for this dashboard.
         view.addSubview(hostingController.view)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        // C147: 宿主视图高度改为显式 required 约束, 与面板窗口高度同源刷新
-        // (`updateContentHeight`). 卷轴动画期间窗口可短于内容, 内容向下溢出由
-        // 视口裁切露显 (C137 的防挤压语义不变), 但不再依赖低优先级底约束,
-        // 因而不会因窗口/内容高度差把内容整体平移、把 Header 顶出窗口.
-        let heightConstraint = hostingController.view.heightAnchor.constraint(
-            equalToConstant: max(view.bounds.height, 1)
-        )
-        heightConstraint.priority = .required
+        // C148: 宿主视图四边贴合窗口 (不再用显式高度约束). 面板高度由控制器
+        // 唯一驱动, 窗口 frame 每帧变化时宿主视图随之重排 —— 底栏因此贴着窗口
+        // 下边缘同步移动, 不会出现「底栏先跳到位、窗口边缘随后追赶」的错位.
+        // 摘掉 `fixedSize` 后 SwiftUI 内容按窗口高度布局, 视口过短时向下溢出、
+        // 由根视图裁切, 不存在内容被强制平移 (C147 的 Header 顶出问题).
         NSLayoutConstraint.activate([
             hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            heightConstraint,
+            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        contentHeightConstraint = heightConstraint
 
         hostingController.view.wantsLayer = true
         hostingController.view.layer?.cornerRadius = panelCornerRadius
         hostingController.view.layer?.masksToBounds = true
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
-    }
-
-    /// 用上报的内容高度刷新宿主视图高度 (C147). 与面板窗口高度使用同一份数值,
-    /// 使二者始终一致, 窗口变矮时内容只向下溢出, 不会整体上移.
-    func updateContentHeight(_ height: CGFloat) {
-        guard isViewLoaded, height > 0 else { return }
-        guard let contentHeightConstraint else { return }
-        guard abs(contentHeightConstraint.constant - height) > 0.5 else { return }
-        contentHeightConstraint.constant = height
-        view.needsLayout = true
-    }
-
-    /// 把 SwiftUI 内容贴回窗口顶边 (C147). 任何尺寸落定后调用一次,
-    /// 兜底复位可能残留的垂直平移 (根视图 `isFlipped = true`, 原点 0 即顶边).
-    func realignContentToTop() {
-        guard isViewLoaded else { return }
-        view.layoutSubtreeIfNeeded()
-        let hosting = hostingController.view
-        guard abs(hosting.frame.minY) > 0.5 else { return }
-        hosting.setFrameOrigin(NSPoint(x: hosting.frame.minX, y: 0))
     }
 
     private func makeSurface() -> NSView {
