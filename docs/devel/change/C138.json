@@ -4,7 +4,7 @@
   "title": "TD-005：额度重试改为通用 quotaRetryOnly 契约，删除 codex 专属编排入口",
   "version": "0.15.0",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -59,10 +59,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261028-08",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-28 用户会话内确认 C138/C139 收口（原话「确认」），AI 代为签署收口",
     "checks": [
       {
         "item": "通用重试语义",
@@ -91,13 +91,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": false,
-    "commit": "",
+    "commit": "14c2201",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-28",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

@@ -1428,7 +1428,7 @@
     "C138": {
       "title": "TD-005：额度重试改为通用 quotaRetryOnly 契约，删除 codex 专属编排入口",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "refactor/C138-generic-quota-retry",
       "topic": "TokenUsage",
       "version": "0.15.0",
@@ -1437,7 +1437,7 @@
     "C139": {
       "title": "TD-002：DeepSeek V4 Pro 峰谷双价与 Qwen3.7 Plus >256K 分档计价",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "feature/C139-tiered-pricing",
       "topic": "TokenUsage",
       "version": "0.15.0",
