@@ -14,6 +14,9 @@
 - **macOS 构建源码告警清零 (C140)**：
   - **跨模块主题类型导入**：`ProviderBrandBadge` 显式 `import BruceOnboardingCore`，不再依赖 `BruceAppCore` 的传递可见性引用 `ResolvedTheme`，消除 Swift 6 implementation-only 可见性告警；
   - **WebKit Cookie 清理时序**：`StepFunWebLoginView` 清空登录缓存改用 `await cookieStore.deleteCookie(_:)`，全部 Cookie 删除完成后再重载页面，消除 async 替代告警并修正清理与重载的并发竞态。
+- **构建源码告警清零（第二批）(C143 / C144)**：
+  - **滚动条压制观察隔离 (C143)**：KVO 与通知回调改经 `nonisolated` 入口建立主线程语义（主线程 `MainActor.assumeIsolated` 同步压制，异线程交主队列），`deinit` 直接释放 KVO 观察与通知 token，不再调用 MainActor 隔离方法；
+  - **设置下拉与测试卫生 (C144)**：`ProviderPopUpPicker.Coordinator` 标注 `@MainActor`，与 SwiftUI 协调器契约一致；`NativeLifecycleHarness` 的取消退出用例补断言「存在运行任务时先安排宽限期回调」，消除死变量。
 
 ### Changed
 - **技术债批次收口 (C130–C136)**：

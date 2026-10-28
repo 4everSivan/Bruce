@@ -36,7 +36,8 @@
         "C103",
         "C132",
         "C133",
-        "C137"
+        "C137",
+        "C143"
       ]
     },
     "PricingEngine": {
@@ -48,7 +49,8 @@
         "C055",
         "C108",
         "C111",
-        "C112"
+        "C112",
+        "C144"
       ]
     },
     "WindowsCompat": {
@@ -1452,6 +1454,24 @@
       "topic": "SystemOverview",
       "version": "0.15.0",
       "file": "docs/devel/change/C140.json"
+    },
+    "C143": {
+      "title": "消除面板滚动条压制观察器的 5 处 MainActor 隔离告警",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C143.json"
+    },
+    "C144": {
+      "title": "消除设置页下拉 Coordinator 隔离告警与生命周期测试死变量",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "PricingEngine",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C144.json"
     }
   }
 }
