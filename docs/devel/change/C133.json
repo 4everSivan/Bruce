@@ -5,7 +5,7 @@
   "version": "0.15.0",
   "type": "BugFix",
   "status": "in_progress",
-  "branch": "chore/C130-c136-tech-debt",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "apps/macos",
@@ -77,7 +77,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "a169554",
     "tag": ""
   },
   "gate": {

@@ -5,7 +5,7 @@
   "version": "0.15.0",
   "type": "Refactor",
   "status": "in_progress",
-  "branch": "chore/C130-c136-tech-debt",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "docs/devel",
@@ -78,7 +78,7 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "a169554",
     "tag": ""
   },
   "gate": {
