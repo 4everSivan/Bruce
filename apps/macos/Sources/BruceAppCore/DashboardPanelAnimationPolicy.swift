@@ -8,18 +8,18 @@ import Foundation
 package enum DashboardPanelAnimationPolicy {
     package static func allowsHero(
         panelVisible: Bool,
-        reduceMotion: Bool
+        motionSuppressed: Bool
     ) -> Bool {
-        panelVisible && !reduceMotion
+        panelVisible && !motionSuppressed
     }
 
     package static func allowsHeatmap(
         panelVisible: Bool,
         isNothing: Bool,
         filled: Bool,
-        reduceMotion: Bool
+        motionSuppressed: Bool
     ) -> Bool {
-        panelVisible && isNothing && filled && !reduceMotion
+        panelVisible && isNothing && filled && !motionSuppressed
     }
 
     /// 定向刷新进度指示 (系统 `ProgressView` 为不确定进度, 逐帧驱动).
@@ -32,9 +32,9 @@ package enum DashboardPanelAnimationPolicy {
     /// 隐藏态直接落定终值, 不播动画 (C044).
     package static func allowsHourlyGrowth(
         panelVisible: Bool,
-        reduceMotion: Bool
+        motionSuppressed: Bool
     ) -> Bool {
-        panelVisible && !reduceMotion
+        panelVisible && !motionSuppressed
     }
 
     /// 滚动条压制是否生效 (TD-012): 面板隐藏时不得改写 NSScrollView
@@ -50,8 +50,8 @@ package enum DashboardPanelAnimationPolicy {
     /// 卷轴起始与收拢高度 (pt).
     package static let curtainCollapsedHeight: Double = 20.0
 
-    /// 是否允许播放卷轴开合过渡动画 (未开启减弱动态效果时允许, C137).
-    package static func allowsCurtainTransition(reduceMotion: Bool) -> Bool {
-        !reduceMotion
+    /// 是否允许播放卷轴开合过渡动画 (C137; C141 起由 MotionPreference 裁决通过 motionSuppressed 传入).
+    package static func allowsCurtainTransition(motionSuppressed: Bool) -> Bool {
+        !motionSuppressed
     }
 }

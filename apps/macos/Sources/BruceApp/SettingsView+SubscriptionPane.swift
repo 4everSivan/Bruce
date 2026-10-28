@@ -144,6 +144,7 @@ extension SettingsView {
             of: [.text],
             delegate: LiveReorderDropDelegate<SubscriptionProviderID>(
                 target: id,
+                motionSuppressed: motionSuppressed,
                 move: moveSubscriptionProvider
             )
         )

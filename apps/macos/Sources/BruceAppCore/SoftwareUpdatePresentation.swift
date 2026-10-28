@@ -9,13 +9,9 @@ package enum UpdateCopy {
     package static let caption = "软件更新"
     package static let autoCheckTitle = "自动检查更新"
     package static let autoCheckSubtitle = "启动 30 秒后静默检查一次, 之后每 24 小时一次; 检查失败不打扰"
-    package static let toggleOn = "已开启"
-    package static let toggleOff = "已关闭"
     package static let currentVersionTitle = "当前版本"
-    package static let releaseChannelSubtitle = "正式版 · 从 GitHub Releases 检查 (\(UpdateRepository.slug))"
     /// dev 构建降级 (07 §4.2 R2).
     package static let devVersionValue = "开发版本"
-    package static let devChannelSubtitle = "以 Release 构建安装后可用应用内更新"
     package static let checkTitle = "检查更新"
     package static let checkButton = "检查更新"
     package static let navigationBadge = "有可用更新"
@@ -106,14 +102,15 @@ package enum UpdateStageContent: Equatable, Sendable {
 package enum UpdatePresentation {
     // MARK: 行文案
 
-    /// 「当前版本」行: 值 + 副标题; 无合法 bundle 版本时走 dev 降级.
+    /// 「当前版本」行: 只给版本值; 无合法 bundle 版本时走 dev 降级.
+    /// C142 起不再渲染频道副标题 (正式版 / dev 提示), 故返回类型收敛为单一字符串.
     package static func currentVersion(
         _ localVersion: SemanticVersion?
-    ) -> (value: String, subtitle: String) {
+    ) -> String {
         guard let localVersion else {
-            return (UpdateCopy.devVersionValue, UpdateCopy.devChannelSubtitle)
+            return UpdateCopy.devVersionValue
         }
-        return (localVersion.tag, UpdateCopy.releaseChannelSubtitle)
+        return localVersion.tag
     }
 
     /// 「检查更新」行副标题: `上次检查 今天 HH:mm` / `上次检查 M月d日 HH:mm`; 从未成功检查为 `上次检查 —`.

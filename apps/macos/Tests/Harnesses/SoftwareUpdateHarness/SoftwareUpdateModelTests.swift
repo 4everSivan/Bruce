@@ -143,7 +143,8 @@ private struct CopyFixture: Decodable {
     }
 
     struct Rows: Decodable {
-        let caption, autoCheckTitle, autoCheckSubtitle, toggleOn, toggleOff: String
+        // C142: toggleOn / toggleOff 随行内状态字一并移除, 不再属于文案契约.
+        let caption, autoCheckTitle, autoCheckSubtitle: String
         let currentVersionTitle, checkTitle, checkButton, navigationBadge: String
     }
 
@@ -151,7 +152,6 @@ private struct CopyFixture: Decodable {
         let name: String
         let localVersion: String?
         let expectedValue: String
-        let expectedSubtitle: String
     }
 
     struct LastCheckCase: Decodable {
@@ -231,18 +231,15 @@ enum SoftwareUpdateParityTests {
         try expectEqual(UpdateCopy.caption, rows.caption, "分组标题")
         try expectEqual(UpdateCopy.autoCheckTitle, rows.autoCheckTitle, "自动检查标题")
         try expectEqual(UpdateCopy.autoCheckSubtitle, rows.autoCheckSubtitle, "自动检查副标题")
-        try expectEqual(UpdateCopy.toggleOn, rows.toggleOn, "开关开")
-        try expectEqual(UpdateCopy.toggleOff, rows.toggleOff, "开关关")
         try expectEqual(UpdateCopy.currentVersionTitle, rows.currentVersionTitle, "当前版本标题")
         try expectEqual(UpdateCopy.checkTitle, rows.checkTitle, "检查更新标题")
         try expectEqual(UpdateCopy.checkButton, rows.checkButton, "检查更新按钮")
         try expectEqual(UpdateCopy.navigationBadge, rows.navigationBadge, "导航角标提示")
-        checked += 9
+        checked += 7
 
         for item in fixture.currentVersion {
             let resolved = UpdatePresentation.currentVersion(item.localVersion.flatMap(SemanticVersion.init))
-            try expectEqual(resolved.value, item.expectedValue, "\(item.name) 版本值")
-            try expectEqual(resolved.subtitle, item.expectedSubtitle, "\(item.name) 副标题")
+            try expectEqual(resolved, item.expectedValue, "\(item.name) 版本值")
             checked += 1
         }
 

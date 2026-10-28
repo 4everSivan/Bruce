@@ -20,7 +20,7 @@ struct UsageHeroCard: View {
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var heroBreathing = false
     /// 模型用量: 展开态与周期选择 (窗口档位 或 点击按月卡指定自然月).
     @State private var modelsExpanded = false
@@ -185,7 +185,7 @@ struct UsageHeroCard: View {
         if isNothing {
             if DashboardPanelAnimationPolicy.allowsHero(
                 panelVisible: panelVisible,
-                reduceMotion: reduceMotion
+                motionSuppressed: motionSuppressed
             ) {
                 animatedNothingHeroNumber
             } else {
@@ -223,9 +223,9 @@ struct UsageHeroCard: View {
     /// The hidden/reduced-motion branch contains no repeatForever animation.
     private var staticNothingHeroNumber: some View {
         nothingHeroContent
-            .opacity(reduceMotion ? 1 : 0.86)
+            .opacity(motionSuppressed ? 1 : 0.86)
             .scaleEffect(1)
-            .shadow(color: Self.nothingHeroAccent, radius: reduceMotion ? 0 : 3)
+            .shadow(color: Self.nothingHeroAccent, radius: motionSuppressed ? 0 : 3)
     }
 
     private var animatedNothingHeroNumber: some View {
@@ -247,6 +247,12 @@ struct UsageHeroCard: View {
     }
 
     private func startHeroBreathing() {
+        // C141: 即使挂载点已由 allowsHero 门控, 起播处仍再判一次,
+        // 保证应用内动效开关是唯一真源.
+        guard !motionSuppressed else {
+            heroBreathing = false
+            return
+        }
         withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
             heroBreathing = true
         }
@@ -630,7 +636,7 @@ struct UsageHeroCard: View {
         let col: Int
         let row: Int
         var panelVisible: Bool
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.motionSuppressed) private var motionSuppressed
         @State private var breathe = false
 
         private var level: Int { cell?.level ?? 0 }
@@ -641,7 +647,7 @@ struct UsageHeroCard: View {
                 panelVisible: panelVisible,
                 isNothing: isNothing,
                 filled: filled,
-                reduceMotion: reduceMotion
+                motionSuppressed: motionSuppressed
             ) {
                 animatedCell
             } else {
@@ -662,7 +668,7 @@ struct UsageHeroCard: View {
         private var staticCell: some View {
             RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
                 .fill(baseColor)
-                .opacity(reduceMotion || !isNothing || !filled ? 1 : baseOpacity * 0.42)
+                .opacity(motionSuppressed || !isNothing || !filled ? 1 : baseOpacity * 0.42)
                 .aspectRatio(1, contentMode: .fit)
                 .frame(maxWidth: .infinity)
         }
@@ -686,6 +692,11 @@ struct UsageHeroCard: View {
         }
 
         private func startBreathing() {
+            // C141: 同英雄数字, 起播处再判一次动效开关.
+            guard !motionSuppressed else {
+                breathe = false
+                return
+            }
             let phase = (Double(col) * 0.12 + Double(row) * 0.05)
                 .truncatingRemainder(dividingBy: 3.2)
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase)) {

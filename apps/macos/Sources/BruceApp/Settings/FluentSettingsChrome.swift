@@ -127,13 +127,14 @@ struct FluentSegmentedPicker<Selection: Hashable>: View {
     let options: [(title: String, tag: Selection)]
     @Binding var selection: Selection
     var accessibilityHintText: String? = nil
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options, id: \.tag) { option in
                 let isOn = selection == option.tag
                 Button {
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                    withAnimation(motionSuppressed ? nil : .spring(response: 0.22, dampingFraction: 0.85)) {
                         selection = option.tag
                     }
                 } label: {

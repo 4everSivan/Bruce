@@ -26,7 +26,7 @@ struct HourlyLineCard: View {
     @State private var grownColumns: Set<String> = []
     /// 面板可见性 (C044): 隐藏时生长动画直接落定终值, 不播动画.
     var panelVisible: Bool = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
@@ -362,7 +362,7 @@ struct HourlyLineCard: View {
     private func growColumns() async {
         if !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
             panelVisible: panelVisible,
-            reduceMotion: reduceMotion
+            motionSuppressed: motionSuppressed
         ) {
             grownColumns = Set(dailyDays.map(\.date))
             return
@@ -372,7 +372,7 @@ struct HourlyLineCard: View {
             guard !Task.isCancelled else {
                 return
             }
-            withAnimation(.easeOut(duration: 0.5)) {
+            withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.5)) {
                 _ = grownColumns.insert(day.date)
             }
         }
@@ -593,7 +593,7 @@ struct HourlyLineCard: View {
     // MARK: - 展开明细
 
     private func toggle(_ agentID: String) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
+        withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.15)) {
             if expandedAgentIDs.contains(agentID) {
                 expandedAgentIDs.remove(agentID)
             } else {

@@ -983,7 +983,30 @@ test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
   const app = await boot();
   const start = app.calls.length;
   await app.window.dispatch("keydown", { key: "Escape" });
+  // C141: 动效开启时先播卷轴退场动画, 由 animationend 收尾后才通知后端隐藏.
+  await app.node("panel").dispatch("animationend");
+  await settle();
   assert.deepEqual(app.calls.slice(start).map(x => x.command), ["hide_dashboard"]);
+});
+
+test("motion gate: never suppresses curtain motion, always keeps it", async () => {
+  const off = await boot({ settings: { ...defaults, motionPreference: "never" } });
+  assert.equal(off.document.documentElement.dataset.motion, "off");
+  assert.ok(
+    !off.node("panel").classList.contains("curtain-enter"),
+    "关闭动效时不得挂入场动画类",
+  );
+  const start = off.calls.length;
+  await off.window.dispatch("keydown", { key: "Escape" });
+  await settle();
+  assert.deepEqual(
+    off.calls.slice(start).map(x => x.command),
+    ["hide_dashboard"],
+    "关闭动效时 Esc 直接隐藏, 不等动画",
+  );
+
+  const forced = await boot({ settings: { ...defaults, motionPreference: "always" } });
+  assert.equal(forced.document.documentElement.dataset.motion, "on");
 });
 
 test("both windows keep DOM ids unique", async () => {
@@ -1242,7 +1265,8 @@ test("settings saves are serialized and each merges the latest backend state (C0
   assert.equal(app.state.settings.refreshIntervalSecs, 300);
   assert.deepEqual([...app.state.settings.cardOrder], ["subscription", "usage", "hourly"]);
   assert.equal(app.state.settings.notificationsEnabled, false);
-  assert.equal(app.node("setting-notifications-state").textContent, "已关闭", "mac 开关旁状态字");
+  // C142: 开关旁不再有状态字节点, 开合位置即唯一状态表达.
+  assert.equal(app.node("setting-notifications-state"), null, "不得再渲染已开启/已关闭状态字");
   const saves = app.calls.filter((call) => call.command === "save_settings_command").length;
   assert.equal(saves, 3, "每个控件各保存一次");
 });

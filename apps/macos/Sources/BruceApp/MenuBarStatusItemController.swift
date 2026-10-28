@@ -164,7 +164,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         .environmentObject(model)
         .environmentObject(coordinator)
         let glassController = DashboardGlassPanelController(
-            rootView: rootView,
+            // C141: 全局动效抑制开关经宿主根注入, 子树一律读 \.motionSuppressed.
+            rootView: MotionEnvironmentRoot(coordinator: coordinator, content: rootView),
             theme: coordinator.resolvedTheme,
             preferredColorScheme: coordinator.appearanceMode.colorScheme
         )
@@ -280,6 +281,9 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     private func startRefreshAnimationIfNeeded(on button: NSStatusBarButton) {
+        // C141: 抑制动效时刷新环停在固定相位 (与 Windows 侧停掉 foot-spin 同口径),
+        // 不启动逐帧定时器.
+        guard !coordinator.motionSuppressed else { return }
         guard refreshTimer == nil else { return }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -526,8 +530,11 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         model.setDashboardPanelVisible(true)
 
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        guard DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: reduceMotion) else {
+        // C141: 动效是否播放由应用内偏好与系统无障碍偏好共同裁决,
+        // 裁决点在 OnboardingCoordinator.motionSuppressed.
+        guard DashboardPanelAnimationPolicy.allowsCurtainTransition(
+            motionSuppressed: coordinator.motionSuppressed
+        ) else {
             panel.setFrameOrigin(placement.origin)
             panel.alphaValue = 1.0
             panel.makeKeyAndOrderFront(nil)
@@ -545,13 +552,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         )
 
         panel.setFrame(startFrame, display: false)
-        panel.alphaValue = 0.25
+        panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
 
         isTransitioning = true
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = DashboardPanelAnimationPolicy.curtainOpenDuration
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
+            // C141: 原 (0.16, 1.0, 0.3, 1.0) 前 45ms 即走完 74.5% 行程, 读作瞬移.
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.61, 0.36, 1.0)
             panel.animator().setFrame(targetFrame, display: true)
             panel.animator().alphaValue = 1.0
         }, completionHandler: { [weak self] in
@@ -588,8 +596,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             return
         }
 
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        guard DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: reduceMotion) else {
+        // C141: 同 openDashboard, 动效裁决点收敛到 coordinator.
+        guard DashboardPanelAnimationPolicy.allowsCurtainTransition(
+            motionSuppressed: coordinator.motionSuppressed
+        ) else {
             panel.orderOut(nil)
             panel.alphaValue = 1.0
             restoreFocus()

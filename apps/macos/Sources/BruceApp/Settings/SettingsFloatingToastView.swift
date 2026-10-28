@@ -14,6 +14,7 @@ struct SettingsFloatingToastView: View {
     let message: String
     var tone: ToastTone = .warn
     let onDismiss: @MainActor () -> Void
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     enum ToastTone {
         case warn
@@ -79,7 +80,10 @@ struct SettingsFloatingToastView: View {
                     )
                     .rotationEffect(.degrees(-90))
                     .frame(width: 20, height: 20)
-                    .animation(.linear(duration: tickInterval), value: progress)
+                    .animation(
+                        motionSuppressed ? nil : .linear(duration: tickInterval),
+                        value: progress
+                    )
 
                 // 中心 ✕ 关闭按钮
                 Button(action: onDismiss) {

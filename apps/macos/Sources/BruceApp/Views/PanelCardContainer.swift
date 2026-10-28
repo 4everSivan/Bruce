@@ -189,6 +189,7 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var hovering = false
 
     private var isNothing: Bool {
@@ -214,7 +215,7 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
             }
 
             Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.25)) {
                     onToggle()
                 }
             } label: {
@@ -239,7 +240,10 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                         .foregroundStyle(.secondary)
                         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                         .opacity(hovering ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.15), value: hovering)
+                        .animation(
+                            motionSuppressed ? nil : .easeInOut(duration: 0.15),
+                            value: hovering
+                        )
                 }
                 .contentShape(Rectangle())
             }
@@ -323,6 +327,7 @@ struct NothingDragHandle: View {
 /// 仪表盘卡片拖拽让位代理: 悬停经过目标卡片时立即平滑交换位置并持久化.
 struct DashboardCardDropDelegate: DropDelegate {
     let target: DashboardCardID
+    let motionSuppressed: Bool
     let move: (DashboardCardID, DashboardCardID) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -336,7 +341,7 @@ struct DashboardCardDropDelegate: DropDelegate {
             guard let raw else { return }
             Task { @MainActor in
                 guard let dragged = DashboardCardID(rawValue: raw), dragged != target else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
+                withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.15)) {
                     move(dragged, target)
                 }
             }

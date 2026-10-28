@@ -92,6 +92,9 @@ pub struct AppSettings {
     /// 任务栏托盘悬停实时预览开关 (方案 1 实时微缩卡, 默认开启)。
     #[serde(default = "default_tray_hover_preview")]
     pub tray_hover_preview: bool,
+    /// 全局界面动效偏好 (C141): system | always | never, 默认跟随系统。
+    #[serde(default = "default_motion_preference")]
+    pub motion_preference: String,
     /// 上次成功检查更新 (RFC3339 本地时区; None = 从未)。
     #[serde(default)]
     pub update_last_check_at: Option<String>,
@@ -102,6 +105,10 @@ pub struct AppSettings {
 
 fn default_auto_check_update() -> bool {
     true
+}
+
+fn default_motion_preference() -> String {
+    "system".to_owned()
 }
 
 fn default_tray_hover_preview() -> bool {
@@ -142,6 +149,7 @@ impl Default for AppSettings {
             panel_y: None,
             auto_check_update: true,
             tray_hover_preview: true,
+            motion_preference: "system".to_owned(),
             update_last_check_at: None,
             update_skipped_version: None,
         }
@@ -311,6 +319,9 @@ pub fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if !["stack", "tabbed"].contains(&settings.layout_mode.as_str()) {
         return Err("不支持此看板布局模式".to_owned());
     }
+    if !["system", "always", "never"].contains(&settings.motion_preference.as_str()) {
+        return Err("不支持此界面动效偏好".to_owned());
+    }
     if !["usage", "subscription", "hourly"].contains(&settings.active_card_id.as_str()) {
         return Err("不支持此激活卡片标识".to_owned());
     }
@@ -426,6 +437,52 @@ mod tests {
             ..AppSettings::default()
         })
         .is_err());
+    }
+
+    // MARK: - 全局界面动效偏好 (C141)
+
+    #[test]
+    fn motion_preference_defaults_to_system_for_legacy_settings() {
+        // 升级前保存的 JSON 没有该键, 必须回落跟随系统而不是加载失败。
+        let legacy = serde_json::json!({
+            "consentVersion": 1,
+            "usageEnabled": true,
+            "enabledProviders": [],
+            "providerOrder": [],
+            "pricingOverrides": {},
+            "refreshIntervalSecs": 1800,
+            "notificationsEnabled": true,
+            "theme": "fluent",
+            "cardOrder": ["usage", "subscription", "hourly"],
+            "layoutMode": "stack",
+            "activeCardId": "usage",
+            "hotkey": "",
+            "panelX": null,
+            "panelY": null,
+            "autoCheckUpdate": true,
+            "trayHoverPreview": true,
+            "updateLastCheckAt": null,
+            "updateSkippedVersion": null
+        });
+        let parsed: AppSettings = serde_json::from_value(legacy).expect("旧配置必须可解析");
+        assert_eq!(parsed.motion_preference, "system");
+        assert!(validate_settings(&parsed).is_ok());
+    }
+
+    #[test]
+    fn invalid_motion_preference_is_rejected() {
+        assert!(validate_settings(&AppSettings {
+            motion_preference: "sometimes".to_owned(),
+            ..AppSettings::default()
+        })
+        .is_err());
+        for allowed in ["system", "always", "never"] {
+            assert!(validate_settings(&AppSettings {
+                motion_preference: allowed.to_owned(),
+                ..AppSettings::default()
+            })
+            .is_ok());
+        }
     }
 
     // MARK: - 已添加订阅 Provider (C082)

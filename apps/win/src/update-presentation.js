@@ -12,12 +12,8 @@
     caption: "软件更新",
     autoCheckTitle: "自动检查更新",
     autoCheckSubtitle: "启动 30 秒后静默检查一次, 之后每 24 小时一次; 检查失败不打扰",
-    toggleOn: "已开启",
-    toggleOff: "已关闭",
     currentVersionTitle: "当前版本",
-    releaseChannelSubtitle: "正式版 · 从 GitHub Releases 检查 (4everSivan/Bruce)",
     devVersionValue: "开发版本",
-    devChannelSubtitle: "以 Release 构建安装后可用应用内更新",
     checkTitle: "检查更新",
     checkButton: "检查更新",
     navigationBadge: "有可用更新",
@@ -83,8 +79,8 @@
   // ---- 版本与进度 ----
 
   function currentVersion(localVersion) {
-    if (!localVersion) return { value: copy.devVersionValue, subtitle: copy.devChannelSubtitle };
-    return { value: `v${localVersion}`, subtitle: copy.releaseChannelSubtitle };
+    // C142: 行内不再有频道副标题, 只返回版本值.
+    return { value: localVersion ? `v${localVersion}` : copy.devVersionValue };
   }
 
   // 十进制 MB 一位小数 (与 mac 同口径)。

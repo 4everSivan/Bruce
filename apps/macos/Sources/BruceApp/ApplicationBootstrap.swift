@@ -313,7 +313,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 maxHeight: .infinity
             )
         let window = SettingsHostWindow(
-            contentViewController: NSHostingController(rootView: rootView)
+            contentViewController: NSHostingController(
+                // C141: 设置窗口与面板共用同一动效抑制开关.
+                rootView: MotionEnvironmentRoot(coordinator: coordinator, content: rootView)
+            )
         )
         window.title = "Bruce 设置"
         window.styleMask = [

@@ -123,6 +123,25 @@ public enum GlassStylePreference: String, Codable, Equatable, Sendable, CaseIter
     case material
 }
 
+/// 全局界面动效偏好 (C141). system 跟随系统「减弱动态效果」; always 始终播放
+/// (忽略系统设置, 供本机开启减弱动态效果但希望看到应用内动效的用户显式 opt-in);
+/// never 始终不播放. 持久化为 rawValue 字符串.
+public enum MotionPreference: String, Codable, Equatable, Sendable, CaseIterable {
+    case system
+    case always
+    case never
+
+    /// 唯一裁决点: 是否抑制动效. 只此一处组合应用偏好与系统值,
+    /// 调用方不得自行展开判定, 否则双端语义会漂移.
+    public func suppressesMotion(systemReduceMotion: Bool) -> Bool {
+        switch self {
+        case .system: return systemReduceMotion
+        case .always: return false
+        case .never: return true
+        }
+    }
+}
+
 /// 非敏感配置. 持久化到 Application Support/Bruce/config/onboarding-v1.json.
 public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 2
@@ -168,6 +187,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var systemNotificationsEnabled: Bool
     /// 电脑锁屏后是否禁止订阅额度刷新 (C064). 默认开启保护以节省云端 API 配额.
     public var pauseSubscriptionRefreshOnScreenLock: Bool
+    /// 全局界面动效偏好 (C141). nil 表示跟随系统.
+    public var motionPreference: MotionPreference?
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -186,6 +207,11 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 解析后的外观偏好: nil 一律回落跟随系统.
     public var resolvedAppearanceMode: AppearancePreference {
         appearanceMode ?? .system
+    }
+
+    /// 解析后的全局动效偏好: nil (含 JSON 显式 null 或非法值) 一律回落跟随系统.
+    public var resolvedMotionPreference: MotionPreference {
+        motionPreference ?? .system
     }
 
     /// 解析后的模糊风格: nil 一律回落标准.
@@ -229,7 +255,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         keychainAccessConfigured: Bool = false,
         keychainAccess: KeychainAccessConfiguration? = nil,
         systemNotificationsEnabled: Bool = true,
-        pauseSubscriptionRefreshOnScreenLock: Bool = true
+        pauseSubscriptionRefreshOnScreenLock: Bool = true,
+        motionPreference: MotionPreference? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
@@ -249,6 +276,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         )
         self.systemNotificationsEnabled = systemNotificationsEnabled
         self.pauseSubscriptionRefreshOnScreenLock = pauseSubscriptionRefreshOnScreenLock
+        self.motionPreference = motionPreference
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -315,6 +343,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         pauseSubscriptionRefreshOnScreenLock = try container.decodeIfPresent(
             Bool.self, forKey: .pauseSubscriptionRefreshOnScreenLock
         ) ?? true
+        // 全局动效偏好: 旧配置缺该键 (或值非法) 一律回落跟随系统 (C141).
+        motionPreference = (try? container.decodeIfPresent(
+            MotionPreference.self, forKey: .motionPreference
+        )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -335,6 +367,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case keychainAccessConfigured
         case systemNotificationsEnabled
         case pauseSubscriptionRefreshOnScreenLock
+        case motionPreference
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -362,6 +395,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
             pauseSubscriptionRefreshOnScreenLock,
             forKey: .pauseSubscriptionRefreshOnScreenLock
         )
+        try container.encodeIfPresent(motionPreference, forKey: .motionPreference)
     }
 }
 

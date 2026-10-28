@@ -30,6 +30,7 @@ private enum UpdateCardTokens {
 /// 三行 (自动检查 / 当前版本 / 检查更新) + 底部状态区 (update-stage).
 struct SoftwareUpdateCard: View {
     @EnvironmentObject var updates: SoftwareUpdateService
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var notesExpanded = false
 
     var body: some View {
@@ -40,28 +41,22 @@ struct SoftwareUpdateCard: View {
     }
 
     private func card(now: Date) -> some View {
-        let version = UpdatePresentation.currentVersion(updates.localVersion)
+        let versionValue = UpdatePresentation.currentVersion(updates.localVersion)
         return FluentCard {
             FluentRow(UpdateCopy.autoCheckTitle, sub: UpdateCopy.autoCheckSubtitle) {
-                HStack(spacing: 8) {
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { updates.autoCheckEnabled },
-                            set: { updates.setAutoCheckEnabled($0) }
-                        )
+                // C142: 状态由开关开合位置表达, 行内不再重复「已开启 / 已关闭」.
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { updates.autoCheckEnabled },
+                        set: { updates.setAutoCheckEnabled($0) }
                     )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    Text(updates.autoCheckEnabled ? UpdateCopy.toggleOn : UpdateCopy.toggleOff)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(
-                            updates.autoCheckEnabled ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
-                        )
-                }
+                )
+                .labelsHidden()
+                .toggleStyle(.switch)
             }
-            FluentRow(UpdateCopy.currentVersionTitle, sub: version.subtitle, divided: true) {
-                Text(version.value)
+            FluentRow(UpdateCopy.currentVersionTitle, divided: true) {
+                Text(versionValue)
                     .font(.system(size: 12.5, design: .monospaced))
                     .foregroundStyle(SettingsDemoTokens.text2)
             }
@@ -133,7 +128,10 @@ struct SoftwareUpdateCard: View {
                         UpdateCardTokens.meterTrack
                         UpdateCardTokens.accent
                             .frame(width: proxy.size.width * fraction)
-                            .animation(.easeOut(duration: 0.3), value: fraction)
+                            .animation(
+                                motionSuppressed ? nil : .easeOut(duration: 0.3),
+                                value: fraction
+                            )
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
                 }
@@ -317,6 +315,7 @@ struct SoftwareUpdateNavigationBadge: View {
 
 /// 12pt 圆环: meter-track 底环 + settings-accent 顶部弧, 0.8 秒一圈.
 private struct UpdateSpinner: View {
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var spinning = false
 
     var body: some View {
@@ -331,8 +330,11 @@ private struct UpdateSpinner: View {
         }
         .frame(width: 12, height: 12)
         .rotationEffect(.degrees(spinning ? 360 : 0))
-        .animation(.linear(duration: 0.8).repeatForever(autoreverses: false), value: spinning)
-        .onAppear { spinning = true }
+        .animation(
+            motionSuppressed ? nil : .linear(duration: 0.8).repeatForever(autoreverses: false),
+            value: spinning
+        )
+        .onAppear { spinning = !motionSuppressed }
         .accessibilityHidden(true)
     }
 }

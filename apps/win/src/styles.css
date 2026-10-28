@@ -145,7 +145,8 @@ button, input, select, textarea {
 
 #panel.curtain-enter {
   transform-origin: bottom center;
-  animation: winCurtainEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* C141: 原 (0.16, 1, 0.3, 1) 前 45ms 即走完 74.5% 行程, 读作瞬移. */
+  animation: winCurtainEnter 260ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
 #panel.curtain-exit {
@@ -155,7 +156,7 @@ button, input, select, textarea {
 
 @keyframes winCurtainEnter {
   0% {
-    opacity: 0.1;
+    opacity: 0;
     clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%);
     transform: translateY(20px) scaleY(0.7);
   }
@@ -182,13 +183,13 @@ button, input, select, textarea {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #panel.curtain-enter,
-  #panel.curtain-exit {
-    animation: none !important;
-    transform: none !important;
-    clip-path: none !important;
-  }
+/* C141: 卷轴开合的动效闸门由 <html data-motion> 单一裁决
+   (JS 解析应用内偏好与系统「减少动画」), 不再单独使用媒体查询. */
+html[data-motion="off"] #panel.curtain-enter,
+html[data-motion="off"] #panel.curtain-exit {
+  animation: none !important;
+  transform: none !important;
+  clip-path: none !important;
 }
 
 /* HUD 顶部 Header (mac dashboardTopHeader): 左 [四色状态灯 品牌 Bruce] · 右 Agent 状态 (C100) */
@@ -223,10 +224,9 @@ button, input, select, textarea {
   0%, 100% { opacity: 1; }
   50% { opacity: .40; }
 }
-@media (prefers-reduced-motion: no-preference) {
-  .hud-dot-wrap.refreshing {
-    animation: hudDotPulse 0.9s ease-in-out infinite;
-  }
+/* C141: 呼吸脉冲仅在动效开启 (<html data-motion="on">) 时挂载. */
+html[data-motion="on"] .hud-dot-wrap.refreshing {
+  animation: hudDotPulse 0.9s ease-in-out infinite;
 }
 .hud-brand {
   font: 700 11.5px/1.2 var(--mono-font);
@@ -2057,11 +2057,10 @@ details summary {
 .theme-nothing .foot-btn:hover { background: #222222; }
 .theme-nothing .foot-btn svg { width: 13px; height: 13px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .theme-nothing .hero-num { animation: none; opacity: 1; text-shadow: none; }
-  .theme-nothing .heatmap .cell[class*=" l"] { animation: none; }
-  .foot-btn.spinning svg { animation: none; }
-}
+/* C141: 动效关闭时的 Nothing 静态降级, 与全局闸门同源. */
+html[data-motion="off"] .theme-nothing .hero-num { animation: none; opacity: 1; text-shadow: none; }
+html[data-motion="off"] .theme-nothing .heatmap .cell[class*=" l"] { animation: none; }
+html[data-motion="off"] .foot-btn.spinning svg { animation: none; }
 
 /* ==========================================================================
    PART 4: T07 Agent 用量深度分析与 Token 统计工作台
@@ -2361,8 +2360,12 @@ details summary {
 /* 会话来源卡底部说明 (mac sessionProbeFooterCard) */
 .card-actions-note { flex: 1 1 auto; font-size: 11px; color: var(--text-3); }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before { animation: none !important; transition: none !important; }
+/* C141: 全局界面动效总闸门 —— 应用内「始终关闭」或系统「减少动画」时全量停用.
+   由 app.js 把解析结果写到 <html data-motion="off|on">, 是唯一真源. */
+html[data-motion="off"] *,
+html[data-motion="off"] *::before {
+  animation: none !important;
+  transition: none !important;
 }
 
 /* ==========================================================================

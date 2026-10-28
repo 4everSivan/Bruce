@@ -9,6 +9,11 @@
 - **双端仪表盘物理卷轴抽屉展开动效 (C137)**：
   - **macOS 端**：以菜单栏图标为顶边固定锚点，自顶向下展开至目标高度（240ms `cubic-bezier(0.16, 1.0, 0.3, 1.0)` 阻尼曲线），内容采用低优先级垂直约束避免挤压形变，逆向回卷（140ms easeIn）后隐藏并归还焦点；支持 Reduce Motion 降级与连击打断保护；
   - **Windows 端**：通过 CSS `clip-path` 与硬件加速 `transform` 实现任务栏托盘侧物理卷轴展开（260ms）与逆向回卷收拢（140ms），并在 transitionend 后触发后端隐藏。
+- **全局界面动效总开关 (C141)**：
+  - **单一裁决源**：新增 `MotionPreference`（`跟随系统` / `始终播放` / `始终关闭`，默认跟随系统），解析规则唯一：`suppressed = (never) ‖ (system ∧ 系统减弱动态效果)`；macOS 收在 `OnboardingCoordinator.motionSuppressed`，Windows 收在 `app.js` 的 `motionSuppressed()`；
+  - **macOS 全覆盖**：SwiftUI 的 `\.accessibilityReduceMotion` 为只读环境值无法覆盖，故自建可写环境键 `\.motionSuppressed`，在仪表盘面板与设置窗口两个宿主根注入，统一受控 19 处 `withAnimation`、5 处 `.animation()`、菜单栏刷新指示环与卷轴开合过渡；系统设置在运行中变更经 `accessibilityDisplayOptionsDidChangeNotification` 即时重算；
+  - **Windows 全覆盖**：`AppSettings.motionPreference` 驱动 `<html data-motion>`，CSS 以 `html[data-motion="off"]` 全量闸门替换原 `prefers-reduced-motion` 媒体查询与 JS 判据的双重裁决，系统设置在运行中变更经 `matchMedia` change 事件重算；
+  - **卷轴缓动曲线修正**：展开曲线由 `cubic-bezier(0.16, 1.0, 0.3, 1.0)`（前 45ms 即走完 74.5% 行程，视觉等同瞬移）改为 `cubic-bezier(0.22, 0.61, 0.36, 1)`，起始不透明度改为 0。
 
 ### Fixed
 - **macOS 构建源码告警清零 (C140)**：
@@ -28,6 +33,9 @@
   - **TD-011 Windows 设置前端拆分 (C135)**：`settings.js` 由 3,258 行拆分为共享状态 + 订阅 / 工作台 / 计费 / 维护分节脚本 + 56 行壳层，脚本按 `settings.html` 固定顺序加载；
   - **TD-005 重试契约通用化 (C138)**：`codexQuotaRetryOnly` 改为通用 `quotaRetryOnly`，额度计划一律经 `build_account_plan`，删除 codex 专属编排入口，并补非 codex provider 的重试回归；
   - **TD-002 峰谷/分档计价 (C139)**：`TokenBucket` 增加计价类别份额，DeepSeek V4 Pro 峰值 `00:30–16:30 UTC` 按 `$1.32/$3.96`、Qwen3.7 Plus 单请求 `>256K` 按 `$1.20/$4.80` 计费；SQLite/JSONL 缓存保留份额并升聚合版本。
+- **设置页去除冗余说明文字 (C142)**：
+  - **开关状态字移除**：macOS 通用页「锁屏暂停订阅刷新」「系统通知」与 Windows 维护页「系统通知」不再在开关旁渲染「已开启 / 已关闭」，开关开合位置即唯一状态表达（改写 C112 §5 的居左状态字契约）；
+  - **软件更新卡去噪**：「自动检查更新」行去掉状态字；「当前版本」行去掉「正式版 · 从 GitHub Releases 检查 (...)」频道小字（dev 构建的降级小字同步移除），只保留等宽版本值；`UpdateCopy` / `update-presentation.js` 与共享 fixture `tests/fixtures/update-copy-parity/cases.json` 同步删键。
 
 ## [0.14.0] - 2026-10-27
 

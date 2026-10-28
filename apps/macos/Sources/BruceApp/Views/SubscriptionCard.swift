@@ -211,6 +211,7 @@ private struct ProviderSectionView: View {
     var refreshControl: ProviderRefreshControl? = nil
     /// 面板可见性: 隐藏时刷新指示回退静态图标, 不挂 ProgressView (C044).
     var panelVisible: Bool = true
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var expanded = false
 
     /// 是否为纯余额型 Provider (无周期窗口, 且具备余额数据; 如 DeepSeek)
@@ -279,7 +280,7 @@ private struct ProviderSectionView: View {
                 .accessibilityHidden(true)
             if section.isMultiAccount {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.2)) {
                         expanded.toggle()
                     }
                 } label: {
@@ -625,7 +626,7 @@ private struct MeterBar: View {
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var appeared = false
 
     var body: some View {
@@ -643,7 +644,7 @@ private struct MeterBar: View {
             }
         }
         .onAppear {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) {
+            withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.45)) {
                 appeared = true
             }
         }

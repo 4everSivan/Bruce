@@ -14,6 +14,7 @@ struct SettingsView: View {
     @EnvironmentObject var diagnostics: DiagnosticService
     @EnvironmentObject var updates: SoftwareUpdateService
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.motionSuppressed) var motionSuppressed
 
     /// 侧边栏选中分类.
     @State var category = SettingsCategory.general
@@ -119,7 +120,7 @@ struct SettingsView: View {
                         message: message,
                         tone: .warn,
                         onDismiss: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.2)) {
                                 activeToastMessage = nil
                                 model.setSettingsError(nil)
                             }
@@ -205,11 +206,11 @@ struct SettingsView: View {
         .onChange(of: model.settingsErrorMessage) { _, message in
             if let message {
                 announce(message)
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                withAnimation(motionSuppressed ? nil : .spring(response: 0.35, dampingFraction: 0.75)) {
                     activeToastMessage = message
                 }
             } else {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.2)) {
                     activeToastMessage = nil
                 }
             }
@@ -217,7 +218,7 @@ struct SettingsView: View {
         .onChange(of: category) { _, _ in
             // Tab 切换自动清除当前页面的瞬时提示，杜绝跨 Tab 污染 (C111)
             if activeToastMessage != nil {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.15)) {
                     activeToastMessage = nil
                     model.setSettingsError(nil)
                 }
@@ -436,23 +437,16 @@ struct SettingsView: View {
                     sub: "电脑锁屏期间暂停查询云端订阅额度，避免消耗配额；解锁后自动恢复",
                     divided: true
                 ) {
-                    HStack(spacing: 8) {
-                        Text(coordinator.pauseSubscriptionRefreshOnScreenLock ? "已开启" : "已关闭")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(
-                                coordinator.pauseSubscriptionRefreshOnScreenLock
-                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
-                            )
-                        Toggle(
-                            "",
-                            isOn: Binding(
-                                get: { coordinator.pauseSubscriptionRefreshOnScreenLock },
-                                set: { coordinator.setPauseSubscriptionRefreshOnScreenLock($0) }
-                            )
+                    // C142: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { coordinator.pauseSubscriptionRefreshOnScreenLock },
+                            set: { coordinator.setPauseSubscriptionRefreshOnScreenLock($0) }
                         )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                    }
+                    )
+                    .labelsHidden()
+                    .toggleStyle(.switch)
                 }
                 FluentRow(
                     "系统通知",
@@ -460,12 +454,6 @@ struct SettingsView: View {
                     divided: true
                 ) {
                     HStack(spacing: 8) {
-                        Text(coordinator.systemNotificationsEnabled ? "已开启" : "已关闭")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(
-                                coordinator.systemNotificationsEnabled
-                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
-                            )
                         Toggle(
                             "",
                             isOn: Binding(
@@ -486,6 +474,26 @@ struct SettingsView: View {
                     }
                 }
                 .onAppear(perform: refreshNotificationStatus)
+                // C141: 全局界面动效总开关. 「始终播放」只作用于 Bruce 自身动效,
+                // 用于本机已开启系统「减弱动态效果」但希望看到应用内过渡的场景.
+                FluentRow(
+                    "界面动效",
+                    sub: "关闭后全应用不做过渡动画; 「始终播放」会忽略系统「减弱动态效果」",
+                    divided: true
+                ) {
+                    FluentSegmentedPicker(
+                        options: [
+                            ("跟随系统", MotionPreference.system),
+                            ("始终播放", .always),
+                            ("始终关闭", .never),
+                        ],
+                        selection: Binding(
+                            get: { coordinator.motionPreference },
+                            set: { coordinator.setMotionPreference($0) }
+                        ),
+                        accessibilityHintText: "选择界面动效策略"
+                    )
+                }
                 FluentRow(
                     "凭据存储",
                     sub: "统一管理 Bruce 保存的订阅凭证访问权限",
@@ -805,12 +813,16 @@ struct SettingsView: View {
                             of: [.text],
                             delegate: LiveReorderDropDelegate<MenuBarMetric>(
                                 target: metric,
+                                motionSuppressed: motionSuppressed,
                                 move: moveMenuBarMetric
                             )
                         )
                 }
             }
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: model.menuBarMetrics)
+            .animation(
+                motionSuppressed ? nil : .spring(response: 0.25, dampingFraction: 0.8),
+                value: model.menuBarMetrics
+            )
 
             let unselected = MenuBarMetric.allCases.filter { !model.menuBarMetrics.contains($0) }
             if !unselected.isEmpty {
@@ -900,7 +912,7 @@ struct SettingsView: View {
                 var metrics = model.menuBarMetrics
                 guard metrics.count > 1 else { return }
                 metrics.removeAll { $0 == metric }
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                withAnimation(motionSuppressed ? nil : .spring(response: 0.25, dampingFraction: 0.8)) {
                     coordinator.setMenuBarMetrics(metrics)
                 }
             } label: {
@@ -950,7 +962,7 @@ struct SettingsView: View {
                     return
                 }
                 metrics.append(metric)
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                withAnimation(motionSuppressed ? nil : .spring(response: 0.25, dampingFraction: 0.8)) {
                     coordinator.setMenuBarMetrics(metrics)
                 }
             } label: {
@@ -1272,6 +1284,7 @@ struct LiveReorderDropDelegate<ID: RawRepresentable & Equatable & Sendable>: Dro
     where ID.RawValue == String
 {
     let target: ID
+    let motionSuppressed: Bool
     let move: (ID, ID) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -1285,7 +1298,7 @@ struct LiveReorderDropDelegate<ID: RawRepresentable & Equatable & Sendable>: Dro
             guard let raw else { return }
             Task { @MainActor in
                 guard let dragged = ID(rawValue: raw), dragged != target else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
+                withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.15)) {
                     move(dragged, target)
                 }
             }

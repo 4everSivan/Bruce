@@ -1024,9 +1024,35 @@ let currentSettings = {
   usageEnabled: true,
   layoutMode: "stack",
   activeCardId: "usage",
-  activeCardID: "usage"
+  activeCardID: "usage",
+  motionPreference: "system"
 };
 let lastSlideDirection = "right";
+
+/* ---------- 全局界面动效闸门 (C141) ----------
+ * 应用内偏好与系统「减少动画」的唯一裁决点: 结果只写 <html data-motion>,
+ * CSS 侧统一按 html[data-motion="off"] 全量关闭, JS 侧一律读 motionSuppressed()。
+ * 不再让 CSS 媒体查询与 JS 判据各自裁决, 否则应用内设置会被系统值覆盖。 */
+const MOTION_MEDIA = "(prefers-reduced-motion: reduce)";
+function systemReduceMotion() {
+  return typeof window.matchMedia === "function" && window.matchMedia(MOTION_MEDIA).matches;
+}
+function motionSuppressed() {
+  const preference = currentSettings.motionPreference || "system";
+  if (preference === "never") return true;
+  if (preference === "always") return false;
+  return systemReduceMotion();
+}
+function applyMotionPreference() {
+  document.documentElement.dataset.motion = motionSuppressed() ? "off" : "on";
+}
+applyMotionPreference();
+if (typeof window.matchMedia === "function") {
+  const motionMedia = window.matchMedia(MOTION_MEDIA);
+  if (typeof motionMedia.addEventListener === "function") {
+    motionMedia.addEventListener("change", applyMotionPreference);
+  }
+}
 
 async function selectTab(targetKey) {
   const tabKeys = ["usage", "subscription", "hourly"];
@@ -1339,6 +1365,8 @@ function applyTheme(theme) {
 function applySettings(settings) {
   currentSettings = settings;
   applyTheme(settings.theme);
+  // C141: 动效偏好变更后立即刷新 <html data-motion>, 无需重启.
+  applyMotionPreference();
   if (currentPanel) renderWhenVisible(currentPanel);
 }
 window.addEventListener("settings-saved", event => applySettings(event.detail));
@@ -1353,18 +1381,20 @@ function renderWhenVisible(panel) {
 
 function triggerCurtainEnter() {
   const panelEl = document.getElementById("panel");
-  if (panelEl) {
-    panelEl.classList.remove("curtain-exit");
-    panelEl.classList.remove("curtain-enter");
-    // 强制回流以重新触发关键帧动效
-    if (typeof panelEl.offsetWidth === "number") void panelEl.offsetWidth;
-    panelEl.classList.add("curtain-enter");
-  }
+  if (!panelEl) return;
+  panelEl.classList.remove("curtain-exit");
+  panelEl.classList.remove("curtain-enter");
+  // C141: 抑制动效时直接落定终态, 不加动画类.
+  if (motionSuppressed()) return;
+  // 强制回流以重新触发关键帧动效
+  if (typeof panelEl.offsetWidth === "number") void panelEl.offsetWidth;
+  panelEl.classList.add("curtain-enter");
 }
 
 function requestHideDashboard() {
   const panelEl = document.getElementById("panel");
-  if (!panelEl || typeof window.matchMedia === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  // C141: 与入场的闸门同源, 不再各自读 matchMedia.
+  if (!panelEl || motionSuppressed()) {
     invoke("hide_dashboard").catch(() => {});
     return;
   }

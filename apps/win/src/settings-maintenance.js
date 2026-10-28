@@ -34,16 +34,22 @@
     layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
     row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
       "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
-    // mac: 开关旁以「已开启 / 已关闭」状态字呈现当前值
+    // C141: 全局界面动效总开关 (与 mac 通用页同名同三态).
+    const motion = node("select", null, { id: "setting-motion-preference" });
+    motion.append(
+      node("option", "跟随系统", { value: "system" }),
+      node("option", "始终播放", { value: "always" }),
+      node("option", "始终关闭", { value: "never" })
+    );
+    row(c1, "界面动效", segmented(motion, (value, revert) => persist({ motionPreference: value }, { revert })),
+      "关闭后整个应用不做过渡动画；「始终播放」会忽略系统「减少动画」");
+    // C142: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
     const notifyWrap = node("div", null, { class: "toggle-with-state" });
     const notify = input("setting-notifications", "checkbox");
-    notifyWrap.append(node("span", "", { id: "setting-notifications-state", class: "toggle-state" }), notify);
-    notify.addEventListener("change", () => {
-      syncToggleState("setting-notifications");
-      return persist({ notificationsEnabled: notify.checked }, {
-        revert: () => { notify.checked = !notify.checked; syncToggleState("setting-notifications"); },
-      });
-    });
+    notifyWrap.append(notify);
+    notify.addEventListener("change", () => persist({ notificationsEnabled: notify.checked }, {
+      revert: () => { notify.checked = !notify.checked; },
+    }));
     row(c1, "系统通知", notifyWrap, "预警与额度提醒; 关闭后 Bruce 不会投递通知");
 
     // 方案 1: 任务栏托盘悬停预览开关
@@ -330,19 +336,16 @@
     const cu = card(host, UP.copy.caption);
     const autoWrap = node("div", null, { class: "toggle-with-state" });
     const autoBox = input("setting-auto-update", "checkbox");
-    autoWrap.append(node("span", "", { id: "setting-auto-update-state", class: "toggle-state" }), autoBox);
-    autoBox.addEventListener("change", () => {
-      syncToggleState("setting-auto-update");
-      return persist({ autoCheckUpdate: autoBox.checked }, {
-        revert: () => { autoBox.checked = !autoBox.checked; syncToggleState("setting-auto-update"); },
-      });
-    });
+    // C142: 去掉开关旁状态字, 开合位置即唯一状态表达.
+    autoWrap.append(autoBox);
+    autoBox.addEventListener("change", () => persist({ autoCheckUpdate: autoBox.checked }, {
+      revert: () => { autoBox.checked = !autoBox.checked; },
+    }));
     row(cu, UP.copy.autoCheckTitle, autoWrap, UP.copy.autoCheckSubtitle);
-    // 版本渠道与上次检查为动态副标题, row() 只接受静态字符串 —— 手砌同构行 (镜像 row() 内部)。
+    // 版本值与上次检查为动态内容, row() 只接受静态字符串 —— 手砌同构行 (镜像 row() 内部)。
     const versionRow = node("label", null, { class: "fluent-row" });
     const versionMeta = node("div", null, { class: "row-meta" });
     versionMeta.append(node("span", UP.copy.currentVersionTitle, { class: "row-title" }));
-    versionMeta.append(node("span", "", { id: "update-channel-sub", class: "row-sub" }));
     versionRow.append(versionMeta, node("span", "—", { id: "setting-version", class: "row-value" }));
     cu.append(versionRow);
     const checkRow = node("label", null, { class: "fluent-row" });
@@ -564,17 +567,13 @@
     if (!snap) return;
     const value = byId("setting-version");
     if (value) {
-      const pair = UP.currentVersion(snap.localVersion || null);
-      value.textContent = pair.value;
-      const channelSub = byId("update-channel-sub");
-      if (channelSub) channelSub.textContent = pair.subtitle;
+      value.textContent = UP.currentVersion(snap.localVersion || null).value;
     }
     const lastCheck = byId("update-last-check");
     if (lastCheck) lastCheck.textContent = UP.lastCheckSubtitle(snap.lastCheckAt);
     const autoBox = byId("setting-auto-update");
     if (autoBox) {
       autoBox.checked = Boolean(snap.autoCheck);
-      syncToggleState("setting-auto-update");
     }
     const view = UP.stageView(snap.phase, {
       release: snap.release, localVersion: snap.localVersion, canSelfInstall: true,
@@ -650,12 +649,12 @@
       intervalSelect.value = String(minutes);
     }
     if (byId("setting-notifications")) byId("setting-notifications").checked = coreState.settings.notificationsEnabled;
-    syncToggleState("setting-notifications");
     if (byId("setting-tray-hover-preview")) byId("setting-tray-hover-preview").checked = coreState.settings.trayHoverPreview !== false;
     syncToggleState("setting-tray-hover-preview");
     if (byId("setting-hotkey")) byId("setting-hotkey").value = coreState.settings.hotkey || "";
     if (byId("setting-theme")) byId("setting-theme").value = coreState.settings.theme;
     if (byId("setting-layout-mode")) byId("setting-layout-mode").value = coreState.settings.layoutMode || "stack";
+    if (byId("setting-motion-preference")) byId("setting-motion-preference").value = coreState.settings.motionPreference || "system";
     if (byId("setting-usage-consent")) byId("setting-usage-consent").checked = coreState.settings.consentVersion === 1;
     if (byId("setting-usage")) byId("setting-usage").checked = coreState.settings.usageEnabled !== false;
     const consentState = byId("consent-state");

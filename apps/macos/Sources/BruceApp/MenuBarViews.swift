@@ -44,12 +44,15 @@ extension AppearancePreference {
 /// 刷新进行中的旋转指示. 仅在刷新时挂载, onAppear 启动无限旋转,
 /// 刷新结束视图移除即停止.
 private struct SpinningRefreshIcon: View {
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var rotation = 0.0
 
     var body: some View {
         Image(systemName: "arrow.clockwise")
             .rotationEffect(.degrees(rotation))
             .onAppear {
+                // C141: 抑制动效时停在静态图标, 不挂无限循环.
+                guard !motionSuppressed else { return }
                 withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
                     rotation = 360
                 }
@@ -61,6 +64,7 @@ private struct SpinningRefreshIcon: View {
 /// 面板隐藏或刷新结束即卸载, 严守 C044 隐藏态零持续动画门控.
 private struct PulsingStatusDot: View {
     let dotColor: Color
+    @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var breathing = false
 
     var body: some View {
@@ -74,6 +78,8 @@ private struct PulsingStatusDot: View {
         }
         .frame(width: 12, height: 12)
         .onAppear {
+            // C141: 抑制动效时保持静态高亮, 不挂无限循环.
+            guard !motionSuppressed else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 breathing = true
             }
@@ -88,7 +94,7 @@ struct MenuBarDashboardView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     let openSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
@@ -412,7 +418,7 @@ struct MenuBarDashboardView: View {
         let shouldPulse = status.isRefreshing
             && DashboardPanelAnimationPolicy.allowsHero(
                 panelVisible: model.dashboardPanelVisible,
-                reduceMotion: reduceMotion
+                motionSuppressed: motionSuppressed
             )
 
         Group {
@@ -603,7 +609,7 @@ struct MenuBarDashboardView: View {
         let fromIndex = order.firstIndex(of: model.selectedCardID) ?? 0
         let toIndex = order.firstIndex(of: target) ?? 0
         slideDirection = toIndex > fromIndex ? .trailing : .leading
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+        withAnimation(motionSuppressed ? nil : .spring(response: 0.32, dampingFraction: 0.82)) {
             model.selectCard(target)
         }
     }
@@ -624,6 +630,7 @@ struct MenuBarDashboardView: View {
                             of: [.text],
                             delegate: DashboardCardDropDelegate(
                                 target: cardID,
+                                motionSuppressed: motionSuppressed,
                                 move: { model.moveCard(from: $0, to: $1) }
                             )
                         )

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import BruceAppCore
 import BruceOnboardingCore
@@ -35,10 +36,24 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var systemNotificationsEnabled: Bool
     /// 电脑锁屏后是否禁止订阅刷新 (C064), 与配置持久化同步.
     @Published private(set) var pauseSubscriptionRefreshOnScreenLock: Bool
+    /// 全局界面动效偏好 (C141), 与配置持久化同步.
+    @Published private(set) var motionPreference: MotionPreference
     /// 模型单价人工校准覆盖 (模型名 -> 校准单价).
     @Published private(set) var pricingOverrides: [String: ModelPricingOverride]
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
+    /// 可注入的系统「减弱动态效果」读取 (测试), 默认读系统; C141.
+    var systemReduceMotion: () -> Bool = {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+    /// 系统无障碍显示选项变更观察 (C141). nonisolated(unsafe) 仅为让
+    /// nonisolated deinit 能注销观察者; 令牌本身只在主线程写入一次.
+    nonisolated(unsafe) private var systemMotionObserver: NSObjectProtocol?
+
+    /// 是否抑制全部显式动效: 唯一裁决点, 只由 MotionPreference 组合系统值给出.
+    var motionSuppressed: Bool {
+        motionPreference.suppressesMotion(systemReduceMotion: systemReduceMotion())
+    }
 
     /// 当前解析主题 (界面 + 模糊 + 是否用玻璃 API); 始终按能力回落.
     var resolvedTheme: ResolvedTheme {
@@ -155,6 +170,7 @@ final class OnboardingCoordinator: ObservableObject {
         let resolvedPauseOnLock = config?.pauseSubscriptionRefreshOnScreenLock ?? true
         self.pauseSubscriptionRefreshOnScreenLock = resolvedPauseOnLock
         scheduler.setPauseSubscriptionRefreshOnScreenLock(resolvedPauseOnLock)
+        self.motionPreference = config?.resolvedMotionPreference ?? .system
         self.pricingOverrides = config?.pricingOverrides ?? [:]
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
@@ -181,6 +197,24 @@ final class OnboardingCoordinator: ObservableObject {
         // C020: 验证通过后立即定向刷新该 Provider, 使新配置订阅即时上仪表盘.
         service.onProviderVerified = { [weak self] id in
             self?.refreshSubscription(id)
+        }
+
+        // C141: 系统「减弱动态效果」可能在运行中切换; 偏好为 system 时需立即重算,
+        // 否则注入到视图树的环境值会停留在启动时的旧判定.
+        systemMotionObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.objectWillChange.send()
+            }
+        }
+    }
+
+    deinit {
+        if let systemMotionObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(systemMotionObserver)
         }
     }
 
@@ -454,6 +488,24 @@ final class OnboardingCoordinator: ObservableObject {
         }
         pauseSubscriptionRefreshOnScreenLock = enabled
         scheduler.setPauseSubscriptionRefreshOnScreenLock(enabled)
+        model.setSettingsError(nil)
+    }
+
+    /// 用户变更全局界面动效偏好 (C141): 先持久化再发布, 保存失败不改变运行中行为.
+    func setMotionPreference(_ preference: MotionPreference) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存界面动效设置")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.motionPreference = preference
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("界面动效设置保存失败")
+            return
+        }
+        motionPreference = preference
         model.setSettingsError(nil)
     }
 

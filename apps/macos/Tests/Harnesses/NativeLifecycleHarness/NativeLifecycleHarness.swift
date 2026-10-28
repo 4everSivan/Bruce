@@ -178,7 +178,7 @@ struct NativeLifecycleHarness {
 
     private static func hiddenPanelDisablesAllDecorativeAnimations() throws {
         try expect(
-            !DashboardPanelAnimationPolicy.allowsHero(panelVisible: false, reduceMotion: false),
+            !DashboardPanelAnimationPolicy.allowsHero(panelVisible: false, motionSuppressed: false),
             "a hidden panel must not mount hero animation"
         )
         try expect(
@@ -186,12 +186,12 @@ struct NativeLifecycleHarness {
                 panelVisible: false,
                 isNothing: true,
                 filled: true,
-                reduceMotion: false
+                motionSuppressed: false
             ),
             "a hidden panel must not mount heatmap animation"
         )
         try expect(
-            DashboardPanelAnimationPolicy.allowsHero(panelVisible: true, reduceMotion: false),
+            DashboardPanelAnimationPolicy.allowsHero(panelVisible: true, motionSuppressed: false),
             "a visible panel may mount hero animation"
         )
         try expect(
@@ -199,7 +199,7 @@ struct NativeLifecycleHarness {
                 panelVisible: true,
                 isNothing: true,
                 filled: true,
-                reduceMotion: false
+                motionSuppressed: false
             ),
             "a visible Nothing panel may mount filled-cell animation"
         )
@@ -215,21 +215,21 @@ struct NativeLifecycleHarness {
         try expect(
             !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
                 panelVisible: false,
-                reduceMotion: false
+                motionSuppressed: false
             ),
             "a hidden panel must not run hourly column growth animation"
         )
         try expect(
             !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
                 panelVisible: true,
-                reduceMotion: true
+                motionSuppressed: true
             ),
             "reduce-motion must keep hourly growth off even when visible"
         )
         try expect(
             DashboardPanelAnimationPolicy.allowsHourlyGrowth(
                 panelVisible: true,
-                reduceMotion: false
+                motionSuppressed: false
             ),
             "a visible panel may run hourly column growth animation"
         )
@@ -246,13 +246,28 @@ struct NativeLifecycleHarness {
             "a visible panel may suppress the scroll view scroller"
         )
         try expect(
-            DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: false),
-            "curtain transition must be allowed when reduceMotion is false"
+            DashboardPanelAnimationPolicy.allowsCurtainTransition(motionSuppressed: false),
+            "curtain transition must be allowed when motion is not suppressed"
         )
         try expect(
-            !DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: true),
-            "curtain transition must be suppressed when reduceMotion is true"
+            !DashboardPanelAnimationPolicy.allowsCurtainTransition(motionSuppressed: true),
+            "curtain transition must be suppressed when motion is suppressed"
         )
+        // C141: MotionPreference 三态 × 系统值共 6 组, 唯一裁决点语义.
+        let motionMatrix: [(MotionPreference, Bool, Bool)] = [
+            (.system, false, false),
+            (.system, true, true),
+            (.always, false, false),
+            (.always, true, false),
+            (.never, false, true),
+            (.never, true, true),
+        ]
+        for (preference, systemReduceMotion, expected) in motionMatrix {
+            try expect(
+                preference.suppressesMotion(systemReduceMotion: systemReduceMotion) == expected,
+                "MotionPreference.\(preference.rawValue) with system=\(systemReduceMotion) must suppress=\(expected)"
+            )
+        }
         try expect(
             DashboardPanelAnimationPolicy.curtainOpenDuration == 0.24,
             "curtain open duration must be 0.24s"

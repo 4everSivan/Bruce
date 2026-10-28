@@ -62,6 +62,9 @@ export class Element {
   }
   getAttribute(name) { return this.attributes[name] ?? null; }
   addEventListener(type, callback) { this.listeners.set(type, [...(this.listeners.get(type) || []), callback]); }
+  removeEventListener(type, callback) {
+    this.listeners.set(type, (this.listeners.get(type) || []).filter(x => x !== callback));
+  }
   async dispatch(type, values = {}) {
     const event = { target: this, currentTarget: this, preventDefault() {}, ...values };
     await Promise.all((this.listeners.get(type) || []).map(callback => callback(event)));
@@ -122,6 +125,8 @@ function parseHTML(source) {
     if (!/^(input|link|meta|br|hr|img|path|circle|rect|line|polyline|polygon|ellipse|stop|use)$/i.test(tag)) stack.push(node);
   }
   root.body = root.querySelector("body");
+  // C141: app.js 把全局动效闸门写在 <html data-motion>, 桩必须暴露 documentElement.
+  root.documentElement = root.querySelector("html") ?? root;
   root.createElement = tag => new Element(tag);
   root.createElementNS = (_namespace, tag) => new Element(tag);
   root.createTextNode = text => Object.assign(new Element("#text"), { textContent: text });
