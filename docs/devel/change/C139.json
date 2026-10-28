@@ -68,29 +68,29 @@
         "item": "峰谷计价",
         "true_if": "DeepSeek V4 Pro 在峰值 UTC 窗口的输入/输出按 $1.32/$3.96 计，非峰值按 $0.66/$1.98",
         "false_if": "峰谷样本被同一档计价或窗口边界错误",
-        "evidence": "collector-domain 21 passed (含 deepseek 峰谷 / qwen 长上下文 / UTC 边界 / builder 分类)；collector-local 46 passed (含压缩缓存往返)",
+        "evidence": "collector-domain 21 passed：deepseek 峰谷 / UTC 边界 / builder 分类用例通过；峰值 1M 计费 7.92 USD 与手算一致",
         "result": true
       },
       {
         "item": "分档计价",
         "true_if": "Qwen3.7 Plus input>256000 按 $1.20/$4.80 计，≤256000 按 $0.40/$1.60",
         "false_if": "分档阈值边界错误或长上下文未命中",
-        "evidence": "SQLite/JSONL 聚合版本升为 4/2；collector workspace 与 clippy 全绿",
+        "evidence": "collector-domain 21 passed：qwen3.7-plus 边界 256000/256001 用例通过；长上下文 1M 计费 8.0 USD 与手算一致",
         "result": true
       },
       {
         "item": "缓存等价",
         "true_if": "SQLite/JSONL 缓存往返保留 rateSplits；AGGREGATION_VERSION 升版后旧条目重建",
         "false_if": "缓存往返丢失份额或旧条目被错误复用",
-        "evidence": "zsh scripts/verify-local.sh exit 0 (日志 local/c138-c139-verify.log)",
+        "evidence": "collector-local 46 passed：compact_cache_round_trips_rate_class_splits 证明压缩缓存往返保留 peak 份额；聚合版本升为 4/2",
         "result": true
       },
       {
         "item": "全量验证",
         "true_if": "cargo test --workspace / clippy / verify-local 全绿",
         "false_if": "任一测试或静态检查失败",
-        "evidence": "待实现后回填",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c138-c139-verify.log；clippy -D warnings 通过)",
+        "result": true
       }
     ]
   },
