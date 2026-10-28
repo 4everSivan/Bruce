@@ -1,0 +1,96 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C134",
+  "title": "TD-004：抽取 collector-local::cache_util 统一缓存原语与 Codex 头尾指纹",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "chore/C130-c136-tech-debt",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-local 缓存层",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "jsonl_cache 与 sqlite_cache 各自持有 CacheLoad 与原子 JSON 写盘实现，codex 另有头尾指纹实现；同一指纹/追加/写盘语义修复需要改多处（跨窗口合并清空缺陷已实际发生）。抽取私有 cache_util 模块承载 CacheLoad<T> / load_json_cache / write_json_atomic / fingerprint_range / ends_with_newline / fingerprint_head_tail，各适配器复用；Codex best-effort 缓存写入因错误语义不同暂不合并。",
+  "precheck": {
+    "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
+    "command": "grep / wc / 对应测试套件",
+    "expected": "定位真实状态，避免重复开发或伪造修复",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt / swift format",
+      "scripts/adflow-verify --card C134 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "缓存原语",
+      "before": "CacheLoad、load/write cache、fingerprint_range、ends_with_newline、fingerprint_file 分散在三处",
+      "after": "统一由 cache_util 提供；JSONL/SQLite 适配器只保留身份、schema 版本与载荷结构",
+      "impact": "同类缺陷只需修一处"
+    },
+    {
+      "scope": "原子写盘",
+      "before": "jsonl/sqlite 两份 create_new + 0600 + rename 模板（无 fsync）",
+      "after": "cache_util::write_json_atomic 统一实现并补 sync_all",
+      "impact": "权限与持久化口径一致"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-05",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "单元测试",
+        "true_if": "cargo test -p collector-local 全绿，含缓存冷/暖对拍用例",
+        "false_if": "任一测试失败或覆盖减少",
+        "evidence": "cargo test --manifest-path core/collector/Cargo.toml -p collector-local: 45 passed, 0 failed, exit 0",
+        "result": true
+      },
+      {
+        "item": "静态检查",
+        "true_if": "cargo fmt --check 与 clippy -D warnings 通过",
+        "false_if": "存在格式或 clippy 告警",
+        "evidence": "cargo fmt -- --check exit 0；cargo clippy -p collector-local --all-targets -- -D warnings exit 0",
+        "result": true
+      },
+      {
+        "item": "行为等价",
+        "true_if": "缓存 schema 版本、序列化形状与既有 fixture 不变",
+        "false_if": "缓存格式或输出发生变化",
+        "evidence": "JSONL_CACHE_SCHEMA_VERSION=2 / SQLITE_CACHE_SCHEMA_VERSION=2 未变；fixture 未改；workspace cargo check 通过; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

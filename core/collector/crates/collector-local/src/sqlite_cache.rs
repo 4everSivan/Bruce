@@ -7,15 +7,16 @@
 
 use super::sources::{SourceScan, SourceScanError};
 use super::{CompactContribution, ScanStats, AGGREGATION_VERSION};
+use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 const SQLITE_CACHE_SCHEMA_VERSION: u32 = 2;
 
@@ -239,7 +240,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         }
     };
     let cache_path = cache_path(path, config);
-    let cached = match load_cache(&cache_path) {
+    let cached: Option<Box<SqliteCacheEntry>> = match load_json_cache(&cache_path) {
         CacheLoad::Entry(entry) => Some(entry),
         CacheLoad::Missing => None,
         CacheLoad::Corrupt => {
@@ -316,7 +317,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         &contribution,
                     ) {
                         Some(cache_entry) => {
-                            match write_cache(&cache_path, &cache_entry, cancellation) {
+                            match write_json_atomic(&cache_path, &cache_entry, cancellation) {
                                 Ok(()) => {}
                                 Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                                 Err(SourceScanError::Io(_)) => {
@@ -386,7 +387,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         capped: result.capped,
         contribution: compact,
     };
-    match write_cache(&cache_path, &entry, cancellation) {
+    match write_json_atomic(&cache_path, &entry, cancellation) {
         Ok(()) => {}
         Err(SourceScanError::Runtime(error)) => return Err(error.into()),
         Err(SourceScanError::Io(_)) => stats.io_errors = stats.io_errors.saturating_add(1),
@@ -502,77 +503,6 @@ fn cache_path(path: &Path, config: &SqliteCacheConfig) -> PathBuf {
     config
         .cache_root
         .join(format!("sqlite-{:x}.json", hasher.finalize()))
-}
-
-enum CacheLoad {
-    Missing,
-    Corrupt,
-    Entry(Box<SqliteCacheEntry>),
-}
-
-fn load_cache(path: &Path) -> CacheLoad {
-    let data = match fs::read(path) {
-        Ok(data) => data,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return CacheLoad::Missing,
-        Err(_) => return CacheLoad::Corrupt,
-    };
-    match serde_json::from_slice(&data) {
-        Ok(entry) => CacheLoad::Entry(Box::new(entry)),
-        Err(_) => CacheLoad::Corrupt,
-    }
-}
-
-fn write_cache(
-    path: &Path,
-    entry: &SqliteCacheEntry,
-    cancellation: &CancellationToken,
-) -> Result<(), SourceScanError> {
-    cancellation.check()?;
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "sqlite cache path has no parent",
-        )
-    })?;
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.tmp-{}-{}",
-        path.file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("sqlite-cache"),
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let result = (|| -> Result<(), SourceScanError> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(SourceScanError::Io)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o600))
-                .map_err(SourceScanError::Io)?;
-        }
-        // C110: 先序列化到内存再一次写入 —— 直接 to_writer 到未缓冲的 File 会把每个
-        // JSON 记号变成一次 write 系统调用 (Claude 冷扫约 0.6 s 内核态)。
-        let mut bytes = serde_json::to_vec(entry).map_err(|error| {
-            SourceScanError::Io(io::Error::new(io::ErrorKind::InvalidData, error))
-        })?;
-        bytes.push(b'\n');
-        file.write_all(&bytes).map_err(SourceScanError::Io)?;
-        drop(file);
-        cancellation.check()?;
-        fs::rename(&temporary, path).map_err(SourceScanError::Io)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
 }
 
 #[cfg(test)]

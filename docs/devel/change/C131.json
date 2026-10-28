@@ -1,0 +1,89 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C131",
+  "title": "技术债 TD-008/010 口径定稿：迁移只在 mac 侧发生，collector-credential 只读函数定位为测试/兼容面",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "chore/C130-c136-tech-debt",
+  "is_hotfix": false,
+  "target": {
+    "module": "docs/devel",
+    "component": "订阅凭据边界",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "TD-008 假设 mac 与 Windows 各自实现旧格式→v2 迁移，实测 Windows 全 crate 无 migrationCompletedAt/migrateLegacyAccounts，迁移只在 mac CodexCredentialStore 发生；TD-010 要求为无生产消费者的 collector-credential 只读探测函数给出明确去留。两者都属口径缺失而非代码缺陷，故在 design/02 固化边界，避免后续重复排查或误删测试覆盖。",
+  "precheck": {
+    "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
+    "command": "grep / wc / 对应测试套件",
+    "expected": "定位真实状态，避免重复开发或伪造修复",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt / swift format",
+      "scripts/adflow-verify --card C131 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "迁移边界文档化",
+      "before": "design/02 未说明 Windows 为何无迁移逻辑，TD-008 长期悬挂",
+      "after": "design/02 规则 1 明确迁移只在 mac 侧发生，Windows 首次发布即 v2 账号库；mac Harness 迁移用例为唯一回归面",
+      "impact": "后续不再要求双端迁移 fixture 对拍"
+    },
+    {
+      "scope": "只读探测函数定位",
+      "before": "read_claude_token / read_grok_token / is_expired 无生产调用但缺说明",
+      "after": "design/02 规则 1 记录其为测试与兼容面，生产凭据由 Swift 注入；若未来开放 CLI 直读再提升为生产入口",
+      "impact": "消除「死代码还是遗漏接线」的歧义"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-02",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "Windows 迁移缺失属实",
+        "true_if": "Windows crate 内无旧格式迁移实现，design/02 已记录该边界",
+        "false_if": "Windows 仍存在未文档化的迁移分支或文档与代码矛盾",
+        "evidence": "grep -rni 'migrationCompletedAt|migrateLegacyAccounts' apps/win core 无命中；design/02 规则 1 新增迁移边界与只读函数定位",
+        "result": true
+      },
+      {
+        "item": "mac 迁移回归覆盖存在",
+        "true_if": "mac BruceOnboardingCoreHarness 覆盖写入/校验/清理、失败保留旧键、清理中断重试、保留无关 v2 账号",
+        "false_if": "迁移路径无任何自动化覆盖",
+        "evidence": "CodexCredentialStoreTests 含 migrationWritesThenVerifiesThenDeletes / migrationFailureReturnsFailedAndKeepsLegacyKeys / migrationWriteFailureReturnsFailed / migrationCleanupPendingKeepsLegacyKeys / migrationPreservesUnrelatedV2Account; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

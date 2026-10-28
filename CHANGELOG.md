@@ -3,6 +3,18 @@
 所有对本项目的显著变更均记录于此文件。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Changed
+- **技术债批次收口 (C130–C136)**：
+  - **TD-003/005/006 总账校准 (C130)**：Windows Provider 清单、ProviderOutcome 下沉、四处巨型文件切分均已由既有实现落地，从远期债务池移除，避免重复排期；
+  - **TD-008/010 边界定稿 (C131)**：旧格式凭据迁移只在 macOS 侧发生（Windows 无历史格式）；`collector-credential` 只读探测函数定位为测试/兼容面，并写入设计 02；
+  - **TD-012 滚动条压制事件化 (C132)**：面板滚动条压制由 0.3s Timer 轮询改为 KVO + 系统通知事件驱动，隐藏/离窗即解除观察；
+  - **TD-009 菜单栏额度门禁 (C133)**：菜单栏「最低/平均剩余额度」与仪表盘共用验证门禁，未验证 Provider 不再影响菜单栏；
+  - **TD-004 缓存原语收敛 (C134)**：JSONL / SQLite 缓存与 Codex 头尾指纹统一到 `collector-local::cache_util`，原子写盘补 `sync_all`；
+  - **TD-011 Windows 设置前端拆分 (C135)**：`settings.js` 由 3,258 行拆分为共享状态 + 订阅 / 工作台 / 计费 / 维护分节脚本 + 56 行壳层，脚本按 `settings.html` 固定顺序加载；
+  - **TD-002 分时/分档价卡评估 (C136)**：现有聚合层已丢失请求时间与单请求输入长度，需先扩展 `TokenBucket` 与缓存版本，本批次暂缓并记录扩展门槛。
+
 ## [0.14.0] - 2026-10-27
 
 ### Added

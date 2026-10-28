@@ -12,14 +12,17 @@ use super::{
     read_bounded_line, trim_line_end, ScanStats, MAX_DIRECTORY_SCAN_DEPTH, MAX_JSONL_RECORD_BYTES,
     READ_BUFFER_BYTES,
 };
+use crate::cache_util::{
+    ends_with_newline, fingerprint_range, load_json_cache, write_json_atomic, CacheLoad,
+};
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
+use std::fs::{self, File};
+use std::io::{self, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 /// v2 (C116): 条目去掉按窗口压缩的贡献与窗口身份, 只存观测值; v1 条目按版本不匹配重建一次。
 const JSONL_CACHE_SCHEMA_VERSION: u32 = 2;
@@ -179,12 +182,6 @@ struct JsonlCacheManifest {
     source_path_digests: std::collections::BTreeSet<String>,
 }
 
-enum CacheLoad {
-    Missing,
-    Corrupt,
-    Entry(Box<JsonlCacheEntry>),
-}
-
 pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
     root: &Path,
     config: &JsonlCacheConfig,
@@ -326,7 +323,7 @@ fn process_file<A: JsonlCacheAdapter>(
     let cache_path = entry_path(&state.config.cache_root, &source_path_digest);
     let metadata = fs::metadata(path)?;
     let current_file = JsonlFileSignature::from_metadata(&metadata);
-    let loaded = load_entry(&cache_path);
+    let loaded: CacheLoad<JsonlCacheEntry> = load_json_cache(&cache_path);
     if matches!(loaded, CacheLoad::Corrupt) {
         state.stats.cache_corruptions = state.stats.cache_corruptions.saturating_add(1);
     }
@@ -431,7 +428,7 @@ fn cache_payload_entry(
         payload,
         cancellation,
     )?;
-    write_entry(cache_path, &entry, cancellation)
+    write_json_atomic(cache_path, &entry, cancellation)
 }
 
 fn record_cache_write_error(
@@ -566,7 +563,7 @@ fn write_manifest<A: JsonlCacheAdapter>(
         source_root_digest: digest_with_source(state.config.source_id.as_str(), root),
         source_path_digests: state.seen.clone(),
     };
-    write_json(
+    write_json_atomic(
         &manifest_path(root, state.config),
         &manifest,
         state.cancellation,
@@ -591,79 +588,6 @@ fn digest_with_source(source_id: &str, path: &Path) -> String {
     hasher.update([0]);
     hasher.update(path.to_string_lossy().as_bytes());
     format!("{:x}", hasher.finalize())
-}
-
-fn load_entry(path: &Path) -> CacheLoad {
-    let data = match fs::read(path) {
-        Ok(data) => data,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return CacheLoad::Missing,
-        Err(_) => return CacheLoad::Corrupt,
-    };
-    match serde_json::from_slice(&data) {
-        Ok(entry) => CacheLoad::Entry(Box::new(entry)),
-        Err(_) => CacheLoad::Corrupt,
-    }
-}
-
-fn write_entry(
-    path: &Path,
-    entry: &JsonlCacheEntry,
-    cancellation: &CancellationToken,
-) -> Result<(), SourceScanError> {
-    write_json(path, entry, cancellation)
-}
-
-fn write_json<T: Serialize>(
-    path: &Path,
-    value: &T,
-    cancellation: &CancellationToken,
-) -> Result<(), SourceScanError> {
-    cancellation.check()?;
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "jsonl cache path has no parent",
-        )
-    })?;
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.tmp-{}-{}",
-        path.file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("jsonl-cache"),
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let result = (|| -> Result<(), SourceScanError> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(SourceScanError::Io)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o600))
-                .map_err(SourceScanError::Io)?;
-        }
-        // C110: 先序列化到内存再一次写入 —— 直接 to_writer 到未缓冲的 File 会把每个
-        // JSON 记号变成一次 write 系统调用 (Claude 冷扫约 0.6 s 内核态)。
-        let mut bytes = serde_json::to_vec(value).map_err(|error| {
-            SourceScanError::Io(io::Error::new(io::ErrorKind::InvalidData, error))
-        })?;
-        bytes.push(b'\n');
-        file.write_all(&bytes).map_err(SourceScanError::Io)?;
-        drop(file);
-        cancellation.check()?;
-        fs::rename(&temporary, path).map_err(SourceScanError::Io)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
 }
 
 pub(crate) fn scan_jsonl_file_from_offset<F>(
@@ -700,49 +624,4 @@ where
         callback(path, line, stats);
     }
     Ok(())
-}
-
-fn fingerprint_range(
-    path: &Path,
-    start: u64,
-    length: u64,
-    cancellation: &CancellationToken,
-) -> Result<String, SourceScanError> {
-    cancellation.check()?;
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(start))?;
-    let mut hasher = Sha256::new();
-    let mut remaining = length;
-    let mut buffer = [0u8; 8192];
-    while remaining > 0 {
-        cancellation.check()?;
-        let requested = remaining.min(buffer.len() as u64) as usize;
-        let read = file.read(&mut buffer[..requested])?;
-        if read == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "jsonl fingerprint range exceeds file size",
-            )
-            .into());
-        }
-        hasher.update(&buffer[..read]);
-        remaining -= read as u64;
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
-fn ends_with_newline(
-    path: &Path,
-    size: u64,
-    cancellation: &CancellationToken,
-) -> Result<bool, SourceScanError> {
-    if size == 0 {
-        return Ok(true);
-    }
-    cancellation.check()?;
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(size - 1))?;
-    let mut byte = [0u8; 1];
-    file.read_exact(&mut byte)?;
-    Ok(byte[0] == b'\n')
 }

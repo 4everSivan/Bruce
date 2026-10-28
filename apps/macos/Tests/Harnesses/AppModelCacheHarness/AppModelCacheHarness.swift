@@ -1,4 +1,5 @@
 import Foundation
+import BruceOnboardingCore
 @testable import BruceAppCore
 
 /// 回归: 面板缓存与菜单栏摘要缓存共享同一版本计数器, 但各自持有独立缓存.
@@ -30,8 +31,9 @@ struct AppModelCacheHarness {
     static func main() throws {
         try menuBarSummaryDoesNotReturnStaleNilAfterArtifactArrives()
         try menuBarSummaryRebuildsAfterArtifactChange()
+        try menuBarQuotaSummaryHonorsDashboardVerificationGate()
         try dashboardLayoutModeAndCardSelectionPersists()
-        print("AppModelCache tests passed: 3")
+        print("AppModelCache tests passed: 4")
     }
 
     /// 回归: artifact 就绪后菜单栏摘要必须反映实际 token, 不得返回陈旧空摘要.
@@ -68,6 +70,84 @@ struct AppModelCacheHarness {
             model.makeMenuBarSummary().todayTokens == 200,
             "artifact 更新后摘要应重算, 不得返回旧值"
         )
+    }
+
+    /// TD-009: 菜单栏额度摘要必须与仪表盘共用验证门禁.
+    /// 未验证 Provider 的额度不得进入最低/平均剩余额度; 验证状态变化须立即重算.
+    private static func menuBarQuotaSummaryHonorsDashboardVerificationGate() throws {
+        let model = AppModel()
+        model.setSubscriptionProviders([
+            .kimi: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .ok
+            ),
+            .deepseek: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .none
+            ),
+        ])
+        model.setArtifact(
+            makeServiceArtifact([
+                (id: "kimi_coding", usedPercent: 10),
+                (id: "deepseek_coding", usedPercent: 90),
+            ]),
+            for: .agentUsage
+        )
+        let summary = model.makeMenuBarSummary()
+        try expect(
+            summary.minimumRemainingQuota == 90,
+            "菜单栏最低剩余额度只能来自已验证 Provider (期望 90, 实际 \(String(describing: summary.minimumRemainingQuota)))"
+        )
+        try expect(
+            summary.averageRemainingQuota == 90,
+            "菜单栏平均剩余额度只能来自已验证 Provider"
+        )
+
+        // 验证状态变化后必须失效摘要缓存并重算.
+        model.setSubscriptionProviders([
+            .kimi: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .failed(reason: "fixture")
+            ),
+            .deepseek: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .none
+            ),
+        ])
+        let gated = model.makeMenuBarSummary()
+        try expect(
+            gated.minimumRemainingQuota == nil && gated.averageRemainingQuota == nil,
+            "无已验证 Provider 时菜单栏额度摘要应为空, 不得回退到未验证 Provider"
+        )
+    }
+
+    /// 构造含订阅服务的合法 agent-usage artifact.
+    private static func makeServiceArtifact(
+        _ services: [(id: String, usedPercent: Int)]
+    ) -> JSONValue {
+        .object([
+            "schemaVersion": .integer(1),
+            "module": .string("agent-usage"),
+            "generatedAt": .string("2026-08-12T10:00:00+00:00"),
+            "agents": .array([]),
+            "services": .array(
+                services.map { service in
+                    .object([
+                        "id": .string(service.id),
+                        "name": .string(service.id),
+                        "status": .string("ok"),
+                        "kind": .string("windows"),
+                        "windows": .array([
+                            .object([
+                                "label": .string("5h"),
+                                "usedPercent": .integer(service.usedPercent),
+                            ])
+                        ]),
+                    ])
+                }
+            ),
+            "totalCostUsd": .double(0),
+        ])
     }
 
     /// 验证: 仪表盘布局模式与选定卡片切换持久化到 UserDefaults 并可在实例间恢复.

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C132",
+  "title": "TD-012：滚动条压制从 0.3s Timer 轮询改为 KVO / 通知事件驱动",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "chore/C130-c136-tech-debt",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "ScrollIndicatorSuppressor",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "MenuBarViews.swift 的 SuppressorView 在面板可见期间以 0.3s Timer 周期轮询并压制 NSScrollView scroller；隐藏态虽已停止计时，但可见期间仍是轮询。改为在入窗且可见时观察目标 NSScrollView 的 hasVerticalScroller / hasHorizontalScroller / scrollerStyle，并监听 NSScroller.preferredScrollerStyleDidChangeNotification，事件到达才压制；隐藏或离窗时解除观察。",
+  "precheck": {
+    "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
+    "command": "grep / wc / 对应测试套件",
+    "expected": "定位真实状态，避免重复开发或伪造修复",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt / swift format",
+      "scripts/adflow-verify --card C132 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "观察生命周期",
+      "before": "面板可见时 0.3s Timer 持续轮询，syncWatchdog 启停",
+      "after": "viewDidMoveToWindow / viewDidMoveToSuperview / layout 时定位并观察目标 NSScrollView；隐藏或离窗解除观察，无周期定时器",
+      "impact": "空转开销归零，行为仍为 scrollerStyle=overlay + 关闭两侧 scroller"
+    },
+    {
+      "scope": "门控策略",
+      "before": "DashboardPanelAnimationPolicy.allowsSuppressorWatchdog(panelVisible:)",
+      "after": "allowsScrollIndicatorSuppression(panelVisible:)，语义改为「可见才允许改写 scroller」",
+      "impact": "NativeLifecycleHarness 断言同步"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-03",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "无周期定时器残留",
+        "true_if": "MenuBarViews.swift 中 SuppressorView 不再含 Timer / scheduledTimer",
+        "false_if": "仍存在 0.3s 周期 Timer 或等价轮询",
+        "evidence": "grep 实测 MenuBarViews.swift 无 Timer；KVO 观察 hasVerticalScroller / hasHorizontalScroller / scrollerStyle + NSScroller 通知",
+        "result": true
+      },
+      {
+        "item": "编译与门控测试",
+        "true_if": "swift build --build-tests 成功，NativeLifecycleHarness 全绿",
+        "false_if": "编译失败或 Harness 断言失败",
+        "evidence": "swift build --build-tests Build complete；NativeLifecycleHarness 'Native lifecycle tests passed: 14' exit 0; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

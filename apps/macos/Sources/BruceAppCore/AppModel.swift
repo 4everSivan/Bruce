@@ -624,13 +624,17 @@ package final class AppModel: ObservableObject {
     /// 菜单栏标签摘要 (缓存, 复用已解码 artifact).
     /// 使用独立的 lastMenuBarSummaryVersion, 避免面板重建同步的共享计数器
     /// 让陈旧摘要误命中缓存.
+    ///
+    /// TD-009: 额度类摘要与面板共用同一验证门禁 —— 未验证/验证失败/需重新
+    /// 登录的 Provider 不得通过菜单栏「最低/平均剩余额度」泄露出来。
+    /// Token/费用类摘要不按订阅门禁过滤。
     package func makeMenuBarSummary() -> MenuBarSummary {
         if lastMenuBarSummaryVersion == panelCacheVersion,
            let cached = cachedMenuBarSummary {
             return cached
         }
         let summary = MenuBarSummaryBuilder().build(
-            from: decodedAgentUsageArtifact(),
+            from: gatedAgentUsageArtifact(),
             moduleStatuses: moduleStatuses
         )
         cachedMenuBarSummary = summary

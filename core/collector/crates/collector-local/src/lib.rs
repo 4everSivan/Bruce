@@ -2,6 +2,7 @@
 
 //! Local file and SQLite adapters.
 
+mod cache_util;
 mod jsonl_cache;
 mod sources;
 mod sqlite_cache;

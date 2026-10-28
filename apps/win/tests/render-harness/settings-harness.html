@@ -73,14 +73,18 @@ link.href = `/apps/win/src/styles.css?v=${Date.now()}`;
 document.head.append(link);
 document.body.className = doc.body.className;
 document.body.innerHTML = doc.body.innerHTML;
-// provider-brand.js 是生成产物 (品牌图形), 生产 HTML 中先于 settings.js 加载
-const brandScript = document.createElement("script");
-brandScript.src = `/apps/win/src/provider-brand.js?v=${Date.now()}`;
-document.body.append(brandScript);
-const script = document.createElement("script");
-script.src = `/apps/win/src/settings.js?v=${Date.now()}`;
-script.onload = () => { window.__ready = true; };
-document.body.append(script);
+// 生产脚本清单直接取自 settings.html (TD-011 拆分后按 settings-state → 分节 → settings.js
+// 的顺序加载); 动态插入时 async=false 保证经典脚本按序执行, 最后一个 onload 标记就绪。
+const scripts = [...doc.querySelectorAll("script[src]")].map((el) => el.getAttribute("src"));
+let last = null;
+for (const src of scripts) {
+  const script = document.createElement("script");
+  script.src = `/apps/win/src/${src}?v=${Date.now()}`;
+  script.async = false;
+  document.body.append(script);
+  last = script;
+}
+if (last) last.onload = () => { window.__ready = true; };
 </script>
 </body>
 </html>

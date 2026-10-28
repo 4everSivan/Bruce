@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-27 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-28 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -263,6 +263,7 @@ Windows Tauri 后端 (Rust)
 | T13 | 结构收敛 | 额度门禁与回填改调共享 crate | `quota_policy` / `runtime_core::{provider_id, provider_of_id, merge_snapshot}` 改为 `collector-policy` 的 re-export 与薄封装，删除本地实现；带门禁的整轮应用改用共享 `merge`（输出沿用上一份顺序、保留成功 service 已有 freshness、旧 `empty` 快照可借用，见规则 19） |
 | C123 | 契约清理 | 停发从未被读取的请求字段 | 本地请求 capabilities 仅 `localSessions`（+ 有凭证时 `externalQuotas`），定向请求不再标记 `subscriptionQuotaOnly` / `subscriptionProviders`，`providerEnv` 退出凭据白名单（旧文件中的该字段读取时丢弃，见 design/01 规则 3） |
 | C128 | 结构重构 | `runtime_core.rs` 按职责拆分 | 拆出 `runtime_core/activity.rs` / `geometry.rs` / `status.rs`，经 `pub use` 保持 `runtime_core::*` 公开路径，行为不变（见 design/00 C053 纪律） |
+| C135 | 结构重构 | TD-011：`settings.js` 拆分为共享状态 + 分节脚本 + 壳层引导 | 新增规则 32：共享状态只存在于 `window.BruceSettingsCore`，脚本按固定顺序加载，单文件控制在约 1,500 行内 |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
@@ -386,6 +387,7 @@ Windows Tauri 后端 (Rust)
     - **录制态真正注销已生效热键**：`RegisterHotKey` 注册的组合键由系统直接截走、不投递给前台窗口，仅挂起回调时设置页录不到当前热键。故 `set_hotkey_recording(true)` 在置位防误弹开关后注销已生效热键，`set_hotkey_recording(false)`（含录制中关闭设置窗口、保存设置前）重新注册；恢复失败时清空后端登记并回 `HOTKEY_RESUME_FAILED`，设置页提示「已生效的全局快捷键恢复失败，请重新录制」。注销 / 恢复的判定为纯函数 `suspend_or_resume_hotkey`。
 
 31. **出站网络不得阻塞主线程**（C109）：Tauri 2 的同步 `#[tauri::command]` 在主线程执行，期间托盘、看板与设置窗口全部失去响应。凡含出站 HTTP 的 command（设备码申请 / 轮询换码、订阅试查等）**必须声明为 `async fn`**，阻塞调用经 `off_main_thread`（`tauri::async_runtime::spawn_blocking`）执行；需 COM STA 的 Win32 调用（如 `ShellExecuteW` 打开外部浏览器）经 `run_on_main_thread` 派回主线程。采集与 Codex 令牌刷新只在调度器后台线程运行。守卫用例 `tests/command_threading.rs` 逐个解析 `lib.rs` 的 command 函数体，同步 command 一旦直接调用网络入口即失败。
+32. **设置窗口前端按职责分段加载**（TD-011 / C135）：`settings.html` 按「共享状态 → 分节脚本 → 壳层引导」的固定顺序加载经典脚本：`provider-brand.js`、`update-presentation.js`、`settings-state.js`、各分节脚本（订阅 / 工作台 / 计费 / 维护）、`settings.js`。共享可变状态只存在于 `settings-state.js` 暴露的 `window.BruceSettingsCore`，分节脚本通过该对象读写同一份状态，不得各自复制；跨节调用经命名空间注册，单文件须控制在 design/00「单文件内聚与规模边界」的约 1,500 行以内。DOM 测试 harness 通过解析 `settings.html` 的 `<script src>` 顺序加载，新增/调整脚本必须同步 HTML 与真实 WebView2 入口，禁止只改测试或只改页面。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

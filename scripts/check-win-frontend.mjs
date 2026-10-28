@@ -15,6 +15,10 @@ import { spawnSync } from "node:child_process";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appSource = readFileSync(join(repoRoot, "apps/win/src/app.js"), "utf8");
 const htmlSource = readFileSync(join(repoRoot, "apps/win/src/index.html"), "utf8");
+// TD-011: 设置窗口拆分为 settings-state + 分节脚本 + settings.js 引导, 脚本清单以
+// settings.html 的加载顺序为准 (拆分后仍逐文件做语法检查并合并做接线断言)。
+const settingsHtmlSource = readFileSync(join(repoRoot, "apps/win/src/settings.html"), "utf8");
+const settingsScripts = [...settingsHtmlSource.matchAll(/<script src="(settings[^"]*\.js)"/g)].map((match) => match[1]);
 
 let failed = false;
 const fail = (message) => {
@@ -22,7 +26,7 @@ const fail = (message) => {
   failed = true;
 };
 
-for (const file of ["app.js", "settings.js"]) {
+for (const file of ["app.js", ...settingsScripts]) {
   try {
     new vm.Script(readFileSync(join(repoRoot, "apps/win/src", file), "utf8"), { filename: file });
     console.log(`ok: ${file} 语法合法`);
@@ -82,8 +86,10 @@ console.log("Windows 前端结构冒烟通过");
 // update-presentation.test.mjs 执行, 这里锁住「接线不得被裁撤」的结构面 ——
 // 通用页版本行不得回潮、维护页卡/角标/样式/插件接入缺一即红灯。
 {
-  const settingsHtml = readFileSync(join(repoRoot, "apps/win/src/settings.html"), "utf8");
-  const settingsJs = readFileSync(join(repoRoot, "apps/win/src/settings.js"), "utf8");
+  const settingsHtml = settingsHtmlSource;
+  const settingsJs = settingsScripts
+    .map((file) => readFileSync(join(repoRoot, "apps/win/src", file), "utf8"))
+    .join("\n");
   const stylesCss = readFileSync(join(repoRoot, "apps/win/src/styles.css"), "utf8");
   const rustConf = JSON.parse(readFileSync(join(repoRoot, "apps/win/src-tauri/tauri.conf.json"), "utf8"));
   const rustLib = readFileSync(join(repoRoot, "apps/win/src-tauri/src/software_update.rs"), "utf8");

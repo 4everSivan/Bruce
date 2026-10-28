@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-27",
+  "updated_at": "2026-10-28",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -18,7 +18,8 @@
         "C114",
         "C121",
         "C125",
-        "C128"
+        "C128",
+        "C130"
       ]
     },
     "MenuBarIndicator": {
@@ -31,7 +32,9 @@
         "C098",
         "C100",
         "C102",
-        "C103"
+        "C103",
+        "C132",
+        "C133"
       ]
     },
     "PricingEngine": {
@@ -99,7 +102,8 @@
         "C099",
         "C101",
         "C109",
-        "C115"
+        "C115",
+        "C135"
       ]
     },
     "SubscriptionQuota": {
@@ -131,7 +135,8 @@
         "C118",
         "C120",
         "C124",
-        "C127"
+        "C127",
+        "C131"
       ]
     },
     "TokenUsage": {
@@ -160,7 +165,9 @@
         "C122",
         "C123",
         "C126",
-        "C129"
+        "C129",
+        "C134",
+        "C136"
       ]
     },
     "AgentAnalytics": {
@@ -1342,6 +1349,69 @@
       "topic": "TokenUsage",
       "version": "0.14.0",
       "file": "docs/archive/0.14.0/change/C129.json"
+    },
+    "C130": {
+      "title": "技术债 TD-003/005/006 总账校准",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "SystemOverview",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C130.json"
+    },
+    "C131": {
+      "title": "技术债 TD-008/010 口径定稿",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "SubscriptionQuota",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C131.json"
+    },
+    "C132": {
+      "title": "TD-012：滚动条压制改为 KVO/通知事件驱动",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C132.json"
+    },
+    "C133": {
+      "title": "TD-009：菜单栏额度摘要与仪表盘共用验证门禁",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C133.json"
+    },
+    "C134": {
+      "title": "TD-004：抽取 collector-local cache_util",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "TokenUsage",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C134.json"
+    },
+    "C135": {
+      "title": "TD-011：Windows settings.js 拆分",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "WindowsCompat",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C135.json"
+    },
+    "C136": {
+      "title": "TD-002：分时/分档价卡评估与暂缓",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C130-c136-tech-debt",
+      "topic": "TokenUsage",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C136.json"
     }
   }
 }

@@ -35,9 +35,21 @@ package enum DashboardPanelAnimationPolicy {
         panelVisible && !reduceMotion
     }
 
-    /// 抑制滚动条看门狗 (0.3s 周期 Timer). 面板 orderOut 不触发视图离窗,
-    /// 必须由面板可见性显式驱动启停 (C044).
-    package static func allowsSuppressorWatchdog(panelVisible: Bool) -> Bool {
+    /// 滚动条压制是否生效 (TD-012): 面板隐藏时不得改写 NSScrollView
+    /// (orderOut 不触发视图离窗), 可见时由 KVO/通知事件驱动而非周期 Timer.
+    package static func allowsScrollIndicatorSuppression(panelVisible: Bool) -> Bool {
         panelVisible
+    }
+
+    /// 物理卷轴展开过渡时长 (秒, 流派 B).
+    package static let curtainOpenDuration: TimeInterval = 0.24
+    /// 物理卷轴收起过渡时长 (秒, 流派 B).
+    package static let curtainCloseDuration: TimeInterval = 0.14
+    /// 卷轴起始与收拢高度 (pt).
+    package static let curtainCollapsedHeight: Double = 20.0
+
+    /// 是否允许播放卷轴开合过渡动画 (未开启减弱动态效果时允许, C137).
+    package static func allowsCurtainTransition(reduceMotion: Bool) -> Bool {
+        !reduceMotion
     }
 }

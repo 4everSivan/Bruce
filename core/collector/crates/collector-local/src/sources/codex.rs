@@ -2,10 +2,14 @@ use super::{
     finish, line_may_match, number_u64, parse_json_line, scan_jsonl_file, SourceScan,
     SourceScanError,
 };
+use crate::cache_util::fingerprint_head_tail;
 use crate::jsonl_cache::CachedUsageObservation;
 
 /// Codex rollout 中参与聚合的行类型 (C110 解析前预筛)。
 const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count"];
+
+/// 头尾指纹只读的定长块 (C117): 与 jsonl 缓存的头部/尾部段大小一致。
+const CODEX_FINGERPRINT_CHUNK_BYTES: u64 = 64 * 1024;
 use crate::{ScanStats, MAX_DIRECTORY_SCAN_DEPTH};
 use collector_domain::{CollectionWindow, UsageContributionBuilder};
 use collector_runtime::CancellationToken;
@@ -14,8 +18,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File};
-use std::io::{self, Read, Seek, Write};
+use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -208,7 +212,12 @@ pub(super) fn collect_codex_files(
                 (format!("rollout:{file_name}"), None)
             } else {
                 cancellation.check()?;
-                match fingerprint_file(&canonical, metadata.len(), cancellation) {
+                match fingerprint_head_tail(
+                    &canonical,
+                    metadata.len(),
+                    CODEX_FINGERPRINT_CHUNK_BYTES,
+                    cancellation,
+                ) {
                     Ok(fingerprint) => (format!("content:{fingerprint}"), Some(fingerprint)),
                     Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                     Err(_) => {
@@ -337,40 +346,13 @@ fn candidate_digest(
     cancellation.check()?;
     match &candidate.digest {
         Some(digest) => Ok(digest.clone()),
-        None => fingerprint_file(&candidate.path, candidate.size, cancellation),
+        None => fingerprint_head_tail(
+            &candidate.path,
+            candidate.size,
+            CODEX_FINGERPRINT_CHUNK_BYTES,
+            cancellation,
+        ),
     }
-}
-
-/// 头尾指纹: 首 64KB + 末 64KB + size 的 SHA-256.
-/// 代替全文件哈希做副本判等 — GB 级 rollout 每轮刷新全量重读会让采集
-/// 卡在分钟级; 指纹只读固定量字节. 同头同尾同长但中段不同的极端构造
-/// 会被误判为相同副本 (可接受: 仍只计一次用量, 不会重复计数).
-fn fingerprint_file(
-    path: &Path,
-    size: u64,
-    cancellation: &CancellationToken,
-) -> Result<String, SourceScanError> {
-    const CHUNK: u64 = 64 * 1024;
-    cancellation.check()?;
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
-    hasher.update(size.to_le_bytes());
-    let mut buffer = vec![0u8; CHUNK as usize];
-    // 头部块 (整文件不足一块时即全部内容).
-    let head_len = io::Read::by_ref(&mut file).take(CHUNK).read(&mut buffer)?;
-    hasher.update(&buffer[..head_len]);
-    // 中段存在时直接 seek 到末块前读取, 不重读中段.
-    if size > CHUNK {
-        cancellation.check()?;
-        file.seek(io::SeekFrom::Start(size - CHUNK))?;
-        let mut tail = Vec::with_capacity(CHUNK as usize);
-        io::Read::by_ref(&mut file)
-            .take(CHUNK)
-            .read_to_end(&mut tail)?;
-        hasher.update(&tail);
-    }
-    cancellation.check()?;
-    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Scan Codex CLI and Orca rollout JSONL files.  The quota snapshot remains a

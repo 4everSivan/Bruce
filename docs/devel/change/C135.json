@@ -1,0 +1,89 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C135",
+  "title": "TD-011：Windows 设置窗口前端拆分为共享状态 + 分节脚本 + 壳层引导",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "chore/C130-c136-tech-debt",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "settings 前端",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "apps/win/src/settings.js 原为 3,258 行单 IIFE，超出 design/00「单文件内聚与规模边界」约 1,500 行上限。各职责段读写的共享可变状态与顶层绑定交错，不能纯移动。拆为 settings-state.js（共享状态 + 基础助手，挂 window.BruceSettingsCore）与订阅/工作台/计费/维护分节脚本，settings.js 只保留壳层引导；settings.html 按固定顺序加载，DOM harness 沿用同一顺序。",
+  "precheck": {
+    "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
+    "command": "grep / wc / 对应测试套件",
+    "expected": "定位真实状态，避免重复开发或伪造修复",
+    "is_completed": false,
+    "evidence": "wc -l 实测拆分前 settings.js 3258 行；拆分为 settings-state.js 272 / settings-subscription.js 1338 / settings-workbench.js 656 / settings-pricing.js 304 / settings-maintenance.js 748 / settings.js 56"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt / swift format",
+      "scripts/adflow-verify --card C135 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "共享状态",
+      "before": "settings / allowlist / providerOrder / cardOrder / accounts 等可变绑定在单 IIFE 内",
+      "after": "统一收敛到 window.BruceSettingsCore.state，分节脚本读写同一对象",
+      "impact": "拆分后状态不复制、不漂移"
+    },
+    {
+      "scope": "脚本布局",
+      "before": "settings.js 3,258 行单文件",
+      "after": "settings-state.js + settings-subscription.js / settings-workbench.js / settings-pricing.js / settings-maintenance.js + 壳层 settings.js，各文件低于约 1,500 行",
+      "impact": "单文件 review 成本下降，加载顺序由 settings.html 固定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-06",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "文件规模",
+        "true_if": "所有 settings*.js 均低于约 1,500 行，settings.js 仅保留壳层引导",
+        "false_if": "任一拆分文件仍超限或壳层仍承载业务段",
+        "evidence": "wc -l: settings.js 56, settings-state.js 272, settings-subscription.js 1338, settings-workbench.js 656, settings-pricing.js 304, settings-maintenance.js 748；全部低于约 1,500 行",
+        "result": true
+      },
+      {
+        "item": "前端回归",
+        "true_if": "scripts/check-win-frontend.mjs 与三个 node --test 套件全绿",
+        "false_if": "任一前端测试失败或脚本加载顺序缺失",
+        "evidence": "node scripts/check-win-frontend.mjs exit 0；frontend.test.mjs 89 passed / 0 failed；geometry-parity.test.mjs 2 passed；update-presentation.test.mjs 6 passed; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -814,11 +814,13 @@ struct MenuBarDashboardView: View {
 
 /// macOS 26 上 `.scrollIndicators(.hidden)` 不生效: HostingScrollView 在
 /// 附加后仍被系统重设为 `hasVerticalScroller = true` (本地最小复现实证).
-/// 该视图放在 ScrollView 内容内, 附加到窗口后向上找到 NSScrollView 并持续
-/// 压制 scroller; 滚动本身经 NSClipView 完成, 滚轮/触控板不受影响.
+/// 该视图放在 ScrollView 内容内, 附加到窗口后向上找到 NSScrollView 并压制
+/// scroller; 滚动本身经 NSClipView 完成, 滚轮/触控板不受影响.
+///
+/// TD-012: 不再用 0.3s 周期 Timer 轮询, 改为 KVO 观察 scroller 相关属性 +
+/// `NSScroller.preferredScrollerStyleDidChangeNotification` 事件驱动.
 private struct ScrollIndicatorSuppressor: NSViewRepresentable {
-    /// 面板可见性 (C044): 隐藏时看门狗必须停止 —— orderOut 不触发视图离窗,
-    /// 否则首次打开面板后 0.3s Timer 会终身运行.
+    /// 面板可见性 (C044): 隐藏时不得改写 scroller —— orderOut 不触发视图离窗.
     var panelVisible: Bool = true
 
     func makeNSView(context: Context) -> SuppressorView {
@@ -829,63 +831,131 @@ private struct ScrollIndicatorSuppressor: NSViewRepresentable {
 
     func updateNSView(_ nsView: SuppressorView, context: Context) {
         nsView.panelVisible = panelVisible
-        DispatchQueue.main.async { nsView.enforce() }
+        nsView.enforce()
     }
 }
 
 private final class SuppressorView: NSView {
-    private var watchdog: Timer?
+    private var observedScrollView: NSScrollView?
+    private var observations: [NSKeyValueObservation] = []
+    private var styleObserver: NSObjectProtocol?
 
-    /// 由 `DashboardPanelAnimationPolicy.allowsSuppressorWatchdog` 派生:
-    /// 隐藏态不跑 0.3s 周期 Timer.
+    /// 由 `DashboardPanelAnimationPolicy.allowsScrollIndicatorSuppression` 派生:
+    /// 隐藏态不观察也不改写 scroller.
     var panelVisible: Bool = true {
         didSet {
             guard panelVisible != oldValue else { return }
-            syncWatchdog()
+            syncObservation()
         }
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        syncWatchdog()
+        syncObservation()
     }
 
-    private func syncWatchdog() {
-        watchdog?.invalidate()
-        watchdog = nil
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        syncObservation()
+    }
+
+    override func layout() {
+        super.layout()
+        // SwiftUI 可能在本视图附加后才挂上祖先 ScrollView.
+        syncObservation()
+    }
+
+    deinit {
+        detachObservation()
+    }
+
+    /// 面板可见且已入窗时建立观察并立即压制一次; 否则解除观察.
+    private func syncObservation() {
         guard window != nil,
-              DashboardPanelAnimationPolicy.allowsSuppressorWatchdog(panelVisible: panelVisible)
-        else { return }
+              DashboardPanelAnimationPolicy.allowsScrollIndicatorSuppression(
+                  panelVisible: panelVisible
+              ),
+              let scrollView = findScrollView()
+        else {
+            detachObservation()
+            return
+        }
+        guard scrollView !== observedScrollView else {
+            enforce()
+            return
+        }
+        detachObservation()
+        observedScrollView = scrollView
+        observations = [
+            scrollView.observe(\.hasVerticalScroller, options: [.new]) {
+                [weak self] _, _ in self?.scheduleEnforce()
+            },
+            scrollView.observe(\.hasHorizontalScroller, options: [.new]) {
+                [weak self] _, _ in self?.scheduleEnforce()
+            },
+            scrollView.observe(\.scrollerStyle, options: [.new]) {
+                [weak self] _, _ in self?.scheduleEnforce()
+            },
+        ]
+        styleObserver = NotificationCenter.default.addObserver(
+            forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleEnforce()
+        }
         enforce()
-        // SwiftUI 会在附加后的若干 runloop 及后续布局中反复重设 scroller,
-        // 用轻量看门狗持续压制; 面板关闭或隐藏时停止.
-        watchdog = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) {
-            [weak self] _ in
-            // Timer 回调非隔离; 调度回主线程再碰 NSView 层级.
-            DispatchQueue.main.async {
-                self?.enforce()
-            }
+    }
+
+    private func detachObservation() {
+        observations.removeAll()
+        observedScrollView = nil
+        if let styleObserver {
+            NotificationCenter.default.removeObserver(styleObserver)
+            self.styleObserver = nil
         }
     }
 
-    func enforce() {
+    private func scheduleEnforce() {
+        if Thread.isMainThread {
+            enforce()
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.enforce() }
+        }
+    }
+
+    private func findScrollView() -> NSScrollView? {
         var current = superview
         while let view = current {
             if let scrollView = view as? NSScrollView {
-                // legacy scroller 即使隐藏也会占约 17pt 布局宽度, 造成左右
-                // 内边距不对称; 先切 overlay 样式 (不占布局) 再关闭 scroller.
-                if scrollView.scrollerStyle != .overlay {
-                    scrollView.scrollerStyle = .overlay
-                }
-                if scrollView.hasVerticalScroller {
-                    scrollView.hasVerticalScroller = false
-                }
-                if scrollView.hasHorizontalScroller {
-                    scrollView.hasHorizontalScroller = false
-                }
-                return
+                return scrollView
             }
             current = view.superview
+        }
+        return nil
+    }
+
+    func enforce() {
+        guard window != nil,
+              DashboardPanelAnimationPolicy.allowsScrollIndicatorSuppression(
+                  panelVisible: panelVisible
+              ),
+              let scrollView = observedScrollView ?? findScrollView()
+        else { return }
+        if scrollView !== observedScrollView {
+            syncObservation()
+            return
+        }
+        // legacy scroller 即使隐藏也会占约 17pt 布局宽度, 造成左右
+        // 内边距不对称; 先切 overlay 样式 (不占布局) 再关闭 scroller.
+        if scrollView.scrollerStyle != .overlay {
+            scrollView.scrollerStyle = .overlay
+        }
+        if scrollView.hasVerticalScroller {
+            scrollView.hasVerticalScroller = false
+        }
+        if scrollView.hasHorizontalScroller {
+            scrollView.hasHorizontalScroller = false
         }
     }
 }

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C136",
+  "title": "技术债 TD-002 评估：分时/分档价卡需先改聚合数据契约，本批次暂缓",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "chore/C130-c136-tech-debt",
+  "is_hotfix": false,
+  "target": {
+    "module": "collector-domain",
+    "component": "PricingTable / UsageAccumulator",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "TD-002 要求 DeepSeek V4 Pro 峰谷双价与 Qwen3.7 Plus >256K 分档。复核发现计价入口 calculate_cost 只接收聚合后的 TokenBucket，而 UsageAccumulator 已按模型×日合并逐条 UsageSample，请求时间与单请求输入长度均已丢失；仅改 ModelPricing 结构无法得到正确结果。故在 design/01 记录扩展门槛并保留 future.md 条目，等待独立卡按「先扩 TokenBucket/升 AGGREGATION_VERSION → 采集端逐样本分流 → 价卡规则集」实施，不在本批次伪造分时计价。",
+  "precheck": {
+    "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
+    "command": "grep / wc / 对应测试套件",
+    "expected": "定位真实状态，避免重复开发或伪造修复",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt / swift format",
+      "scripts/adflow-verify --card C136 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "评估结论",
+      "before": "future.md 仅写「待后续扩展 ModelPricing 分时/分档结构」",
+      "after": "design/01 规则 1 记录真实前置条件：聚合层已丢失时间与单请求长度，需扩 TokenBucket 并升缓存版本",
+      "impact": "后续立项不会误以为只改价卡即可"
+    },
+    {
+      "scope": "台账",
+      "before": "TD-002 描述缺少阻塞点",
+      "after": "future.md TD-002 处置方案补充 2026-10-28 评估与暂缓理由",
+      "impact": "发版评审可见准确剩余工作"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-07",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "评估可复核",
+        "true_if": "calculate_cost 入参为 TokenBucket，UsageAccumulator 按模型×日合并，无法获得请求时间/单请求长度",
+        "false_if": "仍存在可直接在 calculate_cost 内完成分时/分档的未丢失字段",
+        "evidence": "源码核验：collector-aggregate::price_bucket / finalize_with_pricing 仅传 TokenBucket；UsageAccumulator.merge_delta 按 day/model 合并",
+        "result": true
+      },
+      {
+        "item": "文档落地",
+        "true_if": "design/01 与 future.md 均记录扩展门槛与暂缓决定",
+        "false_if": "文档仍称「仅需扩展 ModelPricing」或未记录阻塞点",
+        "evidence": "design/01 规则 1「分时/分档价卡的扩展门槛」+ future.md TD-002 处置方案; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

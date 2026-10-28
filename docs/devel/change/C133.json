@@ -1,0 +1,89 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C133",
+  "title": "TD-009：菜单栏「最低/平均剩余额度」与仪表盘共用验证门禁",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "chore/C130-c136-tech-debt",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "AppModel / MenuBarSummaryBuilder",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "仪表盘订阅段只展示 verificationStatus == ok 的 Provider，而菜单栏摘要直接消费未门控 artifact，导致菜单栏「最低剩余额度」可能来自面板已隐藏的 Provider，两个入口口径不一致。改为菜单栏额度摘要消费 gatedAgentUsageArtifact()，与面板共用同一门禁；Token/费用摘要不受订阅门禁影响。",
+  "precheck": {
+    "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
+    "command": "grep / wc / 对应测试套件",
+    "expected": "定位真实状态，避免重复开发或伪造修复",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt / swift format",
+      "scripts/adflow-verify --card C133 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "摘要输入",
+      "before": "MenuBarSummaryBuilder.build(from: decodedAgentUsageArtifact())",
+      "after": "build(from: gatedAgentUsageArtifact())，额度类只统计已验证 Provider",
+      "impact": "菜单栏与面板口径一致；验证状态变化经 invalidatePanelCache 立即重算"
+    },
+    {
+      "scope": "回归覆盖",
+      "before": "AppModelCacheHarness 只覆盖摘要缓存与 token 新鲜度",
+      "after": "新增菜单栏额度门禁用例：kimi ok + deepseek none 时最低/平均只取 kimi；全部未验证时额度为空",
+      "impact": "防止未来再次绕过门禁"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-04",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "额度摘要按验证状态过滤",
+        "true_if": "kimi verified(used 10) + deepseek none(used 90) 时 minimum/average 均为 90；两者都未验证时为 nil",
+        "false_if": "未验证 Provider 仍进入额度摘要，或验证状态变化后缓存未失效",
+        "evidence": "AppModelCacheHarness 新增 menuBarQuotaSummaryHonorsDashboardVerificationGate 通过；'AppModelCache tests passed: 4'",
+        "result": true
+      },
+      {
+        "item": "Token/费用摘要不受影响",
+        "true_if": "todayTokens / todayCostUsd 仍来自完整 artifact",
+        "false_if": "Token 或费用被订阅门禁误过滤",
+        "evidence": "makeMenuBarSummary 仅替换额度输入为 gated artifact；原 token 用例 menuBarSummaryDoesNotReturnStaleNilAfterArtifactArrives / RebuildsAfterArtifactChange 全绿; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
