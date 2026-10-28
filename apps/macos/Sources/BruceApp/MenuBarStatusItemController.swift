@@ -55,9 +55,13 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// 最近一次 SwiftUI 上报的内容尺寸 (C147). 打开面板与过渡结束后都以此为准,
     /// 不再依赖会被布局时序污染的 `fittingSize` 或上一次窗口 frame.
     private var lastContentSize: CGSize?
-    /// 过渡中/隐藏期间被抑制的上报尺寸 (C147); 动画结束或面板重新可见时补应用一次,
+    /// 过度中/隐藏期间被抑制的上报尺寸 (C147); 动画结束或面板重新可见时补应用一次,
     /// 避免「值只在变化时上报」把错位永久固化.
     private var pendingContentSize: CGSize?
+    /// 高度应用是否已排队 (C147). `onGeometryChange` 在 SwiftUI 布局过程中回调,
+    /// 动画期间逐帧上报; 在同一轮里合并、并在布局周期结束后再改窗口/强制布局,
+    /// 避免重入把动画中间态写成最终态.
+    private var contentSizeApplyScheduled = false
 
     init(
         model: AppModel,
@@ -668,17 +672,25 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     /// SwiftUI 内容理想尺寸变化时跟随调整面板 (顶边固定, 高度变化向下延伸, 屏幕底部安全吸附保护).
-    /// C147: 过渡中/隐藏期间的上报只暂存, 由 `flushPendingContentSize` 在动画结束或
-    /// 面板重新可见时补应用, 避免被吞掉的上报把窗口与内容高度永久拉偏.
+    /// C147: 上报只记录并排队, 由 `flushPendingContentSize` 在布局周期结束后统一应用 ——
+    /// 过渡中/隐藏期间暂存, 动画结束或面板重新可见时补应用, 避免被吞掉的上报
+    /// 或动画逐帧重入把窗口与内容高度永久拉偏.
     private func resizePanel(to size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
         lastContentSize = DashboardPanelSizingPolicy.resolvedContentSize(size)
-        guard !isTransitioning, panel.isVisible else {
-            pendingContentSize = lastContentSize
-            return
+        pendingContentSize = lastContentSize
+        scheduleContentSizeApply()
+    }
+
+    /// 合并同一轮布局内的多帧上报, 延后到当前布局周期之后再应用 (C147).
+    private func scheduleContentSizeApply() {
+        guard !contentSizeApplyScheduled else { return }
+        contentSizeApplyScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.contentSizeApplyScheduled = false
+            self.flushPendingContentSize()
         }
-        pendingContentSize = nil
-        applyContentSize(size)
     }
 
     /// 把内容尺寸落成面板 frame: 顶边锚定 + 屏幕夹取, 并与宿主视图的内容高度同源刷新.
