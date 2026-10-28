@@ -75,7 +75,102 @@ struct NativeLifecycleHarness {
         try menuBarContentUsesStableIconAndMetrics()
         try menuBarContentUsesRefreshAndFailureIcons()
         try dashboardPlacementFallsBackFromInvalidStatusItemCoordinates()
-        print("Native lifecycle tests passed: 14")
+        try panelSizingKeepsTopAnchoredWithinScreen()
+        print("Native lifecycle tests passed: 15")
+    }
+
+    /// C147: 面板尺寸裁决 —— 顶边锚定、屏幕夹取、超高压缩、水平夹取.
+    private static func panelSizingKeepsTopAnchoredWithinScreen() throws {
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1920, height: 1055)
+        let content = CGSize(width: 440, height: 662)
+
+        // 1. 正常尺寸: 顶部保持不动, 高度不变.
+        let anchored = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: 1000,
+            contentSize: content,
+            currentX: 700,
+            visibleFrame: visibleFrame
+        )
+        try expect(
+            anchored.size == content && abs(anchored.maxY - 1000) < 0.01,
+            "normal content must keep its size and top edge"
+        )
+
+        // 2. 内容高于屏幕可用高度: 压缩高度, 顶栏与底栏都留在屏内.
+        let oversized = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: 1000,
+            contentSize: CGSize(width: 440, height: 1600),
+            currentX: 700,
+            visibleFrame: visibleFrame
+        )
+        let availableHeight = visibleFrame.height - DashboardPanelSizingPolicy.edgeInset * 2
+        try expect(
+            abs(oversized.height - availableHeight) < 0.01,
+            "oversized content must be clamped to the visible frame height"
+        )
+        try expect(
+            oversized.maxY <= visibleFrame.maxY - DashboardPanelSizingPolicy.edgeInset + 0.01
+                && oversized.minY >= visibleFrame.minY + DashboardPanelSizingPolicy.edgeInset - 0.01,
+            "oversized panel must stay fully inside the visible frame"
+        )
+
+        // 3. 顶部越屏: 必须被拉回屏内 (Header 不允许被顶出窗口/屏幕).
+        let aboveScreen = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: visibleFrame.maxY + 200,
+            contentSize: content,
+            currentX: 700,
+            visibleFrame: visibleFrame
+        )
+        try expect(
+            abs(aboveScreen.maxY - (visibleFrame.maxY - DashboardPanelSizingPolicy.edgeInset)) < 0.01,
+            "a panel top above the screen must be pulled back below the visible frame top"
+        )
+
+        // 4. 底部越屏 (顶边压得太低): 整体上移, 底栏不得掉出屏幕下沿.
+        let belowScreen = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: 100,
+            contentSize: content,
+            currentX: 700,
+            visibleFrame: visibleFrame
+        )
+        try expect(
+            abs(belowScreen.minY - (visibleFrame.minY + DashboardPanelSizingPolicy.edgeInset)) < 0.01,
+            "a panel bottom below the screen must be lifted to the visible frame bottom"
+        )
+
+        // 5. 水平夹取: 面板不得越过屏幕左右内距.
+        let leftOverflow = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: 1000,
+            contentSize: content,
+            currentX: -120,
+            visibleFrame: visibleFrame
+        )
+        try expect(
+            abs(leftOverflow.minX - DashboardPanelSizingPolicy.edgeInset) < 0.01,
+            "a panel left of the screen must be clamped to the left inset"
+        )
+        let rightOverflow = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: 1000,
+            contentSize: content,
+            currentX: 5000,
+            visibleFrame: visibleFrame
+        )
+        try expect(
+            abs(
+                rightOverflow.maxX
+                    - (visibleFrame.maxX - DashboardPanelSizingPolicy.edgeInset)
+            ) < 0.01,
+            "a panel right of the screen must be clamped to the right inset"
+        )
+
+        // 6. 非正尺寸兜底: 宽高至少 1pt, 不允许出现零/负尺寸窗口.
+        let degenerate = DashboardPanelSizingPolicy.resolvedContentSize(
+            CGSize(width: -10, height: 0)
+        )
+        try expect(
+            degenerate.width >= 1 && degenerate.height >= 1,
+            "non-positive content sizes must resolve to at least one point"
+        )
     }
 
     private static func closeTransitionPublishesHiddenWhenWindowAlreadyHidden() throws {

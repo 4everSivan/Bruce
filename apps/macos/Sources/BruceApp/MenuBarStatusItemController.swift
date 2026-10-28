@@ -52,6 +52,12 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private var dashboardGlassController: DashboardGlassPanelController?
     /// 物理卷轴抽屉动画执行中标志 (C137). 动画期间抑制动态尺寸重排, 避免布局竞态.
     private var isTransitioning = false
+    /// 最近一次 SwiftUI 上报的内容尺寸 (C147). 打开面板与过渡结束后都以此为准,
+    /// 不再依赖会被布局时序污染的 `fittingSize` 或上一次窗口 frame.
+    private var lastContentSize: CGSize?
+    /// 过渡中/隐藏期间被抑制的上报尺寸 (C147); 动画结束或面板重新可见时补应用一次,
+    /// 避免「值只在变化时上报」把错位永久固化.
+    private var pendingContentSize: CGSize?
 
     init(
         model: AppModel,
@@ -510,19 +516,24 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             ? nil
             : frontmost
         let fittingSize = panel.contentViewController?.view.fittingSize ?? .zero
-        if fittingSize.width > 0, fittingSize.height > 0 {
-            panel.setContentSize(fittingSize)
-        }
+        let initialSize = openContentSize(fittingSize: fittingSize)
         let screen = button.window?.screen ?? NSScreen.main
         let screenRect = button.window?.convertToScreen(button.convert(button.bounds, to: nil))
             ?? button.convert(button.bounds, to: nil)
         let placement = DashboardPanelPlacementResolver.resolve(
             anchorRect: screenRect,
-            panelSize: panel.frame.size,
+            panelSize: initialSize,
             visibleFrame: screen?.visibleFrame ?? .zero,
             screenFrame: screen?.frame ?? .zero
         )
-        let targetFrame = NSRect(origin: placement.origin, size: panel.frame.size)
+        // C147: 目标 frame 与窗口高度同源, 并夹取进屏, 保证顶栏/底栏都不会被推出屏幕.
+        let targetFrame = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: placement.origin.y + initialSize.height,
+            contentSize: initialSize,
+            currentX: placement.origin.x,
+            visibleFrame: screen?.visibleFrame ?? .zero
+        )
+        dashboardGlassController?.updateContentHeight(targetFrame.height)
 
         // 面板关闭期间主题可能已切换且 SwiftUI onChange 尚未触发 (视图未加载),
         // 打开前兜底刷新一次面板级属性.
@@ -535,9 +546,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         guard DashboardPanelAnimationPolicy.allowsCurtainTransition(
             motionSuppressed: coordinator.motionSuppressed
         ) else {
-            panel.setFrameOrigin(placement.origin)
+            panel.setFrame(targetFrame, display: false)
             panel.alphaValue = 1.0
             panel.makeKeyAndOrderFront(nil)
+            dashboardGlassController?.realignContentToTop()
             return
         }
 
@@ -567,11 +579,28 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 guard let self else { return }
                 self.isTransitioning = false
                 if self.dashboardToggleState == .open {
-                    self.panel.setFrame(targetFrame, display: true)
                     self.panel.alphaValue = 1.0
+                    // 动画期间被抑制的内容高度上报在此补应用, 不再回落到可能过期的 targetFrame.
+                    self.flushPendingContentSize()
                 }
             }
         })
+    }
+
+    /// 打开面板时采用的内容尺寸: 优先最近一次实测上报, 仅在从未收到上报时用 fittingSize 兜底.
+    /// C147: 宿主视图高度改为显式约束后, `fittingSize` 在视图尚未上报时会退化成约束常量,
+    /// 因此对兜底值做下限保护, 避免首开窗口被压成一条窄条.
+    private func openContentSize(fittingSize: CGSize) -> CGSize {
+        if let lastContentSize, lastContentSize.width > 0, lastContentSize.height > 0 {
+            return DashboardPanelSizingPolicy.resolvedContentSize(lastContentSize)
+        }
+        let hasUsableFittingSize = fittingSize.width > 0 && fittingSize.height >= 120
+        let fallback = hasUsableFittingSize
+            ? fittingSize
+            : CGSize(width: max(panel.frame.width, 440), height: 640)
+        let resolved = DashboardPanelSizingPolicy.resolvedContentSize(fallback)
+        lastContentSize = hasUsableFittingSize ? resolved : nil
+        return resolved
     }
 
     /// 关闭面板; toggle 关闭时把前台归还给打开前的应用,
@@ -639,19 +668,43 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     /// SwiftUI 内容理想尺寸变化时跟随调整面板 (顶边固定, 高度变化向下延伸, 屏幕底部安全吸附保护).
+    /// C147: 过渡中/隐藏期间的上报只暂存, 由 `flushPendingContentSize` 在动画结束或
+    /// 面板重新可见时补应用, 避免被吞掉的上报把窗口与内容高度永久拉偏.
     private func resizePanel(to size: CGSize) {
-        guard !isTransitioning else { return }
-        guard panel.isVisible, size.width > 0, size.height > 0,
-              abs(size.height - panel.frame.height) > 1 else {
+        guard size.width > 0, size.height > 0 else { return }
+        lastContentSize = DashboardPanelSizingPolicy.resolvedContentSize(size)
+        guard !isTransitioning, panel.isVisible else {
+            pendingContentSize = lastContentSize
             return
         }
-        let topY = panel.frame.maxY
+        pendingContentSize = nil
+        applyContentSize(size)
+    }
+
+    /// 把内容尺寸落成面板 frame: 顶边锚定 + 屏幕夹取, 并与宿主视图的内容高度同源刷新.
+    private func applyContentSize(_ size: CGSize) {
         let screen = panel.screen ?? NSScreen.main
-        let minimumY = (screen?.visibleFrame.minY ?? 0) + 8
-        panel.setContentSize(size)
-        let unclampedY = topY - panel.frame.height
-        let targetY = max(unclampedY, minimumY)
-        panel.setFrameOrigin(NSPoint(x: panel.frame.origin.x, y: targetY))
+        let frame = DashboardPanelSizingPolicy.topAnchoredFrame(
+            topY: panel.frame.maxY,
+            contentSize: size,
+            currentX: panel.frame.minX,
+            visibleFrame: screen?.visibleFrame ?? .zero
+        )
+        if abs(frame.height - panel.frame.height) > 1
+            || abs(frame.minY - panel.frame.minY) > 1
+            || abs(frame.minX - panel.frame.minX) > 1 {
+            panel.setFrame(frame, display: true)
+        }
+        dashboardGlassController?.updateContentHeight(frame.height)
+        dashboardGlassController?.realignContentToTop()
+    }
+
+    /// 补应用被过渡/隐藏抑制的高度上报 (C147). 同一轮里最多应用一次.
+    private func flushPendingContentSize() {
+        guard !isTransitioning, panel.isVisible else { return }
+        guard let size = pendingContentSize ?? lastContentSize else { return }
+        pendingContentSize = nil
+        applyContentSize(size)
     }
 
     @objc private func applicationDidResignActive(_ note: Notification) {

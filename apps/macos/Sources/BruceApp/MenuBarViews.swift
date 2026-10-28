@@ -119,6 +119,10 @@ struct MenuBarDashboardView: View {
     /// 底栏实测高度 (发线+操作行); 0 表示尚未测量, 封顶时用 49 兜底预留, 保证底栏不被挤出屏幕.
     @State private var footerHeight: CGFloat = 0
 
+    /// 卡片栈高度上限缓存 (C147). 只在视图出现、面板重新可见、屏幕参数变更时刷新,
+    /// 避免滚动/开合期间实时读 `NSApp.keyWindow?.screen` 让上限跳变、引发高度振荡.
+    @State private var maxStackHeight: CGFloat = 0
+
     /// Tab 模式方案 1 水平定向滑动方向
     @State private var slideDirection: Edge = .trailing
     @Namespace private var tabPillNamespace
@@ -161,13 +165,13 @@ struct MenuBarDashboardView: View {
             // 用 onGeometryChange 实测内容高度驱动 frame: 未测量 (首帧) 不加约束,
             // 测量后取 min(内容高, 屏上限扣除顶底栏), 确保顶底栏始终留在屏幕内.
             .frame(height: cardStackHeight > 0
-                ? min(cardStackHeight, Self.maxCardStackHeight - max(footerHeight, 49) - max(headerHeight, 32))
+                ? min(cardStackHeight, resolvedMaxStackHeight - max(footerHeight, 49) - max(headerHeight, 32))
                 : nil)
             // 隐藏滚动指示条, 滚轮/触控板滚动不受影响.
             .scrollIndicators(.hidden)
             .overlay(alignment: .bottom) {
                 // 内容溢出视口时呈现轻柔渐隐下潜提示, 杜绝卡片被生硬腰斩
-                if cardStackHeight > (Self.maxCardStackHeight - max(footerHeight, 49) - max(headerHeight, 32)) {
+                if cardStackHeight > (resolvedMaxStackHeight - max(footerHeight, 49) - max(headerHeight, 32)) {
                     LinearGradient(
                         colors: [.clear, Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06)],
                         startPoint: .top,
@@ -206,6 +210,17 @@ struct MenuBarDashboardView: View {
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGSize.self, of: { $0.size }) { size in
             onContentSizeChange?(size)
+        }
+        .onAppear { refreshMaxStackHeight() }
+        .onChange(of: model.dashboardPanelVisible) { _, visible in
+            if visible { refreshMaxStackHeight() }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didChangeScreenParametersNotification
+            )
+        ) { _ in
+            refreshMaxStackHeight()
         }
         .onChange(of: coordinator.resolvedTheme) { _, theme in
             onSurfaceThemeChange?(theme, coordinator.appearanceMode.colorScheme)
@@ -258,13 +273,26 @@ struct MenuBarDashboardView: View {
 
     /// 卡片栈高度上限: 铺满面板窗口所在屏 visibleFrame, 只留约 10pt 小边距;
     /// 内容不足时高度自适应不出滚动条, 超出时滚动条自动出现.
-    /// 多屏时优先取面板窗口所在屏, 窗口未挂载或取屏失败时兜底 640.
-    private static var maxCardStackHeight: CGFloat {
-        let screen = NSApp.keyWindow?.screen ?? NSApp.mainWindow?.screen ?? NSScreen.main
+    /// C147: 结果缓存在 `maxStackHeight`, 仅在视图出现/面板重新可见/屏幕参数变更时刷新,
+    /// 布局过程中不再实时读取键窗口所属屏.
+    private static func maxCardStackHeight(on screen: NSScreen?) -> CGFloat {
         guard let visibleHeight = screen?.visibleFrame.height else {
             return 640
         }
         return max(visibleHeight - 10, 320)
+    }
+
+    /// 上限缓存的当前值; 尚未采样时用 640 兜底, 与旧的无屏回退一致.
+    private var resolvedMaxStackHeight: CGFloat {
+        maxStackHeight > 0 ? maxStackHeight : 640
+    }
+
+    /// 采样面板所在屏并刷新高度上限缓存.
+    private func refreshMaxStackHeight() {
+        let screen = NSApp.keyWindow?.screen ?? NSApp.mainWindow?.screen ?? NSScreen.main
+        let height = Self.maxCardStackHeight(on: screen)
+        guard abs(height - maxStackHeight) > 0.5 else { return }
+        maxStackHeight = height
     }
 
     // MARK: - 全局顶部 Header (方案 3: HUD 终端点阵状态栏 · 全风格适配)

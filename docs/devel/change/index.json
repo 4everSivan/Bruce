@@ -38,7 +38,8 @@
         "C133",
         "C137",
         "C143",
-        "C145"
+        "C145",
+        "C147"
       ]
     },
     "PricingEngine": {
@@ -1492,6 +1493,15 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/devel/change/C146.json"
+    },
+    "C147": {
+      "title": "修复面板滚动/回弹后内容高度与窗口高度失步（Header 被顶出窗口、底部留白）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C147.json"
     }
   }
 }
