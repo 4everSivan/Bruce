@@ -1,3 +1,5 @@
+import Foundation
+
 /// Decides whether a decorative dashboard animation may be mounted.
 ///
 /// `orderOut` keeps the hosting view hierarchy alive, so hidden-panel state

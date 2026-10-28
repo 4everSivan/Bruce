@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Added
+- **双端仪表盘物理卷轴抽屉展开动效 (C137)**：
+  - **macOS 端**：以菜单栏图标为顶边固定锚点，自顶向下展开至目标高度（240ms `cubic-bezier(0.16, 1.0, 0.3, 1.0)` 阻尼曲线），内容采用低优先级垂直约束避免挤压形变，逆向回卷（140ms easeIn）后隐藏并归还焦点；支持 Reduce Motion 降级与连击打断保护；
+  - **Windows 端**：通过 CSS `clip-path` 与硬件加速 `transform` 实现任务栏托盘侧物理卷轴展开（260ms）与逆向回卷收拢（140ms），并在 transitionend 后触发后端隐藏。
+
 ### Changed
 - **技术债批次收口 (C130–C136)**：
   - **TD-003/006 总账校准 (C130)**：Windows Provider 清单与四处巨型文件切分均已由既有实现落地，从远期债务池移除；TD-005 仅部分完成（ProviderOutcome 已下沉，codex 重试短路仍在编排层），保留并收窄描述；

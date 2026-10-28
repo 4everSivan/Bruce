@@ -139,6 +139,58 @@ button, input, select, textarea {
   line-height: 1.2;
 }
 
+/* ==========================================================================
+   物理卷轴抽屉开合过渡 (流派 B · C137)
+   ========================================================================== */
+
+#panel.curtain-enter {
+  transform-origin: bottom center;
+  animation: winCurtainEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+#panel.curtain-exit {
+  transform-origin: bottom center;
+  animation: winCurtainExit 140ms ease-in forwards;
+}
+
+@keyframes winCurtainEnter {
+  0% {
+    opacity: 0.1;
+    clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%);
+    transform: translateY(20px) scaleY(0.7);
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes winCurtainExit {
+  0% {
+    opacity: 1;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    transform: translateY(0) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%);
+    transform: translateY(16px) scaleY(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #panel.curtain-enter,
+  #panel.curtain-exit {
+    animation: none !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+}
+
 /* HUD 顶部 Header (mac dashboardTopHeader): 左 [四色状态灯 品牌 Bruce] · 右 Agent 状态 (C100) */
 #hud {
   display: flex;

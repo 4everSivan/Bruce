@@ -50,6 +50,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private var refreshPhase: CGFloat = 0
     /// 仪表盘 AppKit 系统材质宿主; 与业务模型和刷新流程隔离.
     private var dashboardGlassController: DashboardGlassPanelController?
+    /// 物理卷轴抽屉动画执行中标志 (C137). 动画期间抑制动态尺寸重排, 避免布局竞态.
+    private var isTransitioning = false
 
     init(
         model: AppModel,
@@ -470,6 +472,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             self.statusItem = nil
         }
         installed = false
+        isTransitioning = false
     }
 
     @objc private func statusItemClicked(_ sender: Any?) {
@@ -515,13 +518,52 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             visibleFrame: screen?.visibleFrame ?? .zero,
             screenFrame: screen?.frame ?? .zero
         )
-        panel.setFrameOrigin(placement.origin)
+        let targetFrame = NSRect(origin: placement.origin, size: panel.frame.size)
+
         // 面板关闭期间主题可能已切换且 SwiftUI onChange 尚未触发 (视图未加载),
         // 打开前兜底刷新一次面板级属性.
         refreshPanelWindowAttributes()
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
         model.setDashboardPanelVisible(true)
+
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: reduceMotion) else {
+            panel.setFrameOrigin(placement.origin)
+            panel.alphaValue = 1.0
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // 物理卷轴抽屉下拉 (流派 B · C137): 顶边 Y 固定, 高度由 20pt 垂直展开至目标高度
+        let topY = targetFrame.maxY
+        let collapsedHeight = CGFloat(DashboardPanelAnimationPolicy.curtainCollapsedHeight)
+        let startFrame = NSRect(
+            x: targetFrame.origin.x,
+            y: topY - collapsedHeight,
+            width: targetFrame.width,
+            height: collapsedHeight
+        )
+
+        panel.setFrame(startFrame, display: false)
+        panel.alphaValue = 0.25
+        panel.makeKeyAndOrderFront(nil)
+
+        isTransitioning = true
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = DashboardPanelAnimationPolicy.curtainOpenDuration
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
+            panel.animator().setFrame(targetFrame, display: true)
+            panel.animator().alphaValue = 1.0
+        }, completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isTransitioning = false
+                if self.dashboardToggleState == .open {
+                    self.panel.setFrame(targetFrame, display: true)
+                    self.panel.alphaValue = 1.0
+                }
+            }
+        })
     }
 
     /// 关闭面板; toggle 关闭时把前台归还给打开前的应用,
@@ -532,18 +574,63 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             panelIsVisible: panel.isVisible
         )
         model.setDashboardPanelVisible(transition.visible)
-        if transition.shouldOrderOut {
-            panel.orderOut(nil)
-        }
-        let previous = previousFrontmostApp
+
+        let previousPID = restorePreviousFrontmostApp ? previousFrontmostApp?.processIdentifier : nil
         previousFrontmostApp = nil
-        if restorePreviousFrontmostApp, let previous {
-            previous.activate(options: [])
+        let restoreFocus = {
+            if let pid = previousPID, let app = NSRunningApplication(processIdentifier: pid) {
+                app.activate(options: [])
+            }
         }
+
+        guard transition.shouldOrderOut else {
+            restoreFocus()
+            return
+        }
+
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: reduceMotion) else {
+            panel.orderOut(nil)
+            panel.alphaValue = 1.0
+            restoreFocus()
+            return
+        }
+
+        // 物理卷轴抽屉逆向回卷 (流派 B · C137): 顶边固定向上收拢至 20pt 后离窗
+        isTransitioning = true
+        let topY = panel.frame.maxY
+        let collapsedHeight = CGFloat(DashboardPanelAnimationPolicy.curtainCollapsedHeight)
+        let collapseFrame = NSRect(
+            x: panel.frame.origin.x,
+            y: topY - collapsedHeight,
+            width: panel.frame.width,
+            height: collapsedHeight
+        )
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = DashboardPanelAnimationPolicy.curtainCloseDuration
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().setFrame(collapseFrame, display: true)
+            panel.animator().alphaValue = 0.0
+        }, completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isTransitioning = false
+                if self.dashboardToggleState == .closed {
+                    self.panel.orderOut(nil)
+                    // 恢复默认不透明度, 避免下次打开闪烁
+                    self.panel.alphaValue = 1.0
+                }
+                if let pid = previousPID, let app = NSRunningApplication(processIdentifier: pid) {
+                    app.activate(options: [])
+                }
+            }
+        })
     }
 
     /// SwiftUI 内容理想尺寸变化时跟随调整面板 (顶边固定, 高度变化向下延伸, 屏幕底部安全吸附保护).
     private func resizePanel(to size: CGSize) {
+        guard !isTransitioning else { return }
         guard panel.isVisible, size.width > 0, size.height > 0,
               abs(size.height - panel.frame.height) > 1 else {
             return

@@ -1350,16 +1350,53 @@ function renderWhenVisible(panel) {
   if (document.hidden === true) { pendingPanel = panel; return; }
   render(panel);
 }
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden !== true && pendingPanel !== null) {
-    const panel = pendingPanel;
-    pendingPanel = null;
-    render(panel);
+
+function triggerCurtainEnter() {
+  const panelEl = document.getElementById("panel");
+  if (panelEl) {
+    panelEl.classList.remove("curtain-exit");
+    panelEl.classList.remove("curtain-enter");
+    // 强制回流以重新触发关键帧动效
+    if (typeof panelEl.offsetWidth === "number") void panelEl.offsetWidth;
+    panelEl.classList.add("curtain-enter");
   }
+}
+
+function requestHideDashboard() {
+  const panelEl = document.getElementById("panel");
+  if (!panelEl || typeof window.matchMedia === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    invoke("hide_dashboard").catch(() => {});
+    return;
+  }
+  panelEl.classList.remove("curtain-enter");
+  panelEl.classList.add("curtain-exit");
+  let completed = false;
+  const finish = () => {
+    if (completed) return;
+    completed = true;
+    panelEl.removeEventListener("animationend", finish);
+    invoke("hide_dashboard").catch(() => {});
+  };
+  panelEl.addEventListener("animationend", finish);
+  setTimeout(finish, 160);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden !== true) {
+    triggerCurtainEnter();
+    if (pendingPanel !== null) {
+      const panel = pendingPanel;
+      pendingPanel = null;
+      render(panel);
+    }
+  }
+});
+window.addEventListener("focus", () => {
+  triggerCurtainEnter();
 });
 window.addEventListener("keydown", event => {
   if (event.key === "Escape") {
-    invoke("hide_dashboard").catch(() => {});
+    requestHideDashboard();
   } else if (currentSettings.layoutMode === "tabbed") {
     if (event.key === "1") selectTab("usage");
     else if (event.key === "2") selectTab("subscription");
@@ -1370,7 +1407,9 @@ window.addEventListener("keydown", event => {
   try {
     await listen("dashboard-updated", event => { try { renderWhenVisible(event.payload); } catch (error) { showError(error); } });
     await listen("settings-updated", event => applySettings(event.payload));
+    await listen("dashboard-show-transition", () => triggerCurtainEnter());
     applySettings(await invoke("get_settings"));
     render(await invoke("get_dashboard"));
+    triggerCurtainEnter();
   } catch (error) { showError(error); }
 })();

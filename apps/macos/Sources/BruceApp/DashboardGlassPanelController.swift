@@ -122,11 +122,15 @@ final class DashboardGlassPanelController: NSViewController {
         // makes text/chart rendering too soft for this dashboard.
         view.addSubview(hostingController.view)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        // bottomAnchor 设为 defaultLow, 允许在物理卷轴抽屉动画 (C137) 期间
+        // 宿主视图高度从 20pt 展开时保持 SwiftUI 内容高度不被挤压, 由外层剪裁平滑露显.
+        let bottomConstraint = hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        bottomConstraint.priority = .defaultLow
         NSLayoutConstraint.activate([
             hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bottomConstraint,
         ])
 
         hostingController.view.wantsLayer = true

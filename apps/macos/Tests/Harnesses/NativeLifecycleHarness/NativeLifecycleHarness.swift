@@ -245,6 +245,22 @@ struct NativeLifecycleHarness {
             ),
             "a visible panel may suppress the scroll view scroller"
         )
+        try expect(
+            DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: false),
+            "curtain transition must be allowed when reduceMotion is false"
+        )
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsCurtainTransition(reduceMotion: true),
+            "curtain transition must be suppressed when reduceMotion is true"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.curtainOpenDuration == 0.24,
+            "curtain open duration must be 0.24s"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.curtainCloseDuration == 0.14,
+            "curtain close duration must be 0.14s"
+        )
     }
 
     private static func exitForcesRemainingTasksAfterGracePeriod() throws {

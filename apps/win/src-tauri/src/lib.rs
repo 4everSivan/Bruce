@@ -172,6 +172,7 @@ mod desktop {
             let _ = window.show();
             let _ = window.set_always_on_top(true);
             let _ = window.set_focus();
+            let _ = window.emit("dashboard-show-transition", ());
             // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
             app.state::<SchedulerControl>().request_manual_refresh();
         }
