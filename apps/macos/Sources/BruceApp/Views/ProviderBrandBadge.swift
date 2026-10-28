@@ -1,6 +1,7 @@
 import SwiftUI
 
 import BruceAppCore
+import BruceOnboardingCore
 
 // MARK: - 品牌徽章
 

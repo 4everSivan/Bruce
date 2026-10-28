@@ -19,7 +19,8 @@
         "C121",
         "C125",
         "C128",
-        "C130"
+        "C130",
+        "C140"
       ]
     },
     "MenuBarIndicator": {
@@ -1442,6 +1443,15 @@
       "topic": "TokenUsage",
       "version": "0.15.0",
       "file": "docs/devel/change/C139.json"
+    },
+    "C140": {
+      "title": "消除 macOS 构建中跨模块主题类型与 WebKit 回调 API 两处 Swift 告警",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C140-swift-build-warnings",
+      "topic": "SystemOverview",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C140.json"
     }
   }
 }

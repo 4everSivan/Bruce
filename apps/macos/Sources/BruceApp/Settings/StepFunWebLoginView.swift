@@ -419,7 +419,8 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
                     guard let self = self else { return }
                     for cookie in cookies {
                         if cookie.domain.lowercased().contains(targetKeyword) {
-                            cookieStore.delete(cookie, completionHandler: nil)
+                            // 等删除真正完成再重载, 否则旧 Cookie 可能被新页面重新读取。
+                            await cookieStore.deleteCookie(cookie)
                         }
                     }
                     self.parent.statusText = "已清空 \(self.parent.selectedSite.displayName) 登录缓存，正在刷新..."
