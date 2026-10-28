@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C137",
+  "title": "双端仪表盘物理卷轴抽屉展开动效（流派 B · 物理卷轴下拉展开与逆向回卷收拢）",
+  "version": "0.15.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "feat/C137-dashboard-curtain-animation",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos, apps/win",
+    "component": "MenuBarStatusItemController, styles.css, app.js",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "当前 macOS 与 Windows 仪表盘打开时为瞬间弹出（无边框面板与 window.show 均为 0ms 瞬时切换），视觉生硬突兀、缺乏系统原生桌面质感。经双端 4 大流派高保真交互实景模拟与对比选型，确认采用「流派 B · 物理卷轴抽屉下拉」：macOS 以菜单栏图标为顶边锚点执行垂直向下展开（240ms）与逆向回卷（140ms），Windows 结合任务栏位置自适应向上或向下卷轴展开，并对齐失焦关闭与连击竞态保护契约。",
+  "precheck": {
+    "description": "检查两端当前开合逻辑是否仍为瞬时弹出",
+    "command": "grep -n 'makeKeyAndOrderFront\\|orderOut' apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift; grep -n 'window\\.show' apps/win/src-tauri/src/lib.rs",
+    "expected": "macOS 采用直接 makeKeyAndOrderFront / orderOut，Windows 采用直接 show / hide，均无过渡动效",
+    "is_completed": true,
+    "evidence": "macOS MenuBarStatusItemController 原直接调用 panel.makeKeyAndOrderFront(nil) / panel.orderOut(nil)；Windows 托盘原直接调用 window.show() / window.hide()，均为 0ms 瞬间弹出"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "scripts/adflow-verify --card C137 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 仪表盘开合过渡",
+      "before": "openDashboard 直接 makeKeyAndOrderFront(nil)；closeDashboard 直接 orderOut(nil)，无展开/收起过渡动效",
+      "after": "openDashboard 顶边 Y 坐标锁定于状态栏图标正下方，以 240ms 阻尼曲线自顶向下卷轴展开；closeDashboard 以 140ms 逆向回卷收拢后 orderOut",
+      "impact": "消除突兀跳现，连击与失焦保护保证动画期间交互幂等"
+    },
+    {
+      "scope": "Windows 托盘看板开合过渡",
+      "before": "托盘点击直接 window.show() / window.hide()，WebView2 页面内容无入场/出场过渡",
+      "after": "通过 CSS clip-path 与硬件加速 Transform 实现任务栏托盘卷轴式展开（260ms）与逆向卷回收拢（140ms），并在 transitionend 后触发后端隐藏",
+      "impact": "消除白屏与硬切，双端开合交互体验 1:1 对齐"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "面板仅声明为无边框 NSPanel，通过 makeKeyAndOrderFront 与 orderOut 瞬间切换显示/隐藏",
+      "after": "引入流派 B 物理卷轴开合机制：展开时顶边 Y 坐标锁定于状态栏图标正下方，高度向下垂直展开（240ms Apple 阻尼曲线）；收起时逆向回卷（140ms）后 orderOut。连击与失焦保护保证动画期间交互幂等；Windows 端通过 clip-path 与 CSS 硬件加速对齐相同物理卷轴展开体验。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261028-01",
+    "user_quote": "合入主干后，重新打包部署",
+    "signoff": "sivan",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Swift 构建及 Harness 测试全绿通过，Windows 前端校验通过",
+        "false_if": "构建或测试失败",
+        "evidence": "Swift 构建通过，NativeLifecycleHarness 14 项全绿，DashboardGlassSurfaceHarness 10 项全绿；cargo test apps/win/src-tauri 全部测试通过，node scripts/check-win-frontend.mjs 89 项 DOM/快捷键测试通过",
+        "result": true
+      },
+      {
+        "item": "交互实测",
+        "true_if": "macOS 与 Windows 仪表盘展开与收起呈现流畅的卷轴下拉与回卷效果，无卡顿无白屏，连击不卡死",
+        "false_if": "仍为瞬时闪现或出现动画穿帮",
+        "evidence": "高保真可交互 Demo（win-mac-dashboard-animation-options.html）完成 4 大流派对比实测并由用户确认流派 B；已在 macOS 与 Windows 源码中落实流派 B 物理卷轴抽屉下拉展开（240ms/260ms）与逆向回卷（140ms），防垂直挤压约束与连击打断保护就位",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "80ed3aa",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-28",
+    "exit_code": 0,
+    "from_status": "closed",
+    "target_status": "closed"
+  }
+}

@@ -34,7 +34,8 @@
         "C102",
         "C103",
         "C132",
-        "C133"
+        "C133",
+        "C137"
       ]
     },
     "PricingEngine": {
@@ -1412,6 +1413,15 @@
       "topic": "TokenUsage",
       "version": "0.15.0",
       "file": "docs/devel/change/C136.json"
+    },
+    "C137": {
+      "title": "双端仪表盘物理卷轴抽屉展开动效（流派 B · 物理卷轴下拉展开与逆向回卷收拢）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C137-dashboard-curtain-animation",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C137.json"
     }
   }
 }
