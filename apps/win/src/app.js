@@ -1029,7 +1029,7 @@ let currentSettings = {
 };
 let lastSlideDirection = "right";
 
-/* ---------- 全局界面动效闸门 (C141) ----------
+/* ---------- 全局界面动效闸门 (C145) ----------
  * 应用内偏好与系统「减少动画」的唯一裁决点: 结果只写 <html data-motion>,
  * CSS 侧统一按 html[data-motion="off"] 全量关闭, JS 侧一律读 motionSuppressed()。
  * 不再让 CSS 媒体查询与 JS 判据各自裁决, 否则应用内设置会被系统值覆盖。 */
@@ -1365,7 +1365,7 @@ function applyTheme(theme) {
 function applySettings(settings) {
   currentSettings = settings;
   applyTheme(settings.theme);
-  // C141: 动效偏好变更后立即刷新 <html data-motion>, 无需重启.
+  // C145: 动效偏好变更后立即刷新 <html data-motion>, 无需重启.
   applyMotionPreference();
   if (currentPanel) renderWhenVisible(currentPanel);
 }
@@ -1384,7 +1384,7 @@ function triggerCurtainEnter() {
   if (!panelEl) return;
   panelEl.classList.remove("curtain-exit");
   panelEl.classList.remove("curtain-enter");
-  // C141: 抑制动效时直接落定终态, 不加动画类.
+  // C145: 抑制动效时直接落定终态, 不加动画类.
   if (motionSuppressed()) return;
   // 强制回流以重新触发关键帧动效
   if (typeof panelEl.offsetWidth === "number") void panelEl.offsetWidth;
@@ -1393,7 +1393,7 @@ function triggerCurtainEnter() {
 
 function requestHideDashboard() {
   const panelEl = document.getElementById("panel");
-  // C141: 与入场的闸门同源, 不再各自读 matchMedia.
+  // C145: 与入场的闸门同源, 不再各自读 matchMedia.
   if (!panelEl || motionSuppressed()) {
     invoke("hide_dashboard").catch(() => {});
     return;

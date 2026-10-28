@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 全局动效抑制开关的可写环境键 (C141).
+/// 全局动效抑制开关的可写环境键 (C145).
 ///
 /// SwiftUI 的 `\.accessibilityReduceMotion` 是**只读**环境值 (赋值需要
 /// `WritableKeyPath`, 直接 `.environment(\.accessibilityReduceMotion, _)` 无法编译),

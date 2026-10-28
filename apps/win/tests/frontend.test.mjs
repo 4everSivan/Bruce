@@ -983,7 +983,7 @@ test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
   const app = await boot();
   const start = app.calls.length;
   await app.window.dispatch("keydown", { key: "Escape" });
-  // C141: 动效开启时先播卷轴退场动画, 由 animationend 收尾后才通知后端隐藏.
+  // C145: 动效开启时先播卷轴退场动画, 由 animationend 收尾后才通知后端隐藏.
   await app.node("panel").dispatch("animationend");
   await settle();
   assert.deepEqual(app.calls.slice(start).map(x => x.command), ["hide_dashboard"]);
@@ -1265,7 +1265,7 @@ test("settings saves are serialized and each merges the latest backend state (C0
   assert.equal(app.state.settings.refreshIntervalSecs, 300);
   assert.deepEqual([...app.state.settings.cardOrder], ["subscription", "usage", "hourly"]);
   assert.equal(app.state.settings.notificationsEnabled, false);
-  // C142: 开关旁不再有状态字节点, 开合位置即唯一状态表达.
+  // C146: 开关旁不再有状态字节点, 开合位置即唯一状态表达.
   assert.equal(app.node("setting-notifications-state"), null, "不得再渲染已开启/已关闭状态字");
   const saves = app.calls.filter((call) => call.command === "save_settings_command").length;
   assert.equal(saves, 3, "每个控件各保存一次");

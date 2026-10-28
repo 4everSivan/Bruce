@@ -437,7 +437,7 @@ struct SettingsView: View {
                     sub: "电脑锁屏期间暂停查询云端订阅额度，避免消耗配额；解锁后自动恢复",
                     divided: true
                 ) {
-                    // C142: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
+                    // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
                     Toggle(
                         "",
                         isOn: Binding(
@@ -474,7 +474,7 @@ struct SettingsView: View {
                     }
                 }
                 .onAppear(perform: refreshNotificationStatus)
-                // C141: 全局界面动效总开关. 「始终播放」只作用于 Bruce 自身动效,
+                // C145: 全局界面动效总开关. 「始终播放」只作用于 Bruce 自身动效,
                 // 用于本机已开启系统「减弱动态效果」但希望看到应用内过渡的场景.
                 FluentRow(
                     "界面动效",

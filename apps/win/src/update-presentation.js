@@ -79,7 +79,7 @@
   // ---- 版本与进度 ----
 
   function currentVersion(localVersion) {
-    // C142: 行内不再有频道副标题, 只返回版本值.
+    // C146: 行内不再有频道副标题, 只返回版本值.
     return { value: localVersion ? `v${localVersion}` : copy.devVersionValue };
   }
 

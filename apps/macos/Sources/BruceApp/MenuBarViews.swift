@@ -51,7 +51,7 @@ private struct SpinningRefreshIcon: View {
         Image(systemName: "arrow.clockwise")
             .rotationEffect(.degrees(rotation))
             .onAppear {
-                // C141: 抑制动效时停在静态图标, 不挂无限循环.
+                // C145: 抑制动效时停在静态图标, 不挂无限循环.
                 guard !motionSuppressed else { return }
                 withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
                     rotation = 360
@@ -78,7 +78,7 @@ private struct PulsingStatusDot: View {
         }
         .frame(width: 12, height: 12)
         .onAppear {
-            // C141: 抑制动效时保持静态高亮, 不挂无限循环.
+            // C145: 抑制动效时保持静态高亮, 不挂无限循环.
             guard !motionSuppressed else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 breathing = true

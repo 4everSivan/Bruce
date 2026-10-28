@@ -37,7 +37,7 @@ test("当前版本行: release 构建与 dev 降级", () => {
   for (const c of cases.currentVersion) {
     const view = P.currentVersion(c.localVersion);
     assert.equal(view.value, c.expectedValue, `${c.name} value`);
-    // C142: 频道副标题已移除, 表现层不得再现 subtitle 字段.
+    // C146: 频道副标题已移除, 表现层不得再现 subtitle 字段.
     assert.equal(view.subtitle, undefined, `${c.name} 不应再有频道副标题`);
   }
 });

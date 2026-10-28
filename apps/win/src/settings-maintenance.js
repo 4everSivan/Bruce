@@ -34,7 +34,7 @@
     layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
     row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
       "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
-    // C141: 全局界面动效总开关 (与 mac 通用页同名同三态).
+    // C145: 全局界面动效总开关 (与 mac 通用页同名同三态).
     const motion = node("select", null, { id: "setting-motion-preference" });
     motion.append(
       node("option", "跟随系统", { value: "system" }),
@@ -43,7 +43,7 @@
     );
     row(c1, "界面动效", segmented(motion, (value, revert) => persist({ motionPreference: value }, { revert })),
       "关闭后整个应用不做过渡动画；「始终播放」会忽略系统「减少动画」");
-    // C142: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
+    // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
     const notifyWrap = node("div", null, { class: "toggle-with-state" });
     const notify = input("setting-notifications", "checkbox");
     notifyWrap.append(notify);
@@ -336,7 +336,7 @@
     const cu = card(host, UP.copy.caption);
     const autoWrap = node("div", null, { class: "toggle-with-state" });
     const autoBox = input("setting-auto-update", "checkbox");
-    // C142: 去掉开关旁状态字, 开合位置即唯一状态表达.
+    // C146: 去掉开关旁状态字, 开合位置即唯一状态表达.
     autoWrap.append(autoBox);
     autoBox.addEventListener("change", () => persist({ autoCheckUpdate: autoBox.checked }, {
       revert: () => { autoBox.checked = !autoBox.checked; },

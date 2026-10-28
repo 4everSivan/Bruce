@@ -37,8 +37,8 @@
         "C132",
         "C133",
         "C137",
-        "C141",
-        "C143"
+        "C143",
+        "C145"
       ]
     },
     "PricingEngine": {
@@ -51,8 +51,8 @@
         "C108",
         "C111",
         "C112",
-        "C142",
-        "C144"
+        "C144",
+        "C146"
       ]
     },
     "WindowsCompat": {
@@ -1457,24 +1457,6 @@
       "version": "0.15.0",
       "file": "docs/devel/change/C140.json"
     },
-    "C141": {
-      "title": "全局界面动效总开关（应用内覆盖系统「减弱动态效果」）与卷轴缓动曲线修正",
-      "type": "Enhancement",
-      "status": "in_progress",
-      "branch": "feat/C141-global-motion-switch",
-      "topic": "MenuBarIndicator",
-      "version": "0.15.0",
-      "file": "docs/devel/change/C141.json"
-    },
-    "C142": {
-      "title": "设置页去除开关状态文字与软件更新卡冗余小字（双端对齐）",
-      "type": "Enhancement",
-      "status": "in_progress",
-      "branch": "fix/C142-settings-row-copy",
-      "topic": "PricingEngine",
-      "version": "0.15.0",
-      "file": "docs/devel/change/C142.json"
-    },
     "C143": {
       "title": "消除面板滚动条压制观察器的 5 处 MainActor 隔离告警",
       "type": "BugFix",
@@ -1492,6 +1474,24 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/devel/change/C144.json"
+    },
+    "C145": {
+      "title": "全局界面动效总开关（应用内覆盖系统「减弱动态效果」）与卷轴缓动曲线修正",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "feat/C145-global-motion-switch",
+      "topic": "MenuBarIndicator",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C145.json"
+    },
+    "C146": {
+      "title": "设置页去除开关状态文字与软件更新卡冗余小字（双端对齐）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "feat/C145-global-motion-switch",
+      "topic": "PricingEngine",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C146.json"
     }
   }
 }

@@ -36,17 +36,17 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var systemNotificationsEnabled: Bool
     /// 电脑锁屏后是否禁止订阅刷新 (C064), 与配置持久化同步.
     @Published private(set) var pauseSubscriptionRefreshOnScreenLock: Bool
-    /// 全局界面动效偏好 (C141), 与配置持久化同步.
+    /// 全局界面动效偏好 (C145), 与配置持久化同步.
     @Published private(set) var motionPreference: MotionPreference
     /// 模型单价人工校准覆盖 (模型名 -> 校准单价).
     @Published private(set) var pricingOverrides: [String: ModelPricingOverride]
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
-    /// 可注入的系统「减弱动态效果」读取 (测试), 默认读系统; C141.
+    /// 可注入的系统「减弱动态效果」读取 (测试), 默认读系统; C145.
     var systemReduceMotion: () -> Bool = {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
-    /// 系统无障碍显示选项变更观察 (C141). nonisolated(unsafe) 仅为让
+    /// 系统无障碍显示选项变更观察 (C145). nonisolated(unsafe) 仅为让
     /// nonisolated deinit 能注销观察者; 令牌本身只在主线程写入一次.
     nonisolated(unsafe) private var systemMotionObserver: NSObjectProtocol?
 
@@ -199,7 +199,7 @@ final class OnboardingCoordinator: ObservableObject {
             self?.refreshSubscription(id)
         }
 
-        // C141: 系统「减弱动态效果」可能在运行中切换; 偏好为 system 时需立即重算,
+        // C145: 系统「减弱动态效果」可能在运行中切换; 偏好为 system 时需立即重算,
         // 否则注入到视图树的环境值会停留在启动时的旧判定.
         systemMotionObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
@@ -491,7 +491,7 @@ final class OnboardingCoordinator: ObservableObject {
         model.setSettingsError(nil)
     }
 
-    /// 用户变更全局界面动效偏好 (C141): 先持久化再发布, 保存失败不改变运行中行为.
+    /// 用户变更全局界面动效偏好 (C145): 先持久化再发布, 保存失败不改变运行中行为.
     func setMotionPreference(_ preference: MotionPreference) {
         guard let configStore else {
             model.setSettingsError("配置存储不可用, 无法保存界面动效设置")

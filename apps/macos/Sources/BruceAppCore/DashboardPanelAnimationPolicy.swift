@@ -50,7 +50,7 @@ package enum DashboardPanelAnimationPolicy {
     /// 卷轴起始与收拢高度 (pt).
     package static let curtainCollapsedHeight: Double = 20.0
 
-    /// 是否允许播放卷轴开合过渡动画 (C137; C141 起由 MotionPreference 裁决通过 motionSuppressed 传入).
+    /// 是否允许播放卷轴开合过渡动画 (C137; C145 起由 MotionPreference 裁决通过 motionSuppressed 传入).
     package static func allowsCurtainTransition(motionSuppressed: Bool) -> Bool {
         !motionSuppressed
     }

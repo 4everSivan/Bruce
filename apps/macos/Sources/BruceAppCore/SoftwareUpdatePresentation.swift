@@ -103,7 +103,7 @@ package enum UpdatePresentation {
     // MARK: 行文案
 
     /// 「当前版本」行: 只给版本值; 无合法 bundle 版本时走 dev 降级.
-    /// C142 起不再渲染频道副标题 (正式版 / dev 提示), 故返回类型收敛为单一字符串.
+    /// C146 起不再渲染频道副标题 (正式版 / dev 提示), 故返回类型收敛为单一字符串.
     package static func currentVersion(
         _ localVersion: SemanticVersion?
     ) -> String {

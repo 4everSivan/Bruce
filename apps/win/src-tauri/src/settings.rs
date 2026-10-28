@@ -92,7 +92,7 @@ pub struct AppSettings {
     /// 任务栏托盘悬停实时预览开关 (方案 1 实时微缩卡, 默认开启)。
     #[serde(default = "default_tray_hover_preview")]
     pub tray_hover_preview: bool,
-    /// 全局界面动效偏好 (C141): system | always | never, 默认跟随系统。
+    /// 全局界面动效偏好 (C145): system | always | never, 默认跟随系统。
     #[serde(default = "default_motion_preference")]
     pub motion_preference: String,
     /// 上次成功检查更新 (RFC3339 本地时区; None = 从未)。
@@ -439,7 +439,7 @@ mod tests {
         .is_err());
     }
 
-    // MARK: - 全局界面动效偏好 (C141)
+    // MARK: - 全局界面动效偏好 (C145)
 
     #[test]
     fn motion_preference_defaults_to_system_for_legacy_settings() {

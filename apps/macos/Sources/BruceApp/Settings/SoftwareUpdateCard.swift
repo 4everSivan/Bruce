@@ -44,7 +44,7 @@ struct SoftwareUpdateCard: View {
         let versionValue = UpdatePresentation.currentVersion(updates.localVersion)
         return FluentCard {
             FluentRow(UpdateCopy.autoCheckTitle, sub: UpdateCopy.autoCheckSubtitle) {
-                // C142: 状态由开关开合位置表达, 行内不再重复「已开启 / 已关闭」.
+                // C146: 状态由开关开合位置表达, 行内不再重复「已开启 / 已关闭」.
                 Toggle(
                     "",
                     isOn: Binding(

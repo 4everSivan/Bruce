@@ -247,7 +247,7 @@ struct UsageHeroCard: View {
     }
 
     private func startHeroBreathing() {
-        // C141: 即使挂载点已由 allowsHero 门控, 起播处仍再判一次,
+        // C145: 即使挂载点已由 allowsHero 门控, 起播处仍再判一次,
         // 保证应用内动效开关是唯一真源.
         guard !motionSuppressed else {
             heroBreathing = false
@@ -692,7 +692,7 @@ struct UsageHeroCard: View {
         }
 
         private func startBreathing() {
-            // C141: 同英雄数字, 起播处再判一次动效开关.
+            // C145: 同英雄数字, 起播处再判一次动效开关.
             guard !motionSuppressed else {
                 breathe = false
                 return

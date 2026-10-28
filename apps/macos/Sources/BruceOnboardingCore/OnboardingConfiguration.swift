@@ -123,7 +123,7 @@ public enum GlassStylePreference: String, Codable, Equatable, Sendable, CaseIter
     case material
 }
 
-/// 全局界面动效偏好 (C141). system 跟随系统「减弱动态效果」; always 始终播放
+/// 全局界面动效偏好 (C145). system 跟随系统「减弱动态效果」; always 始终播放
 /// (忽略系统设置, 供本机开启减弱动态效果但希望看到应用内动效的用户显式 opt-in);
 /// never 始终不播放. 持久化为 rawValue 字符串.
 public enum MotionPreference: String, Codable, Equatable, Sendable, CaseIterable {
@@ -187,7 +187,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var systemNotificationsEnabled: Bool
     /// 电脑锁屏后是否禁止订阅额度刷新 (C064). 默认开启保护以节省云端 API 配额.
     public var pauseSubscriptionRefreshOnScreenLock: Bool
-    /// 全局界面动效偏好 (C141). nil 表示跟随系统.
+    /// 全局界面动效偏好 (C145). nil 表示跟随系统.
     public var motionPreference: MotionPreference?
 
     /// 默认自动刷新间隔 (分钟).
@@ -343,7 +343,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         pauseSubscriptionRefreshOnScreenLock = try container.decodeIfPresent(
             Bool.self, forKey: .pauseSubscriptionRefreshOnScreenLock
         ) ?? true
-        // 全局动效偏好: 旧配置缺该键 (或值非法) 一律回落跟随系统 (C141).
+        // 全局动效偏好: 旧配置缺该键 (或值非法) 一律回落跟随系统 (C145).
         motionPreference = (try? container.decodeIfPresent(
             MotionPreference.self, forKey: .motionPreference
         )) ?? nil

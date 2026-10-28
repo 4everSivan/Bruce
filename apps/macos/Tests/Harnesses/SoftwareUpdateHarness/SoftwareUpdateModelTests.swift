@@ -143,7 +143,7 @@ private struct CopyFixture: Decodable {
     }
 
     struct Rows: Decodable {
-        // C142: toggleOn / toggleOff 随行内状态字一并移除, 不再属于文案契约.
+        // C146: toggleOn / toggleOff 随行内状态字一并移除, 不再属于文案契约.
         let caption, autoCheckTitle, autoCheckSubtitle: String
         let currentVersionTitle, checkTitle, checkButton, navigationBadge: String
     }

@@ -164,7 +164,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         .environmentObject(model)
         .environmentObject(coordinator)
         let glassController = DashboardGlassPanelController(
-            // C141: 全局动效抑制开关经宿主根注入, 子树一律读 \.motionSuppressed.
+            // C145: 全局动效抑制开关经宿主根注入, 子树一律读 \.motionSuppressed.
             rootView: MotionEnvironmentRoot(coordinator: coordinator, content: rootView),
             theme: coordinator.resolvedTheme,
             preferredColorScheme: coordinator.appearanceMode.colorScheme
@@ -281,7 +281,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     private func startRefreshAnimationIfNeeded(on button: NSStatusBarButton) {
-        // C141: 抑制动效时刷新环停在固定相位 (与 Windows 侧停掉 foot-spin 同口径),
+        // C145: 抑制动效时刷新环停在固定相位 (与 Windows 侧停掉 foot-spin 同口径),
         // 不启动逐帧定时器.
         guard !coordinator.motionSuppressed else { return }
         guard refreshTimer == nil else { return }
@@ -530,7 +530,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         model.setDashboardPanelVisible(true)
 
-        // C141: 动效是否播放由应用内偏好与系统无障碍偏好共同裁决,
+        // C145: 动效是否播放由应用内偏好与系统无障碍偏好共同裁决,
         // 裁决点在 OnboardingCoordinator.motionSuppressed.
         guard DashboardPanelAnimationPolicy.allowsCurtainTransition(
             motionSuppressed: coordinator.motionSuppressed
@@ -558,7 +558,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         isTransitioning = true
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = DashboardPanelAnimationPolicy.curtainOpenDuration
-            // C141: 原 (0.16, 1.0, 0.3, 1.0) 前 45ms 即走完 74.5% 行程, 读作瞬移.
+            // C145: 原 (0.16, 1.0, 0.3, 1.0) 前 45ms 即走完 74.5% 行程, 读作瞬移.
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.61, 0.36, 1.0)
             panel.animator().setFrame(targetFrame, display: true)
             panel.animator().alphaValue = 1.0
@@ -596,7 +596,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             return
         }
 
-        // C141: 同 openDashboard, 动效裁决点收敛到 coordinator.
+        // C145: 同 openDashboard, 动效裁决点收敛到 coordinator.
         guard DashboardPanelAnimationPolicy.allowsCurtainTransition(
             motionSuppressed: coordinator.motionSuppressed
         ) else {

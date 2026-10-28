@@ -253,7 +253,7 @@ struct NativeLifecycleHarness {
             !DashboardPanelAnimationPolicy.allowsCurtainTransition(motionSuppressed: true),
             "curtain transition must be suppressed when motion is suppressed"
         )
-        // C141: MotionPreference 三态 × 系统值共 6 组, 唯一裁决点语义.
+        // C145: MotionPreference 三态 × 系统值共 6 组, 唯一裁决点语义.
         let motionMatrix: [(MotionPreference, Bool, Bool)] = [
             (.system, false, false),
             (.system, true, true),
