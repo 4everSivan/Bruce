@@ -320,7 +320,7 @@
     },
     "T18": {
       "title": "订阅多账号自定义名称：默认「账号 N」+ 设置页重命名（mac / Windows）",
-      "status": "pending",
+      "status": "completed",
       "branch": "feat/T18-account-custom-names",
       "topic": "SubscriptionQuota",
       "milestone": "M9-订阅多账号命名",
