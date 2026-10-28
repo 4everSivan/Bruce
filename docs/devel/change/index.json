@@ -1447,7 +1447,7 @@
     "C140": {
       "title": "消除 macOS 构建中跨模块主题类型与 WebKit 回调 API 两处 Swift 告警",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C140-swift-build-warnings",
       "topic": "SystemOverview",
       "version": "0.15.0",
