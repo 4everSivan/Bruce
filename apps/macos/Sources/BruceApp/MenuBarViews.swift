@@ -836,9 +836,19 @@ private struct ScrollIndicatorSuppressor: NSViewRepresentable {
 }
 
 private final class SuppressorView: NSView {
+    /// 通知 token 的 Sendable 包装: nonisolated deinit 需要直接释放,
+    /// 而 `NSObjectProtocol` 存在值不满足 Sendable.
+    private final class NotificationToken: @unchecked Sendable {
+        let value: NSObjectProtocol
+
+        init(_ value: NSObjectProtocol) {
+            self.value = value
+        }
+    }
+
     private var observedScrollView: NSScrollView?
     private var observations: [NSKeyValueObservation] = []
-    private var styleObserver: NSObjectProtocol?
+    private var styleObserver: NotificationToken?
 
     /// 由 `DashboardPanelAnimationPolicy.allowsScrollIndicatorSuppression` 派生:
     /// 隐藏态不观察也不改写 scroller.
@@ -866,7 +876,11 @@ private final class SuppressorView: NSView {
     }
 
     deinit {
-        detachObservation()
+        // deinit 对自身存储属性有独占访问, 直接释放观察资源, 不调用 MainActor 隔离方法.
+        observations.removeAll()
+        if let styleObserver {
+            NotificationCenter.default.removeObserver(styleObserver.value)
+        }
     }
 
     /// 面板可见且已入窗时建立观察并立即压制一次; 否则解除观察.
@@ -897,13 +911,15 @@ private final class SuppressorView: NSView {
                 [weak self] _, _ in self?.scheduleEnforce()
             },
         ]
-        styleObserver = NotificationCenter.default.addObserver(
-            forName: NSScroller.preferredScrollerStyleDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.scheduleEnforce()
-        }
+        styleObserver = NotificationToken(
+            NotificationCenter.default.addObserver(
+                forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.scheduleEnforce()
+            }
+        )
         enforce()
     }
 
@@ -911,14 +927,15 @@ private final class SuppressorView: NSView {
         observations.removeAll()
         observedScrollView = nil
         if let styleObserver {
-            NotificationCenter.default.removeObserver(styleObserver)
+            NotificationCenter.default.removeObserver(styleObserver.value)
             self.styleObserver = nil
         }
     }
 
-    private func scheduleEnforce() {
+    /// 供 nonisolated 的 KVO 与通知回调使用: 主线程同步压制, 其他线程交主队列.
+    private nonisolated func scheduleEnforce() {
         if Thread.isMainThread {
-            enforce()
+            MainActor.assumeIsolated { enforce() }
         } else {
             DispatchQueue.main.async { [weak self] in self?.enforce() }
         }
