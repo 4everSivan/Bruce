@@ -247,7 +247,7 @@ pub fn run_codex_retry(
     let mut request = build_configured_request(Local::now(), &credentials, &settings);
     request
         .context
-        .insert("codexQuotaRetryOnly".into(), Value::Bool(true));
+        .insert("quotaRetryOnly".into(), Value::Bool(true));
     request
         .context
         .insert("capabilities".into(), serde_json::json!(["externalQuotas"]));

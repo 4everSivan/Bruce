@@ -11,7 +11,7 @@ mod context;
 mod execution;
 mod paths;
 
-use account::{build_account_plan, build_codex_account_plans, validate_account_request};
+use account::{build_account_plan, validate_account_request};
 use collector_aggregate::UsageAccumulator;
 use collector_credential::{
     validate_credential_challenges, validate_credential_updates, CredentialSource,
@@ -111,11 +111,11 @@ fn collect_agent_usage_with_dependencies_inner(
         == Some(true);
     if request
         .context
-        .get("codexQuotaRetryOnly")
+        .get("quotaRetryOnly")
         .and_then(Value::as_bool)
         == Some(true)
     {
-        return collect_codex_quota_retry_only(&context);
+        return collect_quota_retry_only(&context);
     }
     let (local_result, quota_result) = std::thread::scope(|scope| {
         let local = scope.spawn(|| collect_local_usage(&context));
@@ -656,10 +656,8 @@ fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
     }
 }
 
-fn collect_codex_quota_retry_only(
-    context: &RunContext<'_>,
-) -> Result<CollectionOutput, Diagnostic> {
-    let quota = match build_codex_account_plans(context.request) {
+fn collect_quota_retry_only(context: &RunContext<'_>) -> Result<CollectionOutput, Diagnostic> {
+    let quota = match build_account_plan(context.request) {
         Ok(plans) => execute_quota_accounts(context, &plans),
         Err(diagnostic) => QuotaExecution {
             diagnostics: vec![diagnostic],
@@ -904,6 +902,7 @@ mod tests {
                 cache_creation: 0,
                 cache_creation_1h: 0,
                 total: 2,
+                ..Default::default()
             },
         );
 
@@ -1687,7 +1686,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_retry_only_skips_local_agents_and_returns_only_codex_services() {
+    fn quota_retry_only_skips_local_agents_and_returns_only_quota_services() {
         let request: BridgeRequest = serde_json::from_value(json!({
             "schemaVersion": 1,
             "runId": "12345678-1234-4234-9234-123456789abc",
@@ -1700,7 +1699,7 @@ mod tests {
             "context": {
                 "now": "2026-08-21T08:00:00Z",
                 "capabilities": ["externalQuotas"],
-                "codexQuotaRetryOnly": true,
+                "quotaRetryOnly": true,
                 "codexQuotaAccountOrder": ["acc-1"]
             },
             "credentials": {
@@ -1722,6 +1721,46 @@ mod tests {
         assert!(output.artifact["agents"].as_array().unwrap().is_empty());
         assert_eq!(output.artifact["services"].as_array().unwrap().len(), 1);
         assert_eq!(output.artifact["services"][0]["app"], "codex");
+        assert_eq!(http.calls.load(Ordering::Acquire), 1);
+    }
+
+    /// C138 / TD-005: quotaRetryOnly 是通用契约 —— 非 codex provider 也能只重试额度,
+    /// 不再经 codex 专属计划构建入口。
+    #[test]
+    fn quota_retry_only_is_provider_agnostic() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "now": "2026-08-21T08:00:00Z",
+                "capabilities": ["externalQuotas"],
+                "quotaRetryOnly": true
+            },
+            "credentials": {
+                "kimiQuotaAccounts": {
+                    "acct-a": {
+                        "display_name": "Kimi fixture",
+                        "api_key": "fixture-key"
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let http = FixtureHttp {
+            calls: AtomicUsize::new(0),
+            body: br#"{"limits":[{"detail":{"limit":100,"remaining":60}}]}"#.to_vec(),
+        };
+        let output =
+            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        assert!(output.artifact["agents"].as_array().unwrap().is_empty());
+        assert_eq!(output.artifact["services"].as_array().unwrap().len(), 1);
+        assert_eq!(output.artifact["services"][0]["app"], "kimi");
         assert_eq!(http.calls.load(Ordering::Acquire), 1);
     }
 

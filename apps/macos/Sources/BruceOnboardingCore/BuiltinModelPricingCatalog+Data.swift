@@ -218,7 +218,7 @@ extension BuiltinModelPricingCatalog {
             inputPricePerMillion: 0.66,
             outputPricePerMillion: 1.98,
             cacheReadPricePerMillion: 0.022,
-            defaultNote: "深度推理主力"
+            defaultNote: "深度推理主力 (非峰值价; 峰值 00:30-16:30 UTC 另计)"
         ),
         BuiltinModelPricing(
             modelName: "deepseek-r1",
@@ -523,7 +523,7 @@ extension BuiltinModelPricingCatalog {
             inputPricePerMillion: 0.4,
             outputPricePerMillion: 1.6,
             cacheReadPricePerMillion: 0.04,
-            defaultNote: "平衡型主力模型"
+            defaultNote: "平衡型主力模型 (≤256K 输入价; 超长上下文另计)"
         ),
         BuiltinModelPricing(
             modelName: "qwen-max",

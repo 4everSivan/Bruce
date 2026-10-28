@@ -44,7 +44,7 @@ static func codexChallengeTriggersSingleTargetedRetry(
     )
     retryProvider.codexRetryInput = CollectorRunInput(
         context: [
-            "codexQuotaRetryOnly": .boolean(true),
+            "quotaRetryOnly": .boolean(true),
         ],
         credentials: [
             "codexQuotaAccounts": .object([
@@ -86,8 +86,8 @@ static func codexChallengeTriggersSingleTargetedRetry(
     )
     let retryContext = executor.receivedContexts.last ?? [:]
     try refreshExpect(
-        retryContext["codexQuotaRetryOnly"] == .boolean(true),
-        "重试上下文必须带 codexQuotaRetryOnly=true"
+        retryContext["quotaRetryOnly"] == .boolean(true),
+        "重试上下文必须带 quotaRetryOnly=true"
     )
     try refreshExpect(
         retryProvider.retriedAccountIDs.last == ["acc-1"],
@@ -166,7 +166,7 @@ static func codexRetryChallengeDoesNotTriggerThirdRun(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: [:]
     )
     retryProvider.codexTokenDecisions = [
@@ -314,7 +314,7 @@ static func codexRetryErrorPreservesLastGoodQuota(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: [:]
     )
     retryProvider.codexTokenDecisions = [

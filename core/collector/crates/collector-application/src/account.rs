@@ -70,11 +70,11 @@ fn account_protocol_error(code: &str, message: &str) -> Diagnostic {
 pub(crate) fn validate_account_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
     let accounts = request.credentials.get("codexQuotaAccounts");
     let order = request.context.get("codexQuotaAccountOrder");
-    if let Some(retry_only) = request.context.get("codexQuotaRetryOnly") {
+    if let Some(retry_only) = request.context.get("quotaRetryOnly") {
         if !retry_only.is_boolean() {
             return Err(account_protocol_error(
                 "BRIDGE_INVALID_REQUEST",
-                "codexQuotaRetryOnly 必须是布尔值",
+                "quotaRetryOnly 必须是布尔值",
             ));
         }
     }

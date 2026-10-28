@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 
 /// v2 (C107): 观测值新增 Claude 1 小时 TTL 缓存写入份额; 旧条目按版本不匹配全量重建一次.
 const JSONL_CACHE_PARSER_VERSION: u32 = 2;
-const JSONL_CACHE_AGGREGATION_VERSION: u32 = 1;
+const JSONL_CACHE_AGGREGATION_VERSION: u32 = 2;
 
 pub(super) fn jsonl_cache_config(
     cache_root: &Path,

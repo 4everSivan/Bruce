@@ -269,7 +269,7 @@ static func schRetryCollectorFailureSinglePublish(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: ["codexQuotaAccounts": .object([:])]
     )
     retryProvider.codexTokenDecisions = [
@@ -344,7 +344,7 @@ static func schRetrySuccessSinglePublish(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: ["codexQuotaAccounts": .object([:])]
     )
     retryProvider.codexTokenDecisions = [
@@ -650,7 +650,7 @@ static func codexTwoAccounts401SingleCycle(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: [:]
     )
     retryProvider.codexTokenDecisions = [
@@ -772,7 +772,7 @@ static func codexSecond401OnlyAffectsItsAccount(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: [:]
     )
     retryProvider.codexTokenDecisions = [
@@ -844,7 +844,7 @@ static func codexInvalidChallengeIgnored(
         ]
     )
     retryProvider.codexRetryInput = CollectorRunInput(
-        context: ["codexQuotaRetryOnly": .boolean(true)],
+        context: ["quotaRetryOnly": .boolean(true)],
         credentials: [:]
     )
     // 自定义 executor: challenge 指向未注入账号

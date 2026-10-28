@@ -3,6 +3,30 @@
 use crate::TokenBucket;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+/// 峰谷价中的峰值档 (TD-002): 窗口按 UTC 分钟表示, `[start, end)` 且允许跨零点。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PeakPricing {
+    pub input: f64,
+    pub output: f64,
+    #[serde(default)]
+    pub cache_read: Option<f64>,
+    pub start_minute_utc: u32,
+    pub end_minute_utc: u32,
+}
+
+/// 长上下文分档 (TD-002): 单请求 input 超过 `threshold` 时套用该档费率。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LongContextPricing {
+    pub threshold: u64,
+    pub input: f64,
+    pub output: f64,
+    #[serde(default)]
+    pub cache_read: Option<f64>,
+}
 
 /// Pricing rates for a model per million tokens.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -22,6 +46,12 @@ pub struct ModelPricing {
     /// 1 小时 TTL 缓存写入相对输入单价的倍率 (C107); 缺省沿用 5 分钟倍率。
     #[serde(default)]
     pub cache_write_1h_multiplier: Option<f64>,
+    /// 峰值档 (TD-002); 基础单价保持非峰值档。
+    #[serde(default)]
+    pub peak: Option<PeakPricing>,
+    /// 长上下文档 (TD-002); 基础单价保持 ≤ threshold 档。
+    #[serde(default)]
+    pub long_context: Option<LongContextPricing>,
 }
 
 /// 内置价卡目录行 (C108)。唯一事实源为 crate 根目录的 `pricing-catalog.json`:
@@ -44,6 +74,12 @@ pub struct CatalogModel {
     /// false 的行参与计费但不在设置页单列 (版本别名 / 受限型号)。
     #[serde(default = "listed_by_default")]
     pub listed: bool,
+    /// 峰值档 (TD-002); 缺省表示单一费率。
+    #[serde(default)]
+    pub peak: Option<PeakPricing>,
+    /// 长上下文档 (TD-002); 缺省表示不按单请求长度分档。
+    #[serde(default)]
+    pub long_context: Option<LongContextPricing>,
 }
 
 fn listed_by_default() -> bool {
@@ -117,6 +153,8 @@ impl PricingTable {
                             .cache_write
                             .map(|(five_minutes, _)| five_minutes),
                         cache_write_1h_multiplier: entry.cache_write.map(|(_, one_hour)| one_hour),
+                        peak: entry.peak.clone(),
+                        long_context: entry.long_context.clone(),
                     },
                 )
             })
@@ -160,6 +198,8 @@ impl PricingTable {
                 note: over.note.clone().or_else(|| builtin.note.clone()),
                 cache_write_multiplier: builtin.cache_write_multiplier,
                 cache_write_1h_multiplier: builtin.cache_write_1h_multiplier,
+                peak: builtin.peak.clone(),
+                long_context: builtin.long_context.clone(),
             }),
             (Some(builtin), None) => Some(builtin.clone()),
             (None, Some(over)) => {
@@ -174,6 +214,8 @@ impl PricingTable {
                         note: over.note.clone(),
                         cache_write_multiplier: None,
                         cache_write_1h_multiplier: None,
+                        peak: None,
+                        long_context: None,
                     })
                 } else {
                     None
@@ -226,41 +268,229 @@ impl PricingTable {
     }
 
     /// Calculates token cost in USD for a given bucket and pricing rule.
+    ///
+    /// TD-002: 桶内的 `rate_splits` 是总量的子集; 先把份额从基础桶扣除, 再按各类别
+    /// 费率计费, 避免重复计价。无分档价卡的模型 `rate_splits` 为空, 行为与旧版一致。
     pub fn calculate_cost(&self, bucket: &TokenBucket, pricing: &ModelPricing) -> f64 {
-        let input_cost = (bucket.input as f64) * pricing.input_price_per_million / 1_000_000.0;
-        let output_cost = (bucket.output as f64) * pricing.output_price_per_million / 1_000_000.0;
-        let cache_rate = pricing
-            .cache_read_price_per_million
-            .unwrap_or(pricing.input_price_per_million * 0.1);
-        let cache_read_cost = (bucket.cache_read as f64) * cache_rate / 1_000_000.0;
-        // C107: 缓存写入按 TTL 拆分计价; 倍率缺省 1.0 (非 Anthropic 模型沿用输入单价)。
-        let one_hour = bucket.cache_creation_1h.min(bucket.cache_creation);
-        let five_minutes = bucket.cache_creation - one_hour;
         let five_minute_multiplier = pricing.cache_write_multiplier.unwrap_or(1.0);
         let one_hour_multiplier = pricing
             .cache_write_1h_multiplier
             .unwrap_or(five_minute_multiplier);
-        let cache_creation_cost = ((five_minutes as f64) * five_minute_multiplier
-            + (one_hour as f64) * one_hour_multiplier)
-            * pricing.input_price_per_million
-            / 1_000_000.0;
-        input_cost + output_cost + cache_read_cost + cache_creation_cost
+        let mut base = Counts::from_bucket(bucket);
+        for tally in bucket.rate_splits.values() {
+            base.subtract(tally);
+        }
+        let mut total = cost_for_counts(
+            &base,
+            rate_card(pricing, None),
+            five_minute_multiplier,
+            one_hour_multiplier,
+        );
+        for (class, tally) in &bucket.rate_splits {
+            total += cost_for_counts(
+                &Counts::from_tally(tally),
+                rate_card(pricing, Some(class)),
+                five_minute_multiplier,
+                one_hour_multiplier,
+            );
+        }
+        total
     }
 
     /// 缓存读取相对按输入单价计费节省的 USD (C070):
     /// cacheRead × (输入单价 − 缓存读取单价); 缓存读取单价缺省时与 `calculate_cost` 同取输入 10%。
     pub fn calculate_cache_savings(&self, bucket: &TokenBucket, pricing: &ModelPricing) -> f64 {
-        let cache_rate = pricing
-            .cache_read_price_per_million
-            .unwrap_or(pricing.input_price_per_million * 0.1);
-        let saved_rate = (pricing.input_price_per_million - cache_rate).max(0.0);
-        (bucket.cache_read as f64) * saved_rate / 1_000_000.0
+        let mut base = Counts::from_bucket(bucket);
+        for tally in bucket.rate_splits.values() {
+            base.subtract(tally);
+        }
+        let mut total = savings_for_counts(&base, rate_card(pricing, None));
+        for (class, tally) in &bucket.rate_splits {
+            total +=
+                savings_for_counts(&Counts::from_tally(tally), rate_card(pricing, Some(class)));
+        }
+        total
     }
+}
+
+/// TD-002: 单条计价类别 (峰/长上下文) 的费率视图。
+#[derive(Clone, Copy)]
+struct RateCard {
+    input: f64,
+    output: f64,
+    cache_read: Option<f64>,
+}
+
+fn rate_card(pricing: &ModelPricing, class: Option<&str>) -> RateCard {
+    let base = RateCard {
+        input: pricing.input_price_per_million,
+        output: pricing.output_price_per_million,
+        cache_read: pricing.cache_read_price_per_million,
+    };
+    match class {
+        Some("peak") => pricing
+            .peak
+            .as_ref()
+            .map(|tier| RateCard {
+                input: tier.input,
+                output: tier.output,
+                cache_read: tier.cache_read,
+            })
+            .unwrap_or(base),
+        Some("long") => pricing
+            .long_context
+            .as_ref()
+            .map(|tier| RateCard {
+                input: tier.input,
+                output: tier.output,
+                cache_read: tier.cache_read,
+            })
+            .unwrap_or(base),
+        Some("peak_long") => {
+            let peak = rate_card(pricing, Some("peak"));
+            let long = rate_card(pricing, Some("long"));
+            if peak.input == base.input && long.input == base.input {
+                base
+            } else {
+                // 同时命中峰时与长上下文时取两者较高费率, 避免低估。
+                RateCard {
+                    input: peak.input.max(long.input),
+                    output: peak.output.max(long.output),
+                    cache_read: match (peak.cache_read, long.cache_read) {
+                        (Some(a), Some(b)) => Some(a.max(b)),
+                        (Some(a), None) => Some(a),
+                        (None, Some(b)) => Some(b),
+                        (None, None) => None,
+                    },
+                }
+            }
+        }
+        _ => base,
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct Counts {
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_creation: u64,
+    cache_creation_1h: u64,
+}
+
+impl Counts {
+    fn from_bucket(bucket: &TokenBucket) -> Self {
+        Self {
+            input: bucket.input,
+            output: bucket.output,
+            cache_read: bucket.cache_read,
+            cache_creation: bucket.cache_creation,
+            cache_creation_1h: bucket.cache_creation_1h,
+        }
+    }
+
+    fn from_tally(tally: &crate::TokenTally) -> Self {
+        Self {
+            input: tally.input,
+            output: tally.output,
+            cache_read: tally.cache_read,
+            cache_creation: tally.cache_creation,
+            cache_creation_1h: tally.cache_creation_1h,
+        }
+    }
+
+    fn subtract(&mut self, tally: &crate::TokenTally) {
+        self.input = self.input.saturating_sub(tally.input);
+        self.output = self.output.saturating_sub(tally.output);
+        self.cache_read = self.cache_read.saturating_sub(tally.cache_read);
+        self.cache_creation = self.cache_creation.saturating_sub(tally.cache_creation);
+        self.cache_creation_1h = self
+            .cache_creation_1h
+            .saturating_sub(tally.cache_creation_1h);
+    }
+}
+
+fn cost_for_counts(
+    counts: &Counts,
+    rates: RateCard,
+    five_minute_multiplier: f64,
+    one_hour_multiplier: f64,
+) -> f64 {
+    let input_cost = (counts.input as f64) * rates.input / 1_000_000.0;
+    let output_cost = (counts.output as f64) * rates.output / 1_000_000.0;
+    let cache_rate = rates.cache_read.unwrap_or(rates.input * 0.1);
+    let cache_read_cost = (counts.cache_read as f64) * cache_rate / 1_000_000.0;
+    // C107: 缓存写入按 TTL 拆分计价; 倍率缺省 1.0 (非 Anthropic 模型沿用输入单价)。
+    let one_hour = counts.cache_creation_1h.min(counts.cache_creation);
+    let five_minutes = counts.cache_creation - one_hour;
+    let cache_creation_cost = ((five_minutes as f64) * five_minute_multiplier
+        + (one_hour as f64) * one_hour_multiplier)
+        * rates.input
+        / 1_000_000.0;
+    input_cost + output_cost + cache_read_cost + cache_creation_cost
+}
+
+fn savings_for_counts(counts: &Counts, rates: RateCard) -> f64 {
+    let cache_rate = rates.cache_read.unwrap_or(rates.input * 0.1);
+    let saved_rate = (rates.input - cache_rate).max(0.0);
+    (counts.cache_read as f64) * saved_rate / 1_000_000.0
+}
+
+/// TD-002: 按模型价卡的时间窗与单请求长度对样本分类。
+/// 返回 `None` 表示样本落在基础档 (非峰值 / ≤ 阈值), 也是无分档价卡模型的唯一结果。
+pub fn rate_class_for(
+    model: &str,
+    timestamp_millis: i64,
+    input_tokens: u64,
+) -> Option<&'static str> {
+    let normalized = PricingTable::normalize_model_name(model);
+    let (_, peak, long_context) = tiered_rules()
+        .iter()
+        .find(|(key, _, _)| normalized == *key || normalized.starts_with(key.as_str()))?;
+    let peak = peak.as_ref().is_some_and(|peak| {
+        let minute = ((timestamp_millis.rem_euclid(86_400_000)) / 60_000) as u32;
+        if peak.start_minute_utc <= peak.end_minute_utc {
+            minute >= peak.start_minute_utc && minute < peak.end_minute_utc
+        } else {
+            minute >= peak.start_minute_utc || minute < peak.end_minute_utc
+        }
+    });
+    let long = long_context
+        .as_ref()
+        .is_some_and(|tier| input_tokens > tier.threshold);
+    match (peak, long) {
+        (true, true) => Some("peak_long"),
+        (true, false) => Some("peak"),
+        (false, true) => Some("long"),
+        (false, false) => None,
+    }
+}
+
+/// 只有声明了峰值或长上下文档的价卡行才参与逐样本分类; 缓存一次避免热路径
+/// 每条样本都遍历完整目录。
+type TieredRule = (String, Option<PeakPricing>, Option<LongContextPricing>);
+
+fn tiered_rules() -> &'static [TieredRule] {
+    static RULES: OnceLock<Vec<TieredRule>> = OnceLock::new();
+    RULES.get_or_init(|| {
+        catalog()
+            .iter()
+            .filter(|entry| entry.peak.is_some() || entry.long_context.is_some())
+            .map(|entry| {
+                (
+                    PricingTable::normalize_model_name(&entry.model),
+                    entry.peak.clone(),
+                    entry.long_context.clone(),
+                )
+            })
+            .collect()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn prefix_resolution_is_deterministic_and_prefers_the_most_specific_base() {
@@ -298,6 +528,7 @@ mod tests {
             cache_creation: 0,
             cache_creation_1h: 0,
             total: 1_000_000,
+            ..Default::default()
         };
         // (3.00 − 0.30) USD / 1M
         assert!((table.calculate_cache_savings(&bucket, &rule) - 2.70).abs() < 1e-9);
@@ -500,6 +731,7 @@ mod tests {
             cache_creation: 1_000_000,
             total: 1_000_000,
             cache_creation_1h: 600_000,
+            ..Default::default()
         };
         let opus = table.resolve("claude-opus-5-5").unwrap();
         // 400k × 1.25 × $4 + 600k × 2 × $4 = $2.0 + $4.8
@@ -560,6 +792,107 @@ mod tests {
                 rule.output_price_per_million, entry.output,
                 "{}",
                 entry.model
+            );
+        }
+    }
+
+    fn utc_millis(value: &str) -> i64 {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .unwrap()
+            .timestamp_millis()
+    }
+
+    /// TD-002: DeepSeek V4 Pro 基础档为非峰值价, 峰值样本进入 `peak` 份额并按
+    /// $1.32/$3.96 计费; 份额从总量扣除, 不得重复计价。
+    #[test]
+    fn deepseek_peak_and_off_peak_are_priced_separately() {
+        let table = PricingTable::default();
+        let rule = table.resolve("deepseek-v4-pro").unwrap();
+        assert_eq!(rule.input_price_per_million, 0.66);
+        assert_eq!(rule.output_price_per_million, 1.98);
+        assert_eq!(
+            rule.peak.as_ref().map(|peak| (peak.input, peak.output)),
+            Some((1.32, 3.96))
+        );
+
+        let peak = rate_class_for("deepseek-v4-pro", utc_millis("2026-08-21T08:00:00Z"), 1_000);
+        let off_peak = rate_class_for("deepseek-v4-pro", utc_millis("2026-08-21T20:00:00Z"), 1_000);
+        assert_eq!(peak, Some("peak"));
+        assert_eq!(off_peak, None);
+
+        let bucket = TokenBucket {
+            input: 2_000_000,
+            output: 2_000_000,
+            total: 4_000_000,
+            rate_splits: BTreeMap::from([(
+                "peak".to_owned(),
+                crate::TokenTally {
+                    input: 1_000_000,
+                    output: 1_000_000,
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+        // 非峰值 1M: 0.66 + 1.98; 峰值 1M: 1.32 + 3.96
+        let cost = table.calculate_cost(&bucket, &rule);
+        assert!((cost - 7.92).abs() < 1e-9, "cost = {cost}");
+    }
+
+    /// TD-002: Qwen3.7 Plus 仅在单请求 input > 256000 时进入 `long` 档。
+    #[test]
+    fn qwen_long_context_tier_uses_per_request_input() {
+        let table = PricingTable::default();
+        let rule = table.resolve("cline-pass/qwen3.7-plus").unwrap();
+        assert_eq!(rule.input_price_per_million, 0.40);
+        assert_eq!(
+            rule.long_context
+                .as_ref()
+                .map(|tier| (tier.threshold, tier.input, tier.output)),
+            Some((256_000, 1.20, 4.80))
+        );
+        let ts = utc_millis("2026-08-21T08:00:00Z");
+        assert_eq!(rate_class_for("qwen3.7-plus", ts, 256_000), None);
+        assert_eq!(
+            rate_class_for("cline-pass/qwen3.7-plus", ts, 256_001),
+            Some("long")
+        );
+
+        let bucket = TokenBucket {
+            input: 2_000_000,
+            output: 2_000_000,
+            total: 4_000_000,
+            rate_splits: BTreeMap::from([(
+                "long".to_owned(),
+                crate::TokenTally {
+                    input: 1_000_000,
+                    output: 1_000_000,
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+        // 短上下文 1M: 0.40 + 1.60; 长上下文 1M: 1.20 + 4.80
+        let cost = table.calculate_cost(&bucket, &rule);
+        assert!((cost - 8.0).abs() < 1e-9, "cost = {cost}");
+    }
+
+    /// TD-002: 峰值窗口按 UTC `[00:30, 16:30)` 判定, 边界分钟不越界。
+    #[test]
+    fn rate_class_windows_cover_utc_boundaries() {
+        let cases = [
+            ("2026-08-21T00:00:00Z", None),
+            ("2026-08-21T00:29:00Z", None),
+            ("2026-08-21T00:30:00Z", Some("peak")),
+            ("2026-08-21T16:29:00Z", Some("peak")),
+            ("2026-08-21T16:30:00Z", None),
+            ("2026-08-21T23:59:00Z", None),
+        ];
+        for (timestamp, expected) in cases {
+            assert_eq!(
+                rate_class_for("deepseek-v4-pro", utc_millis(timestamp), 1),
+                expected,
+                "{timestamp}"
             );
         }
     }

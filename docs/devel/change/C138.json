@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C138",
+  "title": "TD-005：额度重试改为通用 quotaRetryOnly 契约，删除 codex 专属编排入口",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-application / collector-bridge / request schema",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "TD-005 的剩余部分：编排层仍以 codexQuotaRetryOnly 短路并调用 collect_codex_quota_retry_only，重试请求与 codex 名字耦合。改为通用 quotaRetryOnly 契约：请求只声明「仅重试额度」，额度计划一律走 build_account_plan（已支持全部 provider），产物仍为空 agents + 额度 services；Swift/Windows 调用方、Bridge 白名单与 schema 同步改名，并补一条非 codex provider 的通用重试回归。",
+  "precheck": {
+    "description": "确认债务在当前代码中的位置与影响面",
+    "command": "grep -rn 'codexQuotaRetryOnly|rate_splits' core/collector apps",
+    "expected": "定位全部剩余分支/字段，避免漏改",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt",
+      "cargo test --workspace",
+      "scripts/adflow-verify --card C138 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "请求契约",
+      "before": "context.codexQuotaRetryOnly 触发 codex 专属路径",
+      "after": "context.quotaRetryOnly 触发通用「仅额度重试」路径",
+      "impact": "重试语义与 provider 名字解耦；旧字段不再被接受"
+    },
+    {
+      "scope": "编排路径",
+      "before": "collect_codex_quota_retry_only 调用 build_codex_account_plans",
+      "after": "collect_quota_retry_only 调用 build_account_plan（覆盖全部 provider 与账号计划）",
+      "impact": "新增 provider 无需再改重试入口"
+    },
+    {
+      "scope": "调用方与协议",
+      "before": "mac CollectorRunInput / Windows collector.rs / bridge 白名单 / request schema 使用 codexQuotaRetryOnly",
+      "after": "全部改为 quotaRetryOnly",
+      "impact": "双端与 schema 一致；重试仍只装配被挑战账号的凭据"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "编排层以 codexQuotaRetryOnly 短路并按 codex 名字构建额度计划",
+      "after": "编排层只认通用 quotaRetryOnly，额度计划一律经 build_account_plan；重试入口与 provider 名字解耦"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "通用重试语义",
+        "true_if": "quotaRetryOnly=true 时 agents 为空，额度 services 来自 build_account_plan；非 codex provider 也能走通",
+        "false_if": "重试路径仍按 codex 名字分支或只支持 codex",
+        "evidence": "collector-application 26 passed (含 quota_retry_only_is_provider_agnostic)；collector workspace 全绿",
+        "result": true
+      },
+      {
+        "item": "回归覆盖",
+        "true_if": "既有 codex 重试用例改名后全绿，并新增 kimi 通用重试用例",
+        "false_if": "任一重试用例失败或未覆盖非 codex provider",
+        "evidence": "既有 codex 重试用例改名后通过；新增 kimi 通用重试用例通过",
+        "result": true
+      },
+      {
+        "item": "全量验证",
+        "true_if": "cargo test --workspace 与 clippy -D warnings 通过，verify-local Exit 0",
+        "false_if": "任一测试/静态检查失败",
+        "evidence": "zsh scripts/verify-local.sh exit 0 (日志 local/c138-c139-verify.log)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

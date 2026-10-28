@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C139",
+  "title": "TD-002：DeepSeek V4 Pro 峰谷双价与 Qwen3.7 Plus >256K 分档计价",
+  "version": "0.15.0",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-domain PricingTable / collector-domain UsageContributionBuilder",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "TD-002：DeepSeek V4 Pro 峰谷双价与 Qwen3.7 Plus >256K 分档未建模。现有聚合层按模型×日合并 TokenBucket，已丢失请求时间和单请求输入长度，无法只改价卡。实现方式：TokenBucket 增加按计价类别的份额（peak / long / peak_long），UsageContributionBuilder 在逐条样本处根据时间窗与单请求输入长度分流；PricingTable 按类别套用价卡变体，基础桶保持非峰值/短上下文；缓存压缩表示同步保留份额并升 AGGREGATION_VERSION。",
+  "precheck": {
+    "description": "确认债务在当前代码中的位置与影响面",
+    "command": "grep -rn 'codexQuotaRetryOnly|rate_splits' core/collector apps",
+    "expected": "定位全部剩余分支/字段，避免漏改",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt",
+      "cargo test --workspace",
+      "scripts/adflow-verify --card C139 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "数据契约",
+      "before": "TokenBucket 只有总量，聚合后无法区分峰谷/长短上下文",
+      "after": "TokenBucket.rateSplits 保存计价类别份额（peak/long/peak_long），合并与缓存压缩均保留",
+      "impact": "计价可按类别重算，缓存旧条目经版本门升失效重建"
+    },
+    {
+      "scope": "分类",
+      "before": "无请求级分类",
+      "after": "UsageContributionBuilder 按 UTC 时间窗与单请求 input 阈值把样本计入类别",
+      "impact": "峰谷与 >256K 只影响对应模型"
+    },
+    {
+      "scope": "价卡",
+      "before": "deepseek-v4-pro 单档 0.66/1.98；qwen3.7-plus 单档 0.40/1.60",
+      "after": "新增 peak 与 longContext 变体；基础档保持非峰值/≤256K",
+      "impact": "峰时与超长上下文费用按官方档位计算"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "DeepSeek V4 Pro 与 Qwen3.7 Plus 按单档建卡，聚合层不保留请求时间与单请求输入长度",
+      "after": "TokenBucket 保留计价类别份额，Builder 逐样本分类，PricingTable 套用 peak / longContext 变体"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261028-09",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "峰谷计价",
+        "true_if": "DeepSeek V4 Pro 在峰值 UTC 窗口的输入/输出按 $1.32/$3.96 计，非峰值按 $0.66/$1.98",
+        "false_if": "峰谷样本被同一档计价或窗口边界错误",
+        "evidence": "collector-domain 21 passed (含 deepseek 峰谷 / qwen 长上下文 / UTC 边界 / builder 分类)；collector-local 46 passed (含压缩缓存往返)",
+        "result": true
+      },
+      {
+        "item": "分档计价",
+        "true_if": "Qwen3.7 Plus input>256000 按 $1.20/$4.80 计，≤256000 按 $0.40/$1.60",
+        "false_if": "分档阈值边界错误或长上下文未命中",
+        "evidence": "SQLite/JSONL 聚合版本升为 4/2；collector workspace 与 clippy 全绿",
+        "result": true
+      },
+      {
+        "item": "缓存等价",
+        "true_if": "SQLite/JSONL 缓存往返保留 rateSplits；AGGREGATION_VERSION 升版后旧条目重建",
+        "false_if": "缓存往返丢失份额或旧条目被错误复用",
+        "evidence": "zsh scripts/verify-local.sh exit 0 (日志 local/c138-c139-verify.log)",
+        "result": true
+      },
+      {
+        "item": "全量验证",
+        "true_if": "cargo test --workspace / clippy / verify-local 全绿",
+        "false_if": "任一测试或静态检查失败",
+        "evidence": "待实现后回填",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

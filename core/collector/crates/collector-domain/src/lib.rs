@@ -221,6 +221,46 @@ fn parse_timestamp(value: &str, timezone: Tz) -> Option<DateTime<Utc>> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct TokenTally {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cache_creation_1h: u64,
+}
+
+impl TokenTally {
+    pub fn add_sample(&mut self, sample: &UsageSample<'_>) {
+        self.input = self.input.saturating_add(sample.input);
+        self.output = self.output.saturating_add(sample.output);
+        self.cache_read = self.cache_read.saturating_add(sample.cache_read);
+        self.cache_creation = self.cache_creation.saturating_add(sample.cache_creation);
+        self.cache_creation_1h = self
+            .cache_creation_1h
+            .saturating_add(sample.cache_creation_1h.min(sample.cache_creation));
+    }
+
+    pub fn merge(&mut self, other: &Self) {
+        self.input = self.input.saturating_add(other.input);
+        self.output = self.output.saturating_add(other.output);
+        self.cache_read = self.cache_read.saturating_add(other.cache_read);
+        self.cache_creation = self.cache_creation.saturating_add(other.cache_creation);
+        self.cache_creation_1h = self
+            .cache_creation_1h
+            .saturating_add(other.cache_creation_1h);
+    }
+
+    pub fn total(&self) -> u64 {
+        self.input
+            .saturating_add(self.output)
+            .saturating_add(self.cache_read)
+            .saturating_add(self.cache_creation)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenBucket {
     pub input: u64,
     pub output: u64,
@@ -231,6 +271,11 @@ pub struct TokenBucket {
     /// 缓存写入分别按输入单价 1.25× / 2× 计费; 其余来源恒为 0, 序列化时省略。
     #[serde(default, skip_serializing_if = "is_zero")]
     pub cache_creation_1h: u64,
+    /// 按计价类别拆分的份额 (TD-002): 例如峰谷价的 `peak`、>256K 分档的 `long`。
+    /// 桶总量仍是全部 token; 份额是其中的子集, 计价时从总量扣除后按类别费率重算。
+    /// 无分档价卡的模型保持空 map, 序列化时省略。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rate_splits: BTreeMap<String, TokenTally>,
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -253,6 +298,11 @@ impl TokenBucket {
 
     /// 计入一条用量样本 (含 1 小时 TTL 缓存写入份额; C107)。
     pub fn add_sample(&mut self, sample: &UsageSample<'_>) {
+        self.add_sample_classified(sample, None);
+    }
+
+    /// 计入一条样本, 并在指定计价类别下累计份额 (TD-002)。
+    pub fn add_sample_classified(&mut self, sample: &UsageSample<'_>, rate_class: Option<&str>) {
         self.add(
             sample.input,
             sample.output,
@@ -262,6 +312,12 @@ impl TokenBucket {
         self.cache_creation_1h = self
             .cache_creation_1h
             .saturating_add(sample.cache_creation_1h.min(sample.cache_creation));
+        if let Some(class) = rate_class {
+            self.rate_splits
+                .entry(class.to_owned())
+                .or_default()
+                .add_sample(sample);
+        }
     }
 
     pub fn display_input(&self) -> u64 {
@@ -279,6 +335,12 @@ impl TokenBucket {
         self.cache_creation_1h = self
             .cache_creation_1h
             .saturating_add(other.cache_creation_1h);
+        for (class, tally) in &other.rate_splits {
+            self.rate_splits
+                .entry(class.clone())
+                .or_default()
+                .merge(tally);
+        }
     }
 }
 
@@ -379,14 +441,16 @@ impl UsageContributionBuilder {
         let Some(day_index) = self.window.day_index_of_millis(sample.timestamp_millis) else {
             return false;
         };
-        self.by_day
-            .entry(day_index)
-            .or_default()
-            .add_sample(&sample);
         let model = sample
             .model
             .filter(|value| !value.is_empty())
             .unwrap_or("unknown");
+        let rate_class =
+            crate::pricing::rate_class_for(model, sample.timestamp_millis, sample.input);
+        self.by_day
+            .entry(day_index)
+            .or_default()
+            .add_sample_classified(&sample, rate_class);
         // 自然月 × 模型聚合覆盖全部样本 (不只今日), 供用量卡模型分档统计.
         if let Some(date) = self.window.day_list.get(day_index) {
             let month = &date[..7];
@@ -395,7 +459,7 @@ impl UsageContributionBuilder {
                 .or_default()
                 .entry(model.to_owned())
                 .or_default()
-                .add_sample(&sample);
+                .add_sample_classified(&sample, rate_class);
             // 日期 × 模型只保留最近 DETAIL_DAYS 天 (C070)
             if day_index + DETAIL_DAYS >= self.window.day_list.len() {
                 self.models_by_day
@@ -403,7 +467,7 @@ impl UsageContributionBuilder {
                     .or_default()
                     .entry(model.to_owned())
                     .or_default()
-                    .add_sample(&sample);
+                    .add_sample_classified(&sample, rate_class);
             }
         }
         if day_index + 1 != self.window.day_list.len() {
@@ -415,7 +479,7 @@ impl UsageContributionBuilder {
         self.models_today
             .entry(model.to_owned())
             .or_default()
-            .add_sample(&sample);
+            .add_sample_classified(&sample, rate_class);
         if let Some(hour) = self.window.hour_of_millis(sample.timestamp_millis) {
             self.hours[hour] = self.hours[hour].saturating_add(
                 sample
@@ -429,7 +493,7 @@ impl UsageContributionBuilder {
                 .or_default()
                 .entry(model.to_owned())
                 .or_default()
-                .add_sample(&sample);
+                .add_sample_classified(&sample, rate_class);
         }
         if let Some(project) = sample.project.filter(|value| !value.is_empty()) {
             if !self.projects_today.contains_key(project) {
@@ -809,6 +873,7 @@ mod tests {
             cache_creation: 4,
             cache_creation_1h: 0,
             total: 10,
+            ..Default::default()
         };
         let encoded = serde_json::to_value(&bucket).unwrap();
         assert_eq!(encoded["cacheRead"], 3);
@@ -913,5 +978,55 @@ mod tests {
             ..contribution.clone()
         };
         assert!(!UsageContributionBuilder::new(window).merge_contribution(&invalid));
+    }
+
+    /// TD-002: Builder 在逐条样本处按时间窗与单请求 input 分类, 份额只占总量子集。
+    #[test]
+    fn contribution_builder_records_rate_class_splits() {
+        let context: Map<String, Value> = serde_json::from_value(json!({
+            "now": "2026-08-21T23:00:00Z",
+            "timezone": "UTC",
+            "days": 1
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let mut builder = UsageContributionBuilder::new(window);
+        for (timestamp, model, input) in [
+            ("2026-08-21T08:00:00Z", "deepseek-v4-pro", 1_000),
+            ("2026-08-21T20:00:00Z", "deepseek-v4-pro", 2_000),
+            ("2026-08-21T09:00:00Z", "cline-pass/qwen3.7-plus", 300_000),
+        ] {
+            let millis = chrono::DateTime::parse_from_rfc3339(timestamp)
+                .unwrap()
+                .timestamp_millis();
+            assert!(builder.record(UsageSample {
+                timestamp_millis: millis,
+                model: Some(model),
+                input,
+                output: 10,
+                cache_read: 0,
+                cache_creation: 0,
+                cache_creation_1h: 0,
+                project: None,
+            }));
+        }
+        let contribution = builder.contribution();
+        let deepseek = contribution
+            .models_today
+            .iter()
+            .find(|model| model.model == "deepseek-v4-pro")
+            .unwrap();
+        assert_eq!(deepseek.bucket.input, 3_000);
+        assert_eq!(
+            deepseek.bucket.rate_splits["peak"].input, 1_000,
+            "只有 08:00Z 样本进入峰值档"
+        );
+        let qwen = contribution
+            .models_today
+            .iter()
+            .find(|model| model.model == "cline-pass/qwen3.7-plus")
+            .unwrap();
+        assert_eq!(qwen.bucket.rate_splits["long"].input, 300_000);
+        assert_eq!(qwen.bucket.input, 300_000);
     }
 }

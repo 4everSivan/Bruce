@@ -8,7 +8,7 @@ mod sources;
 mod sqlite_cache;
 
 use collector_domain::{
-    CollectionWindow, ModelDelta, ProjectDelta, TokenBucket, UsageContribution,
+    CollectionWindow, ModelDelta, ProjectDelta, TokenBucket, TokenTally, UsageContribution,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -20,7 +20,7 @@ pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 /// SQLite 缓存的压缩贡献格式版本 (`CompactContribution`)。
 /// v2: 新增自然月 × 模型聚合 (modelMonths); v3 (C070): 新增最近 31 天 日期 × 模型 与今日
 /// 小时 × 模型 token 桶。格式演进必须升级本常量令旧条目整体重建 (C072)。
-pub const AGGREGATION_VERSION: u32 = 3;
+pub const AGGREGATION_VERSION: u32 = 4;
 
 pub use sources::{
     scan_claude_cached, scan_codebuddy_cached, scan_codex_cached_with_cancellation,
@@ -167,19 +167,27 @@ pub(crate) const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
 /// Compact cache-only representation. Cache entries are internal and
 /// rebuildable, so arrays are preferable to repeating JSON field names for
 /// every daily bucket while the domain contribution remains ergonomic.
+/// TD-002: 压缩缓存里的 token 桶 —— 五元总量 + 可选的计价类别份额。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CompactBucket {
+    v: [u64; 5],
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    rate_splits: BTreeMap<String, [u64; 5]>,
+}
+
 /// 自然月 × 模型的压缩缓存表示 (月 key → 模型 → 五元 token 桶).
-type CompactMonthModels = Vec<(String, Vec<(String, [u64; 5])>)>;
+type CompactMonthModels = Vec<(String, Vec<(String, CompactBucket)>)>;
 /// 日期 × 模型的压缩缓存表示 (窗口日序号 → 模型 → 五元 token 桶; C070).
-type CompactDayModels = Vec<(u16, Vec<(String, [u64; 5])>)>;
+type CompactDayModels = Vec<(u16, Vec<(String, CompactBucket)>)>;
 /// 今日 小时 × 模型的压缩缓存表示 (小时 → 模型 → 五元 token 桶; C070).
-type CompactHourModels = Vec<(u8, Vec<(String, [u64; 5])>)>;
+type CompactHourModels = Vec<(u8, Vec<(String, CompactBucket)>)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct CompactContribution {
-    days: Vec<(u16, [u64; 5])>,
+    days: Vec<(u16, CompactBucket)>,
     #[serde(default)]
     month_models: CompactMonthModels,
-    models_today: Vec<(String, [u64; 5])>,
+    models_today: Vec<(String, CompactBucket)>,
     projects_today: Vec<(String, u64)>,
     hours: Vec<u64>,
     #[serde(default)]
@@ -188,17 +196,17 @@ pub(crate) struct CompactContribution {
     hour_models: CompactHourModels,
 }
 
-fn compact_models(models: &BTreeMap<String, TokenBucket>) -> Vec<(String, [u64; 5])> {
+fn compact_models(models: &BTreeMap<String, TokenBucket>) -> Vec<(String, CompactBucket)> {
     models
         .iter()
-        .map(|(model, bucket)| (model.clone(), bucket_array(bucket)))
+        .map(|(model, bucket)| (model.clone(), compact_bucket(bucket)))
         .collect()
 }
 
-fn expand_models(models: &[(String, [u64; 5])]) -> BTreeMap<String, TokenBucket> {
+fn expand_models(models: &[(String, CompactBucket)]) -> BTreeMap<String, TokenBucket> {
     models
         .iter()
-        .map(|(model, values)| (model.clone(), bucket_from_array(*values)))
+        .map(|(model, values)| (model.clone(), bucket_from_compact(values.clone())))
         .collect()
 }
 
@@ -216,7 +224,7 @@ impl CompactContribution {
                     .iter()
                     .position(|candidate| candidate == day)
                     .and_then(|index| u16::try_from(index).ok())
-                    .map(|index| (index, bucket_array(bucket)))
+                    .map(|index| (index, compact_bucket(bucket)))
             })
             .collect::<Option<Vec<_>>>()?;
         let month_models = value
@@ -227,7 +235,7 @@ impl CompactContribution {
                     month.clone(),
                     models
                         .iter()
-                        .map(|(model, bucket)| (model.clone(), bucket_array(bucket)))
+                        .map(|(model, bucket)| (model.clone(), compact_bucket(bucket)))
                         .collect(),
                 )
             })
@@ -257,7 +265,7 @@ impl CompactContribution {
             models_today: value
                 .models_today
                 .iter()
-                .map(|model| (model.model.clone(), bucket_array(&model.bucket)))
+                .map(|model| (model.model.clone(), compact_bucket(&model.bucket)))
                 .collect(),
             projects_today: value
                 .projects_today
@@ -277,7 +285,7 @@ impl CompactContribution {
                     .day_list
                     .get(*index as usize)
                     .cloned()
-                    .map(|day| (day, bucket_from_array(*values)))
+                    .map(|day| (day, bucket_from_compact(values.clone())))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
         let models_by_day = self
@@ -300,7 +308,9 @@ impl CompactContribution {
                         month.clone(),
                         models
                             .iter()
-                            .map(|(model, values)| (model.clone(), bucket_from_array(*values)))
+                            .map(|(model, values)| {
+                                (model.clone(), bucket_from_compact(values.clone()))
+                            })
                             .collect::<BTreeMap<_, _>>(),
                     )
                 })
@@ -310,7 +320,7 @@ impl CompactContribution {
                 .iter()
                 .map(|(model, values)| ModelDelta {
                     model: model.clone(),
-                    bucket: bucket_from_array(*values),
+                    bucket: bucket_from_compact(values.clone()),
                 })
                 .collect(),
             projects_today: self
@@ -333,26 +343,60 @@ impl CompactContribution {
     }
 }
 
-fn bucket_array(bucket: &TokenBucket) -> [u64; 5] {
-    [
-        bucket.input,
-        bucket.output,
-        bucket.cache_read,
-        bucket.cache_creation,
-        bucket.total,
-    ]
+fn compact_bucket(bucket: &TokenBucket) -> CompactBucket {
+    CompactBucket {
+        v: [
+            bucket.input,
+            bucket.output,
+            bucket.cache_read,
+            bucket.cache_creation,
+            bucket.total,
+        ],
+        rate_splits: bucket
+            .rate_splits
+            .iter()
+            .map(|(class, tally)| {
+                (
+                    class.clone(),
+                    [
+                        tally.input,
+                        tally.output,
+                        tally.cache_read,
+                        tally.cache_creation,
+                        tally.total(),
+                    ],
+                )
+            })
+            .collect(),
+    }
 }
 
-fn bucket_from_array(values: [u64; 5]) -> TokenBucket {
+fn bucket_from_compact(value: CompactBucket) -> TokenBucket {
     TokenBucket {
-        input: values[0],
-        output: values[1],
-        cache_read: values[2],
-        cache_creation: values[3],
-        total: values[4],
+        input: value.v[0],
+        output: value.v[1],
+        cache_read: value.v[2],
+        cache_creation: value.v[3],
+        total: value.v[4],
         // 紧凑缓存表示不携带 1 小时 TTL 份额: 只有 Claude 有该拆分, 其聚合始终从
         // 观测值重建 (C107)。
         cache_creation_1h: 0,
+        rate_splits: value
+            .rate_splits
+            .into_iter()
+            .map(|(class, v)| {
+                (
+                    class,
+                    TokenTally {
+                        input: v[0],
+                        output: v[1],
+                        cache_read: v[2],
+                        cache_creation: v[3],
+                        cache_creation_1h: 0,
+                    },
+                )
+            })
+            .collect(),
     }
 }
 
@@ -564,8 +608,41 @@ mod tests {
         assert!(restored.models_by_day.is_empty() && restored.hour_models_today.is_empty());
         assert_eq!(
             super::AGGREGATION_VERSION,
-            3,
+            4,
             "明细结构变化须升级缓存聚合版本"
         );
+    }
+
+    /// TD-002: 压缩缓存往返必须保留 rateSplits (峰谷 / 长上下文份额), 否则 SQLite
+    /// 源的峰谷与分档费用会在热缓存路径丢失。
+    #[test]
+    fn compact_cache_round_trips_rate_class_splits() {
+        let context = serde_json::from_value(json!({
+            "now": "2026-08-21T23:00:00Z", "timezone": "UTC", "days": 1
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let mut builder = UsageContributionBuilder::new(window.clone());
+        // 2026-08-21T08:00:00Z (UTC 峰值窗口内)
+        let peak = 1_787_299_200_000i64;
+        assert!(builder.record(collector_domain::UsageSample {
+            timestamp_millis: peak,
+            model: Some("deepseek-v4-pro"),
+            input: 1_000,
+            output: 20,
+            cache_read: 0,
+            cache_creation: 0,
+            cache_creation_1h: 0,
+            project: None,
+        }));
+        let contribution = builder.contribution();
+        let compact = super::CompactContribution::from_domain(&contribution, &window).unwrap();
+        let encoded = serde_json::to_string(&compact).unwrap();
+        let decoded: super::CompactContribution = serde_json::from_str(&encoded).unwrap();
+        let restored = decoded.to_domain(&window).unwrap();
+        assert_eq!(restored, contribution);
+        let bucket = &restored.models_today[0].bucket;
+        assert_eq!(bucket.rate_splits["peak"].input, 1_000);
+        assert_eq!(bucket.rate_splits["peak"].output, 20);
     }
 }

@@ -83,7 +83,7 @@ protocol CollectorRunInputProviding {
     ) async throws -> CollectorRunInput
 
     /// Codex 定向重试输入 (任务 8): 一次组装全部被挑战账号的短期
-    /// access token, 上下文标记 codexQuotaRetryOnly.
+    /// access token, 上下文标记 quotaRetryOnly.
     /// 只包含本轮刷新成功的账号; 决议失败或未连接账号不进入重试.
     func retryInput(
         for module: CollectorModule,
@@ -314,7 +314,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     }
 
     /// 定向重试 (任务 8): 一次组装全部被 challenge 账号的短期 access token,
-    /// 上下文标记 codexQuotaRetryOnly. 账号未连接或 token 决议失败不进入
+    /// 上下文标记 quotaRetryOnly. 账号未连接或 token 决议失败不进入
     /// 重试; 全部失败时返回 nil, 不执行 retry-only Collector.
     /// 旧库迁移完成前不开放 (与首轮输入 gate 一致, 任务 11).
     /// 任务 6: 账号按 v2 index 重新排序 (不采用 challenge 到达顺序),
@@ -377,7 +377,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             "capabilities": .array([
                 .string(CollectorCapability.externalQuotas.rawValue),
             ]),
-            "codexQuotaRetryOnly": .boolean(true),
+            "quotaRetryOnly": .boolean(true),
         ]
         context["codexQuotaAccountOrder"] = .array(
             order.map { .string($0) }

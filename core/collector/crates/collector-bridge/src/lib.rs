@@ -28,7 +28,7 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "days",
     "paths",
     "capabilities",
-    "codexQuotaRetryOnly",
+    "quotaRetryOnly",
     "codexQuotaAccountOrder",
     "localUsageOnly",
     "quotaSkipProviders",

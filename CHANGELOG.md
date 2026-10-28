@@ -10,15 +10,21 @@
   - **macOS 端**：以菜单栏图标为顶边固定锚点，自顶向下展开至目标高度（240ms `cubic-bezier(0.16, 1.0, 0.3, 1.0)` 阻尼曲线），内容采用低优先级垂直约束避免挤压形变，逆向回卷（140ms easeIn）后隐藏并归还焦点；支持 Reduce Motion 降级与连击打断保护；
   - **Windows 端**：通过 CSS `clip-path` 与硬件加速 `transform` 实现任务栏托盘侧物理卷轴展开（260ms）与逆向回卷收拢（140ms），并在 transitionend 后触发后端隐藏。
 
+### Fixed
+- **macOS 构建源码告警清零 (C140)**：
+  - **跨模块主题类型导入**：`ProviderBrandBadge` 显式 `import BruceOnboardingCore`，不再依赖 `BruceAppCore` 的传递可见性引用 `ResolvedTheme`，消除 Swift 6 implementation-only 可见性告警；
+  - **WebKit Cookie 清理时序**：`StepFunWebLoginView` 清空登录缓存改用 `await cookieStore.deleteCookie(_:)`，全部 Cookie 删除完成后再重载页面，消除 async 替代告警并修正清理与重载的并发竞态。
+
 ### Changed
 - **技术债批次收口 (C130–C136)**：
-  - **TD-003/006 总账校准 (C130)**：Windows Provider 清单与四处巨型文件切分均已由既有实现落地，从远期债务池移除；TD-005 仅部分完成（ProviderOutcome 已下沉，codex 重试短路仍在编排层），保留并收窄描述；
+  - **TD-003/006 总账校准 (C130)**：Windows Provider 清单与四处巨型文件切分均已由既有实现落地，从远期债务池移除；
   - **TD-008/010 边界定稿 (C131)**：旧格式凭据迁移只在 macOS 侧发生（Windows 无历史格式）；`collector-credential` 只读探测函数定位为测试/兼容面，并写入设计 02；
   - **TD-012 滚动条压制事件化 (C132)**：面板滚动条压制由 0.3s Timer 轮询改为 KVO + 系统通知事件驱动，隐藏/离窗即解除观察；
   - **TD-009 菜单栏额度门禁 (C133)**：菜单栏「最低/平均剩余额度」与仪表盘共用验证门禁，未验证 Provider 不再影响菜单栏；
   - **TD-004 缓存原语收敛 (C134)**：JSONL / SQLite 缓存与 Codex 头尾指纹统一到 `collector-local::cache_util`，原子写盘补 `sync_all`；
   - **TD-011 Windows 设置前端拆分 (C135)**：`settings.js` 由 3,258 行拆分为共享状态 + 订阅 / 工作台 / 计费 / 维护分节脚本 + 56 行壳层，脚本按 `settings.html` 固定顺序加载；
-  - **TD-002 分时/分档价卡评估 (C136)**：现有聚合层已丢失请求时间与单请求输入长度，需先扩展 `TokenBucket` 与缓存版本，本批次暂缓并记录扩展门槛。
+  - **TD-005 重试契约通用化 (C138)**：`codexQuotaRetryOnly` 改为通用 `quotaRetryOnly`，额度计划一律经 `build_account_plan`，删除 codex 专属编排入口，并补非 codex provider 的重试回归；
+  - **TD-002 峰谷/分档计价 (C139)**：`TokenBucket` 增加计价类别份额，DeepSeek V4 Pro 峰值 `00:30–16:30 UTC` 按 `$1.32/$3.96`、Qwen3.7 Plus 单请求 `>256K` 按 `$1.20/$4.80` 计费；SQLite/JSONL 缓存保留份额并升聚合版本。
 
 ## [0.14.0] - 2026-10-27
 
