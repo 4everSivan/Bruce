@@ -55,6 +55,7 @@ struct ProviderPopUpPicker: NSViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         var selection: Binding<SubscriptionProviderID?>
         var providers: [SubscriptionProviderID] = []

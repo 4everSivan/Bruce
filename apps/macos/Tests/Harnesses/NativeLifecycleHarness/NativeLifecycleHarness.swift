@@ -317,6 +317,7 @@ struct NativeLifecycleHarness {
         )
 
         coordinator.beginTermination { }
+        try expect(graceAction != nil, "有运行任务时退出应先安排宽限期回调")
         try expect(runtime.stopCount == 1, "cancel 前应 stop scheduling")
         try expect(runtime.resumeCount == 0, "cancel 前不应 resume")
 
