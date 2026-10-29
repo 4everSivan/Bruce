@@ -12,6 +12,7 @@ pub mod reachability;
 pub mod scheduler;
 pub mod settings;
 pub mod software_update;
+pub mod startup_diagnostics;
 pub mod tray_icon_renderer;
 
 pub mod runtime_core;
@@ -39,6 +40,9 @@ mod desktop {
     use crate::scheduler::SchedulerControl;
     use crate::settings::AppSettings;
     use crate::software_update::desktop_impl::UpdateState;
+    use crate::startup_diagnostics::{
+        classify_dashboard_show, initialization_failure, show_native_failure,
+    };
 
     #[derive(Clone, Default)]
     struct TrayBoundsState(std::sync::Arc<std::sync::Mutex<Option<TrayIconBounds>>>);
@@ -165,20 +169,32 @@ mod desktop {
     /// 调度器首轮采集紧随其后, 再排一次手动唤醒会让同一轮扫描重复一次。
     fn show_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource, refresh: bool) {
         hide_preview(app);
-        if let Some(window) = app.get_webview_window("dashboard") {
-            let tray_bounds = app
-                .try_state::<TrayBoundsState>()
-                .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
-            apply_dashboard_geometry(&window, tray_bounds.as_ref(), source);
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_always_on_top(true);
-            let _ = window.set_focus();
-            let _ = window.emit("dashboard-show-transition", ());
-            if refresh {
-                // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
-                app.state::<SchedulerControl>().request_manual_refresh();
+        let Some(window) = app.get_webview_window("dashboard") else {
+            if let Some(stage) = classify_dashboard_show(false, false) {
+                show_native_failure(stage);
             }
+            return;
+        };
+
+        let tray_bounds = app
+            .try_state::<TrayBoundsState>()
+            .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
+        apply_dashboard_geometry(&window, tray_bounds.as_ref(), source);
+        let _ = window.unminimize();
+        if window.show().is_err() {
+            if let Some(stage) = classify_dashboard_show(true, false) {
+                show_native_failure(stage);
+            }
+            return;
+        }
+        let _ = window.set_always_on_top(true);
+        // Foreground activation is subject to Windows policy and is nonfatal
+        // after the dashboard itself has been shown.
+        let _ = window.set_focus();
+        let _ = window.emit("dashboard-show-transition", ());
+        if refresh {
+            // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
+            app.state::<SchedulerControl>().request_manual_refresh();
         }
     }
 
@@ -1161,7 +1177,7 @@ mod desktop {
     // MARK: - 入口
 
     pub fn run() {
-        tauri::Builder::default()
+        let result = tauri::Builder::default()
             // 单实例必须最先注册 (插件文档要求): 托盘常驻应用再次启动时唤出既有面板,
             // 而不是再起一个无声无窗口的进程 (C149)。
             .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -1405,8 +1421,14 @@ mod desktop {
                 crate::software_update::desktop_impl::update_unskip,
                 crate::software_update::desktop_impl::open_release_page
             ])
-            .run(tauri::generate_context!())
-            .expect("Bruce 托盘应用运行失败");
+            .run(tauri::generate_context!());
+        if let Some(stage) = initialization_failure(&result) {
+            // Do not surface framework error text: it may include paths or other
+            // machine-specific details. This native prompt remains available if
+            // Tauri never created a WebView or tray window.
+            show_native_failure(stage);
+            std::process::exit(1);
+        }
     }
 }
 

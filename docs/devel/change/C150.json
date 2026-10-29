@@ -1,0 +1,84 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C150",
+  "title": "Windows 启动和看板显示失败提供安全可见诊断",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C150-C151-windows-reliability",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "Tauri 启动与看板显示",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "发布版隐藏控制台；初始化失败由 expect 退出，看板 show 失败被忽略，用户无法定位启动不可达。",
+  "precheck": {
+    "description": "确认现有缺陷尚未修复",
+    "command": "rg -n 'run\\(tauri::generate_context|expect\\(\"Bruce 托盘|let _ = window\\.(show|set_focus)' apps/win/src-tauri/src/lib.rs",
+    "expected": "初始化失败退出；窗口显示错误被忽略。",
+    "is_completed": false,
+    "evidence": "2026-10-29 预检：lib.rs 174、176 忽略 show/focus，1408–1409 对 run 结果 expect；main.rs 2 发布版关闭控制台。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features",
+      "node scripts/check-win-frontend.mjs"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Tauri 启动与看板显示",
+      "before": "初始化失败退出；窗口显示错误被忽略。",
+      "after": "初始化或看板显示失败向用户提供固定阶段码的原生可见提示，不暴露原始异常或敏感数据。",
+      "impact": "Windows 用户及本地构建验收"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "初始化失败退出；窗口显示错误被忽略。",
+      "after": "初始化或看板显示失败向用户提供固定阶段码的原生可见提示，不暴露原始异常或敏感数据。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261029-c150",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "本机自动化与编译检查",
+        "true_if": "启动故障分类回归及相关检查通过",
+        "false_if": "测试或检查失败",
+        "evidence": "macOS：cargo test --no-default-features --locked --offline Exit 0（233 项）；cargo check --all-targets --locked Exit 0；cargo clippy --all-targets -- -D warnings Exit 0；cargo fmt --check Exit 0；check-win-frontend.mjs Exit 0（91+2+6 项）。Windows x86_64 目标的独立启动诊断模块 cargo check Exit 0（不含完整应用链接）。",
+        "result": true
+      },
+      {
+        "item": "Windows 11 实机验证",
+        "true_if": "正常启动与注入初始化和看板显示失败时的原生提示经 Windows 11 实测",
+        "false_if": "Windows 实测出现错误或提示不可见",
+        "evidence": "未执行：当前环境为 macOS；Windows 完整目标交叉检查因缺少 Windows SDK 的 assert.h 失败，不能代替安装包或 WebView2 实测。",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

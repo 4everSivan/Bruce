@@ -55,4 +55,4 @@ rusqlite = { version = "=0.32.1", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # Win32_UI_Shell: C084 用 ShellExecuteW 打开 Codex 设备码验证页 (不引入 opener 插件)。
-windows-sys = { version = "0.59", features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Memory", "Win32_Networking_WinInet", "Win32_UI_Shell"] }
+windows-sys = { version = "0.59", features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Memory", "Win32_Networking_WinInet", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
