@@ -325,7 +325,7 @@
       "topic": "SubscriptionQuota",
       "milestone": "M9-订阅多账号命名",
       "depends_on": [],
-      "file": "docs/devel/task/T18.json",
+      "file": "docs/archive/0.15.0/task/T18.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T18-account-custom-names"
     }
   }

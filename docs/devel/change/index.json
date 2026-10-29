@@ -1375,7 +1375,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "SystemOverview",
       "version": "0.15.0",
-      "file": "docs/devel/change/C130.json"
+      "file": "docs/archive/0.15.0/change/C130.json"
     },
     "C131": {
       "title": "技术债 TD-008/010 口径定稿",
@@ -1384,7 +1384,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "SubscriptionQuota",
       "version": "0.15.0",
-      "file": "docs/devel/change/C131.json"
+      "file": "docs/archive/0.15.0/change/C131.json"
     },
     "C132": {
       "title": "TD-012：滚动条压制改为 KVO/通知事件驱动",
@@ -1393,7 +1393,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C132.json"
+      "file": "docs/archive/0.15.0/change/C132.json"
     },
     "C133": {
       "title": "TD-009：菜单栏额度摘要与仪表盘共用验证门禁",
@@ -1402,7 +1402,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C133.json"
+      "file": "docs/archive/0.15.0/change/C133.json"
     },
     "C134": {
       "title": "TD-004：抽取 collector-local cache_util",
@@ -1411,7 +1411,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "TokenUsage",
       "version": "0.15.0",
-      "file": "docs/devel/change/C134.json"
+      "file": "docs/archive/0.15.0/change/C134.json"
     },
     "C135": {
       "title": "TD-011：Windows settings.js 拆分",
@@ -1420,7 +1420,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "WindowsCompat",
       "version": "0.15.0",
-      "file": "docs/devel/change/C135.json"
+      "file": "docs/archive/0.15.0/change/C135.json"
     },
     "C136": {
       "title": "TD-002：分时/分档价卡评估与暂缓",
@@ -1429,7 +1429,7 @@
       "branch": "chore/C130-c136-tech-debt",
       "topic": "TokenUsage",
       "version": "0.15.0",
-      "file": "docs/devel/change/C136.json"
+      "file": "docs/archive/0.15.0/change/C136.json"
     },
     "C137": {
       "title": "双端仪表盘物理卷轴抽屉展开动效（流派 B · 物理卷轴下拉展开与逆向回卷收拢）",
@@ -1438,7 +1438,7 @@
       "branch": "feat/C137-dashboard-curtain-animation",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C137.json"
+      "file": "docs/archive/0.15.0/change/C137.json"
     },
     "C138": {
       "title": "TD-005：额度重试改为通用 quotaRetryOnly 契约，删除 codex 专属编排入口",
@@ -1447,7 +1447,7 @@
       "branch": "refactor/C138-generic-quota-retry",
       "topic": "TokenUsage",
       "version": "0.15.0",
-      "file": "docs/devel/change/C138.json"
+      "file": "docs/archive/0.15.0/change/C138.json"
     },
     "C139": {
       "title": "TD-002：DeepSeek V4 Pro 峰谷双价与 Qwen3.7 Plus >256K 分档计价",
@@ -1456,7 +1456,7 @@
       "branch": "feature/C139-tiered-pricing",
       "topic": "TokenUsage",
       "version": "0.15.0",
-      "file": "docs/devel/change/C139.json"
+      "file": "docs/archive/0.15.0/change/C139.json"
     },
     "C140": {
       "title": "消除 macOS 构建中跨模块主题类型与 WebKit 回调 API 两处 Swift 告警",
@@ -1465,7 +1465,7 @@
       "branch": "fix/C140-swift-build-warnings",
       "topic": "SystemOverview",
       "version": "0.15.0",
-      "file": "docs/devel/change/C140.json"
+      "file": "docs/archive/0.15.0/change/C140.json"
     },
     "C143": {
       "title": "消除面板滚动条压制观察器的 5 处 MainActor 隔离告警",
@@ -1474,7 +1474,7 @@
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C143.json"
+      "file": "docs/archive/0.15.0/change/C143.json"
     },
     "C144": {
       "title": "消除设置页下拉 Coordinator 隔离告警与生命周期测试死变量",
@@ -1483,7 +1483,7 @@
       "branch": "main",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C144.json"
+      "file": "docs/archive/0.15.0/change/C144.json"
     },
     "C145": {
       "title": "全局界面动效总开关（应用内覆盖系统「减弱动态效果」）与卷轴缓动曲线修正",
@@ -1492,7 +1492,7 @@
       "branch": "feat/C145-global-motion-switch",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C145.json"
+      "file": "docs/archive/0.15.0/change/C145.json"
     },
     "C146": {
       "title": "设置页去除开关状态文字与软件更新卡冗余小字（双端对齐）",
@@ -1501,7 +1501,7 @@
       "branch": "feat/C145-global-motion-switch",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C146.json"
+      "file": "docs/archive/0.15.0/change/C146.json"
     },
     "C147": {
       "title": "修复面板滚动/回弹后内容高度与窗口高度失步（Header 被顶出窗口、底部留白）",
@@ -1510,7 +1510,7 @@
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C147.json"
+      "file": "docs/archive/0.15.0/change/C147.json"
     },
     "C148": {
       "title": "消除面板高度与卡片折叠/Tab 切换的弹簧抖动（窗口单一高度动画源、内容填满窗口、显式交换态高度）",
@@ -1519,7 +1519,7 @@
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
-      "file": "docs/devel/change/C148.json"
+      "file": "docs/archive/0.15.0/change/C148.json"
     },
     "C149": {
       "title": "Windows 启动可达性：启动即呈现面板、单实例唤出既有面板、补齐悬停预览窗口的事件授权",
@@ -1528,7 +1528,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.15.0",
-      "file": "docs/devel/change/C149.json"
+      "file": "docs/archive/0.15.0/change/C149.json"
     },
     "C150": {
       "title": "Windows 启动和看板显示失败提供安全可见诊断",
@@ -1537,7 +1537,7 @@
       "branch": "fix/C150-C151-windows-reliability",
       "topic": "WindowsCompat",
       "version": "0.15.0",
-      "file": "docs/devel/change/C150.json"
+      "file": "docs/archive/0.15.0/change/C150.json"
     },
     "C151": {
       "title": "Windows 本地打包失败与旧产物残留不得伪报成功",
@@ -1546,7 +1546,7 @@
       "branch": "fix/C150-C151-windows-reliability",
       "topic": "WindowsCompat",
       "version": "0.15.0",
-      "file": "docs/devel/change/C151.json"
+      "file": "docs/archive/0.15.0/change/C151.json"
     },
     "C152": {
       "title": "设置窗口侧栏改按窗口宽度锁定比例并收窄默认宽度",
@@ -1555,7 +1555,7 @@
       "branch": "fix/C152-settings-sidebar-ratio",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C152.json"
+      "file": "docs/archive/0.15.0/change/C152.json"
     },
     "C153": {
       "title": "设置通用页配置项按外观/呈现/刷新/通知/安全分组重排",
@@ -1564,7 +1564,7 @@
       "branch": "fix/C153-general-pane-order",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C153.json"
+      "file": "docs/archive/0.15.0/change/C153.json"
     },
     "C154": {
       "title": "凭据存储行按钮统一为「配置」并去掉「已配置」状态描述",
@@ -1573,7 +1573,7 @@
       "branch": "fix/C154-keychain-row-button",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C154.json"
+      "file": "docs/archive/0.15.0/change/C154.json"
     },
     "C155": {
       "title": "设置窗口行内按钮统一中性样式与最小宽度",
@@ -1582,7 +1582,7 @@
       "branch": "fix/C155-button-style-unify",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C155.json"
+      "file": "docs/archive/0.15.0/change/C155.json"
     },
     "C156": {
       "title": "凭据存储行「配置」打开可复用的凭据存储配置面板",
@@ -1591,7 +1591,7 @@
       "branch": "fix/C156-keychain-config-sheet",
       "topic": "PricingEngine",
       "version": "0.15.0",
-      "file": "docs/devel/change/C156.json"
+      "file": "docs/archive/0.15.0/change/C156.json"
     }
   }
 }
