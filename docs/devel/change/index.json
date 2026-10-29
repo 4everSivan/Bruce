@@ -1587,7 +1587,7 @@
     "C156": {
       "title": "凭据存储行「配置」打开可复用的凭据存储配置面板",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C156-keychain-config-sheet",
       "topic": "PricingEngine",
       "version": "0.15.0",
