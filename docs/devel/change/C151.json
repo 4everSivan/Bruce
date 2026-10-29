@@ -62,8 +62,8 @@
         "item": "Windows PowerShell 故障注入回归",
         "true_if": "失败、缺产物、签名残留和正常路径在 Windows PowerShell 执行通过",
         "false_if": "任一行为用例失败",
-        "evidence": "未执行：本机无 pwsh / powershell；scripts/tests/test-build-win-app.ps1 已接入 verify-windows CI，尚无 CI 执行结果。人类确认「确认」仅覆盖已执行的本机自动化检查，本项如实记为未执行。",
-        "result": false
+        "evidence": "GitHub Actions run 40805612639「Rust 验证 (Windows)」作业新增步骤「Windows 本地打包行为回归」在 Windows PowerShell 7 上执行 scripts/tests/test-build-win-app.ps1：15 条用例全 ok（tauri-cli 安装失败即止、cargo 失败不复制旧安装包/旧裸程序、缺当前版本产物即拒绝、CARGO_BUILD_TARGET 覆盖、target 越界 local/ 拒绝、--no-sign 旧签名拦截、复制失败传播等），结尾输出「Windows 本地打包行为测试通过」。",
+        "result": true
       },
       {
         "item": "Windows 实际打包验证",
