@@ -51,6 +51,9 @@ jobs:
           }
           if ($failed) { exit 1 }
           Write-Host "ok: Windows 打包/发布脚本语法合法"
+      - name: Windows 本地打包行为回归
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-build-win-app.ps1
       # 把「已修复的发布缺陷不得回归」固化为结构断言 (分页+展平 / 两端钉版 / 重跑幂等 / 脚本归属与门禁)
       - name: Windows 发布流水线契约测试
         run: node scripts/check-release-pipeline.mjs

@@ -432,6 +432,7 @@ Windows Tauri 后端 (Rust)
 - `tauri.conf.json`：产品名 Bruce、identifier 沿用 `com.bruce.dashboard` 系命名；
 - **应用版本号单一事实源（C056 新增）**：仓库根 `VERSION` 是唯一权威值，`apps/win/src-tauri/tauri.conf.json` 的 `version` 是它的**镜像**（Tauri 的安装包命名与 `get_runtime_info` 的 `package_info().version` 都取自该字段，故它直接决定安装包文件名与应用内「版本」行）。两端必须相等，由 `scripts/check-win-frontend.mjs` 在**每次 push 与本地 verify-local** 断言；不等即门禁红灯，禁止带漂移发版。
 - 打包：Tauri bundler → NSIS 安装包（+ 可选 MSIX）；`signtool` 签名（测试期可不签）；
+- **本地构建产物可信性（C151）**：每次调用原生构建命令必须立即检查退出码，失败即停止且不得复制旧产物或报告成功；成功后还须确认预期版本与目标架构对应的产物存在，复制失败必须传播。增量构建可复用未改写的有效产物，不能单凭修改时间证明新鲜度。安装包和裸程序两条路径均须覆盖失败、缺产物和旧产物残留的回归测试，Windows 行为测试与实际打包验收分别记录。
 - CI：release 阶段增加 Windows 构建矩阵 job，产物 `Bruce_x.y.z_x64-setup.exe` + SHA256；
 - 文档：README/`docs/guide/` 补 Windows 数据位置（`%APPDATA%\Bruce`、`%LOCALAPPDATA%\Bruce\collector-cache-v1`）。
 

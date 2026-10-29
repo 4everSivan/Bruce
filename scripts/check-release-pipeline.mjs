@@ -59,7 +59,7 @@ if (/gh api\s+"repos\/\$repo\/releases"/.test(uploadScript)) {
 
 // 2. tauri-cli 两端钉同一精确版本
 const pinned = [...workflow.matchAll(/cargo install tauri-cli --version "=([\d.]+)"/g)].map((m) => m[1]);
-const localPinned = [...localBuildScript.matchAll(/cargo install tauri-cli --version "=([\d.]+)"/g)].map((m) => m[1]);
+const localPinned = [...localBuildScript.matchAll(/Invoke-CargoChecked\s+-CargoArguments\s+@\("install",\s*"tauri-cli",\s*"--version",\s*"=([\d.]+)"/g)].map((m) => m[1]);
 if (pinned.length !== 1 || localPinned.length !== 1) {
   fail(`tauri-cli 钉版缺失 (CI ${pinned.length} 处 / 本地 ${localPinned.length} 处, 各需 1 处)`);
 } else if (pinned[0] !== localPinned[0]) {
@@ -71,6 +71,39 @@ for (const [label, source] of [["ci.yml", workflow], ["build-win-app.ps1", local
   if (/cargo install tauri-cli --locked/.test(source)) {
     fail(`${label} 仍存在未钉版的 \`cargo install tauri-cli --locked\` (--locked 只钉 CLI 依赖树, 不钉 CLI 版本)`);
   }
+}
+if (!/function Invoke-CargoChecked[\s\S]*?& cargo @CargoArguments[\s\S]*?\$exitCode = \$LASTEXITCODE[\s\S]*?if \(\$exitCode -ne 0\)/.test(localBuildScript)) {
+  fail("build-win-app.ps1 未在 cargo 调用后立即检查原生退出码");
+} else if (localBuildScript.split("\n").some((line) => /^\s*cargo\s+/.test(line) && !/^\s*#/.test(line))) {
+  fail("build-win-app.ps1 存在绕过 Invoke-CargoChecked 的 cargo 调用");
+} else {
+  ok("本地 Windows 打包的 cargo 命令统一经退出码检查");
+}
+if (!/Invoke-CargoChecked\s+-CargoArguments\s+@\("tauri",\s*"build",\s*"--target",\s*\$cargoBuildInfo\.TargetTriple,\s*"--bundles",\s*"nsis"\)/.test(localBuildScript)
+  || !/Invoke-CargoChecked\s+-CargoArguments\s+@\("build",\s*"--target",\s*\$cargoBuildInfo\.TargetTriple,\s*"--release"\)/.test(localBuildScript)) {
+  fail("build-win-app.ps1 未通过受检 helper 执行 NSIS 与裸程序构建");
+}
+if (!/rustc -vV/.test(localBuildScript) || !/CARGO_BUILD_TARGET/.test(localBuildScript)
+  || !/HostTriple = \$hostTarget/.test(localBuildScript) || !/TargetTriple = \$target/.test(localBuildScript)) {
+  fail("build-win-app.ps1 未基于 Rust host / 显式 Cargo target 判定安装包架构");
+} else {
+  ok("本地打包目标架构读取 Rust host 与显式 Cargo target, 并将目标传给 Cargo");
+}
+if (!/build-win\\cargo-target/.test(localBuildScript)
+  || !/CARGO_TARGET_DIR 必须位于仓库 local/.test(localBuildScript)
+  || !/"--target", \$cargoBuildInfo\.TargetTriple/.test(localBuildScript)
+  || !/"--target", \$cargoBuildInfo\.HostTriple/.test(localBuildScript)) {
+  fail("build-win-app.ps1 构建输出未限制在 local/ 或未显式固定 Cargo target");
+} else {
+  ok("Cargo target 输出位于 local/ 且每次构建显式固定目标三元组");
+}
+if (!/\$expectedSetupName = "\{0\}_\{1\}_\{2\}-setup\.exe" -f \$tauriConfig\.productName, \$tauriConfig\.version, \$cargoBuildInfo\.Architecture/.test(localBuildScript)
+  || !/Test-Path -LiteralPath \$setupPath -PathType Leaf/.test(localBuildScript)
+  || !/Test-Path -LiteralPath \$exePath -PathType Leaf/.test(localBuildScript)
+  || /Sort-Object LastWriteTime -Descending/.test(localBuildScript)) {
+  fail("build-win-app.ps1 未按配置版本/目标架构检查精确产物, 或仍按修改时间选择旧安装包");
+} else {
+  ok("本地打包只收拢配置版本/目标架构的现存产物");
 }
 
 // 3. 重跑幂等: 上传前清理同名残留资产
@@ -163,17 +196,29 @@ if (!uploadListOk || !/--input \$sigFile/.test(uploadScript) || !/--input \$macS
 }
 if (!/RequireUpdateSignature/.test(localBuildScript) || !/拒绝产出未签名安装包/.test(localBuildScript)) {
   fail("build-win-app.ps1 缺少 -RequireUpdateSignature 本地签名门禁 (与 CI 口径不对齐)");
-} else if (!/\$RequireUpdateSignature -and -not \$sigFresh/.test(localBuildScript)) {
+} else if (!/\$RequireUpdateSignature -and -not \$sigTimestampOk/.test(localBuildScript)
+  || !/\$sigTimestampOk = \$signingEnabled -and/.test(localBuildScript)) {
   // 只查私钥不够: tauri 未开 createUpdaterArtifacts 时有私钥也不产 .sig
-  fail("build-win-app.ps1 -RequireUpdateSignature 未在构建后核验本轮 .sig 产出 (未签名包会被静默收拢)");
+  fail("build-win-app.ps1 -RequireUpdateSignature 未检查签名文件与目标安装包的时间关系 (未签名包会被静默收拢)");
 } else {
-  ok("本地打包脚本具备 -RequireUpdateSignature 门禁 (构建前查私钥 + 构建后核验本轮 .sig)");
+  ok("本地打包脚本具备 -RequireUpdateSignature 门禁 (构建前查私钥 + 构建后检查签名文件存在及时间关系)");
+}
+if (!/if \(-not \$signingEnabled -and \(Test-Path -LiteralPath \$distSignature\)\)/.test(localBuildScript)
+  || !/--no-sign 构建拒绝与 local\\dist 中的旧签名并存/.test(localBuildScript)) {
+  fail("build-win-app.ps1 无私钥构建未阻止 local/dist 中的同名旧签名残留");
+} else {
+  ok("--no-sign 构建遇 local/dist 旧签名时先失败并保留现有产物");
 }
 // 开启 createUpdaterArtifacts 后无私钥的 tauri build 直接报错, 日常本地打包必须降级 --no-sign
-if (!/cargo tauri build --bundles nsis --no-sign/.test(localBuildScript)) {
+if (!/Invoke-CargoChecked\s+-CargoArguments\s+@\("tauri",\s*"build",\s*"--target",\s*\$cargoBuildInfo\.TargetTriple,\s*"--bundles",\s*"nsis",\s*"--no-sign"\)/.test(localBuildScript)) {
   fail("build-win-app.ps1 无私钥时未以 --no-sign 构建 (createUpdaterArtifacts 开启后日常本地打包会失败)");
 } else {
   ok("本地打包脚本无私钥时以 --no-sign 降级构建");
+}
+if (!/scripts\/tests\/test-build-win-app\.ps1/.test(workflow)) {
+  fail("verify-windows 未执行 scripts/tests/test-build-win-app.ps1 行为回归");
+} else {
+  ok("verify-windows 已接入 Windows 打包失败路径行为测试");
 }
 // 私钥绝不入仓库: 扫描受跟踪文件中的 minisign 私钥特征 (原文注释头, 或 Tauri 私钥整体 base64 后的
 // 固定开头; 注释头长度为 3 的倍数, base64 开头与后续内容无关)。本文件自身含特征文本, 跳过。

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C151",
+  "title": "Windows 本地打包失败与旧产物残留不得伪报成功",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C150-C151-windows-reliability",
+  "is_hotfix": false,
+  "target": {
+    "module": "scripts",
+    "component": "scripts/build-win-app.ps1",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "原生命令退出码未检查，构建失败后仍可能复制旧安装包或旧可执行文件并报告成功。",
+  "precheck": {
+    "description": "确认现有缺陷尚未修复",
+    "command": "rg -n 'cargo (tauri build|build --release)|LASTEXITCODE|Sort-Object LastWriteTime|SilentlyContinue' scripts/build-win-app.ps1",
+    "expected": "cargo 失败或产物缺失仍可能继续复制旧文件并报告完成。",
+    "is_completed": false,
+    "evidence": "2026-10-29 预检：build-win-app.ps1 33、37、60 未检查 LASTEXITCODE；39–40 选择已有安装包，61 静默复制错误。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "node scripts/check-release-pipeline.mjs",
+      "pwsh -NoProfile -File scripts/tests/test-build-win-app.ps1"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "scripts/build-win-app.ps1",
+      "before": "cargo 失败或产物缺失仍可能继续复制旧文件并报告完成。",
+      "after": "逐条检查构建命令退出码，核对所选目标版本与架构的产物并传播复制失败；故障路径以行为测试验证。",
+      "impact": "Windows 用户及本地构建验收"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "cargo 失败或产物缺失仍可能继续复制旧文件并报告完成。",
+      "after": "逐条检查构建命令退出码，核对所选目标版本与架构的产物并传播复制失败；故障路径以行为测试验证。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261029-c151",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "发布流水线结构契约",
+        "true_if": "相关 Node 契约检查通过",
+        "false_if": "检查失败",
+        "evidence": "macOS：node scripts/check-release-pipeline.mjs Exit 0；git diff --check Exit 0。静态契约检查不执行 PowerShell。",
+        "result": true
+      },
+      {
+        "item": "Windows PowerShell 故障注入回归",
+        "true_if": "失败、缺产物、签名残留和正常路径在 Windows PowerShell 执行通过",
+        "false_if": "任一行为用例失败",
+        "evidence": "未执行：本机无 pwsh / powershell；scripts/tests/test-build-win-app.ps1 已接入 verify-windows CI，尚无 CI 执行结果。",
+        "result": null
+      },
+      {
+        "item": "Windows 实际打包验证",
+        "true_if": "Windows 上真实构建并验证目标版本、架构及产物",
+        "false_if": "构建失败或产物不符",
+        "evidence": "未执行：当前环境为 macOS，未在 Windows 执行 NSIS 构建。",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

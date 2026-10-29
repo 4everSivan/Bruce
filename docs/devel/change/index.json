@@ -112,7 +112,9 @@
         "C109",
         "C115",
         "C135",
-        "C149"
+        "C149",
+        "C150",
+        "C151"
       ]
     },
     "SubscriptionQuota": {
@@ -1522,6 +1524,24 @@
       "topic": "WindowsCompat",
       "version": "0.15.0",
       "file": "docs/devel/change/C149.json"
+    },
+    "C150": {
+      "title": "Windows 启动和看板显示失败提供安全可见诊断",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C150-C151-windows-reliability",
+      "topic": "WindowsCompat",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C150.json"
+    },
+    "C151": {
+      "title": "Windows 本地打包失败与旧产物残留不得伪报成功",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C150-C151-windows-reliability",
+      "topic": "WindowsCompat",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C151.json"
     }
   }
 }
