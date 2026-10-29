@@ -58,7 +58,8 @@
         "C152",
         "C153",
         "C154",
-        "C155"
+        "C155",
+        "C156"
       ]
     },
     "WindowsCompat": {
@@ -1582,6 +1583,15 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/devel/change/C155.json"
+    },
+    "C156": {
+      "title": "凭据存储行「配置」打开可复用的凭据存储配置面板",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C156-keychain-config-sheet",
+      "topic": "PricingEngine",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C156.json"
     }
   }
 }

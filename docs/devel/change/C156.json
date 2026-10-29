@@ -1,0 +1,94 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C156",
+  "title": "凭据存储行「配置」打开可复用的凭据存储配置面板",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C156-keychain-config-sheet",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "apps/macos/Sources/BruceApp/SettingsView.swift",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "「凭据存储」行的按钮自 C001 起只调用 coordinator.configureKeychainAccess()：写入配置并更新状态，没有任何可见界面或提示。已配置用户点击后界面毫无变化，被判定为「点了没用 / 打不开」。行副标题承诺的「统一管理 Bruce 保存的订阅凭证访问权限」缺一个可打开的入口。",
+  "precheck": {
+    "description": "确认按钮仅静默调用配置方法、没有呈现任何 sheet",
+    "command": "rg -n 'Button\\(\"配置\"\\)|configureKeychainAccess\\(\\)|showsKeychainAccessGuide = true' apps/macos/Sources/BruceApp/SettingsView.swift",
+    "expected": "凭据存储按钮直接调用 configureKeychainAccess()，全文件只有 presentKeychainAccessGuideIfNeeded 会置 showsKeychainAccessGuide = true",
+    "is_completed": false,
+    "evidence": "2026-10-29 预检：SettingsView.swift:521-524 `Button(\"配置\") { coordinator.configureKeychainAccess() }`；`showsKeychainAccessGuide = true` 仅出现在 presentKeychainAccessGuideIfNeeded（首次未配置时自动弹）。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C156-keychain-config-sheet"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 通用页「凭据存储」行",
+      "before": "按钮直接执行配置写入，无界面、无提示；已配置态点击后看不到任何变化。",
+      "after": "按钮打开「凭据存储」面板：显示存储位置与当前状态（已配置 / 未配置 / 访问被阻断），由面板内的「重新配置」执行写入；首次未配置时的自动引导复用同一面板，保留原有解释文案。",
+      "impact": "macOS 设置中心凭据存储入口的可达性与状态可见性"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "凭据存储行按钮静默执行配置写入，无可见界面。",
+      "after": "凭据存储行按钮必须打开「凭据存储」面板（当前状态 + 存储位置 + 重新配置确认）；首次未配置的自动引导复用同一面板，写操作只在面板确认后执行。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261029-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Swift 全量构建通过，scripts/verify-local.sh 退出码为 0",
+        "false_if": "任一构建或仓库门禁失败",
+        "evidence": "swift build --package-path apps/macos --build-tests → Build complete (19.74s)；zsh scripts/verify-local.sh → Exit 0（末行「Bruce 本地验证全部通过」）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "点击凭据存储行「配置」后出现凭据存储面板，状态与存储位置可见",
+        "false_if": "点击后仍无任何界面变化",
+        "evidence": "未完成真机点击核验：本机状态项的辅助功能坐标返回 (14633,6924) 无法定位，System Events 点击无效。代码路径为 Button → keychainGuideShowsStatus = true + showsKeychainAccessGuide = true → 既有 .sheet 呈现，已构建通过；待人工点击确认。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "首次未配置时的自动引导照常出现，配置写入仍只在确认后发生",
+        "false_if": "引导被破坏或点击即静默写配置",
+        "evidence": "presentKeychainAccessGuideIfNeeded 未改动，仅在 !keychainAccessConfigured 时把 showsKeychainAccessGuide 置 true，此时 keychainGuideShowsStatus 为 false → 仍走原解释文案与「稍后 / 现在配置」；行按钮不再直接调用 configureKeychainAccess。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-29",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}
