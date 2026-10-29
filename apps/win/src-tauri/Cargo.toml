@@ -11,7 +11,7 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-dialog", "dep:tauri-plugin-updater"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-dialog", "dep:tauri-plugin-updater", "dep:tauri-plugin-single-instance"]
 
 [lib]
 name = "bruce_win_lib"
@@ -42,6 +42,8 @@ tauri-plugin-global-shortcut = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 # 应用内软件更新 (T11): latest.json 检查 + minisign 验签 + NSIS 静默安装 (07-软件更新 §4.2 R7)
 tauri-plugin-updater = { version = "2", optional = true }
+# 单实例 (C149): 托盘常驻应用再次启动时应唤出既有实例的面板, 而不是再起一个静默进程。
+tauri-plugin-single-instance = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: 双端对拍要求 17 位浮点精确解析 (与 viewmodel 一致)
 serde_json = { version = "1", features = ["float_roundtrip"] }

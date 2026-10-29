@@ -1,0 +1,133 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C149",
+  "title": "Windows 启动可达性：启动即呈现面板、单实例唤出既有面板、补齐悬停预览窗口的事件授权",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "bruce_win_lib::run / reveal_dashboard / capabilities",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "维护者反馈 Windows 11 上「无法打开软件」，现场暂无法取证，遂按代码审查结果处置可确定的适配缺陷。审查确认三条彼此独立的问题叠成同一症状：(1) 三个窗口全部 visible:false 且 setup 不显示任何窗口，启动成功后也没有任何可见界面，默认热键为空时托盘图标是唯一入口，而 Win11 新装应用的托盘图标默认收进溢出区；(2) 没有单实例，用户再次点击快捷方式只会起第二个无声无窗口的进程，永远唤不出面板；(3) T12 新增的 preview 窗口不在任何 capability 内，Tauri v2 的 ACL 按窗口授权，其 event.listen 被静默拒绝，420px 悬停预览卡收不到 dashboard-updated。另发现 check-win-frontend.mjs 的提前退出位于 T11 结构断言之前，那些 FAIL 只打印不影响退出码，结构门禁形同虚设。",
+  "precheck": {
+    "description": "确认启动不呈现窗口、无单实例、preview 无事件授权、结构门禁提前退出",
+    "command": "grep -n 'show_dashboard(' apps/win/src-tauri/src/lib.rs; grep -c 'single-instance' apps/win/src-tauri/Cargo.toml; node -e \"const c=require('./apps/win/src-tauri/capabilities/dashboard.json');console.log(c.windows)\"; grep -n 'process.exit(1)' scripts/check-win-frontend.mjs",
+    "expected": "setup 无 show 调用；Cargo.toml 无 single-instance；capability windows 仅 dashboard/settings；check-win-frontend.mjs 的前置退出位于 T11 断言之前",
+    "is_completed": false,
+    "evidence": "2026-10-28 预检命中：lib.rs 仅托盘/菜单/热键/命令/expand 五处调用 show_dashboard，setup 内无调用；Cargo.toml 无 single-instance；capabilities/dashboard.json 的 windows=[dashboard,settings]，而 preview.html:474 调用 tauri.event.listen；check-win-frontend.mjs 第 81 行的 if(failed) process.exit(1) 位于第 87 行起的 T11 断言块之前"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card C149 --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "启动即呈现看板",
+      "before": "dashboard/settings/preview 三窗口全部 visible:false，setup 只建托盘与后台调度，不显示任何窗口；用户双击快捷方式后必须自己找到托盘图标才能看到界面",
+      "after": "setup 末尾调用 reveal_dashboard(app.handle(), Tray, refresh=false) 呈现看板；配置窗口由 Tauri 的 internal setup 在用户 setup 之前建好，可直接 show；refresh=false 是因为调度器首轮采集紧随其后，再排一次手动唤醒会让同一轮全量扫描重复一次",
+      "impact": "双击启动即看到面板；后台周期采集与托盘常驻语义不变，失焦隐藏仍按原规则生效"
+    },
+    {
+      "scope": "单实例唤出既有面板",
+      "before": "无单实例，第二次启动会在后台再起一个完整实例（第二个托盘图标、第二套调度器），且它自己同样不显示窗口",
+      "after": "首个注册 tauri-plugin-single-instance，回调经 reveal_dashboard 唤出既有实例的面板后，新进程退出",
+      "impact": "重复点击快捷方式等价于「打开看板」；Cargo.toml/Cargo.lock 新增 tauri-plugin-single-instance 2.4.5"
+    },
+    {
+      "scope": "统一唤出入口",
+      "before": "托盘菜单与托盘左键各自在调用前手工 record_shown；expand_dashboard 直接 show_dashboard，漏记显式唤出，从预览卡展开的面板不参与 180ms 瞬态失焦保护",
+      "after": "新增 reveal_dashboard（先 record_shown 再 show_dashboard），托盘菜单分支、expand_dashboard、启动呈现与单实例回调统一走它；托盘左键与热键保留各自状态机（已内部记录）",
+      "impact": "所有唤出路径的失焦保护口径一致，不再有「展开即被收起」的路径"
+    },
+    {
+      "scope": "悬停预览卡事件授权",
+      "before": "preview 窗口不在任何 capability 内，而 preview.html 调用 tauri.event.listen(\"dashboard-updated\")；Tauri v2 按窗口授权，订阅被静默拒绝，预览卡永远不刷新",
+      "after": "新增 capabilities/preview-panel.json（windows=[preview], 仅 core:event:allow-listen / allow-unlisten），tauri-build 重新生成 gen/schemas/capabilities.json",
+      "impact": "悬停预览卡能收到面板更新；预览窗口不获得 dialog 等其他权限（最小授权）"
+    },
+    {
+      "scope": "结构门禁真实参与退出码",
+      "before": "check-win-frontend.mjs 在 T11 结构断言之前就 if(failed) exit(1)，且随后打印「通过」；T11 的 FAIL 只打印不影响退出码",
+      "after": "移除前置退出，改为在全部结构断言与前端测试套件之后统一判定；同时新增「订阅事件的窗口必须有 listen 授权」的 capability 覆盖面断言",
+      "impact": "T11 与新增的授权断言都能真正让 CI 变红；本地实测缺 preview capability 时退出码 1，补回后 0"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 §6.3 只写「托盘 + 面板 + 热键 + 凭证壳」，没有规定启动后必须出现可见界面、没有单实例约束，也没有窗口事件授权与 capability 的对应关系",
+      "after": "§6.3 新增「启动可达性（C149）」与「窗口事件授权（C149）」两条：setup 末尾必须经 reveal_dashboard 呈现看板（启动即显式唤出）、必须首个注册单实例并在第二次启动唤出既有面板、所有唤出路径统一经 reveal_dashboard；订阅事件的窗口必须被 capability 授予 core:event:allow-listen，preview 用最小权限的 preview-panel，覆盖面由 check-win-frontend.mjs 断言"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261029-01",
+    "user_quote": "确认",
+    "signoff": "2026-10-29 人类口头确认 (AI 代签)",
+    "checks": [
+      {
+        "item": "启动即可见且唤出口径统一",
+        "true_if": "setup 末尾调用 reveal_dashboard；托盘菜单、expand_dashboard、单实例回调都经同一入口，无残留直接 show_dashboard 的唤出路径",
+        "false_if": "启动仍不显示窗口，或仍有唤出路径绕过 record_shown",
+        "evidence": "lib.rs 中 reveal_dashboard 作为唯一唤出包装；setup 末尾以 refresh=false 调用一次（不重复排手动刷新）；expand_dashboard 与单实例回调以 refresh=true 调用；直接 show_dashboard 仅剩自身、托盘左键与热键（三者由各自状态机内部 record_shown）",
+        "result": true
+      },
+      {
+        "item": "单实例接线与依赖一致",
+        "true_if": "tauri-plugin-single-instance 首个注册，Cargo.toml feature/Cargo.lock 与源码引用一致且可编译",
+        "false_if": "插件未注册、注册顺序不在首位，或依赖与锁文件漂移",
+        "evidence": "Cargo.toml 新增 optional 依赖并挂入 desktop feature；Cargo.lock 解析为 tauri-plugin-single-instance 2.4.5；lib.rs 的 builder 链首个 .plugin 为该插件；cargo check --all-targets 通过",
+        "result": true
+      },
+      {
+        "item": "预览窗口事件授权生效",
+        "true_if": "preview 被含 core:event:allow-listen 的 capability 覆盖，且结构断言能检出缺失",
+        "false_if": "preview 仍无授权，或断言无法检出",
+        "evidence": "capabilities/preview-panel.json windows=[preview]；gen/schemas/capabilities.json 生成后含 preview-panel；check-win-frontend.mjs 输出「窗口 preview 的事件订阅已授权」",
+        "result": true
+      },
+      {
+        "item": "结构门禁真实影响退出码",
+        "true_if": "缺失能力授权等结构违规时脚本退出码非 0，修复后为 0",
+        "false_if": "违规只打印 FAIL 但退出码仍为 0",
+        "evidence": "移除 preview-panel.json 后 node scripts/check-win-frontend.mjs 退出码 1（打印 FAIL: 窗口 preview ... 无 core:event:allow-listen）；恢复后退出码 0",
+        "result": true
+      },
+      {
+        "item": "宿主侧质量门禁全绿",
+        "true_if": "cargo fmt / clippy -D warnings / 全量测试通过，前端结构检查通过",
+        "false_if": "任一命令非零退出或出现告警",
+        "evidence": "cargo fmt --all 无改动；clippy --all-targets -- -D warnings Finished；cargo test 全部测试二进制通过（64+8+3+2+52+15+3+45+12+10+13+2 项）；node scripts/check-win-frontend.mjs 退出码 0",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-29",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
+  }
+}

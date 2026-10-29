@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "preview-panel",
+  "description": "Tray hover preview card subscribes to dashboard updates only",
+  "windows": ["preview"],
+  "local": true,
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

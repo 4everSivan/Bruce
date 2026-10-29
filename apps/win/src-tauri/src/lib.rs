@@ -161,7 +161,9 @@ mod desktop {
         }
     }
 
-    fn show_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource) {
+    /// `refresh`: 是否顺带请求一次手动刷新。用户唤出恒为 true; 启动呈现为 false ——
+    /// 调度器首轮采集紧随其后, 再排一次手动唤醒会让同一轮扫描重复一次。
+    fn show_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource, refresh: bool) {
         hide_preview(app);
         if let Some(window) = app.get_webview_window("dashboard") {
             let tray_bounds = app
@@ -173,9 +175,23 @@ mod desktop {
             let _ = window.set_always_on_top(true);
             let _ = window.set_focus();
             let _ = window.emit("dashboard-show-transition", ());
-            // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
-            app.state::<SchedulerControl>().request_manual_refresh();
+            if refresh {
+                // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
+                app.state::<SchedulerControl>().request_manual_refresh();
+            }
         }
+    }
+
+    /// 统一唤出入口 (C149): 先记录「用户显式唤出」再显示面板 —— 180ms 瞬态失焦保护
+    /// 依赖 `record_shown`, 漏记会让面板在焦点切换时被立刻收起。
+    /// 托盘菜单、预览卡展开、启动呈现与第二次启动唤出都必须走这里。
+    fn reveal_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource, refresh: bool) {
+        if let Some(activity) = app.try_state::<ActivityState>() {
+            if let Ok(mut guard) = activity.0.lock() {
+                guard.record_shown(std::time::Instant::now());
+            }
+        }
+        show_dashboard(app, source, refresh);
     }
 
     fn toggle_dashboard(app: &tauri::AppHandle) {
@@ -189,13 +205,8 @@ mod desktop {
                 }
                 let _ = window.hide();
             } else {
-                if let Some(activity) = app.try_state::<ActivityState>() {
-                    if let Ok(mut guard) = activity.0.lock() {
-                        guard.record_shown(std::time::Instant::now());
-                    }
-                }
                 // 仅托盘菜单「显示看板」调用: 菜单弹在托盘处, 面板随托盘定位
-                show_dashboard(app, DashboardOpenSource::Tray);
+                reveal_dashboard(app, DashboardOpenSource::Tray, true);
             }
         }
     }
@@ -227,7 +238,9 @@ mod desktop {
                             ToggleDecision::Show
                         });
                     match decision {
-                        ToggleDecision::Show => show_dashboard(app, DashboardOpenSource::Hotkey),
+                        ToggleDecision::Show => {
+                            show_dashboard(app, DashboardOpenSource::Hotkey, true)
+                        }
                         ToggleDecision::Hide => {
                             if let Some(window) = app.get_webview_window("dashboard") {
                                 let _ = window.hide();
@@ -1096,7 +1109,7 @@ mod desktop {
     #[tauri::command]
     fn expand_dashboard(app: tauri::AppHandle) -> Result<(), String> {
         hide_preview(&app);
-        show_dashboard(&app, DashboardOpenSource::Tray);
+        reveal_dashboard(&app, DashboardOpenSource::Tray, true);
         Ok(())
     }
 
@@ -1149,6 +1162,11 @@ mod desktop {
 
     pub fn run() {
         tauri::Builder::default()
+            // 单实例必须最先注册 (插件文档要求): 托盘常驻应用再次启动时唤出既有面板,
+            // 而不是再起一个无声无窗口的进程 (C149)。
+            .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+                reveal_dashboard(app, DashboardOpenSource::Tray, true);
+            }))
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             // 导出文件的系统保存对话框 (C033): 与 mac NSSavePanel 等价
@@ -1251,7 +1269,7 @@ mod desktop {
                                 });
                             match decision {
                                 ToggleDecision::Show => {
-                                    show_dashboard(app, DashboardOpenSource::Tray)
+                                    show_dashboard(app, DashboardOpenSource::Tray, true)
                                 }
                                 ToggleDecision::Hide => {
                                     if let Some(window) = app.get_webview_window("dashboard") {
@@ -1264,6 +1282,11 @@ mod desktop {
                     })
                     .build(app)?;
                 scheduler::spawn(app.handle().clone());
+                // C149: 用户双击启动本身就是一次显式唤出 —— 启动后直接呈现面板,
+                // 不再要求用户先找到托盘图标 (Win11 新装应用的图标默认收进溢出区,
+                // 且默认热键为空时托盘是唯一入口)。配置窗口由 Tauri 在本 setup 之前建好;
+                // refresh=false: 调度器首轮采集紧随其后, 不再重复排一次手动唤醒。
+                reveal_dashboard(app.handle(), DashboardOpenSource::Tray, false);
                 Ok(())
             })
             .on_window_event(move |window, event| {

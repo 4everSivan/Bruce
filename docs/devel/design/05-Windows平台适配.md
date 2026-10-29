@@ -420,6 +420,8 @@ Windows Tauri 后端 (Rust)
 ### 6.3 Windows 系统集成壳（`apps/win/src-tauri/src/`）
 
 - **托盘**：Tauri tray icon + 左键弹面板/右键菜单（刷新/设置/退出），图标态（就绪/刷新中/告警）与 mac 圆环语义对齐；
+- **启动可达性（C149）**：托盘常驻不等于只有托盘入口。①`setup` 末尾必须经统一入口 `reveal_dashboard` 呈现看板 —— 用户双击启动即一次显式唤出，不得要求用户先找到托盘图标（Win11 新装应用的图标默认收进溢出区，而默认热键为空时托盘是唯一入口）；②单实例由 `tauri-plugin-single-instance` 保证（必须首个注册），第二次启动唤出既有面板后退出，禁止再起一个无声无窗口的进程；③所有唤出路径（托盘左键/托盘菜单/热键/预览卡展开/启动呈现/第二次启动）都必须经 `reveal_dashboard` 先 `record_shown` 再 `show`，漏记会让面板在 180ms 瞬态失焦保护外被立刻收起；
+- **窗口事件授权（C149）**：Tauri v2 的 ACL 按窗口授权，凡页面订阅事件的窗口都必须在 `capabilities/` 内有 `core:event:allow-listen` 覆盖，否则订阅被静默拒绝。`preview` 窗口由 `preview-panel` capability 单独授权（最小权限：仅 listen/unlisten）；该覆盖面由 `scripts/check-win-frontend.mjs` 反查断言，漏配即 CI 红灯；
 - **面板**：置顶、无任务栏项、失焦隐藏的 WebviewWindow；位置记忆对齐 mac `DashboardPanelPlacement`；
 - **热键/通知**：Tauri 官方插件（global-shortcut / notification）；自启仍为可选后续项；
 - **凭证壳**：`credentials.json` 的 ACL 写入器与 Onboarding 引导流程（Tauri 深链/本地页）。

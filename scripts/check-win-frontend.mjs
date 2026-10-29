@@ -6,7 +6,7 @@
 //   2. app.js 中 getElementById 引用的 id 在 index.html 全部有定义;
 //   3. demo 模板残留哨兵: 生产数据流走 get_dashboard, 禁止模板注入全局 PANEL。
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -78,10 +78,6 @@ if (/\bPANEL\b/.test(appSource)) {
   }
 }
 
-if (failed) {
-  process.exit(1);
-}
-console.log("Windows 前端结构冒烟通过");
 // 软件更新卡结构断言 (T11, 07-软件更新 §4.2 R3 方案 B): 文案对拍由
 // update-presentation.test.mjs 执行, 这里锁住「接线不得被裁撤」的结构面 ——
 // 通用页版本行不得回潮、维护页卡/角标/样式/插件接入缺一即红灯。
@@ -124,6 +120,40 @@ console.log("Windows 前端结构冒烟通过");
   }
 }
 
+// 窗口事件授权覆盖面 (C149): Tauri v2 的 ACL 按窗口授权, 未写进任何 capability 的窗口
+// 调用 event.listen 会被静默拒绝 —— T12 新增的 preview 窗口就漏在这里, 悬停预览卡因此
+// 永远收不到 dashboard-updated。这里按「页面或其脚本是否订阅事件」反查 capability,
+// 以后新增窗口只要订阅事件却漏配权限即红灯。
+{
+  const confPath = "apps/win/src-tauri/tauri.conf.json";
+  const conf = JSON.parse(readFileSync(join(repoRoot, confPath), "utf8"));
+  const capabilitiesDir = join(repoRoot, "apps/win/src-tauri/capabilities");
+  const listenCovered = new Set();
+  for (const name of readdirSync(capabilitiesDir).filter((entry) => entry.endsWith(".json"))) {
+    const capability = JSON.parse(readFileSync(join(capabilitiesDir, name), "utf8"));
+    if (!(capability.permissions || []).includes("core:event:allow-listen")) continue;
+    for (const label of capability.windows || []) listenCovered.add(label);
+  }
+  const listens = (source) => /\.event\.listen\s*\(|(^|[^.\w])listen\s*\(/m.test(source);
+  for (const window of conf.app?.windows || []) {
+    const page = window.url || "index.html";
+    if (!page.endsWith(".html")) continue;
+    const pageSource = readFileSync(join(repoRoot, "apps/win/src", page), "utf8");
+    const scripts = [...pageSource.matchAll(/<script src="([^"]+\.js)"/g)].map((match) =>
+      readFileSync(join(repoRoot, "apps/win/src", match[1]), "utf8"),
+    );
+    if (!listens(pageSource) && !scripts.some(listens)) continue;
+    if (!listenCovered.has(window.label)) {
+      fail(
+        `窗口 "${window.label}" 的页面 ${page} 订阅了事件, 但没有任何 capability 对该窗口授予` +
+          " core:event:allow-listen (订阅会被静默拒绝)",
+      );
+    } else {
+      console.log(`ok: 窗口 ${window.label} 的事件订阅已授权 (${page})`);
+    }
+  }
+}
+
 // 交互回归 + 面板几何对拍 (demo 内联镜像 ↔ Rust runtime_core fixture, C035)
 for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs", "apps/win/tests/update-presentation.test.mjs"]) {
   const behavior = spawnSync(process.execPath, ["--test", suite], {
@@ -134,3 +164,9 @@ for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometr
     process.exit(behavior.status || 1);
   }
 }
+
+// 结构断言必须真正参与退出码: 早先的 early return 放在 T11 断言之前, 那些 FAIL 只打印不致命。
+if (failed) {
+  process.exit(1);
+}
+console.log("Windows 前端结构冒烟通过");
