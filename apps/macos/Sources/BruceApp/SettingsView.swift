@@ -48,6 +48,8 @@ struct SettingsView: View {
     @State var notificationDenied = false
     // 首次启动时引导配置 Bruce 自有 Keychain 访问权限
     @State var showsKeychainAccessGuide = false
+    /// C156: 同一面板的两种用途 —— 首次未配置的自动引导 (false) 与主动查看/重新配置 (true).
+    @State var keychainGuideShowsStatus = false
     @State var didEvaluateKeychainAccessGuide = false
     // 外部 CLI 来源由独立 sheet 管理, 避免在通用页内堆叠两个开关.
     @State var showsExternalKeychainSourceManager = false
@@ -228,7 +230,10 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showsKeychainAccessGuide) {
+        .sheet(isPresented: $showsKeychainAccessGuide, onDismiss: {
+            // C156: 关闭后复位, 下一次首次引导仍走解释文案.
+            keychainGuideShowsStatus = false
+        }) {
             keychainAccessGuide
         }
         .onAppear {
@@ -519,7 +524,9 @@ struct SettingsView: View {
                                 .foregroundStyle(SettingsDemoTokens.warn)
                         }
                         Button("配置") {
-                            coordinator.configureKeychainAccess()
+                            // C156: 打开凭据存储面板, 由面板确认后再写配置.
+                            keychainGuideShowsStatus = true
+                            showsKeychainAccessGuide = true
                         }
                         // C155: 与订阅额度行的同名「配置」按钮统一为中性次按钮.
                         .fluentButton()
@@ -606,21 +613,40 @@ struct SettingsView: View {
 
     var keychainAccessGuide: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("配置凭据存储", systemImage: "key.fill")
-                .font(.system(size: 16, weight: .semibold))
-            Text("Bruce 把订阅凭证保存在本应用的本机凭据文件中 (仅当前用户可读)。旧版本存入 macOS 钥匙串的凭证会在读取时自动迁移到该文件; 后台读取从不弹出系统密码框, 仅在你主动操作时系统才可能要求输入一次 macOS 登录密码。")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-            Text("Bruce 不会保存你的系统密码, 配置文件只记录访问状态。")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            Label(
+                keychainGuideShowsStatus ? "凭据存储" : "配置凭据存储",
+                systemImage: "key.fill"
+            )
+            .font(.system(size: 16, weight: .semibold))
+            if keychainGuideShowsStatus {
+                // C156: 主动打开时给出状态与存储位置, 写操作仍要用户再确认一次.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(keychainAccessStatusText)
+                        .font(.system(size: 13))
+                        .foregroundStyle(keychainAccessStatusColor)
+                    Text("存储位置: ~/Library/Application Support/Bruce/credentials.json (仅当前用户可读写, 权限 0600)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Text("凭证只保存在本机文件, 不写入 macOS 钥匙串; 重新配置会重建访问状态并重试一次凭证读取。")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Bruce 把订阅凭证保存在本应用的本机凭据文件中 (仅当前用户可读)。旧版本存入 macOS 钥匙串的凭证会在读取时自动迁移到该文件; 后台读取从不弹出系统密码框, 仅在你主动操作时系统才可能要求输入一次 macOS 登录密码。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Text("Bruce 不会保存你的系统密码, 配置文件只记录访问状态。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
             HStack {
-                Button("稍后") {
+                Button(keychainGuideShowsStatus ? "关闭" : "稍后") {
                     showsKeychainAccessGuide = false
                 }
                 .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("现在配置") {
+                Button(keychainGuideShowsStatus ? "重新配置" : "现在配置") {
                     showsKeychainAccessGuide = false
                     coordinator.configureKeychainAccess()
                 }
@@ -630,6 +656,22 @@ struct SettingsView: View {
         }
         .padding(24)
         .frame(width: 430)
+    }
+
+    /// 凭据存储面板里的当前状态文案与配色.
+    private var keychainAccessStatusText: String {
+        switch coordinator.keychainAccessState {
+        case .allowed: return "当前状态: 已配置"
+        case .notConfigured: return "当前状态: 未配置"
+        case .blocked: return "当前状态: 访问被阻断"
+        }
+    }
+
+    private var keychainAccessStatusColor: Color {
+        switch coordinator.keychainAccessState {
+        case .allowed: return SettingsDemoTokens.ok
+        case .notConfigured, .blocked: return SettingsDemoTokens.warn
+        }
     }
 
     func moveMenuBarMetric(
