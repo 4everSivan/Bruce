@@ -4,7 +4,7 @@
   "title": "Windows 启动和看板显示失败提供安全可见诊断",
   "version": "0.15.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C150-C151-windows-reliability",
   "is_hotfix": false,
   "target": {
@@ -47,10 +47,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "local-20261029-c150",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261029-02",
+    "user_quote": "确认",
+    "signoff": "2026-10-29 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "本机自动化与编译检查",
@@ -63,22 +63,24 @@
         "item": "Windows 11 实机验证",
         "true_if": "正常启动与注入初始化和看板显示失败时的原生提示经 Windows 11 实测",
         "false_if": "Windows 实测出现错误或提示不可见",
-        "evidence": "未执行：当前环境为 macOS；Windows 完整目标交叉检查因缺少 Windows SDK 的 assert.h 失败，不能代替安装包或 WebView2 实测。",
-        "result": null
+        "evidence": "未执行：当前环境为 macOS；Windows 完整目标交叉检查因缺少 Windows SDK 的 assert.h 失败，不能代替安装包或 WebView2 实测。人类确认「确认」仅覆盖已执行的本机自动化检查，本项如实记为未执行。",
+        "result": false
       }
     ]
   },
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
+    "changelog": true,
     "commit": "407977f",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-29",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed"
   }
 }

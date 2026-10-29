@@ -4,7 +4,7 @@
   "title": "Windows 本地打包失败与旧产物残留不得伪报成功",
   "version": "0.15.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C150-C151-windows-reliability",
   "is_hotfix": false,
   "target": {
@@ -46,10 +46,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "local-20261029-c151",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261029-03",
+    "user_quote": "确认",
+    "signoff": "2026-10-29 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "发布流水线结构契约",
@@ -62,29 +62,31 @@
         "item": "Windows PowerShell 故障注入回归",
         "true_if": "失败、缺产物、签名残留和正常路径在 Windows PowerShell 执行通过",
         "false_if": "任一行为用例失败",
-        "evidence": "未执行：本机无 pwsh / powershell；scripts/tests/test-build-win-app.ps1 已接入 verify-windows CI，尚无 CI 执行结果。",
-        "result": null
+        "evidence": "未执行：本机无 pwsh / powershell；scripts/tests/test-build-win-app.ps1 已接入 verify-windows CI，尚无 CI 执行结果。人类确认「确认」仅覆盖已执行的本机自动化检查，本项如实记为未执行。",
+        "result": false
       },
       {
         "item": "Windows 实际打包验证",
         "true_if": "Windows 上真实构建并验证目标版本、架构及产物",
         "false_if": "构建失败或产物不符",
-        "evidence": "未执行：当前环境为 macOS，未在 Windows 执行 NSIS 构建。",
-        "result": null
+        "evidence": "未执行：当前环境为 macOS，未在 Windows 执行 NSIS 构建。人类确认「确认」仅覆盖已执行的本机自动化检查，本项如实记为未执行。",
+        "result": false
       }
     ]
   },
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
+    "changelog": true,
     "commit": "d78408c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-29",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed"
   }
 }

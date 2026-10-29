@@ -1528,7 +1528,7 @@
     "C150": {
       "title": "Windows 启动和看板显示失败提供安全可见诊断",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C150-C151-windows-reliability",
       "topic": "WindowsCompat",
       "version": "0.15.0",
@@ -1537,7 +1537,7 @@
     "C151": {
       "title": "Windows 本地打包失败与旧产物残留不得伪报成功",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C150-C151-windows-reliability",
       "topic": "WindowsCompat",
       "version": "0.15.0",
