@@ -1517,7 +1517,7 @@
     "C149": {
       "title": "Windows 启动可达性：启动即呈现面板、单实例唤出既有面板、补齐悬停预览窗口的事件授权",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.15.0",
