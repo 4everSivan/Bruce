@@ -305,11 +305,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             .environmentObject(diagnostics)
             .environmentObject(updates)
             .frame(
-                minWidth: 980,
-                idealWidth: 1040,
+                minWidth: SettingsWindowMetrics.minimumContentWidth,
+                idealWidth: SettingsWindowMetrics.defaultContentWidth,
                 maxWidth: .infinity,
-                minHeight: 620,
-                idealHeight: 680,
+                minHeight: SettingsWindowMetrics.minimumContentHeight,
+                idealHeight: SettingsWindowMetrics.defaultContentHeight,
                 maxHeight: .infinity
             )
         let window = SettingsHostWindow(
@@ -325,8 +325,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             .miniaturizable,
             .resizable,
         ]
-        window.minSize = NSSize(width: 980, height: 620)
-        window.setContentSize(NSSize(width: 1040, height: 680))
+        window.minSize = NSSize(
+            width: SettingsWindowMetrics.minimumContentWidth,
+            height: SettingsWindowMetrics.minimumContentHeight
+        )
+        window.setContentSize(NSSize(
+            width: SettingsWindowMetrics.defaultContentWidth,
+            height: SettingsWindowMetrics.defaultContentHeight
+        ))
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.identifier = NSUserInterfaceItemIdentifier("Bruce.SettingsWindow")

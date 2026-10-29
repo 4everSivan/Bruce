@@ -166,7 +166,7 @@
 | Claude 本机登录态（C075） | 「Claude 本机登录态」卡：状态文案（已跟随 / 未发现 / 已过期，对齐 mac `ClaudeProviderSettingsSection`）+ `立即检测`（`claude_local_status`）+ `读取本机登录态`（`import_claude_from_local`，持久化为 `claude-cli` 账号）；启用 Claude 后自动只读跟随，粘贴入口保留作多账号兜底（见规则 17） |
 | 授权与隐私 | mac 语义：单一 `Agent 用量` 开关 + 四条动态说明（含刷新间隔与已启用 provider 名单）+ `当前授权有效` 状态 + `确认授权` / `撤销全部授权` 两个**即时生效**按钮（不走全局保存）；采集与云端额度查询同属一次授权 |
 | 通用 | 首卡行序对齐 mac：界面风格（经典 / Nothing）→ 刷新间隔（5/15/30/60 分钟；历史遗留的非集合值追加为选项，禁止静默改写）→ 系统通知 → 版本（来自 `get_runtime_info.version`）；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067） |
-| 窗口观感（C067） | 设置窗口恒用 Fluent 平面 token（mac `SettingsDemoTokens` dark 侧），界面风格只作用于看板，**设置窗口不得套用 `.theme-nothing`**；侧栏 216 宽、项 12.5pt / 内边距 10·7 / 圆角 5、选中左缘 3pt accent 条，底部为版本号（无 Windows 自创标题）；内容区内边距 24·18，crumb · 标题 · 内容间距 14；分组标题（11pt 半粗 tertiary）位于卡片上方而非卡内；行标题 13pt 常规；按钮 12pt / 12·5 / 圆角 5，主按钮 `#4C9CFF`。设置即时生效、无全局保存栏（C069，见规则 15） |
+| 窗口观感（C067） | 设置窗口恒用 Fluent 平面 token（mac `SettingsDemoTokens` dark 侧），界面风格只作用于看板，**设置窗口不得套用 `.theme-nothing`**；侧栏宽度按窗口锁定 **17.6%**（1000 宽窗口下 176px，C152，与 mac 同比例）、最小 160px、项 12.5pt / 内边距 10·7 / 圆角 5、选中左缘 3pt accent 条，底部为版本号（无 Windows 自创标题）；内容区内边距 24·18，crumb · 标题 · 内容间距 14；分组标题（11pt 半粗 tertiary）位于卡片上方而非卡内；行标题 13pt 常规；按钮 12pt / 12·5 / 圆角 5，主按钮 `#4C9CFF`。设置窗口默认 1000×680、最小 980×620 且可缩放；设置即时生效、无全局保存栏（C069，见规则 15） |
 | 维护 | `清理用量缓存`（后端 `clear_snapshot_cache`：仅删快照文件，不动配置/凭证，幂等）+ `诊断预览`（客户端拼装**脱敏** JSON：版本、模块阶段、诊断码、目录**末段名**，不含路径分隔符/凭证/账号/业务数据） |
 | 品牌图形产物 | `apps/win/src/provider-brand.js` 为生成产物第三目标（与 Swift 数据、app.js 内联块同源），由 `scripts/gen-provider-glyphs.mjs --check` 锁定；设置窗口须在 `settings.js` 之前加载它 |
 

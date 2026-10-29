@@ -2254,3 +2254,22 @@ test("account rows can be renamed without touching credentials (T18)", async () 
   const restores = app.calls.filter(call => call.command === "rename_credential_account");
   assert.equal(restores.at(-1).args.displayName, "Kimi · 账号 1");
 });
+
+// ---------- C152: 设置窗口侧栏按窗口宽度锁定比例 ----------
+
+test("settings sidebar locks a 17.6% window-width ratio instead of a fixed pixel width (C152)", async () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const start = css.indexOf(".sidenav {");
+  const block = css.slice(start, css.indexOf("}", start) + 1);
+  assert.ok(start >= 0, "缺少 .sidenav 规则");
+  assert.match(block, /width:\s*17\.6%;/, "侧栏宽度应锁定窗口的 17.6%");
+  assert.match(block, /min-width:\s*160px;/, "长标签可读性下限 160px");
+  assert.doesNotMatch(block, /width:\s*216px;/, "不得回退到固定 216px");
+
+  const conf = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  const settings = conf.app.windows.find((window) => window.label === "settings");
+  assert.equal(settings.width, 1000, "设置窗口默认宽度应与 mac 对齐为 1000");
+  assert.equal(settings.height, 680);
+  assert.equal(settings.minWidth, 980);
+  assert.equal(settings.resizable, true, "比例锁定不等于固定尺寸, 窗口仍可缩放");
+});

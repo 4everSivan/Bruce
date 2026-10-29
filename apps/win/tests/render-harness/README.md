@@ -38,7 +38,7 @@ harness 载入的是**同字节**的 `apps/win/src/index.html` / `settings.html`
 | `__setCategory("general"\|"agentUsage"\|"modelPricing"\|"subscription"\|"consent"\|"maintenance")` | 设置窗口切分类 |
 | `__fixture` / `__settings` | 真实 parity fixture 与默认设置 |
 
-窗口尺寸由 harness 的 `html,body` 固定为 440×760（面板）/ 1040×680（设置），
+窗口尺寸由 harness 的 `html,body` 固定为 440×760（面板）/ 1000×680（设置），
 对应 `apps/win/src-tauri/tauri.conf.json`。
 
 ## 已知覆盖边界

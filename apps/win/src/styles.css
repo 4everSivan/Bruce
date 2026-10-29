@@ -818,11 +818,13 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   overflow: hidden;
 }
 
-/* 侧边栏 (mac SettingsView.sidebar / WinUI NavigationView): 216 宽平面导航,
+/* 侧边栏 (mac SettingsView.sidebar / WinUI NavigationView): 宽度按窗口锁定 17.6%
+   (1000 宽窗口下 176px, C152), 最小 160px 保证长标签不挤压; 随设置窗口缩放等比变化,
    水平内边距 8 / 顶 14; 项 12.5pt, 内边距 10/7, 圆角 5, 图标 13pt 居中于 18 宽框;
    选中项浅底 + 左缘 3pt accent 指示条 (位于项外 6pt), 底部为版本号。 */
 .sidenav {
-  width: 216px;
+  width: 17.6%;
+  min-width: 160px;
   flex: none;
   background: var(--nav);
   display: flex;

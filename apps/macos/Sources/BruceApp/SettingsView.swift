@@ -95,55 +95,58 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            // demo: 侧栏与内容之间是 1px 平面分隔线, 非系统 Divider 的半透明黑
-            Rectangle()
-                .fill(SettingsDemoTokens.separator)
-                .frame(width: 1)
-                .frame(maxHeight: .infinity)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    crumb("设置 / \(category.title)")
-                    paneTitle(category.title)
-                    paneContent
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                // C152: 侧栏宽度按窗口内容宽度锁定比例, 窗口缩放时左右比例不变.
+                sidebar(width: SettingsWindowMetrics.sidebarWidth(forContentWidth: proxy.size.width))
+                // demo: 侧栏与内容之间是 1px 平面分隔线, 非系统 Divider 的半透明黑
+                Rectangle()
+                    .fill(SettingsDemoTokens.separator)
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        crumb("设置 / \(category.title)")
+                        paneTitle(category.title)
+                        paneContent
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(SettingsDemoTokens.window)
-            .overlay(alignment: .top) {
-                // 统一悬浮极客高斯胶囊 (C111: 绝对 0px 布局抖动，8pt圆角 + 42pt高 + 420pt固定宽)
-                if let message = activeToastMessage {
-                    SettingsFloatingToastView(
-                        message: message,
-                        tone: .warn,
-                        onDismiss: {
-                            withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.2)) {
-                                activeToastMessage = nil
-                                model.setSettingsError(nil)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(SettingsDemoTokens.window)
+                .overlay(alignment: .top) {
+                    // 统一悬浮极客高斯胶囊 (C111: 绝对 0px 布局抖动，8pt圆角 + 42pt高 + 420pt固定宽)
+                    if let message = activeToastMessage {
+                        SettingsFloatingToastView(
+                            message: message,
+                            tone: .warn,
+                            onDismiss: {
+                                withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.2)) {
+                                    activeToastMessage = nil
+                                    model.setSettingsError(nil)
+                                }
                             }
-                        }
-                    )
-                    .padding(.top, 14)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .opacity
-                    ))
+                        )
+                        .padding(.top, 14)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                    }
                 }
-            }
-            // P2 配置对话框: 挂在右侧内容 ScrollView 上, 与 body 根的
-            // showsDiagnosticsPreview sheet 错开挂载点, 避免同视图双 sheet 冲突.
-            .sheet(isPresented: Binding(
-                get: { configuringProvider != nil },
-                set: { isPresented in
-                    if !isPresented { configuringProvider = nil }
-                }
-            )) {
-                if let id = configuringProvider {
-                    providerConfigSheet(id)
+                // P2 配置对话框: 挂在右侧内容 ScrollView 上, 与 body 根的
+                // showsDiagnosticsPreview sheet 错开挂载点, 避免同视图双 sheet 冲突.
+                .sheet(isPresented: Binding(
+                    get: { configuringProvider != nil },
+                    set: { isPresented in
+                        if !isPresented { configuringProvider = nil }
+                    }
+                )) {
+                    if let id = configuringProvider {
+                        providerConfigSheet(id)
+                    }
                 }
             }
         }
@@ -238,10 +241,11 @@ struct SettingsView: View {
 
     // MARK: - 侧边栏
 
-    /// L2 Fluent 侧栏 (定稿 settings-layout-demo.html): 216pt 平面导航,
+    /// L2 Fluent 侧栏 (定稿 settings-layout-demo.html): 平面导航, 宽度由
+    /// `SettingsWindowMetrics` 按窗口内容宽度等比给出 (C152, 1000pt 窗口下 176pt),
     /// 线性图标 + 文字; 选中项浅底 + 左缘 3pt accent 指示条;
     /// 不依赖材质模糊与彩色图标底, 为跨平台 (WinUI NavigationView) 同构设计.
-    var sidebar: some View {
+    func sidebar(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SettingsCategory.allCases) { item in
                 Button {
@@ -293,7 +297,7 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.top, 14)
-        .frame(width: 216)
+        .frame(width: width)
         .frame(maxHeight: .infinity)
         .background(SettingsDemoTokens.nav)
     }

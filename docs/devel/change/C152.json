@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C152",
+  "title": "设置窗口侧栏改按窗口宽度锁定比例并收窄默认宽度",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "fix/C152-settings-sidebar-ratio",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "apps/macos/Sources/BruceApp/SettingsView.swift",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "侧栏固定 216pt，而导航项实际只占约 127pt（图标 18 + 间距 10 + 最长标签「授权与隐私」63 + 内边距 20 + 侧栏内边距 16），1040pt 窗口下左侧留白占据 20.8%，左右比例失衡；固定像素在窗口缩放与不同分辨率下也不会随窗口等比变化。",
+  "precheck": {
+    "description": "确认侧栏宽度仍是写死像素、双端都没有按窗口宽度做比例计算",
+    "command": "rg -n 'frame\\(width: 216\\)|width: 216px' apps/macos/Sources/BruceApp/SettingsView.swift apps/win/src/styles.css",
+    "expected": "两端均命中固定值 216，且不存在按窗口宽度计算侧栏宽度的代码",
+    "is_completed": false,
+    "evidence": "2026-10-29 预检：SettingsView.swift:296 `.frame(width: 216)`；apps/win/src/styles.css:825 `width: 216px`；`rg -n 'sidebarWidthRatio|17\\.6' apps/macos/Sources apps/win/src` 无命中。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C152-settings-sidebar-ratio"
+    ],
+    "after": [
+      "swift run --package-path apps/macos SettingsWindowMetricsHarness",
+      "node apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 设置窗口侧栏宽度",
+      "before": "`SettingsView.sidebar` 固定 `.frame(width: 216)`；窗口 1040pt 下侧栏占 20.8%，缩放窗口时侧栏宽度不变。",
+      "after": "侧栏宽度 = 窗口内容宽度 × 17.6%（1000pt 下 176pt，1040pt 下 183pt），随窗口缩放等比变化；仅在极窄宽度下以 160pt 兜底保证导航文字不挤压。",
+      "impact": "macOS 设置窗口六类面板的可用内容宽度"
+    },
+    {
+      "scope": "macOS 设置窗口默认尺寸",
+      "before": "内容区默认 1040×680，最小 980×620，可缩放。",
+      "after": "内容区默认 1000×680（右侧面板宽度保持 823pt 不变），最小 980×620，仍可自由缩放。",
+      "impact": "设置窗口首次打开尺寸"
+    },
+    {
+      "scope": "Windows 设置窗口侧栏宽度",
+      "before": "`.sidenav` 固定 `width: 216px`。",
+      "after": "`.sidenav` 宽度改为窗口的 17.6%，最小 160px，随设置窗口缩放等比变化。",
+      "impact": "Windows 设置窗口布局与双端视觉一致性"
+    },
+    {
+      "scope": "双端设置窗口默认尺寸与回归护栏",
+      "before": "mac 内容区默认 1040×680、Windows `settings` 窗口 1040×680；侧栏宽度无自动化断言。",
+      "after": "两端默认 1000×680（最小 980×620，仍可缩放）；新增 mac `SettingsWindowMetricsHarness` 与 Windows `frontend.test.mjs` 侧栏比例断言。",
+      "impact": "设置窗口首次打开尺寸、CI 与本地全量验证"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "设置窗口侧栏固定 216pt（Windows 216px），不随窗口宽度变化；默认内容区 1040×680。",
+      "after": "设置窗口侧栏宽度 = 窗口内容宽度 × 17.6%（1000pt 窗口为 176pt），随窗口等比缩放，160pt 为可读性下限；默认内容区 1000×680，仍可自由缩放。"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261029-04",
+    "user_quote": "确认",
+    "signoff": "2026-10-29 人类口头确认 (AI 代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "SettingsWindowMetricsHarness 全绿，且 scripts/verify-local.sh 退出码为 0",
+        "false_if": "任一断言或仓库门禁失败",
+        "evidence": "swift run --package-path apps/macos SettingsWindowMetricsHarness → 「SettingsWindowMetrics tests passed: 5」；node apps/win/tests/frontend.test.mjs → 92 passed / 0 failed（含新增 C152 侧栏比例与窗口可缩放断言）；zsh scripts/verify-local.sh → Exit 0（Rust fmt/test/clippy、Swift build、18 项 Harness、「Bruce 本地验证全部通过」）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真机打开设置窗口拖拽缩放，侧栏随窗口等比变化且六类面板无挤压",
+        "false_if": "侧栏比例不随窗口变化或面板内容溢出",
+        "evidence": "未执行：本机无屏幕录制/辅助功能授权，未对安装版 Bruce 做真机拖拽截图核验。比例规则由纯函数单测覆盖（980/1000/1040/1160/1280/1440/1680/2048 八个宽度点恒定 17.6%），视图层仅将该宽度传入 .frame(width:)。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其他面板在 980~1600pt 宽度下内容不溢出，Windows 侧 CSS 改动不改动其他组件",
+        "false_if": "出现内容截断、换行破坏或双端几何不一致",
+        "evidence": "新最小窗口 980pt 下右侧面板为 807pt，仍宽于旧版 980pt 窗口的 763pt（980-216-1），故原最小尺寸下已验证过的六类面板不会出现新的横向挤压；Windows 仅改 .sidenav 的 width/min-width，.settings-layout 与其余组件未动，frontend.test.mjs 92 项全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-29",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

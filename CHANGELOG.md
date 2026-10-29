@@ -61,6 +61,10 @@
 - **设置页去除冗余说明文字 (C146)**：
   - **开关状态字移除**：macOS 通用页「锁屏暂停订阅刷新」「系统通知」与 Windows 维护页「系统通知」不再在开关旁渲染「已开启 / 已关闭」，开关开合位置即唯一状态表达（改写 C112 §5 的居左状态字契约）；
   - **软件更新卡去噪**：「自动检查更新」行去掉状态字；「当前版本」行去掉「正式版 · 从 GitHub Releases 检查 (...)」频道小字（dev 构建的降级小字同步移除），只保留等宽版本值；`UpdateCopy` / `update-presentation.js` 与共享 fixture `tests/fixtures/update-copy-parity/cases.json` 同步删键。
+- **设置窗口侧栏改按窗口宽度锁定比例 (C152)**：
+  - **比例锁定**：侧栏由固定 216pt 改为窗口内容宽度的 **17.6%**（1000pt 窗口下 176pt、右侧面板 823pt），窗口缩放时左右比例保持不变，160pt 为长标签可读性下限；macOS 统一由 `BruceAppCore.SettingsWindowMetrics` 计算，Windows `.sidenav` 以同比例 CSS 表达；
+  - **默认尺寸**：设置窗口内容区默认 1040×680 → **1000×680**（mac `setContentSize` 与 Windows `tauri.conf.json` 同步），最小 980×620 不变，仍可自由缩放——锁定的是比例而非长宽；
+  - **回归护栏**：新增 `SettingsWindowMetricsHarness`（默认尺寸 / 多宽度比例恒定 / 比旧值收窄 / 单调增长 / 非法输入兜底），Windows `frontend.test.mjs` 增补侧栏比例与窗口可缩放断言。
 
 ## [0.14.0] - 2026-10-27
 

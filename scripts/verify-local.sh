@@ -101,6 +101,9 @@ echo "运行订阅品牌图形 Harness"
 echo "运行顶部四色状态灯 Harness"
 "$BRUCE_SWIFT_BIN_DIR/DashboardStatusToneHarness" "$BRUCE_REPO_ROOT"
 
+echo "运行设置窗口比例锁定 Harness"
+"$BRUCE_SWIFT_BIN_DIR/SettingsWindowMetricsHarness"
+
 echo "运行软件更新 Harness (清单 / 状态机 / 安装器 / 双端文案对拍)"
 "$BRUCE_SWIFT_BIN_DIR/SoftwareUpdateHarness" "$BRUCE_REPO_ROOT"
 
