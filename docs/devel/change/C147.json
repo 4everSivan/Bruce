@@ -1,1 +1,118 @@
-{"$schema":"https://ad-flow.org/schemas/change-card.v1.json","id":"C147","title":"修复面板滚动/回弹后内容高度与窗口高度失步（Header 被顶出窗口、底部留白）","version":"0.15.0","type":"BugFix","status":"in_progress","branch":"main","is_hotfix":false,"target":{"module":"apps/macos","component":"MenuBarDashboardView / MenuBarStatusItemController / DashboardGlassPanelController","design_doc":"docs/devel/design/03-菜单栏状态与多风格原生渲染.md","design_topic":"MenuBarIndicator"},"why":"仪表盘在内容可滚动时（展开多账号订阅后卡片栈超过视口）发生一次滚动或顶部回弹，面板窗口高度与 SwiftUI 内容高度随即失步：顶部 Header（状态灯 + Bruce + Agent 状态）被顶到窗口上沿之外不可见，面板底栏下方留下一大片只有面板底色的空白；关闭再打开面板不会恢复，只有退出重启应用才复原。实测（v0.14.0 运行实例，AX 坐标）：正常态窗口 662pt、Header 屏幕 y=47；顶部回弹一次后窗口变 816pt、Header 变为 y=-107（已在屏幕外）；再向下滚一页后窗口回到 662pt，但 Header 停在 y=201（内容整体下移 154pt）。根因是三条链路共用同一份高度但没有任何一方兜底：SwiftUI 侧用 ScrollView 内部 onGeometryChange 测卡片栈高度并以 .fixedSize(vertical) 的根视图上报；控制器 resizePanel 只在「非过渡中且面板可见」时应用上报值，被吞掉的上报永不重试；宿主视图底部约束在 C137 被降为 .defaultLow，使窗口高度与内容高度不一致时内容会被整体平移而不是贴顶裁切。结果是任意一次瞬时高度抖动都会把错位固化下来，且没有复位路径。","precheck":{"description":"确认缺陷在当前代码与运行实例中真实存在（代码前提 + 现场实测）","command":"grep -n \"priority = .defaultLow\" apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift && grep -n \"func resizePanel\" apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift","expected":"命中托管视图底约束 .defaultLow（C137）与 resizePanel 单一高度入口","is_completed":false,"evidence":"2026-10-28 现场实测（运行 /Applications/Bruce.app 0.14.0，System Events 读 AX 坐标 + CGWindowList 读窗口）：打开面板 window h=662、Header y=47；对面板滚动区执行顶部回弹后 window h=816、Header y=-107；再向下翻页后 window h=662、Header y=201；关闭重开面板后 Header 仍为 y=201，quit + 重新启动后恢复 y=47。截图确认 Header 不可见、底栏下方为纯面板底色空白"},"callback":{"before":[],"after":["zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'","zsh apps/macos/.build/debug/NativeLifecycleHarness","scripts/adflow-verify --card C147 --to verified --record"]},"changes":[{"scope":"面板高度单一真源（控制器）","before":"resizePanel 仅在 !isTransitioning && panel.isVisible 时应用上报尺寸，其余情况直接丢弃；openDashboard 用 fittingSize 定初始高度；窗口尺寸无屏幕边界约束","after":"控制器记录 lastContentSize / pendingContentSize：过渡中或隐藏时的上报只暂存，展开/收起动画结束与面板重新可见时用最近上报值补应用一次；openDashboard 优先用最近上报值而非 fittingSize；窗口 frame 统一经 DashboardPanelSizingPolicy 顶边锚定并夹取进屏（顶部不高于 visibleFrame.maxY-inset，底部不低于 minY+inset，超高时压缩高度）","impact":"被吞掉的高度上报不再永久失步；面板任何时刻都不会把内容顶出屏幕；正常开合与尺寸跟随行为不变"},{"scope":"宿主视图垂直锚定（AppKit 侧）","before":"hostingController.view 为 top/leading/trailing 必需 + bottomAnchor priority .defaultLow（C137 为卷轴动画防挤压而放松）","after":"改为 top/leading/trailing 必需 + 显式 required 高度约束（常量由 updateContentHeight 与窗口同源刷新），并新增 realignContentToTop 在每次窗口尺寸落定后把内容贴回窗口顶边","impact":"窗口高度与内容高度不一致时（卷轴 20pt 期间）内容只向下溢出被视口裁切，不再整体平移；卷轴展开/收起的露显效果不变"},{"scope":"内容高度测量的稳定性","before":"卡片栈高度上限 maxCardStackHeight 为计算属性，布局过程中实时读 NSApp.keyWindow?.screen，键窗口在滚动/开合期间变化会让上限跳变","after":"上限改为视图内缓存值，在出现、面板重新可见、屏幕参数变更（NSApplication.didChangeScreenParametersNotification）时刷新；未测量前用 640 兜底","impact":"滚动与开合期间上限不再随 keyWindow 抖动，内容高度上报趋于稳定"},{"scope":"动画期间高度应用时机","before":"onGeometryChange 回调内同步 panel.setFrame + realignContentToTop(layoutSubtreeIfNeeded), 动画期间逐帧在 SwiftUI 布局过程中重入布局","after":"上报只记录并写入待应用槽, 合并同一轮多帧后在下一轮主线程统一应用; 卷轴动画结束与面板可见时再补应用一次","impact":"消除动画期间布局重入, 展开/收起动画的中间态不会被写成最终高度; 正常展开/收起与 scroll 行为不变"}],"design":{"doc":"docs/devel/design/03-菜单栏状态与多风格原生渲染.md","topic":"MenuBarIndicator","modified":true,"rule_diff":{"before":"design/03 规则 8 只规定卷轴动画期间 resizePanel 跳过重排（isTransitioning 锁），未规定被跳过的高度上报如何补应用，也未规定窗口高度与内容高度失配时的锚定与屏幕夹取边界","after":"新增规则 10「面板高度单一真源与失配兜底」：面板窗口高度只接受控制器记录的内容高度；过渡/隐藏期间的上报必须暂存并在动画结束、面板可见时补应用；宿主视图内容始终贴窗口顶边（不得因高度差整体平移）；任何尺寸应用都经顶边锚定 + 屏幕夹取，顶部不得高于 visibleFrame.maxY-8、底部不得低于 visibleFrame.minY+8，超高时压缩高度"}},"verification":{"result":null,"run_id":"local-20261028-c147","user_quote":"","signoff":"","checks":[{"item":"滚动/回弹复现消除","true_if":"构建后的 App 中，面板内容可滚动时执行顶部回弹与上下翻页，Header 始终贴在窗口顶边（AX 读到的 Header y 与窗口顶 + 9pt 相符），且面板窗口高度与内容高度一致、底栏下方无空白","false_if":"任一滚动/回弹序列后 Header 偏移、窗口高度与内容高度不一致或底部出现空白","evidence":"2026-10-28 修复后真机实测（/Applications/Bruce.app 构建，motionPreference=always + 用户原始卡片状态，AX 坐标 + CGWindowList）：首开 top=38/h=723、Header y=47；展开多账号 h=897、Header y=47；100ms 采样 10 帧无中间态残留；快速双击切换（间隔 50ms）后 h=897、Header y=47；顶部回弹×3 后 h=897、Header y=47；收起 h=723、Header y=47；关-重开 h=723、Header y=47。修复前同一操作 window 变 816、Header y=-107；回落 662 后 Header y=201。展开态截图确认 Header 与底栏均在位、无留白","result":true},{"item":"尺寸策略单元测试","true_if":"NativeLifecycleHarness 新增用例全绿：顶边锚定在窗口高于屏幕时不越顶、底部不越底、超高内容压缩高度、正常尺寸不改变","false_if":"任一新用例失败或既有用例回归","evidence":"NativeLifecycleHarness 15 项全绿：新增 panelSizingKeepsTopAnchoredWithinScreen 覆盖正常尺寸 / 超高压缩 / 顶部越屏 / 底部越屏 / 水平夹取 / 非正尺寸兜底六组断言，Harness exit 0","result":true},{"item":"卷轴开合与既有行为","true_if":"展开 240ms / 收起 140ms 卷轴动画期间内容不被挤压（标题与卡片不重排），开合后高度与最新内容一致；motionSuppressed 下直接落定","false_if":"卷轴期间出现挤压、重排，或开合后高度错位","evidence":"verify-local Exit 0；展开态截图（卷轴结束后）确认卡片不挤压、底栏贴合窗口底部；motionSuppressed 路径直接 setFrame 落定并 realign，未改动画时长与曲线；C147 加固版把高度应用延后到布局周期结束（同一轮多帧只落最后值），动画期间不再在布局回调内重入 setFrame/layoutSubtreeIfNeeded","result":true},{"item":"反向影响排查","true_if":"scripts/verify-local.sh Exit 0，Rust workspace 与全部 Harness 全绿","false_if":"任一测试或构建失败","evidence":"zsh scripts/verify-local.sh Exit 0（日志 local/c147-verify.log）：Rust workspace 全绿、Swift 构建与全部 Harness 通过、双端 golden 对拍一致、变更总账一致 cards=145 topics=9","result":true}]},"rejections":[],"sync":{"design_pinned":true,"changelog":false,"commit":"b073c00","tag":""},"gate":{"tool":"adflow-verify","version":"1.5.0","ran_at":"","exit_code":null}}
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C147",
+  "title": "修复面板滚动/回弹后内容高度与窗口高度失步（Header 被顶出窗口、底部留白）",
+  "version": "0.15.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarDashboardView / MenuBarStatusItemController / DashboardGlassPanelController",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "仪表盘在内容可滚动时（展开多账号订阅后卡片栈超过视口）发生一次滚动或顶部回弹，面板窗口高度与 SwiftUI 内容高度随即失步：顶部 Header（状态灯 + Bruce + Agent 状态）被顶到窗口上沿之外不可见，面板底栏下方留下一大片只有面板底色的空白；关闭再打开面板不会恢复，只有退出重启应用才复原。实测（v0.14.0 运行实例，AX 坐标）：正常态窗口 662pt、Header 屏幕 y=47；顶部回弹一次后窗口变 816pt、Header 变为 y=-107（已在屏幕外）；再向下滚一页后窗口回到 662pt，但 Header 停在 y=201（内容整体下移 154pt）。根因是三条链路共用同一份高度但没有任何一方兜底：SwiftUI 侧用 ScrollView 内部 onGeometryChange 测卡片栈高度并以 .fixedSize(vertical) 的根视图上报；控制器 resizePanel 只在「非过渡中且面板可见」时应用上报值，被吞掉的上报永不重试；宿主视图底部约束在 C137 被降为 .defaultLow，使窗口高度与内容高度不一致时内容会被整体平移而不是贴顶裁切。结果是任意一次瞬时高度抖动都会把错位固化下来，且没有复位路径。",
+  "precheck": {
+    "description": "确认缺陷在当前代码与运行实例中真实存在（代码前提 + 现场实测）",
+    "command": "grep -n \"priority = .defaultLow\" apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift && grep -n \"func resizePanel\" apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+    "expected": "命中托管视图底约束 .defaultLow（C137）与 resizePanel 单一高度入口",
+    "is_completed": false,
+    "evidence": "2026-10-28 现场实测（运行 /Applications/Bruce.app 0.14.0，System Events 读 AX 坐标 + CGWindowList 读窗口）：打开面板 window h=662、Header y=47；对面板滚动区执行顶部回弹后 window h=816、Header y=-107；再向下翻页后 window h=662、Header y=201；关闭重开面板后 Header 仍为 y=201，quit + 重新启动后恢复 y=47。截图确认 Header 不可见、底栏下方为纯面板底色空白"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "zsh apps/macos/.build/debug/NativeLifecycleHarness",
+      "scripts/adflow-verify --card C147 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "面板高度单一真源（控制器）",
+      "before": "resizePanel 仅在 !isTransitioning && panel.isVisible 时应用上报尺寸，其余情况直接丢弃；openDashboard 用 fittingSize 定初始高度；窗口尺寸无屏幕边界约束",
+      "after": "控制器记录 lastContentSize / pendingContentSize：过渡中或隐藏时的上报只暂存，展开/收起动画结束与面板重新可见时用最近上报值补应用一次；openDashboard 优先用最近上报值而非 fittingSize；窗口 frame 统一经 DashboardPanelSizingPolicy 顶边锚定并夹取进屏（顶部不高于 visibleFrame.maxY-inset，底部不低于 minY+inset，超高时压缩高度）",
+      "impact": "被吞掉的高度上报不再永久失步；面板任何时刻都不会把内容顶出屏幕；正常开合与尺寸跟随行为不变"
+    },
+    {
+      "scope": "宿主视图垂直锚定（AppKit 侧）",
+      "before": "hostingController.view 为 top/leading/trailing 必需 + bottomAnchor priority .defaultLow（C137 为卷轴动画防挤压而放松）",
+      "after": "改为 top/leading/trailing 必需 + 显式 required 高度约束（常量由 updateContentHeight 与窗口同源刷新），并新增 realignContentToTop 在每次窗口尺寸落定后把内容贴回窗口顶边",
+      "impact": "窗口高度与内容高度不一致时（卷轴 20pt 期间）内容只向下溢出被视口裁切，不再整体平移；卷轴展开/收起的露显效果不变"
+    },
+    {
+      "scope": "内容高度测量的稳定性",
+      "before": "卡片栈高度上限 maxCardStackHeight 为计算属性，布局过程中实时读 NSApp.keyWindow?.screen，键窗口在滚动/开合期间变化会让上限跳变",
+      "after": "上限改为视图内缓存值，在出现、面板重新可见、屏幕参数变更（NSApplication.didChangeScreenParametersNotification）时刷新；未测量前用 640 兜底",
+      "impact": "滚动与开合期间上限不再随 keyWindow 抖动，内容高度上报趋于稳定"
+    },
+    {
+      "scope": "动画期间高度应用时机",
+      "before": "onGeometryChange 回调内同步 panel.setFrame + realignContentToTop(layoutSubtreeIfNeeded), 动画期间逐帧在 SwiftUI 布局过程中重入布局",
+      "after": "上报只记录并写入待应用槽, 合并同一轮多帧后在下一轮主线程统一应用; 卷轴动画结束与面板可见时再补应用一次",
+      "impact": "消除动画期间布局重入, 展开/收起动画的中间态不会被写成最终高度; 正常展开/收起与 scroll 行为不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/03 规则 8 只规定卷轴动画期间 resizePanel 跳过重排（isTransitioning 锁），未规定被跳过的高度上报如何补应用，也未规定窗口高度与内容高度失配时的锚定与屏幕夹取边界",
+      "after": "新增规则 10「面板高度单一真源与失配兜底」：面板窗口高度只接受控制器记录的内容高度；过渡/隐藏期间的上报必须暂存并在动画结束、面板可见时补应用；宿主视图内容始终贴窗口顶边（不得因高度差整体平移）；任何尺寸应用都经顶边锚定 + 屏幕夹取，顶部不得高于 visibleFrame.maxY-8、底部不得低于 visibleFrame.minY+8，超高时压缩高度"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261028-04",
+    "user_quote": "全部签收",
+    "signoff": "2026-10-29 人类口头确认 (AI 代签)",
+    "checks": [
+      {
+        "item": "滚动/回弹复现消除",
+        "true_if": "构建后的 App 中，面板内容可滚动时执行顶部回弹与上下翻页，Header 始终贴在窗口顶边（AX 读到的 Header y 与窗口顶 + 9pt 相符），且面板窗口高度与内容高度一致、底栏下方无空白",
+        "false_if": "任一滚动/回弹序列后 Header 偏移、窗口高度与内容高度不一致或底部出现空白",
+        "evidence": "2026-10-28 修复后真机实测（/Applications/Bruce.app 构建，motionPreference=always + 用户原始卡片状态，AX 坐标 + CGWindowList）：首开 top=38/h=723、Header y=47；展开多账号 h=897、Header y=47；100ms 采样 10 帧无中间态残留；快速双击切换（间隔 50ms）后 h=897、Header y=47；顶部回弹×3 后 h=897、Header y=47；收起 h=723、Header y=47；关-重开 h=723、Header y=47。修复前同一操作 window 变 816、Header y=-107；回落 662 后 Header y=201。展开态截图确认 Header 与底栏均在位、无留白",
+        "result": true
+      },
+      {
+        "item": "尺寸策略单元测试",
+        "true_if": "NativeLifecycleHarness 新增用例全绿：顶边锚定在窗口高于屏幕时不越顶、底部不越底、超高内容压缩高度、正常尺寸不改变",
+        "false_if": "任一新用例失败或既有用例回归",
+        "evidence": "NativeLifecycleHarness 15 项全绿：新增 panelSizingKeepsTopAnchoredWithinScreen 覆盖正常尺寸 / 超高压缩 / 顶部越屏 / 底部越屏 / 水平夹取 / 非正尺寸兜底六组断言，Harness exit 0",
+        "result": true
+      },
+      {
+        "item": "卷轴开合与既有行为",
+        "true_if": "展开 240ms / 收起 140ms 卷轴动画期间内容不被挤压（标题与卡片不重排），开合后高度与最新内容一致；motionSuppressed 下直接落定",
+        "false_if": "卷轴期间出现挤压、重排，或开合后高度错位",
+        "evidence": "verify-local Exit 0；展开态截图（卷轴结束后）确认卡片不挤压、底栏贴合窗口底部；motionSuppressed 路径直接 setFrame 落定并 realign，未改动画时长与曲线；C147 加固版把高度应用延后到布局周期结束（同一轮多帧只落最后值），动画期间不再在布局回调内重入 setFrame/layoutSubtreeIfNeeded",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "scripts/verify-local.sh Exit 0，Rust workspace 与全部 Harness 全绿",
+        "false_if": "任一测试或构建失败",
+        "evidence": "zsh scripts/verify-local.sh Exit 0（日志 local/c147-verify.log）：Rust workspace 全绿、Swift 构建与全部 Harness 通过、双端 golden 对拍一致、变更总账一致 cards=145 topics=9",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "b073c00",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-29",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
+  }
+}

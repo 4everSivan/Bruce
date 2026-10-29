@@ -1470,7 +1470,7 @@
     "C143": {
       "title": "消除面板滚动条压制观察器的 5 处 MainActor 隔离告警",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
@@ -1479,7 +1479,7 @@
     "C144": {
       "title": "消除设置页下拉 Coordinator 隔离告警与生命周期测试死变量",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "PricingEngine",
       "version": "0.15.0",
@@ -1488,7 +1488,7 @@
     "C145": {
       "title": "全局界面动效总开关（应用内覆盖系统「减弱动态效果」）与卷轴缓动曲线修正",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "feat/C145-global-motion-switch",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
@@ -1497,7 +1497,7 @@
     "C146": {
       "title": "设置页去除开关状态文字与软件更新卡冗余小字（双端对齐）",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "feat/C145-global-motion-switch",
       "topic": "PricingEngine",
       "version": "0.15.0",
@@ -1506,7 +1506,7 @@
     "C147": {
       "title": "修复面板滚动/回弹后内容高度与窗口高度失步（Header 被顶出窗口、底部留白）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
