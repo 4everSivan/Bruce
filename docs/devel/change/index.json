@@ -56,7 +56,8 @@
         "C144",
         "C146",
         "C152",
-        "C153"
+        "C153",
+        "C154"
       ]
     },
     "WindowsCompat": {
@@ -1562,6 +1563,15 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/devel/change/C153.json"
+    },
+    "C154": {
+      "title": "凭据存储行按钮统一为「配置」并去掉「已配置」状态描述",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C154-keychain-row-button",
+      "topic": "PricingEngine",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C154.json"
     }
   }
 }

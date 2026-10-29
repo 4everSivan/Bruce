@@ -505,32 +505,23 @@ struct SettingsView: View {
                     divided: true
                 ) {
                     HStack(spacing: 8) {
+                        // C154: 已配置为静默态, 不再重复渲染状态文字; 仅未配置/被阻断需要用户处置时提示.
                         switch coordinator.keychainAccessState {
                         case .allowed:
-                            Text("已配置")
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(SettingsDemoTokens.ok)
-                            Button("重新配置") {
-                                coordinator.configureKeychainAccess()
-                            }
-                            .fluentButton(.primary)
+                            EmptyView()
                         case .notConfigured:
                             Text("未配置")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(SettingsDemoTokens.warn)
-                            Button("配置") {
-                                coordinator.configureKeychainAccess()
-                            }
-                            .fluentButton(.primary)
                         case .blocked:
                             Text("访问被阻断")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(SettingsDemoTokens.warn)
-                            Button("修复") {
-                                coordinator.configureKeychainAccess()
-                            }
-                            .fluentButton(.primary)
                         }
+                        Button("配置") {
+                            coordinator.configureKeychainAccess()
+                        }
+                        .fluentButton(.primary)
                     }
                 }
                 FluentRow(
