@@ -16,7 +16,8 @@
 
   function buildGeneral(host) {
     host.replaceChildren();
-    // mac generalPane 首卡无分组标题; 行序: 界面风格 → 刷新间隔 → 看板布局 → 系统通知
+    // mac generalPane 首卡无分组标题; 行序与 mac 去掉平台独占行后一致 (C153):
+    // 界面风格 → 界面动效 → 看板布局 → 刷新间隔 → 系统通知
     // (配色模式 / 钥匙串 / 外部 CLI 来源为 mac 独有能力, Windows 恒深色且无钥匙串;
     // 原「版本」行已迁维护页软件更新卡 —— 07 §4.2 R3 方案 B)。
     const c1 = card(host);
@@ -24,16 +25,6 @@
     theme.append(node("option", "经典", { value: "fluent" }), node("option", "Nothing", { value: "nothing" }));
     row(c1, "界面风格", segmented(theme, (value, revert) => persist({ theme: value }, { revert })),
       "经典为深色材质面板; Nothing 为纯色平面风格, 无模糊无玻璃 (Windows 恒深色)");
-    // 刷新间隔对齐 mac 允许集合 (5/15/30/60 分钟); 当前值不在集合内时由 loadSettings
-    // 追加为一项, 避免静默改写用户既有配置。
-    const interval = node("select", null, { id: "setting-interval" });
-    for (const minutes of REFRESH_PRESETS) interval.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
-    row(c1, "刷新间隔", segmented(interval, (value, revert) => persist({ refreshIntervalSecs: Number(value) * 60 }, { revert })),
-      "已授权模块的自动采集周期，变更后立即重新计时");
-    const layout = node("select", null, { id: "setting-layout-mode" });
-    layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
-    row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
-      "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
     // C145: 全局界面动效总开关 (与 mac 通用页同名同三态).
     const motion = node("select", null, { id: "setting-motion-preference" });
     motion.append(
@@ -43,6 +34,16 @@
     );
     row(c1, "界面动效", segmented(motion, (value, revert) => persist({ motionPreference: value }, { revert })),
       "关闭后整个应用不做过渡动画；「始终播放」会忽略系统「减少动画」");
+    const layout = node("select", null, { id: "setting-layout-mode" });
+    layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
+    row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
+      "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
+    // 刷新间隔对齐 mac 允许集合 (5/15/30/60 分钟); 当前值不在集合内时由 loadSettings
+    // 追加为一项, 避免静默改写用户既有配置。
+    const interval = node("select", null, { id: "setting-interval" });
+    for (const minutes of REFRESH_PRESETS) interval.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
+    row(c1, "刷新间隔", segmented(interval, (value, revert) => persist({ refreshIntervalSecs: Number(value) * 60 }, { revert })),
+      "已授权模块的自动采集周期，变更后立即重新计时");
     // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
     const notifyWrap = node("div", null, { class: "toggle-with-state" });
     const notify = input("setting-notifications", "checkbox");

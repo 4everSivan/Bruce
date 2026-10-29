@@ -55,7 +55,8 @@
         "C112",
         "C144",
         "C146",
-        "C152"
+        "C152",
+        "C153"
       ]
     },
     "WindowsCompat": {
@@ -1552,6 +1553,15 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/devel/change/C152.json"
+    },
+    "C153": {
+      "title": "设置通用页配置项按外观/呈现/刷新/通知/安全分组重排",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C153-general-pane-order",
+      "topic": "PricingEngine",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C153.json"
     }
   }
 }

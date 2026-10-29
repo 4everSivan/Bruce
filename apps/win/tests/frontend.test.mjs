@@ -1257,7 +1257,9 @@ test("scoped refresh refusal is silent and only restores the button (C080, mac p
 test("settings saves are serialized and each merges the latest backend state (C069)", async () => {
   const app = await boot({ html: "settings.html" });
   // 连续操作 (不等待前一次完成) 不得相互覆盖
-  const intervalChoices = [...app.node("pane-general").querySelectorAll(".fluent-seg")][1].querySelectorAll(".seg-opt");
+  // C153: 按 select id 定位分段控件, 不依赖通用页行序下标.
+  const intervalGroup = app.node("setting-interval").parentElement.querySelector(".fluent-seg");
+  const intervalChoices = intervalGroup.querySelectorAll(".seg-opt");
   const pending = [intervalChoices[0].click(), app.node("card-down-usage").click()];
   app.node("setting-notifications").checked = false;
   pending.push(app.node("setting-notifications").dispatch("change"));
@@ -2272,4 +2274,20 @@ test("settings sidebar locks a 17.6% window-width ratio instead of a fixed pixel
   assert.equal(settings.height, 680);
   assert.equal(settings.minWidth, 980);
   assert.equal(settings.resizable, true, "比例锁定不等于固定尺寸, 窗口仍可缩放");
+});
+
+// ---------- C153: 通用页配置项分组顺序 ----------
+
+test("general pane rows keep the appearance → layout → refresh → notification order (C153)", async () => {
+  const source = readFileSync(new URL("../src/settings-maintenance.js", import.meta.url), "utf8");
+  const order = ["界面风格", "界面动效", "看板布局", "刷新间隔", "系统通知"];
+  const positions = order.map((label) => source.indexOf(`row(c1, "${label}"`));
+  positions.forEach((position, index) => {
+    assert.ok(position >= 0, `通用页缺少「${order[index]}」行`);
+  });
+  assert.deepEqual(
+    [...positions].sort((a, b) => a - b),
+    positions,
+    `通用页行序应保持 ${order.join(" → ")}`,
+  );
 });

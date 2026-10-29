@@ -407,6 +407,26 @@ struct SettingsView: View {
                         )
                     }
                 }
+                // C145: 全局界面动效总开关. 「始终播放」只作用于 Bruce 自身动效,
+                // 用于本机已开启系统「减弱动态效果」但希望看到应用内过渡的场景.
+                FluentRow(
+                    "界面动效",
+                    sub: "关闭后全应用不做过渡动画; 「始终播放」会忽略系统「减弱动态效果」",
+                    divided: true
+                ) {
+                    FluentSegmentedPicker(
+                        options: [
+                            ("跟随系统", MotionPreference.system),
+                            ("始终播放", .always),
+                            ("始终关闭", .never),
+                        ],
+                        selection: Binding(
+                            get: { coordinator.motionPreference },
+                            set: { coordinator.setMotionPreference($0) }
+                        ),
+                        accessibilityHintText: "选择界面动效策略"
+                    )
+                }
                 FluentRow(
                     "仪表盘卡片布局",
                     sub: "纵向级联可滚轮纵览全部卡片；顶栏 Tab 切换通过右上角小图标在用量、订阅与活跃卡片间快速切换",
@@ -479,26 +499,6 @@ struct SettingsView: View {
                     }
                 }
                 .onAppear(perform: refreshNotificationStatus)
-                // C145: 全局界面动效总开关. 「始终播放」只作用于 Bruce 自身动效,
-                // 用于本机已开启系统「减弱动态效果」但希望看到应用内过渡的场景.
-                FluentRow(
-                    "界面动效",
-                    sub: "关闭后全应用不做过渡动画; 「始终播放」会忽略系统「减弱动态效果」",
-                    divided: true
-                ) {
-                    FluentSegmentedPicker(
-                        options: [
-                            ("跟随系统", MotionPreference.system),
-                            ("始终播放", .always),
-                            ("始终关闭", .never),
-                        ],
-                        selection: Binding(
-                            get: { coordinator.motionPreference },
-                            set: { coordinator.setMotionPreference($0) }
-                        ),
-                        accessibilityHintText: "选择界面动效策略"
-                    )
-                }
                 FluentRow(
                     "凭据存储",
                     sub: "统一管理 Bruce 保存的订阅凭证访问权限",

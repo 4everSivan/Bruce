@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C153",
+  "title": "设置通用页配置项按外观/呈现/刷新/通知/安全分组重排",
+  "version": "0.15.0",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "fix/C153-general-pane-order",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "apps/macos/Sources/BruceApp/SettingsView.swift",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "通用页首卡把外观类配置拆散：配色模式、界面风格、模糊风格之后跳到仪表盘卡片布局与刷新间隔，界面动效却排在系统通知之后；行为类（刷新间隔、锁屏暂停、系统通知）与安全类（凭据存储、外部 CLI 来源）也没有清晰分界，逐项阅读时要在「外观—行为—外观—安全」之间来回跳。",
+  "precheck": {
+    "description": "确认两端通用页仍是旧行序（界面动效排在系统通知之后）",
+    "command": "rg -n '界面动效' apps/macos/Sources/BruceApp/SettingsView.swift apps/win/src/settings-maintenance.js",
+    "expected": "mac 界面动效行位于「系统通知」之后、凭据存储之前；Windows 界面动效位于「看板布局」之后、「系统通知」之前",
+    "is_completed": false,
+    "evidence": "2026-10-29 预检：SettingsView.swift 通用页行序为 配色模式→界面风格→(模糊风格)→仪表盘卡片布局→刷新间隔→锁屏暂停→系统通知→界面动效→凭据存储→外部 CLI 来源；settings-maintenance.js 为 界面风格→刷新间隔→看板布局→界面动效→系统通知。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C153-general-pane-order"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "node apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 通用页首卡行序",
+      "before": "配色模式 → 界面风格 → (模糊风格) → 仪表盘卡片布局 → 刷新间隔 → 锁屏暂停订阅刷新 → 系统通知 → 界面动效 → 凭据存储 → 外部 CLI 来源。",
+      "after": "配色模式 → 界面风格 → (模糊风格) → 界面动效 → 仪表盘卡片布局 → 刷新间隔 → 锁屏暂停订阅刷新 → 系统通知 → 凭据存储 → 外部 CLI 来源：外观（含动效）聚在前，其次看板呈现与刷新行为，最后通知与凭据安全。",
+      "impact": "macOS 设置中心通用页阅读顺序与同类选项的聚拢关系"
+    },
+    {
+      "scope": "Windows 通用页首卡行序",
+      "before": "界面风格 → 刷新间隔 → 看板布局 → 界面动效 → 系统通知 →（托盘悬停预览…）。",
+      "after": "界面风格 → 界面动效 → 看板布局 → 刷新间隔 → 系统通知 →（托盘悬停预览…），与 mac 去掉平台独占行后的相对顺序一致。",
+      "impact": "Windows 设置窗口通用页与双端同构一致性"
+    },
+    {
+      "scope": "apps/win/tests/frontend.test.mjs",
+      "before": "「设置保存串行化」用例按 `.fluent-seg` 下标 [1] 取刷新间隔分段控件，行序一变即误指到界面动效。",
+      "after": "改为按 `setting-interval` 元素 id 定位分段控件；新增通用页行序源码顺序断言。",
+      "impact": "Windows 前端回归稳定性"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "通用页首卡未规定分组顺序，行序随功能追加演变为 配色/风格/布局/刷新/锁屏/通知/动效/凭据/来源。",
+      "after": "通用页首卡固定分五段：外观（配色模式、界面风格、模糊风格、界面动效）→ 看板呈现（仪表盘卡片布局）→ 刷新（刷新间隔、锁屏暂停订阅刷新）→ 通知（系统通知）→ 凭据与来源（凭据存储、外部 CLI 来源）；Windows 去掉平台独占行后保持同一相对顺序。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261029-05",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Swift 全量构建通过、scripts/verify-local.sh 退出码为 0",
+        "false_if": "任一构建或仓库门禁失败",
+        "evidence": "swift build --package-path apps/macos --build-tests → Build complete (11.06s)；zsh scripts/verify-local.sh → Exit 0（末行「Bruce 本地验证全部通过」）；node apps/win/tests/frontend.test.mjs → 93 passed / 0 failed。",
+        "result": true
+      },
+      {
+        "item": "行序核对",
+        "true_if": "两端视图行序与设计规则（五段分组）逐条一致",
+        "false_if": "存在顺序不符或遗漏行",
+        "evidence": "mac SettingsView generalPane 行序：配色模式→界面风格→(模糊风格)→界面动效→仪表盘卡片布局→刷新间隔→锁屏暂停订阅刷新→系统通知→凭据存储→外部 CLI 来源；Windows buildGeneral：界面风格→界面动效→看板布局→刷新间隔→系统通知（去掉平台独占行后与 mac 同序），由 frontend.test.mjs 新增顺序断言守护。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "安装版设置窗口逐页目视确认新顺序",
+        "false_if": "界面顺序与代码不符或有行错位",
+        "evidence": "未执行：本机无屏幕录制/辅助功能授权，无法对安装版截图；已重新打包部署，待人工打开设置页目视确认。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "分段选择器/开关尾件与分隔线未错位，Windows 前端回归全绿",
+        "false_if": "出现分隔线缺失、控件错行或双端逻辑破坏",
+        "evidence": "行块整体搬移，FluentRow(divided:) 首行无分隔线规则未改；Windows 库中发现并修复了一处与行序耦合的用例（原按 .fluent-seg 下标 [1] 取刷新间隔，已改按 setting-interval id），93 项全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-29",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}
