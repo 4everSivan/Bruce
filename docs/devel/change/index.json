@@ -1559,7 +1559,7 @@
     "C153": {
       "title": "设置通用页配置项按外观/呈现/刷新/通知/安全分组重排",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C153-general-pane-order",
       "topic": "PricingEngine",
       "version": "0.15.0",
@@ -1568,7 +1568,7 @@
     "C154": {
       "title": "凭据存储行按钮统一为「配置」并去掉「已配置」状态描述",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C154-keychain-row-button",
       "topic": "PricingEngine",
       "version": "0.15.0",
@@ -1577,7 +1577,7 @@
     "C155": {
       "title": "设置窗口行内按钮统一中性样式与最小宽度",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C155-button-style-unify",
       "topic": "PricingEngine",
       "version": "0.15.0",

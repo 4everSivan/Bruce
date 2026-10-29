@@ -4,7 +4,7 @@
   "title": "设置窗口行内按钮统一中性样式与最小宽度",
   "version": "0.15.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C155-button-style-unify",
   "is_hotfix": false,
   "target": {
@@ -54,10 +54,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261029-07",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-29 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -86,15 +86,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "fd4a49e",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-29",
-    "exit_code": 4,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
