@@ -72,7 +72,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": false,
-    "commit": "",
+    "commit": "407977f",
     "tag": ""
   },
   "gate": {
