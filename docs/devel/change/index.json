@@ -57,7 +57,8 @@
         "C146",
         "C152",
         "C153",
-        "C154"
+        "C154",
+        "C155"
       ]
     },
     "WindowsCompat": {
@@ -1572,6 +1573,15 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/devel/change/C154.json"
+    },
+    "C155": {
+      "title": "设置窗口行内按钮统一中性样式与最小宽度",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C155-button-style-unify",
+      "topic": "PricingEngine",
+      "version": "0.15.0",
+      "file": "docs/devel/change/C155.json"
     }
   }
 }

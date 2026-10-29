@@ -521,7 +521,8 @@ struct SettingsView: View {
                         Button("配置") {
                             coordinator.configureKeychainAccess()
                         }
-                        .fluentButton(.primary)
+                        // C155: 与订阅额度行的同名「配置」按钮统一为中性次按钮.
+                        .fluentButton()
                     }
                 }
                 FluentRow(

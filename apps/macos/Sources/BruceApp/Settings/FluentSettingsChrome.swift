@@ -184,7 +184,11 @@ enum FluentButtonRole {
 /// demo 按钮: 12px 字, 5/12 内边距, 5px 圆角; plain = surface 底 + 描边,
 /// primary = accent 实底白字, danger = 红字 (保留底与描边),
 /// link = 无底无框零内边距的灰字 (按下转正文色).
+/// C155: 非 link 角色统一 64pt 最小宽度并居中, 短标签按钮 (配置 / 管理 / 预览) 等宽对齐.
 struct FluentButtonStyle: SwiftUI.ButtonStyle {
+    /// 按钮最小占位宽度: 2~4 个汉字的行内操作共用同一尺寸, 行尾控件成列对齐.
+    static let minimumWidth: CGFloat = 64
+
     let role: FluentButtonRole
     @Environment(\.isEnabled) private var isEnabled
 
@@ -195,6 +199,7 @@ struct FluentButtonStyle: SwiftUI.ButtonStyle {
             .foregroundStyle(foreground(isPressed: configuration.isPressed))
             .padding(.horizontal, padded ? 12 : 0)
             .padding(.vertical, padded ? 5 : 0)
+            .frame(minWidth: padded ? Self.minimumWidth : 0)
             .background(background(isPressed: configuration.isPressed))
             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay(
