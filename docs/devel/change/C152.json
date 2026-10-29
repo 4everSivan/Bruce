@@ -4,7 +4,7 @@
   "title": "设置窗口侧栏改按窗口宽度锁定比例并收窄默认宽度",
   "version": "0.15.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C152-settings-sidebar-ratio",
   "is_hotfix": false,
   "target": {
@@ -99,15 +99,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "e24e22b",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-29",
-    "exit_code": 4,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

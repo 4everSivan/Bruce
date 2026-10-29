@@ -1547,7 +1547,7 @@
     "C152": {
       "title": "设置窗口侧栏改按窗口宽度锁定比例并收窄默认宽度",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C152-settings-sidebar-ratio",
       "topic": "PricingEngine",
       "version": "0.15.0",
