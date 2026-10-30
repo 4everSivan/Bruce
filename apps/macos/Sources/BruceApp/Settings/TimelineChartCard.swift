@@ -91,7 +91,6 @@ struct TimelineChartCard: View {
                                 .fill(Color(hex: meta.colorHex))
                                 .frame(width: 7, height: 7)
                         }
-
                         Text(meta.name)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(SettingsDemoTokens.text2)
@@ -150,12 +149,34 @@ struct TimelineChartCard: View {
         }
         .chartXSelection(value: $selectedLabel)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: min(points.count, 8))) { _ in
+            AxisMarks(values: xAxisTicks.map(\.label)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
                     .foregroundStyle(SettingsDemoTokens.separator.opacity(0.6))
-                AxisValueLabel()
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(SettingsDemoTokens.text3)
+                if let label = value.as(String.self) {
+                    AxisValueLabel {
+                        if label == peakTickLabel {
+                            Text("🔥 \(label)")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(peakHighlightColor)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(peakHighlightColor.opacity(0.16))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .strokeBorder(peakHighlightColor.opacity(0.42), lineWidth: 1)
+                                )
+                                .fixedSize()
+                        } else {
+                            Text(label)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(SettingsDemoTokens.text3)
+                                .fixedSize()
+                        }
+                    }
+                }
             }
         }
         .chartYAxis {
@@ -279,6 +300,18 @@ struct TimelineChartCard: View {
     private var selectedPoint: AnalyticsTimelinePoint? {
         guard let label = selectedLabel else { return nil }
         return points.first { $0.label == label }
+    }
+
+    private var xAxisTicks: [AnalyticsTimelineAxisTick] {
+        WorkbenchAnalytics.timelineAxisTicks(for: points)
+    }
+
+    private var peakTickLabel: String? {
+        xAxisTicks.first(where: \.isPeak)?.label
+    }
+
+    private var peakHighlightColor: Color {
+        Color(hex: WorkbenchAnalytics.peakDominantColorHex(points: points, series: activeSeriesMeta))
     }
 
     private var yAxisTitle: String {

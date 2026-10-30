@@ -128,6 +128,18 @@ test("agent usage workbench renders the Rust analytics snapshot verbatim, withou
   assert.equal(app.calls.filter(call => call.command === "get_usage_analytics").at(-1).args.range, "today");
   assert.equal(pane.querySelector(".time-range-picker .seg-opt.active").textContent, "今日");
   assert.equal(pane.querySelector("#kpi-tiles .kpi-value").textContent, analytics.today.kpi.totalTokensText);
+  // C162: 今日 24h 采用方案 A1 (3h 等距) + 峰值胶囊高亮 (19:00 自动替换邻近 18:00 并加 🔥 前缀)
+  await [...pane.querySelectorAll(".workbench-chart-card .chart-dim-tabs .seg-opt")].find(b => b.textContent === "Agent").click();
+  const todayXLabels = pane.querySelectorAll(".workbench-chart-card .wb-chart-x span").map(el => el.textContent);
+  assert.deepEqual(todayXLabels, ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "🔥 19:00", "21:00"]);
+  const peakSpan = pane.querySelector(".workbench-chart-card .wb-chart-x .wb-chart-x-peak");
+  assert.ok(peakSpan, "今日峰值刻度带 .wb-chart-x-peak 胶囊类");
+  assert.equal(peakSpan.textContent, "🔥 19:00");
+  const peakPoint19 = analytics.today.timeline.points.find(p => p.label === "19:00");
+  const dominantAgentAtPeak = [...analytics.today.agents].sort(
+    (a, b) => (peakPoint19.seriesValues[b.agentId] || 0) - (peakPoint19.seriesValues[a.agentId] || 0),
+  )[0];
+  assert.ok(peakSpan.getAttribute("style").includes(`--peak-color: ${dominantAgentAtPeak.colorHex}`), "峰值胶囊色跟随峰值主导 Agent 色");
   // 展开状态跨范围保留 (mac @State expandedAgentIDs): 第 4 步展开的 Claude Code 此时显示今日项目
   const claude = pane.querySelectorAll(".agent-matrix-card .wb-agent").find(row => row.textContent.includes("Claude Code"));
   assert.equal(claude.querySelector(".wb-expand").getAttribute("aria-expanded"), "true");

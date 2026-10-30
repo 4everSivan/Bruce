@@ -2,7 +2,7 @@
 
 <!-- @topic: AgentAnalytics -->
 > **文档ID**: DESIGN-ANALYTICS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-21 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `AgentAnalytics`
+> **最后更新**: 2026-10-30 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `AgentAnalytics`
 
 ---
 
@@ -189,7 +189,10 @@ C070 前工作台多处数值为估算 (今日逐小时固定按 42/18/40 拆输
 
 #### 2. 实现参数 (mac Swift Charts; Windows SVG 等价实现)
 - 曲线平滑：`.interpolationMethod(.catmullRom)`；折线 / 面积可切换，面积为 `LinearGradient(color.opacity(0.35) → 0.04)`；点数 ≤ 14 时绘制点标记；
-- x 轴为字符串分带刻度：点位于各带中心、首末点不贴边，标签至多 8 个；y 轴刻度在左（费用 `$x.xx`，token `x.xM` / `xK`）；
+- x 轴刻度抽稀与峰值胶囊高亮（C162）：
+  - **显式刻度抽稀（方案 A1）**：Swift Charts 对字符串分类轴忽略 `.automatic(desiredCount:)`，必须显式传入 `AxisMarks(values: xAxisTicks.map(\.label))`。点数 $\le 8$ 时全量显示；今日 24 小时固定取 3 小时严格等步长 `[00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00]`（最小防撞间距 `minGap = 1`）；其余长跨度（如近 30 天 / 本月）按步长 `step = max(2, ceil((N-1)/6))` 采样并收口末位点，`minGap = max(1, step/2)`；
+  - **峰值防撞合入与 S2 胶囊高亮**：峰值点（`totalTokens > 0` 的首个最大点，与底部 `peakSummary` 同口径）若不在基准刻度中，当与最近基准刻度距离 $\le \text{minGap}$ 时自动替换该最近刻度以杜绝文字重叠，否则直接追加。峰值刻度在 X 轴以 S2 胶囊徽章渲染：文案加前缀 `🔥 <label>`（如 `🔥 15:00`），字色、16% 透明底与 42% 细描边自动跟随该峰值时刻数值最大的主导曲线系列色（`WorkbenchAnalytics.peakDominantColorHex` / Windows `peakDominantColor`）；
+- y 轴刻度在左（费用 `$x.xx`，token `x.xM` / `xK`）；
 - 悬停选点：`chartXSelection` 选中最近点，画虚线 RuleMark，底部概览条改为「📍 标签 + 合计 + 前 3 项细分」，未选中时显示峰值 / 均值摘要；
 - （C070 校正：此前文档所列 7 日均线 mac 端从未实现，已删除。）
 

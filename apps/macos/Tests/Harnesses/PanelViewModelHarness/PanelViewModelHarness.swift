@@ -2067,6 +2067,36 @@ struct PanelViewModelHarness {
         try expect(timeline.avgSummary == "时均: **\(PanelFormat.tokenCount(2_500 / 24))** Tokens", timeline.avgSummary)
         try expect(snapshot.todayHourlyTokens[9] == 200 && snapshot.todayHourlyTokens[14] == 2_300, "今日 24h 密度")
 
+        // C162: 方案 A1 (3h 等步长) + 峰值防撞吸附与主导系列色
+        let todayTicks = WorkbenchAnalytics.timelineAxisTicks(for: timeline.points)
+        try expect(
+            todayTicks.map(\.label) == ["00:00", "03:00", "06:00", "09:00", "12:00", "14:00", "18:00", "21:00"],
+            "14:00 峰值距离 15:00 为 1h，自动替换 15:00 防止重叠: \(todayTicks.map(\.label))"
+        )
+        try expect(todayTicks.filter(\.isPeak).map(\.label) == ["14:00"], "仅 14:00 标记为峰值刻度")
+        let agentSeries = snapshot.agents.map {
+            AnalyticsChartSeriesMeta(key: $0.agentID, name: $0.name, colorHex: $0.colorHex)
+        }
+        let codexHex = try unwrap(snapshot.agents.first { $0.agentID == "codex" }?.colorHex)
+        try expect(
+            WorkbenchAnalytics.peakDominantColorHex(points: timeline.points, series: agentSeries) == codexHex,
+            "14:00 峰值处 Codex 占优，胶囊颜色跟随 Codex 系列色"
+        )
+        let grid15Points = (0..<24).map { hour in
+            AnalyticsTimelinePoint(
+                label: String(format: "%02d:00", hour),
+                totalTokens: hour == 15 ? 87_500_000 : 0,
+                costUsd: 0,
+                seriesValues: [:]
+            )
+        }
+        let grid15Ticks = WorkbenchAnalytics.timelineAxisTicks(for: grid15Points)
+        try expect(
+            grid15Ticks.map(\.label) == ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"],
+            "15:00 恰在 3h 网格上，保持 8 个严格 3h 等距刻度"
+        )
+        try expect(grid15Ticks.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 标记为峰值")
+
         // 项目分布只有今日数据, 今日范围才下发
         let claude = try unwrap(snapshot.agents.first { $0.agentID == "claude-code" })
         try expect(claude.topProjects.map(\.name) == ["bruce"], "今日范围下发项目分布")

@@ -199,7 +199,8 @@
     "AgentAnalytics": {
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
       "changes": [
-        "C070"
+        "C070",
+        "C162"
       ]
     },
     "SoftwareUpdate": {
@@ -1651,6 +1652,15 @@
       "topic": "AgentBrandIdentity",
       "version": "0.16.0",
       "file": "docs/devel/change/C161.json"
+    },
+    "C162": {
+      "title": "模型用量「时序趋势」图 X 轴采用方案 A1（3h 严格等步长）+ S2 峰值胶囊高亮（🔥 前缀 + 跟随主导曲线色，双端同构）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C162-timeline-xaxis-ticks",
+      "topic": "AgentAnalytics",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C162.json"
     }
   }
 }

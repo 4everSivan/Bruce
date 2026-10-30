@@ -388,6 +388,89 @@ package enum WorkbenchAnalytics {
         )
     }
 
+    /// 计算时序图 X 轴抽稀刻度与峰值高亮状态 (C162: 方案 A1 + 峰值防撞吸附).
+    ///
+    /// - 点数 ≤ 8: 全量显示;
+    /// - 24 小时粒度 (`count == 24` 且首点为 `"00:00"`): 基准取 3 小时严格等步长
+    ///   `[0, 3, 6, 9, 12, 15, 18, 21]` (`00:00` .. `21:00`), 最小防撞间距 `minGap = 1`;
+    /// - 其余长跨度 (如近 30 天 / 本月): 步长 `step = max(2, Int(ceil(Double(count - 1) / 6.0)))`,
+    ///   收口末点 `count - 1`, `minGap = max(1, step / 2)`;
+    /// - 峰值点 (`totalTokens > 0` 的首个最大点, 与 `peakSummary` 同口径):
+    ///   若不在基准刻度中, 与最近基准刻度距离 `<= minGap` 时替换该最近刻度以防重叠, 否则追加.
+    package static func timelineAxisTicks(for points: [AnalyticsTimelinePoint]) -> [AnalyticsTimelineAxisTick] {
+        let count = points.count
+        guard count > 0 else { return [] }
+
+        var peakIndex: Int? = nil
+        var maxTokens = 0
+        for (idx, point) in points.enumerated() where point.totalTokens > maxTokens {
+            maxTokens = point.totalTokens
+            peakIndex = idx
+        }
+
+        let baseIndices: [Int]
+        let minGap: Int
+        if count <= 8 {
+            baseIndices = Array(0..<count)
+            minGap = 0
+        } else if count == 24 && points.first?.label == "00:00" {
+            baseIndices = [0, 3, 6, 9, 12, 15, 18, 21]
+            minGap = 1
+        } else {
+            let step = max(2, Int(ceil(Double(count - 1) / 6.0)))
+            let gap = max(1, step / 2)
+            var indices = Array(stride(from: 0, to: count - 1, by: step))
+            if let last = indices.last, (count - 1) - last <= gap {
+                indices[indices.count - 1] = count - 1
+            } else {
+                indices.append(count - 1)
+            }
+            baseIndices = indices
+            minGap = gap
+        }
+
+        var tickSet = Set(baseIndices)
+        if let peakIdx = peakIndex, !tickSet.contains(peakIdx) {
+            if let nearest = baseIndices.min(by: { abs($0 - peakIdx) < abs($1 - peakIdx) }),
+               abs(nearest - peakIdx) <= minGap {
+                tickSet.remove(nearest)
+            }
+            tickSet.insert(peakIdx)
+        }
+
+        return tickSet.sorted().map { idx in
+            AnalyticsTimelineAxisTick(
+                index: idx,
+                label: points[idx].label,
+                isPeak: idx == peakIndex
+            )
+        }
+    }
+
+    /// 计算峰值点在当前维度下的主导曲线色 Hex (C162: S2 胶囊徽章跟随峰值主导系列色).
+    package static func peakDominantColorHex(
+        points: [AnalyticsTimelinePoint],
+        series: [AnalyticsChartSeriesMeta]
+    ) -> String {
+        let fallback = series.first?.colorHex ?? "4C9CFF"
+        var peakPoint: AnalyticsTimelinePoint? = nil
+        for point in points where point.totalTokens > (peakPoint?.totalTokens ?? 0) {
+            peakPoint = point
+        }
+        guard let peak = peakPoint else { return fallback }
+
+        var bestColor = fallback
+        var bestValue = 0
+        for meta in series {
+            let val = peak.seriesValues[meta.key] ?? 0
+            if val > bestValue {
+                bestValue = val
+                bestColor = meta.colorHex
+            }
+        }
+        return bestColor
+    }
+
     /// 若干自然日合计: Agent 序列与 Token 构成取自 `daily`; 任一天缺缓存拆分 (旧 artifact) 时不出构成.
     private static func dayBucket(agents: [AgentUsageItem], dates: [String]) -> TimelineBucket {
         var bucket = TimelineBucket()

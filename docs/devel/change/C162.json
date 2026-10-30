@@ -1,0 +1,101 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C162",
+  "title": "模型用量「时序趋势」图 X 轴采用方案 A1（3h 严格等步长）+ S2 峰值胶囊高亮（🔥 前缀 + 跟随主导曲线色，双端同构）",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "fix/C162-timeline-xaxis-ticks",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "设置中心「模型用量」工作台 TimelineChartCard / settings-workbench.js 时序趋势图",
+    "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "design_topic": "AgentAnalytics"
+  },
+  "why": "macOS Swift Charts 在 X 轴绑定 String 离散分类值时忽略 AxisMarks(values: .automatic(desiredCount:))，导致今日 24 小时及近 30 天的全量标签首尾紧贴挤占（01:0002:00...）且两端被截断为 00:... / 23:...；同时 Windows 端原 8 等分四舍五入公式在 24 小时制下步长在 +3h / +4h 间跳变。经高保真交互 Demo 对齐，统一改为方案 A1（今日 3h 严格等步长 + 长跨度固定步长采样）并叠加 S2 峰值胶囊高亮（🔥 前缀 + 跟随峰值处主导曲线系列色 + 邻近刻度防撞替换）。",
+  "precheck": {
+    "description": "核对 macOS TimelineChartCard 是否仍使用 .automatic(desiredCount:) 以及 Windows settings-workbench.js 是否仍使用 Math.round 等分抽样",
+    "command": "rg -n \"AxisMarks\\(values: \\.automatic|Math\\.round\\(\\(at \\* \\(points\\.length - 1\\)\\)\" apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift apps/win/src/settings-workbench.js",
+    "expected": "mac TimelineChartCard.swift:152 使用 AxisMarks(values: .automatic(desiredCount: min(points.count, 8)))；Windows settings-workbench.js:364 使用 Math.round((at * (points.length - 1)) / (labelCount - 1))",
+    "is_completed": true,
+    "evidence": "2026-10-30 预检执行：apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift:152 命中 `AxisMarks(values: .automatic(desiredCount: min(points.count, 8)))`；apps/win/src/settings-workbench.js:364 命中 `Math.round((at * (points.length - 1)) / (labelCount - 1))`。缺陷复现且未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git status -sb"
+    ],
+    "after": [
+      "swift run --package-path apps/macos PanelViewModelHarness",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card C162 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "时序图 X 轴刻度抽稀与峰值主导色计算（macOS BruceAppCore & BruceApp）",
+      "before": "TimelineChartCard.swift 使用 AxisMarks(values: .automatic(desiredCount: min(points.count, 8)))，Swift Charts 对 String 分类轴忽略 desiredCount 渲染全部 24/30 个刻度导致拥挤截断；无峰值刻度胶囊高亮。",
+      "after": "新增 AnalyticsTimelineAxisTick 与 WorkbenchAnalytics.timelineAxisTicks(for:) / peakDominantColorHex(points:series:)：点数 ≤ 8 全显；今日 24h 固定 3h 等步长 [0,3,6,9,12,15,18,21]（minGap=1）；长跨度按 step=max(2,ceil((N-1)/6)) 采样并收口末点。非网格峰值距离最近基准刻度 ≤ minGap 时自动替换该刻度防撞，否则追加。TimelineChartCard 显式传入 AxisMarks(values: xAxisTicks.map(\\.label))，峰值刻度渲染为 S2 胶囊徽章（🔥 <label>，字色/16%底/42%描边跟随峰值处主导曲线系列色）。",
+      "impact": "AnalyticsModels.swift、WorkbenchAnalytics.swift、TimelineChartCard.swift、PanelViewModelHarness.swift"
+    },
+    {
+      "scope": "时序图 X 轴方案 A1 与 S2 峰值胶囊高亮（Windows 前端同构）",
+      "before": "settings-workbench.js timelineChart 按 Math.round(at*(N-1)/7) 取 8 点（24h 下步长 +3h/+4h 跳变），无峰值胶囊高亮。",
+      "after": "新增与 mac 逐行同构的 timelineAxisTicks(points) 与 peakDominantColor(points, series)，峰值刻度挂载 .wb-chart-x-peak 胶囊样式（🔥 <label> + --peak-color CSS 变量驱动 16% 底色与 42% 边框）。",
+      "impact": "apps/win/src/settings-workbench.js、apps/win/src/styles.css、apps/win/tests/frontend.test.mjs"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "topic": "AgentAnalytics",
+    "modified": true,
+    "rule_diff": {
+      "before": "x 轴为字符串分带刻度：点位于各带中心、首末点不贴边，标签至多 8 个。",
+      "after": "x 轴显式传入抽稀刻度（方案 A1：≤8 点全显，24h 取 3h 等步长 00:00..21:00，长周期按 ceil((N-1)/6) 步长采样并收口末点）；峰值刻度防撞合入并以 S2 胶囊徽章（🔥 <label> + 跟随峰值处主导曲线系列色）高亮呈现。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261030-03",
+    "user_quote": "确认，按项目治理流程生成T或者C卡",
+    "signoff": "2026-10-30 用户会话内确认 C162 验收（原话「确认，按项目治理流程生成T或者C卡」），AI 代为签署收口",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "2026-10-30 执行：swift run --package-path apps/macos PanelViewModelHarness → PanelViewModel tests passed: 63（新增 C162 24h 网格内 15:00 峰值、非网格 14:00 峰值自动替换 15:00 防撞及主导曲线色断言）；node scripts/check-win-frontend.mjs → frontend.test.mjs 105/105、geometry 2/2、update 6/6 全通过（新增今日 24h X 轴刻度序列与 🔥 19:00 峰值胶囊样式/主导色断言）；swift build --package-path apps/macos --product BruceApp → Build complete。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "设置中心「模型用量 · 时序趋势」X 轴刻度疏朗无重叠截断，峰值刻度以 🔥 <时刻> 主导曲线色胶囊高亮显示",
+        "false_if": "出现标签重叠、截断省略号或峰值高亮颜色/文案错误",
+        "evidence": "2026-10-30：通过 1:1 高保真交互 Demo 展示方案 A1（3h 严格等步长）+ S2 峰值胶囊徽章（🔥 15:00 + 跟随峰值处主导曲线系列色 + 非网格峰值邻近防撞替换），用户会话内确认验收（「确认，按项目治理流程生成T或者C卡」）；双端代码与 Swift BruceApp 编译通过，Windows 端由 DOM 测试覆盖。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未引入副作用，AnalyticsTimeline 序列化结构与双端对拍 fixture、图表悬停探针及维度切换均正常",
+        "false_if": "破坏了上下游其他接口或产生连锁反应",
+        "evidence": "2026-10-30：AnalyticsTimeline 字段未改动，双端对拍 fixture 零漂移；悬停选点 chartXSelection 与底部概览条、Agent/模型/Token构成/费用四维切换均保持原契约正常运作。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-30",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

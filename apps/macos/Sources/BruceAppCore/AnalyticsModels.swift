@@ -160,6 +160,20 @@ package struct AnalyticsTimelinePoint: Identifiable, Equatable, Sendable {
     }
 }
 
+/// 时序图 X 轴抽稀刻度项 (C162: 方案 A1 3h 等步长 + 峰值胶囊高亮).
+package struct AnalyticsTimelineAxisTick: Identifiable, Equatable, Sendable {
+    package var id: String { label }
+    package let index: Int
+    package let label: String
+    package let isPeak: Bool
+
+    package init(index: Int, label: String, isPeak: Bool) {
+        self.index = index
+        self.label = label
+        self.isPeak = isPeak
+    }
+}
+
 // MARK: - 时序数据
 
 /// 时序点粒度: 今日逐小时 / 近 7·30 天与本月逐日 / 全部历史逐月 (C070).

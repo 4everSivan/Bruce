@@ -360,13 +360,91 @@
     plot.addEventListener("mouseleave", () => select(null));
 
     const xAxis = node("div", null, { class: "wb-chart-x" });
-    const labelCount = Math.min(points.length, 8);
-    const labelIndexes = new Set(Array.from({ length: labelCount }, (_, at) => (labelCount > 1 ? Math.round((at * (points.length - 1)) / (labelCount - 1)) : 0)));
-    for (const index of labelIndexes) {
-      xAxis.append(node("span", points[index].label, { style: `left: ${(xAt(index) / width) * 100}%;` }));
+    const peakColor = peakDominantColor(points, series);
+    for (const tick of timelineAxisTicks(points)) {
+      if (tick.isPeak) {
+        xAxis.append(node("span", `🔥 ${tick.label}`, {
+          class: "wb-chart-x-peak",
+          style: `left: ${(xAt(tick.index) / width) * 100}%; --peak-color: ${peakColor};`,
+        }));
+      } else {
+        xAxis.append(node("span", tick.label, { style: `left: ${(xAt(tick.index) / width) * 100}%;` }));
+      }
     }
     chart.append(yAxis, plot, xAxis);
     return chart;
+  }
+
+  // X 轴抽稀刻度与峰值高亮状态 (C162: 方案 A1 3h 等步长 + 峰值防撞吸附, 与 mac WorkbenchAnalytics.timelineAxisTicks 一致)
+  function timelineAxisTicks(points) {
+    const count = points.length;
+    if (!count) return [];
+    let peakIndex = -1;
+    let maxTokens = 0;
+    points.forEach((point, idx) => {
+      if (point.totalTokens > maxTokens) {
+        maxTokens = point.totalTokens;
+        peakIndex = idx;
+      }
+    });
+
+    let baseIndices = [];
+    let minGap = 0;
+    if (count <= 8) {
+      baseIndices = Array.from({ length: count }, (_, idx) => idx);
+      minGap = 0;
+    } else if (count === 24 && points[0].label === "00:00") {
+      baseIndices = [0, 3, 6, 9, 12, 15, 18, 21];
+      minGap = 1;
+    } else {
+      const step = Math.max(2, Math.ceil((count - 1) / 6));
+      const gap = Math.max(1, Math.trunc(step / 2));
+      const indices = [];
+      for (let idx = 0; idx < count - 1; idx += step) indices.push(idx);
+      if (indices.length && (count - 1) - indices[indices.length - 1] <= gap) {
+        indices[indices.length - 1] = count - 1;
+      } else {
+        indices.push(count - 1);
+      }
+      baseIndices = indices;
+      minGap = gap;
+    }
+
+    const tickSet = new Set(baseIndices);
+    if (peakIndex >= 0 && !tickSet.has(peakIndex)) {
+      let nearest = baseIndices[0];
+      for (const idx of baseIndices) {
+        if (Math.abs(idx - peakIndex) < Math.abs(nearest - peakIndex)) nearest = idx;
+      }
+      if (Math.abs(nearest - peakIndex) <= minGap) tickSet.delete(nearest);
+      tickSet.add(peakIndex);
+    }
+
+    return Array.from(tickSet).sort((a, b) => a - b).map(idx => ({
+      index: idx,
+      label: points[idx].label,
+      isPeak: idx === peakIndex,
+    }));
+  }
+
+  // 峰值处主导曲线色 (C162: S2 胶囊徽章跟随峰值主导系列色, 与 mac peakDominantColorHex 一致)
+  function peakDominantColor(points, series) {
+    const fallback = series[0]?.color || "#4C9CFF";
+    let peak = null;
+    for (const point of points) {
+      if (point.totalTokens > (peak?.totalTokens || 0)) peak = point;
+    }
+    if (!peak) return fallback;
+    let bestColor = fallback;
+    let bestValue = 0;
+    for (const item of series) {
+      const val = peak.seriesValues?.[item.key] || 0;
+      if (val > bestValue) {
+        bestValue = val;
+        bestColor = item.color;
+      }
+    }
+    return bestColor;
   }
 
   function drawTimelineSummary() {

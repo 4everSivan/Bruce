@@ -2214,8 +2214,17 @@ html[data-motion="off"] .foot-btn.spinning svg { animation: none; }
 }
 .wb-chart-y { left: 0; top: 0; bottom: 18px; width: 40px; }
 .wb-chart-y span { position: absolute; right: 4px; transform: translateY(50%); white-space: nowrap; }
-.wb-chart-x { left: 44px; right: 0; bottom: 0; height: 12px; }
-.wb-chart-x span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.wb-chart-x { left: 44px; right: 0; bottom: 0; height: 16px; }
+.wb-chart-x span { position: absolute; top: 2px; transform: translateX(-50%); white-space: nowrap; }
+.wb-chart-x span.wb-chart-x-peak {
+  top: 0;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: var(--peak-color, var(--settings-accent));
+  background: color-mix(in srgb, var(--peak-color, var(--settings-accent)) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--peak-color, var(--settings-accent)) 42%, transparent);
+}
 .wb-chart-empty {
   display: flex;
   flex-direction: column;
