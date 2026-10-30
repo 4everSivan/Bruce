@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C167",
+  "title": "mac 自定义刷新间隔焦点离开即提交：此前只认回车，点别处后输入值未保存却仍显示（修正 C160）",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C167-refresh-interval-blur-commit",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "设置中心通用页「刷新间隔」RefreshIntervalControl 自定义输入",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "2026-10-30 复核 C160 发现：mac RefreshIntervalControl 的自定义输入只在 onSubmit（回车）时提交。用户输入 10 后点击别处或关闭设置窗口，值没有保存，但输入框仍显示 10，看起来已生效；下次打开设置又回到旧值。Windows 数字输入以 change 事件提交（回车或失焦），两端语义不一致。另外 mac 输入过滤用 Character.isNumber，会放行全角数字等 Int() 无法解析的字符。维护者要求按治理流程处理复核遗留项。",
+  "precheck": {
+    "description": "确认 mac 自定义输入只在回车时提交、无焦点离开处理",
+    "command": "rg -n 'onSubmit\\(commitCustom\\)|onChange\\(of: customFocused|func commitCustom|isNumber' apps/macos/Sources/BruceApp/SettingsView.swift",
+    "expected": "只命中 onSubmit(commitCustom)、commitCustom() 定义与 isNumber 过滤，无 customFocused 变化监听",
+    "is_completed": true,
+    "evidence": "2026-10-30 在 C166 分支 4d2c049 上执行：命中 SettingsView.swift:1375 `.onSubmit(commitCustom)`、:1377 `next.filter { $0.isNumber }`、:1405 `private func commitCustom()`，无 `onChange(of: customFocused`。缺陷存在，未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C167-refresh-interval-blur-commit"
+    ],
+    "after": [
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build --package-path apps/macos --product BruceApp",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C167 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "自定义输入提交时机（mac）",
+      "before": "仅回车提交；点别处后输入框保留未保存的数字；非法值回车时还原并停留在输入框。",
+      "after": "新增 onChange(of: customFocused)：焦点离开且仍在编辑态时提交；commitCustom(leavingField:) 合法值写盘并收起，非法值回到当前生效值（回车留在输入框、焦点离开收起）；值未变不调用 setRefreshIntervalMinutes，不重启刷新计时；选择预设时输入框先收起，不重复提交。",
+      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift RefreshIntervalControl"
+    },
+    {
+      "scope": "输入解析",
+      "before": "过滤 Character.isNumber（放行全角数字等），提交时 Int(customText) + 区间判断散落在视图里。",
+      "after": "新增 OnboardingConfiguration.customRefreshIntervalMinutes(from:)：去首尾空白、仅 ASCII 数字、落在 1–1440，否则 nil；视图过滤改为 ASCII 数字。",
+      "impact": "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift、BruceOnboardingCoreHarness（173 → 174 项）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 10：自定义值由「自定义」分段的数字输入提交（未定义提交时机），提交成功后回到只读展示。",
+      "after": "规则 10 补「提交时机」：回车或焦点离开即提交，与 Windows change 同语义；解析统一走 customRefreshIntervalMinutes(from:)；非法值回到当前生效值，回车留在输入框、焦点离开收起，不得留下看似已保存的未保存数字；值未变不重写配置。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261030-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "BruceOnboardingCoreHarness 全绿且含自定义输入解析用例，BruceApp 构建通过，verify-local 退出码为 0",
+        "false_if": "任一测试失败或构建失败",
+        "evidence": "2026-10-30：`swift run --package-path apps/macos BruceOnboardingCoreHarness` → BruceOnboardingCore tests passed: 174（新增 customRefreshIntervalInputParsing 14 例：合法 10 / 1 / 1440 / 首尾空白 / 前导零，非法 0 / 1441 / 空串 / 纯空白 / 负数 / 小数 / 带单位 / 全角数字 / 溢出）；`SDKROOT=…/MacOSX26.5.sdk swift build --product BruceApp` → Build complete；`zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」：Rust 49 组 486 项、18 项 Harness、Windows 前端 113/113、geometry 2/2、update 6/6、双端对拍 5 项，无 Swift 源码告警）。焦点离开的提交接线属视图层，无自动化覆盖。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "mac 设置页：输入 10 后点击别处，只读显示「10 分钟」且重开设置仍为 10；输入 0 后点击别处，回到原值只读显示；选择 3 分钟预设时不写入自定义值",
+        "false_if": "点别处后值未保存、非法值被写入，或选预设后出现两次写盘 / 值错乱",
+        "evidence": "未在真机执行（本轮未部署 /Applications/Bruce.app）。SwiftUI 焦点变化（点击别处、关闭设置窗口、切到其他 App）是否都触发 customFocused = false，以及选预设时输入框先收起的顺序，只能真机确认。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "回车提交、预设切换、历史值回显与打开不聚焦（C160）行为不变；Windows 未改动",
+        "false_if": "C160 既有行为回归",
+        "evidence": "2026-10-30：回车路径仍走 commitCustom（leavingField: false，非法值留在输入框，与改动前一致）；预设分段、只读回显、编辑入口与打开不聚焦代码未改；C160 区间 / 回落 / 往返用例（configRefreshIntervalDecodeAndFallback）通过；Windows 未改动，113/113 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

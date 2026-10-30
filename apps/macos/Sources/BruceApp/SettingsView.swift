@@ -1372,9 +1372,9 @@ private struct RefreshIntervalControl: View {
                     .frame(width: 56)
                     .focused($customFocused)
                     .onAppear { customFocused = true }
-                    .onSubmit(commitCustom)
+                    .onSubmit { commitCustom(leavingField: false) }
                     .onChange(of: customText) { _, next in
-                        let digits = next.filter { $0.isNumber }
+                        let digits = next.filter { $0.isASCII && $0.isNumber }
                         if digits != next { customText = digits }
                     }
                 Text("分钟")
@@ -1394,6 +1394,13 @@ private struct RefreshIntervalControl: View {
         .onChange(of: minutes) { _, next in
             if !customFocused { customText = String(next) }
         }
+        // C167: 焦点离开输入框 (点别处 / 切走窗口) 同样提交, 与 Windows `change` 同语义;
+        // 选预设时输入框先被收起 (customEditing 已为 false), 这里不会再写一次.
+        .onChange(of: customFocused) { _, focused in
+            if !focused && customEditing {
+                commitCustom(leavingField: true)
+            }
+        }
     }
 
     private func beginCustomEditing() {
@@ -1402,14 +1409,18 @@ private struct RefreshIntervalControl: View {
         customEditing = true
     }
 
-    private func commitCustom() {
-        guard let raw = Int(customText),
-              OnboardingConfiguration.refreshIntervalRange.contains(raw) else {
+    /// 回车或焦点离开时提交. 非法值回到当前生效值: 回车时留在输入框便于改正, 焦点离开时收起,
+    /// 不留下「看起来已保存」的未保存数字; 值未变不重写配置, 避免无谓重启刷新计时 (C167).
+    private func commitCustom(leavingField: Bool) {
+        guard let value = OnboardingConfiguration.customRefreshIntervalMinutes(from: customText) else {
             customText = String(minutes)
+            if leavingField { customEditing = false }
             return
         }
-        coordinator.setRefreshIntervalMinutes(raw)
+        if value != minutes {
+            coordinator.setRefreshIntervalMinutes(value)
+        }
         customEditing = false
-        customText = String(raw)
+        customText = String(value)
     }
 }

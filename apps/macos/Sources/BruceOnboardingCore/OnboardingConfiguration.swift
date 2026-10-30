@@ -198,6 +198,19 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 自定义刷新间隔的合法区间 (分钟), 与 Windows `refresh_interval_secs` 的 60–86400 秒钳制一致 (C160).
     public static let refreshIntervalRange: ClosedRange<Int> = 1...1440
 
+    /// 解析设置页「自定义」刷新间隔输入 (C167): 去首尾空白后须全为 ASCII 数字且落在
+    /// `refreshIntervalRange` 内, 否则 nil (调用方回到当前生效值, 不写盘).
+    public static func customRefreshIntervalMinutes(from text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              trimmed.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let value = Int(trimmed),
+              refreshIntervalRange.contains(value) else {
+            return nil
+        }
+        return value
+    }
+
     /// 解析后的刷新间隔: nil 或超出合法区间的值一律回落默认 30 分钟.
     public var resolvedRefreshIntervalMinutes: Int {
         guard let value = refreshIntervalMinutes,
