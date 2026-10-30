@@ -189,13 +189,17 @@ C070 前工作台多处数值为估算 (今日逐小时固定按 42/18/40 拆输
 
 #### 2. 实现参数 (mac Swift Charts; Windows SVG 等价实现)
 - 曲线平滑：`.interpolationMethod(.catmullRom)`；折线 / 面积可切换，面积为 `LinearGradient(color.opacity(0.35) → 0.04)`；点数 ≤ 14 时绘制点标记；
-- x 轴刻度抽稀与峰值胶囊高亮（C162）：
-  - **显式刻度抽稀（方案 A1）**：Swift Charts 对字符串分类轴忽略 `.automatic(desiredCount:)`，必须显式传入 `AxisMarks(values: xAxisTicks.map(\.label))`。点数 $\le 8$ 时全量显示；今日 24 小时固定取 3 小时严格等步长 `[00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00]`（最小防撞间距 `minGap = 1`）；其余长跨度（如近 30 天 / 本月）按步长 `step = max(2, ceil((N-1)/6))` 采样并收口末位点，`minGap = max(1, step/2)`；
-  - **峰值防撞合入与 S2 胶囊高亮**：峰值点（`totalTokens > 0` 的首个最大点，与底部 `peakSummary` 同口径）若不在基准刻度中，当与最近基准刻度距离 $\le \text{minGap}$ 时自动替换该最近刻度以杜绝文字重叠，否则直接追加。峰值刻度在 X 轴以 S2 胶囊徽章渲染：文案加前缀 `🔥 <label>`（如 `🔥 15:00`），字色、16% 透明底与 42% 细描边自动跟随该峰值时刻数值最大的主导曲线系列色（`WorkbenchAnalytics.peakDominantColorHex` / Windows `peakDominantColor`）；
-- x 轴手势缩放与动态步长平移（C163）：
-  - **手势与视口控制**：支持滚轮（或触控板双指捏合）缩放时间轴（1.0x 全景 ~ 4.0x 局部），支持鼠标拖拽平移（Pan）与触控板水平滑动查看不同时段；双击空白区域或点击复位按钮一键恢复 1.0x 全景；
-  - **动态分级刻度 (LOD)**：刻度步长随当前视口跨度 $\text{span} = \text{viewEnd} - \text{viewStart}$ 自动自适应（今日 24h：$\text{span} > 18$ 保持 3h 步长；$10 < \text{span} \le 18$ 自动转为 2h 步长；$\text{span} \le 10$ 时自动展开为逐 1 小时全量刻度）；峰值胶囊在视口内全态跟随；
-  - **悬停解耦**：拖拽平移过程中抑制竖线探针，松手后恢复；双端（macOS Swift Charts + Windows SVG）行为与刻度计算同构。
+- x 轴刻度抽稀与峰值胶囊高亮（C162，C165 修订）：
+  - **显式刻度抽稀（方案 A1）**：Swift Charts 对字符串分类轴忽略 `.automatic(desiredCount:)`，必须显式传入 `AxisMarks(values: xAxisTicks.map(\.label))`。刻度按**视口内可见点数 N** 选步长（全景时 N 即总点数）：小时粒度 N ≤ 10 逐 1 小时、11–18 每 2 小时、其余每 3 小时（今日全景即 `00:00, 03:00 … 21:00`），`minGap` 逐时为 0、其余为 1；日 / 月粒度 N ≤ 8 全显，否则 `step = max(2, ceil((N-1)/6))`、`minGap = max(1, step/2)`，末点（今日 / 最后一月）在视口内时收口（距末个刻度 ≤ minGap 则替换，否则追加）；
+  - **全局下标锚定（C165）**：刻度取「全局下标 % 步长 == 0」的点，平移时标签随数据移动；C163 按视口起点重排，平移 1 小时所有标签在奇偶整点间跳变，且 1.1x–1.2x（20–22 点）落入长跨度公式退化为 4 小时步长；
+  - **峰值防撞合入与 S2 胶囊高亮**：峰值点为当前维度的首个最大点（**费用维度按 `costUsd`**，其余按 `totalTokens`，C165；`WorkbenchAnalytics.timelinePeakIndex` / Windows `timelinePeakIndex`），仅在视口内时显示。峰值不在刻度上时，先移除距峰值 $\le \text{minGap}$ 的**全部**刻度再插入（C162 只移除最近的一个，2 小时步长下峰值落在两刻度正中时仍与另一侧相邻 1 格）。峰值刻度以 S2 胶囊徽章渲染：文案 `🔥 <label>`，字色、16% 透明底与 42% 细描边跟随该峰值时刻数值最大的系列色（`peakDominantColorHex` / Windows `peakDominantColor`；费用维度单系列取费用绿）；
+  - **底部摘要口径**：未选点时显示峰值 / 均值摘要，token 维度用快照 `peakSummary` / `avgSummary`，费用维度换成费用口径 `🔥 峰值时段: **14:00** ($x.xxxx)` / `时均: **$x.xxxx**`（`WorkbenchAnalytics.costSummaries` / Windows `costSummaries`，四位小数与悬停探针一致，C165）；
+- x 轴手势缩放与平移（C163，C165 修订）：
+  - **视口模型**：只存倍率 `zoom`（1.0x–4.0x）与起点下标，计算集中在 `AnalyticsTimelineViewport` / Windows `timelineViewport`：可见点数 `min(N, max(4, round(N / zoom)))`，起点钳制在 `[0, N − 可见点数]`；按钮（±0.5x）、滚轮与捏合均**以视口中心为锚点**缩放；
+  - **手势**：mac 触控板双指捏合（`MagnifyGesture`，倍率相对手势起点计算，C163 叠乘到每帧已更新倍率导致轻捏即到 4x）或 ⌘ + 滚轮（每格 ×1.2）；Windows Ctrl + 滚轮（WebView2 触控板捏合同为 ctrlKey 滚轮，每 100 deltaY ×1.2）。**普通纵向滚轮不拦截**，设置页照常滚动（C163 悬停在 220pt 图表上时吞掉全部纵向滚动）。放大后可鼠标拖拽平移（位移相对按下时的视口，按实测点宽换算）或水平滑动平移（累计位移按点宽换算）；双击或「全景」按钮复位；
+  - **复位时机**：换时间范围（时序标签序列变化）才复位为 1.0x 全景；同一范围的后台刷新（Windows `dashboard-updated`、mac 快照重算）保留当前缩放（C163 Windows 每次刷新都复位）；
+  - **拖拽态**：Windows 拖拽状态挂在模块级（平移会重绘卡片，闭包状态随旧 plot 丢失，C163 一次拖拽只能移一格），`mouseup` 在模块加载时注册一次，并以 `buttons === 0` 兜底结束窗口外松开的拖拽（C163 每次重绘注册 `{ once: true }`，第二次点击后拖拽卡死、悬停探针失效）；拖拽期间抑制竖线探针，松手后恢复；
+  - **双端对拍**：刻度与视口计算以 `tests/fixtures/timeline-axis-parity/cases.json` 共享用例对拍（mac PanelViewModelHarness / Windows frontend.test.mjs），任一端改动先改 fixture。
 - y 轴刻度在左（费用 `$x.xx`，token `x.xM` / `xK`）；
 - 悬停选点：`chartXSelection` 选中最近点，画虚线 RuleMark，底部概览条改为「📍 标签 + 合计 + 前 3 项细分」，未选中时显示峰值 / 均值摘要；
 - （C070 校正：此前文档所列 7 日均线 mac 端从未实现，已删除。）

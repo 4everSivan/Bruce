@@ -202,7 +202,8 @@
       "changes": [
         "C070",
         "C162",
-        "C163"
+        "C163",
+        "C165"
       ]
     },
     "SoftwareUpdate": {
@@ -1681,6 +1682,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.16.0",
       "file": "docs/devel/change/C164.json"
+    },
+    "C165": {
+      "title": "时序趋势图缩放 / 平移 / 刻度缺陷修复：不劫持页面滚动、捏合不叠乘、Windows 拖拽连续且不卡死、刻度锚定整点、峰值两侧让位、费用维度按费用峰值（修正 C162 / C163，双端对拍）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C165-timeline-gesture-ticks",
+      "topic": "AgentAnalytics",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C165.json"
     }
   }
 }

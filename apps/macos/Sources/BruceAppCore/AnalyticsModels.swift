@@ -174,6 +174,75 @@ package struct AnalyticsTimelineAxisTick: Identifiable, Equatable, Sendable {
     }
 }
 
+/// 时序图峰值口径 (C165): 费用维度按费用, 其余维度按 token 总量.
+package enum AnalyticsTimelinePeakMetric: Sendable {
+    case tokens
+    case cost
+}
+
+/// 时序图视口 (C165, Windows `timelineViewport` 同口径): 缩放倍率与起点下标的纯值计算.
+///
+/// 视图只持有 `zoom` / `start` 两个状态, 每次按当前点数重建视口; 构造时钳制倍率与起点,
+/// 所以数据变短或倍率变化后不会越界.
+package struct AnalyticsTimelineViewport: Equatable, Sendable {
+    package static let zoomRange: ClosedRange<Double> = 1.0...4.0
+    /// 放大后至少保留的点数.
+    package static let minimumVisibleCount = 4
+    /// 滚轮每格的缩放倍率.
+    package static let wheelStep = 1.2
+
+    package let count: Int
+    package let zoom: Double
+    package let start: Int
+
+    package init(count: Int, zoom: Double = 1.0, start: Int = 0) {
+        self.count = max(0, count)
+        self.zoom = min(max(zoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        let visible = Self.visibleCount(count: self.count, zoom: self.zoom)
+        self.start = min(max(0, start), max(0, self.count - visible))
+    }
+
+    private static func visibleCount(count: Int, zoom: Double) -> Int {
+        guard count > 0 else { return 0 }
+        return min(count, max(minimumVisibleCount, Int((Double(count) / zoom).rounded())))
+    }
+
+    package var visibleCount: Int { Self.visibleCount(count: count, zoom: zoom) }
+    package var maxStart: Int { max(0, count - visibleCount) }
+    package var visibleRange: Range<Int> { start..<(start + visibleCount) }
+    /// 当前视口是否偏离 1.0x 全景 (决定是否显示「全景」复位与视口指示条).
+    package var isZoomedOrPanned: Bool { zoom > Self.zoomRange.lowerBound || start > 0 }
+
+    /// 以视口中心为锚点缩放到 `zoom`; 按钮、滚轮、捏合共用.
+    package func zoomed(to zoom: Double) -> Self {
+        let next = Self(count: count, zoom: zoom)
+        let center = Double(start) + Double(visibleCount) / 2
+        return Self(count: count, zoom: next.zoom, start: Int((center - Double(next.visibleCount) / 2).rounded()))
+    }
+
+    /// 滚轮缩放 `notches` 格 (正 = 放大), 每格 ×`wheelStep`.
+    package func zoomed(byWheelNotches notches: Double) -> Self {
+        zoomed(to: zoom * pow(Self.wheelStep, notches))
+    }
+
+    /// 捏合: 必须在**手势开始时的视口**上调用, `magnification` 为手势累计倍率;
+    /// 叠乘到每帧已更新的倍率会指数放大 (C163 缺陷).
+    package func pinched(magnification: Double) -> Self {
+        zoomed(to: zoom * magnification)
+    }
+
+    /// 平移 `delta` 个点 (正 = 向后看).
+    package func panned(by delta: Int) -> Self {
+        Self(count: count, zoom: zoom, start: start + delta)
+    }
+
+    /// 拖拽: 在**按下时的视口**上调用, `translation` 为累计位移 (pt, 向左为负), `pointWidth` 为每点宽度.
+    package func dragged(translation: Double, pointWidth: Double) -> Self {
+        guard pointWidth > 0 else { return self }
+        return panned(by: Int((-translation / pointWidth).rounded()))
+    }
+}
+
 // MARK: - 时序数据
 
 /// 时序点粒度: 今日逐小时 / 近 7·30 天与本月逐日 / 全部历史逐月 (C070).

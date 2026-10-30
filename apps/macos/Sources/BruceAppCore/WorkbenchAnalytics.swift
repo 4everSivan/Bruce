@@ -371,13 +371,7 @@ package enum WorkbenchAnalytics {
         }
         let sum = points.reduce(0) { $0 + $1.totalTokens }
         let average = points.isEmpty ? 0 : sum / points.count
-        let (peakTitle, averageTitle): (String, String) = {
-            switch granularity {
-            case .hour: return ("峰值时段", "时均")
-            case .day: return ("峰值", "日均")
-            case .month: return ("峰值月", "月均")
-            }
-        }()
+        let (peakTitle, averageTitle) = summaryTitles(for: granularity)
         return AnalyticsTimeline(
             granularity: granularity,
             points: points,
@@ -388,99 +382,135 @@ package enum WorkbenchAnalytics {
         )
     }
 
-    /// 计算时序图 X 轴抽稀刻度与峰值高亮状态 (C162 / C163: 方案 A1 + 动态 LOD 视口缩放自适应 + 峰值防撞吸附).
+    /// 时序图峰值点下标: 费用维度按 `costUsd`, 其余维度按 `totalTokens`; 取首个最大点,
+    /// 全 0 时无峰值 (C165: 费用维度的 🔥 胶囊须标在费用曲线的峰值上).
+    package static func timelinePeakIndex(
+        in points: [AnalyticsTimelinePoint],
+        metric: AnalyticsTimelinePeakMetric
+    ) -> Int? {
+        var peak: Int?
+        var best = 0.0
+        for (index, point) in points.enumerated() {
+            let value = metric == .cost ? point.costUsd : Double(point.totalTokens)
+            if value > best {
+                best = value
+                peak = index
+            }
+        }
+        return peak
+    }
+
+    /// 全景 X 轴刻度, 峰值按 token 口径 (C162 入口, 与底部 `peakSummary` 同口径).
+    package static func timelineAxisTicks(for points: [AnalyticsTimelinePoint]) -> [AnalyticsTimelineAxisTick] {
+        timelineAxisTicks(
+            for: points,
+            visible: points.indices,
+            peakIndex: timelinePeakIndex(in: points, metric: .tokens)
+        )
+    }
+
+    /// 计算视口内的 X 轴刻度与峰值胶囊 (C162 方案 A1 / C165 视口锚定 LOD).
     ///
-    /// - 点数 ≤ 8: 全量显示 (1h 全显或局部全显);
-    /// - 小时粒度中度放大 (`count <= 14` 且为小时标签): 采用 2 小时等步长 (`minGap = 1`);
-    /// - 24 小时全景 (`count == 24` 且首点为 `"00:00"`): 基准取 3 小时严格等步长
-    ///   `[0, 3, 6, 9, 12, 15, 18, 21]` (`00:00` .. `21:00`), 最小防撞间距 `minGap = 1`;
-    /// - 其余长跨度 (如近 30 天 / 本月): 步长 `step = max(2, Int(ceil(Double(count - 1) / 6.0)))`,
-    ///   收口末点 `count - 1`, `minGap = max(1, step / 2)`;
-    /// - 峰值点: 若传入 `globalPeakLabel` 则匹配全局峰值，否则取当前切片内最大点;
-    ///   若不在基准刻度中, 与最近基准刻度距离 `<= minGap` 时替换该最近刻度以防重叠, 否则追加.
+    /// - `visible`: 视口在 `points` 中的下标区间, 全景即 `points.indices`; 返回的 `index` 为全局下标;
+    /// - 小时粒度 (标签 `HH:00`) 按可见点数 N 选步长: N ≤ 10 逐 1 小时, 11–18 每 2 小时, 其余每 3 小时;
+    /// - 其余粒度 N ≤ 8 全显, 否则步长 `max(2, ⌈(N−1)/6⌉)`, `minGap = max(1, step/2)`, 末点在视口内时收口
+    ///   (距末个刻度 ≤ minGap 则替换, 否则追加);
+    /// - 刻度取「全局下标 % 步长 == 0」的点, 平移时刻度随数据移动, 不随视口起点重排;
+    /// - 峰值在视口内且不在刻度上时, 先移除距峰值 ≤ minGap 的**全部**刻度再插入峰值, 胶囊两侧都不贴邻.
     package static func timelineAxisTicks(
         for points: [AnalyticsTimelinePoint],
-        globalPeakLabel: String? = nil
+        visible: Range<Int>,
+        peakIndex: Int?
     ) -> [AnalyticsTimelineAxisTick] {
-        let count = points.count
-        guard count > 0 else { return [] }
-
-        var peakIndex: Int? = nil
-        if let target = globalPeakLabel {
-            peakIndex = points.firstIndex(where: { $0.label == target })
-        } else {
-            var maxTokens = 0
-            for (idx, point) in points.enumerated() where point.totalTokens > maxTokens {
-                maxTokens = point.totalTokens
-                peakIndex = idx
-            }
-        }
+        let visible = visible.clamped(to: points.indices)
+        let visibleCount = visible.count
+        guard visibleCount > 0 else { return [] }
 
         let isHourly = points.first?.label.hasSuffix(":00") == true
-        let baseIndices: [Int]
+        let step: Int
         let minGap: Int
-        if count <= 8 {
-            baseIndices = Array(0..<count)
+        if isHourly {
+            step = visibleCount <= 10 ? 1 : (visibleCount <= 18 ? 2 : 3)
+            minGap = step == 1 ? 0 : 1
+        } else if visibleCount <= 8 {
+            step = 1
             minGap = 0
-        } else if isHourly && count <= 14 {
-            baseIndices = Array(stride(from: 0, to: count, by: 2))
-            minGap = 1
-        } else if count == 24 && points.first?.label == "00:00" {
-            baseIndices = [0, 3, 6, 9, 12, 15, 18, 21]
-            minGap = 1
         } else {
-            let step = max(2, Int(ceil(Double(count - 1) / 6.0)))
-            let gap = max(1, step / 2)
-            var indices = Array(stride(from: 0, to: count - 1, by: step))
-            if let last = indices.last, (count - 1) - last <= gap {
-                indices[indices.count - 1] = count - 1
-            } else {
-                indices.append(count - 1)
-            }
-            baseIndices = indices
-            minGap = gap
+            step = max(2, Int(ceil(Double(visibleCount - 1) / 6.0)))
+            minGap = max(1, step / 2)
         }
 
-        var tickSet = Set(baseIndices)
-        if let peakIdx = peakIndex, !tickSet.contains(peakIdx) {
-            if let nearest = baseIndices.min(by: { abs($0 - peakIdx) < abs($1 - peakIdx) }),
-               abs(nearest - peakIdx) <= minGap {
-                tickSet.remove(nearest)
+        var ticks = visible.filter { $0 % step == 0 }
+        let last = points.count - 1
+        if !isHourly, visible.contains(last), last % step != 0 {
+            if let tail = ticks.last, last - tail <= minGap {
+                ticks.removeLast()
             }
-            tickSet.insert(peakIdx)
+            ticks.append(last)
+        }
+        if let peak = peakIndex, visible.contains(peak), !ticks.contains(peak) {
+            ticks.removeAll { abs($0 - peak) <= minGap }
+            ticks.append(peak)
+            ticks.sort()
         }
 
-        return tickSet.sorted().map { idx in
-            AnalyticsTimelineAxisTick(
-                index: idx,
-                label: points[idx].label,
-                isPeak: idx == peakIndex
-            )
+        return ticks.map { index in
+            AnalyticsTimelineAxisTick(index: index, label: points[index].label, isPeak: index == peakIndex)
         }
     }
 
-    /// 计算峰值点在当前维度下的主导曲线色 Hex (C162: S2 胶囊徽章跟随峰值主导系列色).
+    /// 峰值处主导曲线色 Hex (C162 入口: 峰值按 token 口径).
     package static func peakDominantColorHex(
         points: [AnalyticsTimelinePoint],
         series: [AnalyticsChartSeriesMeta]
     ) -> String {
-        let fallback = series.first?.colorHex ?? "4C9CFF"
-        var peakPoint: AnalyticsTimelinePoint? = nil
-        for point in points where point.totalTokens > (peakPoint?.totalTokens ?? 0) {
-            peakPoint = point
-        }
-        guard let peak = peakPoint else { return fallback }
+        peakDominantColorHex(
+            point: timelinePeakIndex(in: points, metric: .tokens).map { points[$0] },
+            series: series
+        )
+    }
 
+    /// 给定峰值点在当前维度下数值最大的系列色 Hex (C162: S2 胶囊跟随峰值主导系列色); 无峰值或
+    /// 系列在该点均为 0 (如费用维度) 时取首个系列色.
+    package static func peakDominantColorHex(
+        point: AnalyticsTimelinePoint?,
+        series: [AnalyticsChartSeriesMeta]
+    ) -> String {
+        let fallback = series.first?.colorHex ?? "4C9CFF"
+        guard let point else { return fallback }
         var bestColor = fallback
         var bestValue = 0
         for meta in series {
-            let val = peak.seriesValues[meta.key] ?? 0
-            if val > bestValue {
-                bestValue = val
+            let value = point.seriesValues[meta.key] ?? 0
+            if value > bestValue {
+                bestValue = value
                 bestColor = meta.colorHex
             }
         }
         return bestColor
+    }
+
+    /// 费用维度的底部峰值 / 均值摘要 (C165): 与 `peakSummary` / `avgSummary` 同格式, 数值换成费用,
+    /// 四位小数与悬停探针一致.
+    package static func costSummaries(
+        points: [AnalyticsTimelinePoint],
+        granularity: AnalyticsTimelineGranularity
+    ) -> (peak: String, average: String) {
+        let titles = summaryTitles(for: granularity)
+        let total = points.reduce(0) { $0 + $1.costUsd }
+        let average = points.isEmpty ? 0 : total / Double(points.count)
+        let peak = timelinePeakIndex(in: points, metric: .cost).map { index in
+            "🔥 \(titles.peak): **\(points[index].label)** (\(String(format: "$%.4f", points[index].costUsd)))"
+        } ?? "—"
+        return (peak, "\(titles.average): **\(String(format: "$%.4f", average))**")
+    }
+
+    private static func summaryTitles(for granularity: AnalyticsTimelineGranularity) -> (peak: String, average: String) {
+        switch granularity {
+        case .hour: return ("峰值时段", "时均")
+        case .day: return ("峰值", "日均")
+        case .month: return ("峰值月", "月均")
+        }
     }
 
     /// 若干自然日合计: Agent 序列与 Token 构成取自 `daily`; 任一天缺缓存拆分 (旧 artifact) 时不出构成.

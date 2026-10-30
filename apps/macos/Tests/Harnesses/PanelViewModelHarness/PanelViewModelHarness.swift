@@ -312,7 +312,8 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatePolicyContracts()
         try meterMotionPolicyContracts()
         try balanceRowAmountMatchesTextContracts()
-        print("PanelViewModel tests passed: 63")
+        try timelineAxisAndViewportMatchSharedParityFixture()
+        print("PanelViewModel tests passed: 64")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -2097,30 +2098,25 @@ struct PanelViewModelHarness {
         )
         try expect(grid15Ticks.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 标记为峰值")
 
-        // C163: 视口缩放平移与动态 LOD 刻度步长自适应 (双端同构)
-        // 1. 中度放大 2.0x (12 点视口): 步长自动细化为 2 小时等步长
-        let slice12 = Array(grid15Points[10...21]) // 10:00 ~ 21:00
-        let ticks12 = WorkbenchAnalytics.timelineAxisTicks(for: slice12, globalPeakLabel: "15:00")
-        try expect(
-            ticks12.map(\.label).contains("15:00"),
-            "15:00 峰值在 12 点视口中正确保留"
-        )
-        try expect(ticks12.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 标记为峰值")
-        // 2. 深度放大 4.0x (6 点视口 ≤ 8): 点间距充裕，展开为逐 1 小时全显
-        let slice6 = Array(grid15Points[12...17]) // 12:00 ~ 17:00
-        let ticks6 = WorkbenchAnalytics.timelineAxisTicks(for: slice6, globalPeakLabel: "15:00")
-        try expect(
-            ticks6.map(\.label) == ["12:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
-            "≤8 点视口展开逐 1 小时全量刻度: \(ticks6.map(\.label))"
-        )
-        try expect(ticks6.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 在 6 点全显中标记为峰值")
-        // 3. 峰值移出视口 (00:00 ~ 07:00, 8 点视口): 不产生虚假峰值胶囊
-        let morningSlice = Array(grid15Points[0...7])
-        let morningTicks = WorkbenchAnalytics.timelineAxisTicks(for: morningSlice, globalPeakLabel: "15:00")
-        try expect(
-            morningTicks.filter(\.isPeak).isEmpty,
-            "全局峰值 15:00 不在早间视口中，刻度无峰值高亮"
-        )
+        // C165: 费用维度峰值按费用口径, 底部摘要同步换成费用; 视口内刻度 / 缩放规则见
+        // timelineAxisAndViewportMatchSharedParityFixture (与 Windows 共享 fixture).
+        let costPoints = (0..<24).map { hour in
+            AnalyticsTimelinePoint(
+                label: String(format: "%02d:00", hour),
+                totalTokens: hour == 14 ? 9_000 : (hour == 9 ? 1_000 : 0),
+                costUsd: hour == 9 ? 1.5 : (hour == 14 ? 0.25 : 0),
+                seriesValues: [:]
+            )
+        }
+        try expect(WorkbenchAnalytics.timelinePeakIndex(in: costPoints, metric: .tokens) == 14, "token 峰值 14:00")
+        try expect(WorkbenchAnalytics.timelinePeakIndex(in: costPoints, metric: .cost) == 9, "费用峰值 09:00, 不跟随 token 峰值")
+        let costTicks = WorkbenchAnalytics.timelineAxisTicks(for: costPoints, visible: costPoints.indices, peakIndex: 9)
+        try expect(costTicks.filter(\.isPeak).map(\.label) == ["09:00"], "费用维度胶囊标在 09:00")
+        let costSummary = WorkbenchAnalytics.costSummaries(points: costPoints, granularity: .hour)
+        try expect(costSummary.peak == "🔥 峰值时段: **09:00** ($1.5000)", costSummary.peak)
+        try expect(costSummary.average == "时均: **$0.0729**", costSummary.average)
+        let emptyCost = WorkbenchAnalytics.costSummaries(points: [], granularity: .day)
+        try expect(emptyCost == ("—", "日均: **$0.0000**"), "无数据时费用摘要: \(emptyCost)")
 
         // 项目分布只有今日数据, 今日范围才下发
         let claude = try unwrap(snapshot.agents.first { $0.agentID == "claude-code" })
@@ -2379,6 +2375,87 @@ struct PanelViewModelHarness {
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.
+    /// C165: 时序图刻度与视口和 Windows 共享对拍 (tests/fixtures/timeline-axis-parity); drag / pinch
+    /// 的多次回调都作用于手势起点视口, 叠乘或相对上一帧计算都会对不上 expected.
+    private static func timelineAxisAndViewportMatchSharedParityFixture() throws {
+        let url = resolveRepoRoot().appendingPathComponent("tests/fixtures/timeline-axis-parity/cases.json")
+        let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        let labelSets = try unwrap(fixture?["labelSets"] as? [String: [String]])
+        let tickCases = try unwrap(fixture?["ticks"] as? [[String: Any]])
+        let viewportCases = try unwrap(fixture?["viewports"] as? [[String: Any]])
+        try expect(tickCases.count >= 14 && viewportCases.count >= 11, "timeline parity fixture 缺少用例")
+
+        for item in tickCases {
+            let name = try unwrap(item["name"] as? String)
+            let labels = try unwrap(labelSets[try unwrap(item["labels"] as? String)])
+            let visible = try unwrap(item["visible"] as? [Int])
+            let points = labels.map { AnalyticsTimelinePoint(label: $0, totalTokens: 0, costUsd: 0, seriesValues: [:]) }
+            let ticks = WorkbenchAnalytics.timelineAxisTicks(
+                for: points,
+                visible: visible[0]..<visible[1],
+                peakIndex: item["peakIndex"] as? Int
+            )
+            try expect(ticks.map(\.label) == item["expected"] as? [String], "\(name): \(ticks.map(\.label))")
+            try expect(
+                ticks.first(where: \.isPeak)?.label == item["expectedPeak"] as? String,
+                "\(name): 峰值胶囊 \(String(describing: ticks.first(where: \.isPeak)?.label))"
+            )
+        }
+
+        for item in viewportCases {
+            let name = try unwrap(item["name"] as? String)
+            let initial = AnalyticsTimelineViewport(
+                count: try unwrap(item["count"] as? Int),
+                zoom: try unwrap(item["zoom"] as? Double),
+                start: try unwrap(item["start"] as? Int)
+            )
+            let op = try unwrap(item["op"] as? [String: Any])
+            var result = initial
+            switch op["type"] as? String {
+            case "zoomTo":
+                result = initial.zoomed(to: try unwrap(op["zoom"] as? Double))
+            case "wheel":
+                result = initial.zoomed(byWheelNotches: try unwrap(op["notches"] as? Double))
+            case "pinch":
+                for magnification in try unwrap(op["magnifications"] as? [Double]) {
+                    result = initial.pinched(magnification: magnification)
+                }
+            case "drag":
+                let pointWidth = try unwrap(op["pointWidth"] as? Double)
+                for translation in try unwrap(op["translations"] as? [Double]) {
+                    result = initial.dragged(translation: translation, pointWidth: pointWidth)
+                }
+            case "pan":
+                result = initial.panned(by: try unwrap(op["delta"] as? Int))
+            case "none":
+                break
+            default:
+                throw PanelTestFailure.expectation("\(name): 未知视口操作")
+            }
+            let expected = try unwrap(item["expected"] as? [String: Any])
+            let expectedZoom = try unwrap(expected["zoom"] as? Double)
+            try expect(
+                abs(result.zoom - expectedZoom) < 1e-9
+                    && result.start == expected["start"] as? Int
+                    && result.visibleCount == expected["visibleCount"] as? Int,
+                "\(name): zoom \(result.zoom) start \(result.start) visible \(result.visibleCount)"
+            )
+        }
+    }
+
+    private static func resolveRepoRoot() -> URL {
+        if CommandLine.arguments.count > 1 {
+            return URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        }
+        return URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // PanelViewModelHarness.swift -> PanelViewModelHarness/
+            .deletingLastPathComponent() // -> Harnesses/
+            .deletingLastPathComponent() // -> Tests/
+            .deletingLastPathComponent() // -> macos/
+            .deletingLastPathComponent() // -> apps/
+            .deletingLastPathComponent() // -> repoRoot
+    }
+
     private static func unwrap<T>(_ value: T?) throws -> T {
         guard let value else {
             throw PanelTestFailure.expectation("期望非 nil 值")
