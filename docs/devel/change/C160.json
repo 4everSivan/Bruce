@@ -4,7 +4,7 @@
   "title": "刷新间隔收敛为 3 / 6 分钟预设 + 自定义 1–1440 分钟，并移除验证期「测试气泡」入口（双端）",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "feat/C160-refresh-interval-presets",
   "is_hotfix": false,
   "target": {
@@ -94,7 +94,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "6bf6851",
     "tag": ""
   },
   "gate": {
@@ -102,7 +102,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-30",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
