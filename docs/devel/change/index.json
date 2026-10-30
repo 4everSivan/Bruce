@@ -220,7 +220,8 @@
     "AgentBrandIdentity": {
       "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
       "changes": [
-        "C161"
+        "C161",
+        "C166"
       ]
     }
   },
@@ -1691,6 +1692,15 @@
       "topic": "AgentAnalytics",
       "version": "0.16.0",
       "file": "docs/devel/change/C165.json"
+    },
+    "C166": {
+      "title": "Agent / 模型品牌徽章补漏：品牌表双端对拍（Windows 补登记 Cline）、Windows 位图加载失败降级、AgentBrandBadge 编译告警（修正 C161）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C166-agent-badge-followups",
+      "topic": "AgentBrandIdentity",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C166.json"
     }
   }
 }

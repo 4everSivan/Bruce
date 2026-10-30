@@ -43,10 +43,11 @@ struct SubscriptionBrandGlyphHarness {
         try menuSpacingEffect()
         try agentBrandPaletteCoverage()
         try agentBrandAssetFiles()
+        try agentBrandPaletteMatchesSharedParityFixture()
         if let directory = exportDirectory() {
             try exportMenuIcons(to: directory)
         }
-        print("SubscriptionBrandGlyph tests passed: 11")
+        print("SubscriptionBrandGlyph tests passed: 12")
     }
 
     /// 开发期导出开关 (不参与断言): `--write-icons <dir>` 把菜单图标导出为 PNG,
@@ -370,6 +371,51 @@ struct SubscriptionBrandGlyphHarness {
             "未登记厂商应返回 nil, 由调用方保留原色点"
         )
         print("Agent 品牌身份表: \(knownAgents.count) 个 Agent + \(modelCases.count) 个模型厂商通过")
+    }
+
+    /// C166: Agent / 模型厂商身份表与 Windows agent-brand.js 共享对拍 (tests/fixtures/agent-brand-parity);
+    /// C161 两端手抄同一张表, Windows 漏了 cline, 由此 fixture 逐字段锁定.
+    private static func agentBrandPaletteMatchesSharedParityFixture() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/fixtures/agent-brand-parity/cases.json")
+        let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        guard let agents = fixture?["agents"] as? [[String: Any]],
+              let models = fixture?["models"] as? [[String: Any]],
+              let unknownAgents = fixture?["unknownAgents"] as? [String],
+              let unknownModels = fixture?["unknownModels"] as? [String] else {
+            throw SubscriptionBrandGlyphFailure.expectation("agent brand parity fixture 格式无效")
+        }
+        func check(_ asset: AgentBrandAsset?, _ item: [String: Any], _ name: String) throws {
+            guard let asset else {
+                throw SubscriptionBrandGlyphFailure.expectation("\(name) 缺少品牌身份登记")
+            }
+            try expect(asset.imageName == item["image"] as? String, "\(name) image \(asset.imageName ?? "nil")")
+            try expect(asset.glyphID == item["glyph"] as? String, "\(name) glyph \(asset.glyphID ?? "nil")")
+            try expect(asset.tileHex == item["tile"] as? String, "\(name) tile \(asset.tileHex)")
+            try expect(asset.markHex == item["mark"] as? String, "\(name) mark \(asset.markHex)")
+            try expect(asset.monogram == item["monogram"] as? String, "\(name) monogram \(asset.monogram)")
+        }
+        for item in agents {
+            let id = item["id"] as? String ?? "?"
+            try check(AgentBrandPalette.asset(forAgent: id), item, "agent \(id)")
+        }
+        for item in models {
+            let key = item["key"] as? String ?? "?"
+            try check(AgentBrandPalette.asset(forModelKey: key), item, "model \(key)")
+        }
+        for id in unknownAgents {
+            try expect(AgentBrandPalette.asset(forAgent: id) == nil, "未登记 Agent \(id) 不应返回素材")
+        }
+        for key in unknownModels {
+            try expect(AgentBrandPalette.asset(forModelKey: key) == nil, "未登记厂商 \(key) 不应返回素材")
+        }
+        print("Agent 品牌身份双端对拍: \(agents.count) 个 Agent + \(models.count) 个模型键通过")
     }
 
     /// 真彩档引用的位图必须真实入库 (生成器投放目标), 防止改名后运行时静默退回矢量。

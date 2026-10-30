@@ -1,0 +1,177 @@
+{
+  "description": "C166 Agent / 模型厂商品牌身份表双端对拍: mac AgentBrandPalette.asset(forAgent:) / asset(forModelKey:) ≡ Windows agent-brand.js assetForAgent / assetForModel (C161 两端手抄同一张表, Windows 漏了 cline)。image / glyph 为 null 表示该档无素材; models 按 needles 顺序首个命中, 未登记返回 nil / null 由调用方保留原色点。",
+  "agents": [
+    {
+      "id": "zcode",
+      "image": "agent-zcode",
+      "glyph": "zcode",
+      "tile": "#0A0A0A",
+      "mark": "#FFFFFF",
+      "monogram": "Z"
+    },
+    {
+      "id": "claude-code",
+      "image": null,
+      "glyph": "claude",
+      "tile": "#F2EEE6",
+      "mark": "#D97757",
+      "monogram": "C"
+    },
+    {
+      "id": "codex",
+      "image": "agent-codex",
+      "glyph": "codex",
+      "tile": "#0A0A0A",
+      "mark": "#FFFFFF",
+      "monogram": "X"
+    },
+    {
+      "id": "kimi-code-cli",
+      "image": null,
+      "glyph": "kimi",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "K"
+    },
+    {
+      "id": "kimi-work",
+      "image": null,
+      "glyph": "kimi",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "K"
+    },
+    {
+      "id": "opencode",
+      "image": null,
+      "glyph": "opencodeGo",
+      "tile": "#1C1C1E",
+      "mark": "#CFCECD",
+      "monogram": "O"
+    },
+    {
+      "id": "codebuddy",
+      "image": "agent-codebuddy",
+      "glyph": null,
+      "tile": "#5B3DF5",
+      "mark": "#FFFFFF",
+      "monogram": "C"
+    },
+    {
+      "id": "grok",
+      "image": null,
+      "glyph": "grok",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "G"
+    },
+    {
+      "id": "pi",
+      "image": null,
+      "glyph": null,
+      "tile": "",
+      "mark": "",
+      "monogram": "π"
+    }
+  ],
+  "unknownAgents": [
+    "unknown-agent",
+    "cursor"
+  ],
+  "models": [
+    {
+      "key": "claude-opus-5-5",
+      "description": "claude",
+      "image": null,
+      "glyph": "claude",
+      "tile": "#F2EEE6",
+      "mark": "#D97757",
+      "monogram": "C"
+    },
+    {
+      "key": "sonnet-5",
+      "description": "sonnet 归 Claude",
+      "image": null,
+      "glyph": "claude",
+      "tile": "#F2EEE6",
+      "mark": "#D97757",
+      "monogram": "C"
+    },
+    {
+      "key": "deepseek-v4.1-flash",
+      "description": "deepseek",
+      "image": null,
+      "glyph": "deepseek",
+      "tile": "#FFFFFF",
+      "mark": "#4D6BFE",
+      "monogram": "D"
+    },
+    {
+      "key": "cline-pass/deepseek-v4.1-flash",
+      "description": "顺序优先: deepseek 在 cline 之前命中",
+      "image": null,
+      "glyph": "deepseek",
+      "tile": "#FFFFFF",
+      "mark": "#4D6BFE",
+      "monogram": "D"
+    },
+    {
+      "key": "glm-5.3",
+      "description": "glm 归智谱",
+      "image": null,
+      "glyph": "zhipu",
+      "tile": "#FFFFFF",
+      "mark": "#1F63EC",
+      "monogram": "G"
+    },
+    {
+      "key": "gpt-6.1-terra",
+      "description": "gpt 归 OpenAI 图形",
+      "image": null,
+      "glyph": "codex",
+      "tile": "#FFFFFF",
+      "mark": "#0B0B0B",
+      "monogram": "G"
+    },
+    {
+      "key": "kimi-k3",
+      "description": "kimi",
+      "image": null,
+      "glyph": "kimi",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "K"
+    },
+    {
+      "key": "grok-4",
+      "description": "grok",
+      "image": null,
+      "glyph": "grok",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "G"
+    },
+    {
+      "key": "xai-grok-code",
+      "description": "xai 归 Grok",
+      "image": null,
+      "glyph": "grok",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "G"
+    },
+    {
+      "key": "cline-code",
+      "description": "cline (C161 Windows 漏登记)",
+      "image": null,
+      "glyph": "cline",
+      "tile": "#0B0B0B",
+      "mark": "#FFFFFF",
+      "monogram": "C"
+    }
+  ],
+  "unknownModels": [
+    "gemini-3-pro",
+    "qwen3-coder"
+  ]
+}

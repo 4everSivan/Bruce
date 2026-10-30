@@ -2768,3 +2768,41 @@ test("timeline axis ticks and viewport match the shared parity fixture (C165)", 
   assert.deepEqual({ ...S.costSummaries(costPoints, "hour") }, { peak: "🔥 峰值时段: **09:00** ($1.5000)", average: "时均: **$0.0729**" });
   assert.deepEqual({ ...S.costSummaries([], "day") }, { peak: "—", average: "日均: **$0.0000**" });
 });
+
+// ---------- C166: Agent / 模型品牌身份表双端对拍与位图失败降级 ----------
+
+test("agent brand table matches the shared parity fixture (C166)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const brand = app.window.BRUCE_AGENT_BRAND;
+  const parity = JSON.parse(readFileSync("tests/fixtures/agent-brand-parity/cases.json", "utf8"));
+  const check = (asset, item, name) => {
+    assert.ok(asset, `${name} 缺少品牌身份登记`);
+    assert.equal(asset.image ?? null, item.image, `${name} image`);
+    assert.equal(asset.glyph ?? null, item.glyph, `${name} glyph`);
+    assert.equal(asset.tile, item.tile, `${name} tile`);
+    assert.equal(asset.mark, item.mark, `${name} mark`);
+    assert.equal(asset.mono, item.monogram, `${name} monogram`);
+  };
+  for (const item of parity.agents) check(brand.assetForAgent(item.id), item, `agent ${item.id}`);
+  for (const item of parity.models) check(brand.assetForModel(item.key), item, `model ${item.key}`);
+  for (const id of parity.unknownAgents) assert.equal(brand.assetForAgent(id), null, `未登记 Agent ${id}`);
+  for (const key of parity.unknownModels) assert.equal(brand.assetForModel(key), null, `未登记厂商 ${key}`);
+});
+
+test("a failed agent bitmap falls back to the glyph or monogram instead of an empty badge (C166)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const brand = app.window.BRUCE_AGENT_BRAND;
+  // CodeBuddy 只有位图: 失败后退字标
+  const buddy = brand.create({ agentId: "codebuddy", seriesHex: "#5B3DF5", size: 20 });
+  assert.ok(buddy.classList.contains("ab-badge--img"));
+  await buddy.querySelector(".ab-img").dispatch("error");
+  assert.equal(buddy.querySelector(".ab-img"), null, "失败的位图被移除");
+  assert.equal(buddy.classList.contains("ab-badge--img"), false, "恢复品牌底色瓷砖");
+  assert.equal(buddy.querySelector(".ab-mono").textContent, "C", "无矢量图形时退字标");
+  // Codex 位图 + 矢量: 失败后露出矢量, 不再追加字标
+  const codex = brand.create({ agentId: "codex", seriesHex: "#30D158", size: 20 });
+  const hasGlyph = Boolean(codex.querySelector("svg"));
+  await codex.querySelector(".ab-img").dispatch("error");
+  assert.equal(codex.classList.contains("ab-badge--img"), false, "去掉隐藏矢量的 ab-badge--img");
+  assert.equal(Boolean(codex.querySelector(".ab-mono")), !hasGlyph, "有矢量图形时不追加字标");
+});
