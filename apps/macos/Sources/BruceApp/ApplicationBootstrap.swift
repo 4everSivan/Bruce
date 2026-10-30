@@ -219,7 +219,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     /// 打开或前置设置窗口, 并在打开期间显示 Dock 图标与注册切换器焦点.
-    func present() {
+    /// - Parameter category: 可选分类深链 (C157); 由 SettingsView 在出现/变更时消费.
+    func present(category: SettingsCategory? = nil) {
+        if let category {
+            model.requestedSettingsCategory = category
+        }
         let window = window ?? makeWindow()
         setDockIconVisible(true)
         if window.isMiniaturized {

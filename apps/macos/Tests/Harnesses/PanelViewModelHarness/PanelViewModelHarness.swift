@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
 @testable import BruceAppCore
 import BruceOnboardingCore
 
@@ -306,7 +309,8 @@ struct PanelViewModelHarness {
         try workbenchThisMonthStopsAtMonthBoundaryContracts()
         try workbenchLegacyArtifactShowsDashesContracts()
         try billionTokenFormattingContracts()
-        print("PanelViewModel tests passed: 60")
+        try subscriptionEmptyStatePolicyContracts()
+        print("PanelViewModel tests passed: 61")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -2164,6 +2168,56 @@ struct PanelViewModelHarness {
         try expect(PanelFormat.tokenCount(1_500_000_000) == "1.5B", "1.5B 格式化错误: \(PanelFormat.tokenCount(1_500_000_000))")
         try expect(PanelFormat.tokenCount(3_530_000_000) == "3.53B", "3.53B 格式化错误: \(PanelFormat.tokenCount(3_530_000_000))")
         try expect(PanelFormat.tokenCount(4_743_838_856) == "4.74B", "4.74B 格式化错误: \(PanelFormat.tokenCount(4_743_838_856))")
+    }
+
+    /// C157: 订阅卡空状态只做未配置 / 无数据两态; artifact 缺失与已有订阅都不出空态.
+    private static func subscriptionEmptyStatePolicyContracts() throws {
+        try expect(
+            SubscriptionEmptyStatePolicy.resolve(
+                hasArtifact: false,
+                hasSubscription: false,
+                eligibleProviderCount: 0
+            ) == nil,
+            "无 artifact 不应出空态"
+        )
+        try expect(
+            SubscriptionEmptyStatePolicy.resolve(
+                hasArtifact: true,
+                hasSubscription: true,
+                eligibleProviderCount: 2
+            ) == nil,
+            "已有订阅卡不应出空态"
+        )
+
+        let notConfigured = try unwrap(SubscriptionEmptyStatePolicy.resolve(
+            hasArtifact: true,
+            hasSubscription: false,
+            eligibleProviderCount: 0
+        ))
+        try expect(notConfigured.reason == .notConfigured, "无 eligible provider 应判未配置")
+        try expect(notConfigured.statusText == "未配置", "未配置状态词")
+        try expect(notConfigured.actionTitle == "添加订阅", "未配置动作")
+        try expect(notConfigured.systemImage == "creditcard", "未配置图标必须是有效 SF Symbol 名")
+
+        let noData = try unwrap(SubscriptionEmptyStatePolicy.resolve(
+            hasArtifact: true,
+            hasSubscription: false,
+            eligibleProviderCount: 1
+        ))
+        try expect(noData.reason == .noData, "有 eligible provider 但无 section 应判无数据")
+        try expect(noData.statusText == "无数据", "无数据状态词")
+        try expect(noData.actionTitle == "刷新额度", "无数据动作")
+        try expect(noData.systemImage == "arrow.clockwise", "无数据图标")
+
+        #if canImport(AppKit)
+        // 图标名必须能解析为系统 SF Symbol, 否则 Image(systemName:) 静默渲染为空.
+        for model in [notConfigured, noData] {
+            try expect(
+                NSImage(systemSymbolName: model.systemImage, accessibilityDescription: nil) != nil,
+                "空态图标不是有效 SF Symbol: \(model.systemImage)"
+            )
+        }
+        #endif
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.

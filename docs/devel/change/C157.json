@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C157",
+  "title": "订阅卡空状态（未配置/无数据）与 Tab 回退修正（mac + Windows）",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "feat/C157-subscription-empty-state",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "仪表盘订阅卡与设置入口",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+
+  "why": "未配置任何订阅时，mac `makeSubscription` 在 sections 为空时直接返回 nil，栈模式订阅卡整张消失；Tab 模式页签仍存在，选中订阅时 renderSingleTabCard 返回 nil，fallbackTabCard 把 Token 用量卡顶上，出现「点订阅却显示用量」的错卡。Windows 侧同样以 `subscription ? subscriptionCard(subscription) : null` 返回 null，Tab 回退循环会选到别的卡。用户既看不到订阅能力的存在，也没有入口补配置；且订阅卡在配置变化后无提示地消失/出现。",
+
+  "precheck": {
+    "description": "确认订阅卡在无 section 时返回 nil、Tab 模式回退到用量卡、Windows 工厂返回 null",
+    "command": "rg -n \"guard !sections.isEmpty|fallbackTabCard|subscription: \\(\\) =>\" apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift apps/macos/Sources/BruceApp/MenuBarViews.swift apps/win/src/app.js",
+    "expected": "mac SubscriptionMapping 在 sections 为空时 return nil；MenuBarViews 的 fallbackTabCard 在 subscription 为 nil 时回退 usage；Windows factories.subscription 返回 null 且 Tab 回退循环取第一张非空卡",
+    "is_completed": false,
+    "evidence": "2026-10-29 在基线 391d76a 干净检出上执行：SubscriptionMapping.swift:162 `guard !sections.isEmpty else {` 返回 nil；MenuBarViews.swift:570 订阅页签 subscription 为 nil 时调用 fallbackTabCard(panel)（:591 定义，优先返回 Token 用量卡）；Windows app.js:1293 `subscription: () => subscription ? subscriptionCard(subscription) : null`，Tab 回退循环取第一张非空卡。缺陷成立、未被前序提交修复。原命令的 `factories.subscription` 模式在源码中无匹配，已改为 `subscription: \\(\\) =>`。"
+  },
+
+  "callback": {
+    "before": [
+      "git switch -c feat/C157-subscription-empty-state"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card C157 --receipt"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "mac 订阅卡空状态",
+      "before": "无 section 时订阅卡返回 nil：栈模式整卡消失；Tab 模式选中订阅时回退显示 Token 用量卡。",
+      "after": "新增 SubscriptionEmptyStatePolicy：A 未配置（无 dashboard-eligible provider）与 C 已配置无数据（有 eligible 但 sections 为空）两态；栈模式占位渲染空态卡，Tab 模式订阅页签渲染空态卡，订阅页签不再调用 fallbackTabCard（artifact 缺失时走全局兜底 emptyPanelState）。",
+      "impact": "仪表盘卡片栈、Tab 单卡切换、面板高度链路"
+    },
+    {
+      "scope": "空态卡结构与入口",
+      "before": "无任何订阅提示，用户不知道订阅能力存在，也没有直达配置的入口。",
+      "after": "复用卡片外壳：标题「订阅用量」+ 右槽状态词；正文虚线空位框 + 图标（A creditcard / C arrow.clockwise，均为有效 SF Symbol）+ 标题/说明/按钮；正文合并为一个无障碍元素「订阅用量，<状态词>。<标题>，<说明>」，按钮独立；折叠态沿用 collapsedCards；按钮深链设置「订阅额度」页。",
+      "impact": "SettingsWindowController / SettingsView 的分类路由、面板可访问性"
+    },
+    {
+      "scope": "Windows 同构",
+      "before": "Windows 订阅卡为空时返回 null，Tab 回退到其他卡；设置入口只打开通用页。",
+      "after": "factories.subscription 在已有 artifact 时返回空态卡；订阅页签显示空态；CTA 先把 bruce_settings_pane 写入同源 localStorage 再调用 open_settings，设置窗口在加载 / focus / 转可见时消费并清除，open_settings 失败时撤回；两态判定与 mac 同口径（含 jev 排除）。",
+      "impact": "apps/win 看板渲染、设置窗口导航"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "订阅卡只由 artifact sections 驱动：无 section 即无卡片；Tab 模式允许回退到其他卡。",
+      "after": "新增规则 12：空状态由 SubscriptionEmptyStatePolicy 判定为 A 未配置 / C 无数据（不做 B）；栈模式与 Tab 模式都必须渲染空态卡，禁止回退到用量卡；按钮深链订阅额度设置。Windows 侧由 design/05 规则 33 同构承接。"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261029-09",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "SubscriptionEmptyStatePolicy 表驱动覆盖 A/C、jev 排除、全停用、artifact 缺失；AppModelCacheHarness 覆盖配置变更后缓存失效；verify-local 与 Windows 前端检查退出码为 0",
+        "false_if": "任一测试失败或门禁失败",
+        "evidence": "2026-10-29 `zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」；PanelViewModel tests passed: 63、AppModelCache tests passed: 5、Rust 49 组 test result: ok / 0 FAILED、无 Swift 源码告警）。C157 覆盖：subscriptionEmptyStatePolicyContracts（A/C、artifact 缺失、已有订阅不出空态，NSImage(systemSymbolName:) 断言两态图标有效）；subscriptionEmptyStateFollowsProviderConfiguration（配置变更后缓存失效、jev 临时屏蔽、未验证 / 验证失败 / 需重新登录 / 停用均归 A、jev+zhipu 为 C）。`node scripts/check-win-frontend.mjs` → Exit 0，frontend.test.mjs 102/102 通过，其中 C157 6 项：栈模式未配置、无数据刷新、Tab 不回退、eligible 口径（jev/未验证/失败/停用）、深链跨窗口落到订阅额度并只消费一次、open_settings 失败撤回深链。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "mac 三种主题与 Windows 下，栈模式与 Tab 模式均显示空态卡；点订阅页签不再出现 Token 用量卡；按钮直达订阅额度页",
+        "false_if": "空态仍缺失、页签错卡或深链落到通用页",
+        "evidence": "部分完成。Windows：真实 Chromium（headless Chrome，render-harness 同字节产物）fluent / nothing 两主题下栈模式未配置、栈模式无数据、Tab 订阅页签均渲染空态卡（图标 16×16 可见），订阅页签不出现 Token 用量卡；截图见 local/verify/c157-c158/empty-*.png。未完成：mac 三主题真机、Windows 真机（WebView2）以及两端按钮真实打开设置并落到订阅额度页的点击核验。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "已配置订阅的卡片渲染、排序、折叠与刷新不受影响；空态出现/消失不引入额外动画或高度抖动",
+        "false_if": "既有订阅卡行为回归或面板高度异常",
+        "evidence": "部分完成。已有订阅时 SubscriptionEmptyStatePolicy 返回 nil（单测），订阅卡渲染路径未改；Windows 真实内核同一面板与基线 391d76a 几何逐像素一致（含订阅卡、窗口行、余额槽与胶囊）。未完成：mac 真机上空态出现 / 消失时的面板高度与动画核验。",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

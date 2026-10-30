@@ -33,7 +33,63 @@ struct AppModelCacheHarness {
         try menuBarSummaryRebuildsAfterArtifactChange()
         try menuBarQuotaSummaryHonorsDashboardVerificationGate()
         try dashboardLayoutModeAndCardSelectionPersists()
-        print("AppModelCache tests passed: 4")
+        try subscriptionEmptyStateFollowsProviderConfiguration()
+        print("AppModelCache tests passed: 5")
+    }
+
+    /// C157: 订阅空态随 provider 配置变化重算, 不得命中旧的面板缓存.
+    private static func subscriptionEmptyStateFollowsProviderConfiguration() throws {
+        let model = AppModel()
+        model.setArtifact(makeArtifact(todayTotal: 100), for: .agentUsage)
+
+        let initial = model.makePanelViewModel()
+        try expect(initial.subscription == nil, "无 services 不应产出订阅卡")
+        try expect(
+            initial.subscriptionEmpty?.reason == .notConfigured,
+            "没有 eligible provider 时应为未配置"
+        )
+
+        model.setSubscriptionProviders([
+            .kimi: SubscriptionProviderConfiguration(enabled: true, verificationStatus: .ok)
+        ])
+        let withProvider = model.makePanelViewModel()
+        try expect(withProvider.subscription == nil, "artifact 无 services 时订阅卡仍为 nil")
+        try expect(
+            withProvider.subscriptionEmpty?.reason == .noData,
+            "有已启用且验证通过的 provider 时应为无数据"
+        )
+
+        model.setSubscriptionProviders([
+            .kimi: SubscriptionProviderConfiguration(enabled: false, verificationStatus: .ok)
+        ])
+        try expect(
+            model.makePanelViewModel().subscriptionEmpty?.reason == .notConfigured,
+            "停用后应回到未配置"
+        )
+
+        // 不引入「待验证 / 已停用」第三态: 未验证、验证失败、需重新登录与临时屏蔽的
+        // provider 都不算 eligible, 一律归入未配置.
+        let notEligible: [(SubscriptionProviderID, SubscriptionVerificationStatus, String)] = [
+            (.jev, .ok, "临时屏蔽的 jev 即使已验证也不算 eligible"),
+            (.kimi, .none, "仅添加未验证应为未配置"),
+            (.kimi, .failed(reason: "401"), "验证失败应为未配置"),
+            (.kimi, .needsRelogin, "需重新登录应为未配置"),
+        ]
+        for (provider, status, message) in notEligible {
+            model.setSubscriptionProviders([
+                provider: SubscriptionProviderConfiguration(enabled: true, verificationStatus: status)
+            ])
+            try expect(model.makePanelViewModel().subscriptionEmpty?.reason == .notConfigured, message)
+        }
+
+        model.setSubscriptionProviders([
+            .jev: SubscriptionProviderConfiguration(enabled: true, verificationStatus: .ok),
+            .zhipu: SubscriptionProviderConfiguration(enabled: true, verificationStatus: .ok),
+        ])
+        try expect(
+            model.makePanelViewModel().subscriptionEmpty?.reason == .noData,
+            "jev 之外仍有 eligible provider 时应为无数据"
+        )
     }
 
     /// 回归: artifact 就绪后菜单栏摘要必须反映实际 token, 不得返回陈旧空摘要.

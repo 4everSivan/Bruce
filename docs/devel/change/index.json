@@ -40,7 +40,8 @@
         "C143",
         "C145",
         "C147",
-        "C148"
+        "C148",
+        "C157"
       ]
     },
     "PricingEngine": {
@@ -119,7 +120,8 @@
         "C135",
         "C149",
         "C150",
-        "C151"
+        "C151",
+        "C157"
       ]
     },
     "SubscriptionQuota": {
@@ -1592,6 +1594,15 @@
       "topic": "PricingEngine",
       "version": "0.15.0",
       "file": "docs/archive/0.15.0/change/C156.json"
+    },
+    "C157": {
+      "title": "订阅卡空状态（未配置/无数据）与 Tab 回退修正（mac + Windows）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "feat/C157-subscription-empty-state",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C157.json"
     }
   }
 }

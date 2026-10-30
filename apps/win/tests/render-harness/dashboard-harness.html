@@ -54,6 +54,11 @@ window.__setTheme = async (theme) => {
   state.settings = { ...state.settings, theme };
   await window.__emit("settings-updated", structuredClone(state.settings));
 };
+window.__setSettings = async (patch) => {
+  state.settings = { ...state.settings, ...patch };
+  await window.__emit("settings-updated", structuredClone(state.settings));
+  await window.__emit("dashboard-updated", structuredClone(state.panel));
+};
 window.__setPanel = async (panel) => {
   state.panel = panel;
   await window.__emit("dashboard-updated", structuredClone(panel));

@@ -890,16 +890,20 @@ package struct PanelViewModel: Equatable, Sendable {
     package let subscription: SubscriptionViewModel?
     package let hourly: HourlyLineViewModel?
     package let diagnostics: [PanelDiagnostic]
+    /// 订阅卡空状态 (C157): 仅当 artifact 存在且 subscription 为 nil 时非 nil.
+    package let subscriptionEmpty: SubscriptionEmptyStateViewModel?
 
     package init(
         usage: UsageHeroViewModel?,
         subscription: SubscriptionViewModel?,
         hourly: HourlyLineViewModel?,
-        diagnostics: [PanelDiagnostic]
+        diagnostics: [PanelDiagnostic],
+        subscriptionEmpty: SubscriptionEmptyStateViewModel? = nil
     ) {
         self.usage = usage
         self.subscription = subscription
         self.hourly = hourly
         self.diagnostics = diagnostics
+        self.subscriptionEmpty = subscriptionEmpty
     }
 }

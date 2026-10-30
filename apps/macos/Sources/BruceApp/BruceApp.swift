@@ -144,6 +144,9 @@ struct BruceApp: App {
             openSettings: { [settingsController] in
                 settingsController.present()
             },
+            openSubscriptionSettings: { [settingsController] in
+                settingsController.present(category: .subscription)
+            },
             terminateApplication: {
                 NSApplication.shared.terminate(nil)
             }

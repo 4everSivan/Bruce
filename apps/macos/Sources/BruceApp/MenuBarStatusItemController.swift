@@ -15,6 +15,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private let model: AppModel
     private let coordinator: OnboardingCoordinator
     private let openSettings: @MainActor () -> Void
+    private let openSubscriptionSettings: @MainActor () -> Void
     private let terminateApplication: @MainActor () -> Void
     private var statusItem: NSStatusItem?
     private let panel = DashboardPanel(
@@ -68,11 +69,13 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         model: AppModel,
         coordinator: OnboardingCoordinator,
         openSettings: @escaping @MainActor () -> Void,
+        openSubscriptionSettings: @escaping @MainActor () -> Void,
         terminateApplication: @escaping @MainActor () -> Void
     ) {
         self.model = model
         self.coordinator = coordinator
         self.openSettings = openSettings
+        self.openSubscriptionSettings = openSubscriptionSettings
         self.terminateApplication = terminateApplication
         super.init()
     }
@@ -159,6 +162,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 // 打开设置前先关面板, 避免 statusBar 层级面板浮在设置窗口之上.
                 self?.closeDashboard(restorePreviousFrontmostApp: false)
                 self?.openSettings()
+            },
+            openSubscriptionSettings: { [weak self] in
+                self?.closeDashboard(restorePreviousFrontmostApp: false)
+                self?.openSubscriptionSettings()
             },
             terminateApplication: terminateApplication,
             onContentSizeChange: { [weak self] size in

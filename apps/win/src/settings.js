@@ -52,5 +52,24 @@
     }
   })();
 
+  // C157: 订阅空态 CTA 的分类深链. 设置窗口常驻隐藏, 不能靠页面重载消费参数:
+  // 面板先写 localStorage, 设置窗口在 focus / visibilitychange 时读取并切换分类.
+  function applyPendingPane() {
+    let pane = null;
+    try {
+      if (typeof localStorage !== "undefined") {
+        pane = localStorage.getItem("bruce_settings_pane");
+        if (pane) localStorage.removeItem("bruce_settings_pane");
+      }
+    } catch {}
+    // switchCategory 自带分类白名单, 未知值直接忽略.
+    if (pane) switchCategory(pane);
+  }
+  ready.then(applyPendingPane).catch(() => {});
+  window.addEventListener("focus", applyPendingPane);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden !== true) applyPendingPane();
+  });
+
   window.BruceSettings = { ready, applyTheme, switchCategory };
 })();

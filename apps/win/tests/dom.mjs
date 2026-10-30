@@ -147,8 +147,17 @@ export const defaults = {
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek"], providerOrder: [], pricingOverrides: {},
   layoutMode: "stack", activeCardId: "usage",
 };
+// 内存版 localStorage (仅实现生产代码用到的三个方法)。
+export function memoryStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem: key => (values.has(key) ? values.get(key) : null),
+    setItem: (key, value) => { values.set(key, String(value)); },
+    removeItem: key => { values.delete(key); },
+  };
+}
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." } } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, storage = null } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
@@ -239,7 +248,9 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
   window.dispatchEvent = event => window.dispatch(event.type, event);
   const context = vm.createContext({ document, window, console: { error: (...args) => errors.push(args.join(" ")), log() {} },
     CustomEvent: class { constructor(type, values) { this.type = type; Object.assign(this, values); } },
-    setTimeout, clearTimeout, URL, crypto: { randomUUID: () => "test-account" }, structuredClone });
+    setTimeout, clearTimeout, URL, crypto: { randomUUID: () => "test-account" }, structuredClone,
+    // 同源 WebView 共享 localStorage: 显式传入时注入, 多次 boot 传同一实例即模拟跨窗口 (C157)。
+    ...(storage ? { localStorage: storage } : {}) });
   for (const [, file] of htmlSource.matchAll(/<script src="([^"]+)"/g)) {
     vm.runInContext(readFileSync(resolve("apps/win/src", file), "utf8"), context, { filename: file });
   }

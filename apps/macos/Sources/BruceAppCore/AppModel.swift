@@ -211,6 +211,8 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var layoutMode: DashboardLayoutMode
     /// 顶栏 Tab 模式当前选中的卡片 (持久化到 UserDefaults 记忆状态).
     @Published package private(set) var selectedCardID: DashboardCardID
+    /// 设置窗口分类深链请求 (C157): 由菜单栏空态卡写入, SettingsView 消费后清空.
+    @Published package var requestedSettingsCategory: SettingsCategory?
     /// 收起状态与顺序持久化存储 (测试注入隔离 suite).
     private let collapsedDefaults: UserDefaults
     private static let collapsedCardsDefaultsKey = "dashboard.collapsedCards"
@@ -575,10 +577,33 @@ package final class AppModel: ObservableObject {
         if lastPanelCacheVersion == panelCacheVersion, let cached = cachedPanelViewModel {
             return cached
         }
-        let vm = PanelViewModelMapper().make(
-            agentUsage: gatedAgentUsageArtifact(),
+        let artifact = gatedAgentUsageArtifact()
+        let base = PanelViewModelMapper().make(
+            agentUsage: artifact,
             moduleStatuses: moduleStatuses,
             providerOrder: subscriptionProviderOrder.map(\.rawValue)
+        )
+        let eligibleProviderCount = subscriptionProviders.reduce(into: 0) { count, entry in
+            let (id, configuration) = entry
+            guard configuration.enabled,
+                  SubscriptionPresentationPolicy.isVerifiedForDashboard(
+                      configuration.verificationStatus
+                  ),
+                  !SubscriptionPresentationPolicy.isProviderTemporarilyDisabled(id.rawValue) else {
+                return
+            }
+            count += 1
+        }
+        let vm = PanelViewModel(
+            usage: base.usage,
+            subscription: base.subscription,
+            hourly: base.hourly,
+            diagnostics: base.diagnostics,
+            subscriptionEmpty: SubscriptionEmptyStatePolicy.resolve(
+                hasArtifact: artifact != nil,
+                hasSubscription: base.subscription != nil,
+                eligibleProviderCount: eligibleProviderCount
+            )
         )
         cachedPanelViewModel = vm
         lastPanelCacheVersion = panelCacheVersion

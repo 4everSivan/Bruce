@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-28 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-29 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -265,6 +265,7 @@ Windows Tauri 后端 (Rust)
 | C128 | 结构重构 | `runtime_core.rs` 按职责拆分 | 拆出 `runtime_core/activity.rs` / `geometry.rs` / `status.rs`，经 `pub use` 保持 `runtime_core::*` 公开路径，行为不变（见 design/00 C053 纪律） |
 | C135 | 结构重构 | TD-011：`settings.js` 拆分为共享状态 + 分节脚本 + 壳层引导 | 新增规则 32：共享状态只存在于 `window.BruceSettingsCore`，脚本按固定顺序加载，单文件控制在约 1,500 行内 |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
+| C157 | 界面对齐 | 订阅卡空状态与 Tab 回退（Windows 同构） | 新增规则 33：两态空态卡接入、订阅页签不再回退到 Token 用量卡、CTA 直达订阅额度分类 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -388,6 +389,11 @@ Windows Tauri 后端 (Rust)
 
 31. **出站网络不得阻塞主线程**（C109）：Tauri 2 的同步 `#[tauri::command]` 在主线程执行，期间托盘、看板与设置窗口全部失去响应。凡含出站 HTTP 的 command（设备码申请 / 轮询换码、订阅试查等）**必须声明为 `async fn`**，阻塞调用经 `off_main_thread`（`tauri::async_runtime::spawn_blocking`）执行；需 COM STA 的 Win32 调用（如 `ShellExecuteW` 打开外部浏览器）经 `run_on_main_thread` 派回主线程。采集与 Codex 令牌刷新只在调度器后台线程运行。守卫用例 `tests/command_threading.rs` 逐个解析 `lib.rs` 的 command 函数体，同步 command 一旦直接调用网络入口即失败。
 32. **设置窗口前端按职责分段加载**（TD-011 / C135）：`settings.html` 按「共享状态 → 分节脚本 → 壳层引导」的固定顺序加载经典脚本：`provider-brand.js`、`update-presentation.js`、`settings-state.js`、各分节脚本（订阅 / 工作台 / 计费 / 维护）、`settings.js`。共享可变状态只存在于 `settings-state.js` 暴露的 `window.BruceSettingsCore`，分节脚本通过该对象读写同一份状态，不得各自复制；跨节调用经命名空间注册，单文件须控制在 design/00「单文件内聚与规模边界」的约 1,500 行以内。DOM 测试 harness 通过解析 `settings.html` 的 `<script src>` 顺序加载，新增/调整脚本必须同步 HTML 与真实 WebView2 入口，禁止只改测试或只改页面。
+33. **订阅卡空态与 Tab 回退（Windows 同构）**（C157，design/03 规则 12 同契）：
+    - `panel.subscription == nil` 且已有 artifact（`panel.usage` 存在）时 `factories.subscription` 不得返回 `null`；按 design/03 规则 12 的 A / C 两态渲染空态卡（虚线空位框 + 图标 A `creditCard`（与 SF Symbol `creditcard` 同形的 SVG 路径）/ C `arrowClockwise` + 标题 / 说明 / 按钮），文案与 mac 逐字一致。B「待验证 / 已停用」状态不做，eligible 为 0 一律归 A。
+    - Tab 模式当前在 active card 为 nil 时回退到别的卡；空态卡接入后订阅页签必须显示空态，不得显示 Token 用量卡。
+    - CTA 必须打开设置并落到「订阅额度」分类，不得只落在通用页。实现不改 `open_settings` 签名：面板先把 `bruce_settings_pane` 写入同源 `localStorage` 再调用 `open_settings`；设置窗口在首次加载、`focus`、`visibilitychange`（转可见）时读取并立即删除该键，经 `switchCategory`（自带分类白名单）切换；`open_settings` 失败时面板撤回该键，避免下次正常打开设置被旧请求劫持。
+    - A 判定排除临时屏蔽 provider（`jev`）；C 判定要求存在「已启用 ∧ 验证通过」的 provider 且已拿到 artifact。provider 配置 / 验证状态变化必须触发重渲并重新判定。
 
 ### 6.1 Rust 端改动清单（收敛后）
 
@@ -491,6 +497,7 @@ Windows Tauri 后端 (Rust)
 | P3 | 全功能对齐（订阅额度/通知/热键/设置/Onboarding） | T03 | 功能矩阵逐项勾选 |
 | P4 | 打包发布线 | T04 | 安装/升级冒烟 + SHA256 |
 | P5 | 托盘动态配额环与 420px 亚克力微缩预览卡 (方案 1) | T12 | 托盘动态绘图 + 420px 预览卡 UI + 悬停唤醒/失焦隐藏与对拍 |
+| P6 | 订阅卡空态与 Tab 回退（Windows 同构） | C157 | A/C 两态空态卡 + 订阅页签不回退 + CTA 深链订阅额度；Node 测试与真实内核渲染核对 |
 
 ### 7.2 风险与预案
 

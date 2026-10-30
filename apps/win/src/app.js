@@ -115,6 +115,8 @@ const ICON_PATHS = {
   chevronDown: ["M3.5 6 L8 10.5 L12.5 6"],
   // arrow.clockwise: 300° 圆弧 + 顶部向右箭头 (与底栏刷新图标同一几何)
   arrowClockwise: ["M12.76 5.25A5.5 5.5 0 1 1 8 2.5", "M6.3 0.8L8.3 2.5L6.3 4.2"],
+  // creditcard (mac SF Symbol creditcard): 圆角卡体 + 磁条
+  creditCard: ["M2 4.5h12a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z", "M1 7.25h14"],
 };
 function icon(name, strokeWidth = 2.2) {
   const svg = svgEl("svg", { viewBox: "0 0 16 16", "aria-hidden": "true" });
@@ -636,6 +638,77 @@ function collapsedPeakWindow(section) {
 }
 // 多账号展开状态: mac 用 @State 默认折叠, 前端同语义 (跨刷新保持, 不持久化)。
 const expandedSections = new Set();
+// 订阅卡空状态 (C157, mac SubscriptionEmptyStatePolicy): 只做未配置 / 无数据两态.
+// eligible = 已添加 ∧ enabled ∧ verificationStatus == ok ∧ 非临时屏蔽 (jev).
+// 有配置但未验证 / 已停用的订阅归入未配置, 不引入第三态.
+function subscriptionEmptyState() {
+  const providers = (currentSettings && currentSettings.subscriptionProviders) || {};
+  const eligible = Object.keys(providers).filter((id) => {
+    if (id === "jev") return false;
+    const provider = providers[id] || {};
+    return provider.enabled === true && provider.verificationStatus === "ok";
+  });
+  return eligible.length > 0 ? "noData" : "notConfigured";
+}
+
+function subscriptionEmptyCard() {
+  const state = subscriptionEmptyState();
+  const copy = state === "noData"
+    ? {
+        status: "无数据",
+        title: "暂未获取到额度",
+        desc: "这次采集没有返回订阅额度，可手动刷新重试。",
+        action: "刷新额度",
+        icon: "arrowClockwise",
+      }
+    : {
+        status: "未配置",
+        title: "尚未添加订阅",
+        desc: "添加并验证账号后，显示 5 小时与每周额度。",
+        action: "添加订阅",
+        icon: "creditCard",
+      };
+  const card = el("div", "card sub-empty-card");
+  cardHead(card, "订阅用量", el("span", "updated", copy.status));
+  makeCollapsible(card, () => el("span", "sub-empty-mini", copy.status));
+
+  const body = el("div", "sub-empty");
+  const frame = el("span", "sub-empty-frame");
+  frame.append(icon(copy.icon, 1.6));
+  const button = el("button", "btn sub-empty-btn", copy.action);
+  button.type = "button";
+  button.addEventListener("click", () => {
+    if (state === "noData") {
+      invoke("refresh_now").catch(() => {});
+    } else {
+      openSettingsPane("subscription");
+    }
+  });
+  body.append(
+    frame,
+    el("span", "sub-empty-title", copy.title),
+    el("span", "sub-empty-desc", copy.desc),
+    button,
+  );
+  card.append(body);
+  return card;
+}
+
+// 设置分类深链 (C157): 面板先落 pending pane, 设置窗口在 focus / visibilitychange
+// 时读取并切换分类; 不依赖 Rust command 改签名.
+function openSettingsPane(pane) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("bruce_settings_pane", pane);
+    }
+  } catch {}
+  invoke("open_settings").catch(() => {
+    // 打开失败时撤回深链, 避免下次正常打开设置被旧请求劫持到订阅页。
+    try {
+      if (typeof localStorage !== "undefined") localStorage.removeItem("bruce_settings_pane");
+    } catch {}
+  });
+}
 // 纯余额型双槽 (mac BalanceDualSlotView): 可用余额 + 订阅状态。
 function balanceSlots(section) {
   const wrap = el("div", "bal-slots");
@@ -1290,7 +1363,9 @@ function render(panel) {
   }) } : null;
   const factories = {
     usage: () => currentSettings.usageEnabled !== false && panel.usage ? usageCard(panel.usage) : null,
-    subscription: () => subscription ? subscriptionCard(subscription) : null,
+    subscription: () => subscription
+      ? subscriptionCard(subscription)
+      : (panel.usage ? subscriptionEmptyCard() : null),
     hourly: () => currentSettings.usageEnabled !== false && panel.hourly ? hourlyCard(panel.hourly, panel.usage) : null,
   };
 

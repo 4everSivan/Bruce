@@ -67,34 +67,7 @@ struct SettingsView: View {
         let displayName: String
     }
 
-    /// 侧边栏分类: 线性图标 (跨平台同构, 对应 WinUI NavigationView).
-    enum SettingsCategory: String, CaseIterable, Identifiable {
-        case general, agentUsage, modelPricing, subscription, consent, maintenance
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .general: return "通用"
-            case .agentUsage: return "模型用量"
-            case .modelPricing: return "模型计费"
-            case .subscription: return "订阅额度"
-            case .consent: return "授权与隐私"
-            case .maintenance: return "维护"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .general: return "gearshape"
-            case .agentUsage: return "chart.bar"
-            case .modelPricing: return "dollarsign.circle"
-            case .subscription: return "cloud"
-            case .consent: return "checkmark.shield"
-            case .maintenance: return "wrench.and.screwdriver"
-            }
-        }
-    }
+    /// 侧边栏分类由 BruceAppCore.SettingsCategory 提供 (C157: 空态 CTA 深链复用).
 
     var body: some View {
         GeometryReader { proxy in
@@ -236,12 +209,23 @@ struct SettingsView: View {
         }) {
             keychainAccessGuide
         }
+        .onChange(of: model.requestedSettingsCategory) { _, _ in
+            consumeRequestedCategory()
+        }
         .onAppear {
+            consumeRequestedCategory()
             presentKeychainAccessGuideIfNeeded()
             if let initialError = model.settingsErrorMessage {
                 activeToastMessage = initialError
             }
         }
+    }
+
+    /// C157: 消费仪表盘空态卡发起的分类深链; 只取一次, 读完清空.
+    private func consumeRequestedCategory() {
+        guard let requested = model.requestedSettingsCategory else { return }
+        category = requested
+        model.requestedSettingsCategory = nil
     }
 
     // MARK: - 侧边栏

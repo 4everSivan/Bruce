@@ -369,6 +369,27 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .empty-title { font-size: 13px; font-weight: 600; color: var(--secondary); }
 .empty-btn { margin-top: 4px; }
 
+/* 订阅卡空状态 (C157, mac SubscriptionEmptyCard): 虚线空位框 + 图标 + 标题/说明/按钮 */
+.sub-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 7px; padding: 10px 0 3px; text-align: center;
+}
+.sub-empty-frame {
+  width: 36px; height: 36px; display: grid; place-items: center;
+  border: 1px dashed rgba(255,255,255,.22); border-radius: 9px;
+  color: var(--secondary);
+}
+.sub-empty-frame svg { width: 16px; height: 16px; display: block; }
+.theme-nothing .sub-empty-frame { border-radius: 2px; border-color: #333333; }
+.sub-empty-title { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.theme-nothing .sub-empty-title { font-family: "Space Grotesk", sans-serif; font-size: 11.5px; }
+.sub-empty-desc {
+  max-width: 258px; font-size: 10.5px; line-height: 1.45; color: var(--secondary);
+}
+.theme-nothing .sub-empty-desc { font-family: "Space Grotesk", sans-serif; font-size: 10px; }
+.sub-empty-btn { margin-top: 2px; font-size: 11px; }
+.sub-empty-mini { font-size: 10.5px; color: var(--secondary); }
+
 /* 可收起卡片标题行 (mac CollapsibleCardHeader):
    [拖拽手柄 (仅收起态)] [定宽 92 标题] [状态件 (Spacer 推到行尾) | 收起态迷你摘要] [chevron]
    chevron 常态隐藏, 悬停标题行淡入, 展开时旋转 90°。 */

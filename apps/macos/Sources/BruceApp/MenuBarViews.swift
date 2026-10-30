@@ -97,6 +97,8 @@ struct MenuBarDashboardView: View {
     @Environment(\.motionSuppressed) private var motionSuppressed
 
     let openSettings: @MainActor () -> Void
+    /// C157: 空态卡「添加订阅」直达设置「订阅额度」页.
+    let openSubscriptionSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
 
     /// Nothing 主题判定: 仅影响 token (字体/颜色/圆角/间距), 不改布局结构.
@@ -507,6 +509,7 @@ struct MenuBarDashboardView: View {
     private func tabbedCardView(_ panel: PanelViewModel) -> some View {
         let hasCards = panel.usage != nil
             || panel.subscription != nil
+            || panel.subscriptionEmpty != nil
             || panel.hourly != nil
         ZStack(alignment: .top) {
             if hasCards {
@@ -566,8 +569,11 @@ struct MenuBarDashboardView: View {
                         panelVisible: model.dashboardPanelVisible
                     )
                 }
+            } else if let empty = panel.subscriptionEmpty {
+                subscriptionEmptyCard(empty, isCollapsed: false, onToggle: {})
             } else {
-                fallbackTabCard(panel)
+                // C157: 订阅页签不再回退到其他卡; 仅 artifact 缺失时到达, 走全局兜底.
+                emptyPanelState
             }
         case .hourly:
             if let hourly = panel.hourly {
@@ -645,6 +651,7 @@ struct MenuBarDashboardView: View {
     private func cardStack(_ panel: PanelViewModel) -> some View {
         let hasCards = panel.usage != nil
             || panel.subscription != nil
+            || panel.subscriptionEmpty != nil
             || panel.hourly != nil
         VStack(spacing: isNothingTheme ? 8 : 10) {
             ForEach(model.cardOrder) { cardID in
@@ -696,6 +703,12 @@ struct MenuBarDashboardView: View {
                         panelVisible: model.dashboardPanelVisible
                     )
                 }
+            } else if let empty = panel.subscriptionEmpty {
+                subscriptionEmptyCard(
+                    empty,
+                    isCollapsed: model.isCardCollapsed(.subscription),
+                    onToggle: { model.toggleCardCollapsed(.subscription) }
+                )
             }
         case .hourly:
             if let hourly = panel.hourly {
@@ -729,6 +742,30 @@ struct MenuBarDashboardView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
+        }
+    }
+
+    /// C157: 订阅卡空状态; 「添加订阅」直达设置「订阅额度」, 「刷新额度」触发全量采集.
+    @ViewBuilder
+    private func subscriptionEmptyCard(
+        _ empty: SubscriptionEmptyStateViewModel,
+        isCollapsed: Bool,
+        onToggle: @escaping () -> Void
+    ) -> some View {
+        PanelCardContainer {
+            SubscriptionEmptyCard(
+                viewModel: empty,
+                isCollapsed: isCollapsed,
+                onToggleCollapse: onToggle,
+                onAction: {
+                    switch empty.reason {
+                    case .notConfigured:
+                        openSubscriptionSettings()
+                    case .noData:
+                        coordinator.refresh(.agentUsage)
+                    }
+                }
+            )
         }
     }
 

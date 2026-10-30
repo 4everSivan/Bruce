@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { analytics, boot, defaults, fixture, settle } from "./dom.mjs";
+import { analytics, boot, defaults, fixture, memoryStorage, settle } from "./dom.mjs";
 
 test("valid collector view model renders cards and keyboard-accessible collapse", async () => {
   const app = await boot();
@@ -2290,4 +2290,124 @@ test("general pane rows keep the appearance → layout → refresh → notificat
     positions,
     `通用页行序应保持 ${order.join(" → ")}`,
   );
+});
+
+// ---------- C157: 订阅卡空状态与 Tab 回退 ----------
+
+const emptySubscriptionPanel = () => ({ ...structuredClone(fixture), subscription: null });
+
+test("stack mode renders the not-configured subscription empty card (C157)", async () => {
+  const app = await boot({
+    panel: emptySubscriptionPanel(),
+    settings: { ...defaults, subscriptionProviders: {} },
+  });
+  const card = app.node("stack").querySelector(".sub-empty-card");
+  assert.ok(card, "栈模式必须渲染订阅空态卡");
+  assert.ok(card.textContent.includes("订阅用量"));
+  assert.ok(card.textContent.includes("尚未添加订阅"));
+  assert.ok(card.textContent.includes("未配置"));
+  const start = app.calls.length;
+  await card.querySelector(".sub-empty-btn").click();
+  assert.deepEqual(
+    app.calls.slice(start).map((call) => call.command),
+    ["open_settings"],
+    "添加订阅必须打开设置",
+  );
+});
+
+test("eligible provider without sections renders the no-data empty card (C157)", async () => {
+  const app = await boot({
+    panel: emptySubscriptionPanel(),
+    settings: {
+      ...defaults,
+      subscriptionProviders: {
+        kimi: { enabled: true, verificationStatus: "ok", lastVerifiedAt: null },
+      },
+    },
+  });
+  const card = app.node("stack").querySelector(".sub-empty-card");
+  assert.ok(card, "有 eligible provider 时仍渲染空态卡");
+  assert.ok(card.textContent.includes("暂未获取到额度"));
+  assert.ok(card.textContent.includes("无数据"));
+  const start = app.calls.length;
+  await card.querySelector(".sub-empty-btn").click();
+  assert.deepEqual(
+    app.calls.slice(start).map((call) => call.command),
+    ["refresh_now"],
+    "无数据空态必须触发刷新",
+  );
+});
+
+test("tabbed subscription tab shows the empty card instead of falling back to usage (C157)", async () => {
+  const app = await boot({
+    panel: emptySubscriptionPanel(),
+    settings: {
+      ...defaults,
+      subscriptionProviders: {},
+      layoutMode: "tabbed",
+      activeCardId: "subscription",
+    },
+  });
+  const stack = app.node("stack");
+  const card = stack.querySelector(".sub-empty-card");
+  assert.ok(card, "订阅页签必须显示空态卡");
+  assert.equal(card.dataset.card, "subscription");
+  assert.ok(!stack.textContent.includes("Token 用量"), "不得回退显示 Token 用量卡");
+});
+
+test("only enabled, verified, non-jev providers count as eligible for the no-data state (C157)", async () => {
+  const cases = [
+    [{ jev: { enabled: true, verificationStatus: "ok" } }, "尚未添加订阅", "临时屏蔽的 jev 不算 eligible"],
+    [{ kimi: { enabled: true, verificationStatus: "none" } }, "尚未添加订阅", "仅添加未验证归入未配置"],
+    [{ kimi: { enabled: true, verificationStatus: "failed" } }, "尚未添加订阅", "验证失败归入未配置"],
+    [{ kimi: { enabled: false, verificationStatus: "ok" } }, "尚未添加订阅", "已停用归入未配置"],
+    [{ jev: { enabled: true, verificationStatus: "ok" }, zhipu: { enabled: true, verificationStatus: "ok" } }, "暂未获取到额度", "jev 之外仍有 eligible 即为无数据"],
+  ];
+  for (const [subscriptionProviders, expected, message] of cases) {
+    const app = await boot({ panel: emptySubscriptionPanel(), settings: { ...defaults, subscriptionProviders } });
+    const card = app.node("stack").querySelector(".sub-empty-card");
+    assert.ok(card, message);
+    assert.ok(card.textContent.includes(expected), message);
+  }
+});
+
+test("add-subscription CTA deep-links the settings window to the subscription pane (C157)", async () => {
+  const storage = memoryStorage();
+  const dashboard = await boot({ panel: emptySubscriptionPanel(), settings: { ...defaults, subscriptionProviders: {} }, storage });
+  await dashboard.node("stack").querySelector(".sub-empty-btn").click();
+  await settle();
+  assert.equal(storage.getItem("bruce_settings_pane"), "subscription", "面板先落 pending pane 再打开设置");
+
+  // 设置窗口首次加载即消费 pending pane, 读完清空。
+  const settings = await boot({ html: "settings.html", storage });
+  await settle();
+  const active = () => settings.document.querySelector(".navitem.active")?.dataset.category;
+  assert.equal(active(), "subscription", "首次打开应直达订阅额度");
+  assert.equal(settings.node("pane-subscription").classList.contains("hidden"), false);
+  assert.equal(storage.getItem("bruce_settings_pane"), null, "深链只消费一次");
+
+  // 常驻隐藏的设置窗口: 再次聚焦时消费新请求; 无请求的聚焦不改分类。
+  await settings.document.querySelector('[data-category="general"]').click();
+  await settings.window.dispatch("focus");
+  assert.equal(active(), "general", "无 pending pane 的聚焦不得切分类");
+  storage.setItem("bruce_settings_pane", "subscription");
+  await settings.window.dispatch("focus");
+  assert.equal(active(), "subscription", "聚焦时消费新的深链请求");
+  storage.setItem("bruce_settings_pane", "not-a-pane");
+  await settings.window.dispatch("focus");
+  assert.equal(active(), "subscription", "未知分类直接忽略");
+  assert.equal(storage.getItem("bruce_settings_pane"), null);
+});
+
+test("a failed open_settings withdraws the pending pane so the next normal open is not hijacked (C157)", async () => {
+  const storage = memoryStorage();
+  const app = await boot({
+    panel: emptySubscriptionPanel(),
+    settings: { ...defaults, subscriptionProviders: {} },
+    reject: { open_settings: "window unavailable" },
+    storage,
+  });
+  await app.node("stack").querySelector(".sub-empty-btn").click();
+  await settle();
+  assert.equal(storage.getItem("bruce_settings_pane"), null);
 });
