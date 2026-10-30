@@ -1,0 +1,120 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C158",
+  "title": "额度条与余额数字的更新动效（mac spring/numericText + Windows 渲染后补间）",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "feat/C158-dashboard-update-motion",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "仪表盘订阅卡的额度条、百分比与余额数字",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+
+  "why": "额度条只在 onAppear 做一次 0 → 值 0.45s 填充，之后 artifact 刷新带来的 usedPercent 变化没有任何动画事务，量条宽度、百分比文本与档位渐变在同一帧跳变；Nothing 的 filledCount 是整数，直接跳段。余额 Card/Chip 只渲染 amountText 字符串，同样单帧替换。Windows 每次更新全量重建 DOM，CSS transition 没有旧值可用，问题更彻底。用户感知为「数据是生硬地换上去的」，无法判断刚更新过。",
+
+  "precheck": {
+    "description": "确认当前只有首次装载动画，更新路径无动画；Windows 更新走全量重建",
+    "command": "rg -n \"withAnimation\\(motionSuppressed|onAppear|stack.replaceChildren|\\.contentTransition\" apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift apps/win/src/app.js",
+    "expected": "SubscriptionCard 只在 MeterBar.onAppear 播放 0.45s 填充，usedFraction 更新无 animation；未使用 contentTransition；Windows render 每次 stack.replaceChildren 全量重建",
+    "is_completed": false,
+    "evidence": "2026-10-29 在基线 391d76a 干净检出上执行：SubscriptionCard.swift:682-684 仅 MeterBar.onAppear 内 `withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.45))` 首次装载动画，usedFraction 更新无动画事务；全文件无 `.contentTransition` 匹配；Windows app.js:1285 `stack.replaceChildren()` 每次全量重建。缺陷成立、未被前序提交修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git switch -c feat/C158-dashboard-update-motion"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card C158 --receipt"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "mac 额度条与百分比",
+      "before": "只有首次装载 0→值 0.45s；更新时宽度、百分比、档位渐变同帧跳变；Nothing 段数一次性跳。",
+      "after": "MeterBar / MiniMeterBar 增量增长，`.spring(duration: 0.85, bounce: 0)` 零过冲；三层渐变 0.34s 交叉淡入；增长时 2px 右缘高光 + 一次 46px 扫光；百分比 `.contentTransition(.numericText(value:))` 与量条同一事务；Nothing 24 段由可动画 Shape 的插值分数逐帧点亮，动画期前沿段提亮。时长 / 曲线 / 门控统一由 BruceAppCore.MeterMotionPolicy 给出。",
+      "impact": "mac 订阅卡、多账号子卡、收起态迷你条"
+    },
+    {
+      "scope": "mac 余额数字",
+      "before": "可用余额双槽与 Credits 胶囊只替换字符串，单帧跳变。",
+      "after": "BalanceRow / BalanceChip 增 amount 数值；`.contentTransition(.numericText(value: amount))` + 0.6s 临界阻尼弹簧逐位上下滚动；`--` 占位以 `.id` 切换身份不参与滚动，首现不滚；位数/千分位骨架变化原生处理。",
+      "impact": "SubscriptionMapping、PanelModels、余额双槽、Credits 胶囊"
+    },
+    {
+      "scope": "Windows 渲染后补间",
+      "before": "dashboard-updated 全量重建 DOM，CSS transition 无从触发，更新无动画。",
+      "after": "保留 previousPanel，渲染后按 BruceMotion.keys 生成的稳定 key 用 WAAPI 从旧值补到新值；量条 `linear()` 弹簧；Nothing 分段由 segmentPlan 0.14s 错峰且 fill: backwards；余额 0.6s、百分比 0.85s 数字列逐位滚动，静止态行盒与改动前逐像素一致；首渲/隐藏/Tab 切换不播；Node 测试桩特性检测自动 inert。",
+      "impact": "apps/win 看板渲染层、前端测试与真实内核渲染自检"
+    },
+    {
+      "scope": "显隐与无障碍门控",
+      "before": "仅 onAppear 有动画；隐藏面板或减弱动态时无统一约束。",
+      "after": "所有更新动画（含档位交叉淡入、阈值色、高光与扫光）受 panelVisible / motionSuppressed / document.hidden 门控，隐藏或减弱时直接落值；VoiceOver 只读终值，不逐帧读中间数字。",
+      "impact": "面板隐藏性能（C044/C145）与可访问性"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "量条只有首次装载 0→值动画；更新、百分比与余额数字均单帧替换，无共享动效契约。",
+      "after": "新增规则 13：更新动效只在叶子视图、增量增长、零过冲 0.85s 弹簧；Nothing 分段必须 Animatable 逐帧驱动；余额用 numericText 0.6s 逐位滚动；所有动画受显隐与减弱动态门控。Windows 由 design/05 规则 34 用渲染后 WAAPI 补间复现同一语义。"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261029-09",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "MeterMotionPolicy 表驱动覆盖时长/曲线/门控；BalanceRow.amount 与 amountText 一致性断言通过；verify-local 与 Windows 前端检查退出码为 0",
+        "false_if": "任一测试失败或门禁失败",
+        "evidence": "2026-10-29 `zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」；PanelViewModel tests passed: 63、Rust 49 组 test result: ok / 0 FAILED、无 Swift 源码告警）。C158 覆盖：meterMotionPolicyContracts（7 种动效曲线逐一断言、弹簧 bounce 恒为 0、隐藏 / 减弱 / 两者同时一律 nil、百分比与量条同曲线、高光保持 ≥ 0.85s、shouldPlayUpdate 不空转与门控）；balanceRowAmountMatchesTextContracts（货币与 Credits 两路 amount 取自 artifact、amountText 由 amount 格式化）。`node scripts/check-win-frontend.mjs` → Exit 0，frontend.test.mjs 102/102 通过，其中 C158 3 项：金额 token 化与骨架判定、segmentPlan（仅列变化段、6ms 错峰、0.14s、fill: backwards）、渲染器打标 key 全部被补间层识别且保留 key 不撞 label。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "经典/液态玻璃/Nothing 三种主题下，刷新时量条增量增长、档位交叉淡入、百分比与余额数字同拍滚动；窗口重置可读作放空；面板隐藏或减弱动态时直接落值",
+        "false_if": "更新仍为单帧跳变、动画过冲、数字抖动或隐藏态仍在跑动画",
+        "evidence": "部分完成。Windows 真实 Chromium（render-harness，motionPreference=always）：更新后 fluent 22 个补间（量条 850ms、百分比数字 850ms、余额 / 胶囊数字 600ms），nothing 另有 15 个分段补间（140ms、fill: backwards），delay 期内分段均显示起点色（把 fill 改回 none 时该探针失败，已确认探针有效）；1.2s 后补间全部结束且结果与静态渲染一致；motionPreference=never 与系统减弱动态下补间数为 0。截图 local/verify/c157-c158/motion-mid-*.png。未完成：mac 经典 / 液态玻璃 / Nothing 三主题真机刷新观感（增量增长、交叉淡入、数字同拍、前沿段提亮）与面板隐藏时直接落值的核验；Windows 真机（WebView2）。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "卡片高度动画、折叠/展开、Tab 切换不受影响；Windows 最终几何与 golden 对拍不变；首现/展开不重播更新动画",
+        "false_if": "与 C148 高度动画互相干扰，或 geometry-parity 出现偏差",
+        "evidence": "部分完成。Windows 真实内核：同一面板在 fluent / nothing 下与基线 391d76a 的卡片、窗口行、百分比、余额槽与胶囊几何逐像素一致，滚动中途几何同样不变（首版实现曾使每个窗口行变高 2px、订阅卡变高约 10px，已修正并回归核对）；geometry-parity 与 frontend 测试全绿。未完成：mac 真机上与 C148 卡片高度动画、折叠 / 展开、Tab 切换的交互核验。",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

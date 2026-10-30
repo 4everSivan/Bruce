@@ -616,10 +616,13 @@ package struct SubscriptionWindowRow: Equatable, Sendable {
 package struct BalanceRow: Equatable, Sendable {
     package let label: String
     package let amountText: String
+    /// C158: 原始数值, 仅供数字滚动动画判定方向; 展示与无障碍仍以 amountText 为准.
+    package let amount: Double
 
     package init(amount: Double, currency: String?) {
         self.label = "账户余额"
         self.amountText = PanelFormat.balanceText(amount, currency: currency)
+        self.amount = amount
     }
 
     /// Credits 剩余余额 (Codex; currency=="credits" 判别): 非货币, 千分位 + 两位小数,
@@ -627,6 +630,7 @@ package struct BalanceRow: Equatable, Sendable {
     package init(creditsBalance amount: Double) {
         self.label = "Credits"
         self.amountText = PanelFormat.creditsText(amount)
+        self.amount = amount
     }
 }
 

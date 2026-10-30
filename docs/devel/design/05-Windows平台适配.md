@@ -266,6 +266,7 @@ Windows Tauri 后端 (Rust)
 | C135 | 结构重构 | TD-011：`settings.js` 拆分为共享状态 + 分节脚本 + 壳层引导 | 新增规则 32：共享状态只存在于 `window.BruceSettingsCore`，脚本按固定顺序加载，单文件控制在约 1,500 行内 |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | C157 | 界面对齐 | 订阅卡空状态与 Tab 回退（Windows 同构） | 新增规则 33：两态空态卡接入、订阅页签不再回退到 Token 用量卡、CTA 直达订阅额度分类 |
+| C158 | 界面对齐 | 额度条与余额数字更新动效（Windows 渲染后补间） | 新增规则 34：渲染后 WAAPI 补间、`linear()` 弹簧、分段错峰、余额数字列与基线稳定 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -394,6 +395,15 @@ Windows Tauri 后端 (Rust)
     - Tab 模式当前在 active card 为 nil 时回退到别的卡；空态卡接入后订阅页签必须显示空态，不得显示 Token 用量卡。
     - CTA 必须打开设置并落到「订阅额度」分类，不得只落在通用页。实现不改 `open_settings` 签名：面板先把 `bruce_settings_pane` 写入同源 `localStorage` 再调用 `open_settings`；设置窗口在首次加载、`focus`、`visibilitychange`（转可见）时读取并立即删除该键，经 `switchCategory`（自带分类白名单）切换；`open_settings` 失败时面板撤回该键，避免下次正常打开设置被旧请求劫持。
     - A 判定排除临时屏蔽 provider（`jev`）；C 判定要求存在「已启用 ∧ 验证通过」的 provider 且已拿到 artifact。provider 配置 / 验证状态变化必须触发重渲并重新判定。
+34. **仪表盘更新动效必须用渲染后补间，不得冒充 CSS transition**（C158，design/03 规则 13 同契）：
+    - **根因差异**：mac SwiftUI 视图身份保留，`.animation(value:)` 能直接消费旧/新值；Windows 每次 `dashboard-updated` 都 `stack.replaceChildren()` 全量重建，新节点出生即终值，CSS `transition` 没有旧值可过渡。**禁止**用「给节点加 transition 类」假装实现更新动画。
+    - **渲染后补间**：`render(panel)` 前保留 `previousPanel`，渲染完成后调用 `animatePanelMotion(previousPanel, panel, { animate })`，按稳定 key 对比新旧值。key 只由 `motion.js` 的 `BruceMotion.keys` 生成，`app.js` 渲染时调用同一组函数打标，不得自行拼字符串：`meter(section, account, label)` → `section|account|label`（单账号 account 为空）、`collapsed(section)` → `section|#collapsed`、`mini(section)` → `section|#mini`（`|#` 前缀保证不与任何窗口 label 撞键）、`percent(rowKey)` → `rowKey||pct`、`balance(section)` → `section||bal`、`chip(section)` → `section||chip`。
+    - **量条**：`fill.animate([{ width: oldPct + "%" }, { width: newPct + "%" }], { duration: 850, easing: SPRING, fill: "none" })`；**不得把内联 width 写回旧值**，渲染值始终是新宽度，动画结束自然落回，`geometry-parity.test.mjs` 不受影响。`SPRING` 用临界阻尼采样串（WebView2 113+ 的 `linear()`），不支持时回退 `cubic-bezier(.4,0,.2,1)`；用 `CSS.supports` 检测，不按 UA 猜版本。
+    - **Nothing 分段**：由纯函数 `segmentPlan(from, to)` 列出颜色有变化的段，逐段 `animate` 背景色（0.14s，自新旧交界处向外 6ms 错峰）；错峰段必须 `fill: "backwards"`，否则 delay 期间先显示 DOM 终值、再跳回旧色、再补间。不做放大；不得整条一起硬切。
+    - **余额数字**：`.slot-value` / `.bal-chip b` 渲染为「静态字符 + 每位数字列」。静止态列内只有数字本身，行盒与改动前逐像素一致；滚动期列内放一个隐藏的在流占位（新数字）撑住宽度与文字基线，进出两位绝对定位并由 `overflow: clip` 裁切。**不得**用 `overflow: hidden`（会把 inline-block 基线改为底边）或固定列高（会撑高行盒）——C158 首版即因此让每个窗口行变高 2px、订阅卡变高约 10px。更新时按旧/新 `amountText` 逐位对比，0.6s 临界阻尼弹簧上下滑动；位数 / 千分位骨架变化退化为整体换行。`--` 占位不滚动、首渲不滚动。
+    - **百分比数字**：复用同一数字列滚动，key 为 `keys.percent(<行 key>)`，与量条同一 0.85s 弹簧事务；骨架变化同样退化为整体换行。
+    - **门控**：`motionSuppressed()`、`document.hidden`、`html[data-motion="off"]` 为逻辑与；首渲、隐藏后补渲、Tab 切换（`render(currentPanel)` 值未变）不播动画。Tauri `hide_dashboard` 若不触发 `document.hidden`，必须在 show / hide 事件维护 visible 标志，禁止窗口不可见时跑动画帧。
+    - **测试**：`typeof Element.prototype.animate === "function"` 特性检测，Node DOM 桩内自动 inert；key 映射（渲染器打标的 key 必须全部被补间层识别）、金额 token 化、方向与 `segmentPlan` 纯函数进 `apps/win/tests/frontend.test.mjs`；动画与几何用 `apps/win/tests/render-harness/` 在真实内核核对（非 CI 门禁）：同一面板与改动前逐像素对拍、滚动中途几何不变、错峰段 delay 期显示起点色。余额方向优先由 viewmodel `amount` 提供；在补上该字段前，前端允许从 `amountText` 解析数值，但不得把解析结果回写契约。
 
 ### 6.1 Rust 端改动清单（收敛后）
 
@@ -498,6 +508,7 @@ Windows Tauri 后端 (Rust)
 | P4 | 打包发布线 | T04 | 安装/升级冒烟 + SHA256 |
 | P5 | 托盘动态配额环与 420px 亚克力微缩预览卡 (方案 1) | T12 | 托盘动态绘图 + 420px 预览卡 UI + 悬停唤醒/失焦隐藏与对拍 |
 | P6 | 订阅卡空态与 Tab 回退（Windows 同构） | C157 | A/C 两态空态卡 + 订阅页签不回退 + CTA 深链订阅额度；Node 测试与真实内核渲染核对 |
+| P7 | 额度条与余额数字更新动效（渲染后补间） | C158 | 量条 / Nothing 分段 / 余额数字与 mac 同语义；隐藏与减弱动态落值；geometry parity 不变 |
 
 ### 7.2 风险与预案
 
@@ -508,6 +519,8 @@ Windows Tauri 后端 (Rust)
 | 对拍长期维护成本 | fixture 即 mac Harness 既有资产，对拍失败即 CI 红，漂移无处藏身 |
 | Claude CLI Windows 凭证形态未知 | R5 按实测结论落地，文件探测优先、静默回退，绝无交互弹窗 |
 | ureq/rustls 在企业代理环境行为 | 出站探测失败静默降级为本地扫描口径（与 mac 一致） |
+| WebView2 版本低于 113，不支持 `linear()` 弹簧 | `CSS.supports("animation-timing-function","linear(0,1)")` 检测后回退 `cubic-bezier(.4,0,.2,1)`，语义不变，仅曲线近似 |
+| Tauri `hide_dashboard` 不触发 `document.hidden`，隐藏窗口仍在跑补间 | show / hide 事件维护 visible 标志，隐藏时跳过补间并直接落值 |
 
 ### 7.3 后续演进
 

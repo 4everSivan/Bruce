@@ -709,6 +709,17 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .slot-value.status { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; opacity: .8; }
 .slot-dot { width: 5px; height: 5px; border-radius: 50%; background: #4A9E5C; flex: none; }
 
+/* C158: 数字列滚动 (mac .numericText 的 Web 等价实现). 静止态列内只有数字本身,
+   行盒与改动前逐像素一致; 滚动期由隐藏占位 (.motion-hold) 撑住宽度与基线,
+   进出两位绝对定位并由 overflow: clip 裁切. 不得用 overflow: hidden 或固定高度:
+   前者把 inline-block 基线改为底边, 后者撑高行盒, 都会让整行变高 2px 以上. */
+.motion-number { display: inline-block; white-space: nowrap; }
+.motion-lit { white-space: pre; }
+.motion-digit { position: relative; display: inline-block; overflow: clip; }
+.motion-digit > .motion-hold { visibility: hidden; }
+.motion-digit > .motion-out,
+.motion-digit > .motion-in { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
+
 /* 收起态迷你摘要 (mac collapsedMini): 每家 [徽章 + 5pt 迷你量条], 组间距 10 */
 .collapsed-summary .sub-mini { gap: 10px; }
 .sub-mini-group { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }

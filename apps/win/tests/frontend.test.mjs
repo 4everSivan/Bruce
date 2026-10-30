@@ -2411,3 +2411,86 @@ test("a failed open_settings withdraws the pending pane so the next normal open 
   await settle();
   assert.equal(storage.getItem("bruce_settings_pane"), null);
 });
+
+// ---------- C158: 渲染后补间的纯逻辑 ----------
+
+test("motion helpers tokenize amounts, detect skeleton changes, and expose stable keys (C158)", async () => {
+  const app = await boot();
+  const motion = app.window.BruceMotion;
+  assert.ok(motion, "motion.js 必须在 app.js 之前加载");
+  const { tokenize, sameSkeleton, numericAmount, meterValues, balanceValues, percentValues } = motion.internals;
+
+  const tokens = tokenize("¥ 1,234.56");
+  assert.equal(tokens.filter((token) => token.digit).length, 6, "只把数字放进可滚动列");
+  assert.equal(tokens[0].value, "¥", "货币符号保持静态");
+
+  assert.equal(
+    sameSkeleton(tokenize("128.45"), tokenize("126.08")),
+    true,
+    "同位数同分隔符应逐位滚动",
+  );
+  assert.equal(
+    sameSkeleton(tokenize("999.99"), tokenize("1,000.12")),
+    false,
+    "位数/千分位变化应退化为整体换行",
+  );
+  assert.equal(numericAmount("¥ 1,234.56"), 1234.56, "方向解析忽略符号与千分位");
+
+  const meters = meterValues(fixture);
+  assert.ok(meters.size > 0, "旧面板必须能取出量条值");
+  const balances = balanceValues(fixture);
+  assert.ok([...balances.keys()].every((key) => key.endsWith("||bal") || key.endsWith("||chip")));
+  const percents = percentValues(fixture);
+  assert.ok(percents.size > 0, "旧面板必须能取出百分比文本");
+  assert.ok([...percents.keys()].every((key) => key.endsWith("||pct")));
+
+  assert.ok(
+    app.node("stack").querySelector(".win-row[data-motion-key]"),
+    "窗口行必须带稳定 motion key",
+  );
+  assert.ok(
+    app.node("stack").querySelector("[data-percent-key]"),
+    "百分比文本必须带稳定 percent key",
+  );
+});
+
+test("segment plan holds the start color during the stagger delay and only lists changed segments (C158)", async () => {
+  const app = await boot();
+  const { segmentPlan } = app.window.BruceMotion.internals;
+
+  const grow = segmentPlan(10, 40); // 2 → 10 段, 同为 normal
+  assert.deepEqual(Array.from(grow, step => step.index), [2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.ok(grow.every(step => step.from === "empty" && step.to === "normal"));
+  assert.deepEqual(Array.from(grow, step => step.delay), [0, 6, 12, 18, 24, 30, 36, 42], "自交界处向外 6ms 错峰");
+  assert.ok(grow.every(step => step.fill === "backwards"), "delay 期间必须保持起点色, 不得先闪终值");
+  assert.ok(grow.every(step => step.duration === 140), "单段 0.14s (design/05 规则 34)");
+
+  const levelUp = segmentPlan(40, 60); // 10 → 14 段, normal → warning
+  assert.equal(levelUp.length, 14, "已亮段换档位色 + 新亮段");
+  assert.ok(levelUp.filter(step => step.index < 10).every(step => step.from === "normal" && step.to === "warning"));
+  assert.ok(levelUp.filter(step => step.index >= 10).every(step => step.from === "empty" && step.to === "warning"));
+  assert.ok(levelUp.every(step => step.fill === "backwards"));
+
+  const shrink = segmentPlan(60, 40);
+  assert.ok(shrink.filter(step => step.index >= 10).every(step => step.to === "empty"));
+  assert.equal(segmentPlan(41, 41).length, 0, "同值不空转");
+});
+
+test("renderer stamps exactly the motion keys the tween layer computes (C158)", async () => {
+  const app = await boot();
+  const { keys, internals } = app.window.BruceMotion;
+  const stack = app.node("stack");
+  const meters = internals.meterValues(fixture);
+  const percents = internals.percentValues(fixture);
+  const balances = internals.balanceValues(fixture);
+  const stamped = attribute => [...stack.querySelectorAll(`[${attribute}]`)].map(node => node.getAttribute(attribute));
+
+  assert.ok(stamped("data-motion-key").length > 0);
+  for (const key of stamped("data-motion-key")) assert.ok(meters.has(key), `渲染器 key 补间层未知: ${key}`);
+  for (const key of stamped("data-percent-key")) assert.ok(percents.has(key), `百分比 key 补间层未知: ${key}`);
+  for (const key of stamped("data-balance-key")) assert.ok(balances.has(key), `余额 key 补间层未知: ${key}`);
+
+  // 收起行 / 迷你条的保留 key 不会与任何窗口 label 撞键。
+  assert.notEqual(keys.mini("kimi"), keys.meter("kimi", "", "mini"));
+  assert.notEqual(keys.collapsed("kimi"), keys.meter("kimi", "", "collapsed"));
+});

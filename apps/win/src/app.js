@@ -570,8 +570,15 @@ function nothingMeter(level, usedPercent) {
   }
   return meter;
 }
-function windowRow(row) {
+// C158: 补间 key 由 motion.js 单点生成 (BruceMotion.keys), 渲染器与补间层共用;
+// motion.js 缺席时不打 key, 补间自然不触发。
+function motionKey(kind, ...args) {
+  const keys = window.BruceMotion && window.BruceMotion.keys;
+  return keys && typeof keys[kind] === "function" ? keys[kind](...args) : null;
+}
+function windowRow(row, key) {
   const line = el("div", "win-row");
+  if (key) line.setAttribute("data-motion-key", key);
   line.append(el("span", "wl", row.label));
   const level = meterLevel(row.usedPercent);
   const meter = isNothingTheme()
@@ -582,9 +589,30 @@ function windowRow(row) {
     meter.append(fill);
   }
   line.append(meter);
-  line.append(el("span", `wp ${level}`, row.percentText));
+  const percent = el("span", `wp ${level}`);
+  const percentNumber = animatedNumberNode(row.percentText);
+  if (key) percentNumber.setAttribute("data-percent-key", motionKey("percent", key));
+  percent.append(percentNumber);
+  line.append(percent);
   line.append(el("span", "wr", row.resetText));
   return line;
+}
+
+// 余额数字节点 (C158): 静态字符 + 每位数字列; 列宽 1ch, 零宽隐藏数字撑住基线,
+// 避免滚动时 flex 基线从文字基线退化为列底边导致整行跳动.
+function animatedNumberNode(text, tag = "span") {
+  const node = el(tag, "motion-number");
+  node.setAttribute("data-text", text);
+  for (const character of String(text)) {
+    if (character >= "0" && character <= "9") {
+      const digit = el("span", "motion-digit", character);
+      digit.setAttribute("data-d", character);
+      node.append(digit);
+    } else {
+      node.append(el("span", "motion-lit", character));
+    }
+  }
+  return node;
 }
 // 订阅段 Provider 定向刷新 (mac ProviderRefreshButton + SubscriptionRefreshControlPolicy)。
 // 目标 provider 取自运行时层附在 section 上的 `provider` (Rust runtime_core 单点归一,
@@ -714,7 +742,12 @@ function balanceSlots(section) {
   const wrap = el("div", "bal-slots");
   const amount = el("div", "slot");
   amount.append(el("div", "slot-title", "可用余额"));
-  amount.append(el("div", "slot-value", section.balance?.amountText || "--"));
+  const value = el("div", "slot-value");
+  const number = animatedNumberNode(section.balance?.amountText || "--");
+  const balanceKey = motionKey("balance", section.id);
+  if (balanceKey) number.setAttribute("data-balance-key", balanceKey);
+  value.append(number);
+  amount.append(value);
   const status = el("div", "slot");
   status.append(el("div", "slot-title", "订阅状态"));
   const statusValue = el("div", "slot-value status");
@@ -724,13 +757,15 @@ function balanceSlots(section) {
   return wrap;
 }
 // 账号子卡 (mac ProviderAccountCard): 名称 + tag → 窗口行 → error note → 上次成功。
-function accountCard(account) {
+function accountCard(account, sectionID) {
   const block = el("div", "account-card");
   const head = el("div", "account-head");
   head.append(el("span", "account-name", account.name || account.id));
   if (account.tag) head.append(el("span", "tag-chip", account.tag));
   block.append(head);
-  for (const row of account.windows || []) block.append(windowRow(row));
+  for (const row of account.windows || []) {
+    block.append(windowRow(row, motionKey("meter", sectionID, account.id, row.label)));
+  }
   if (account.status === "error" && account.note) block.append(el("div", "note-line", account.note));
   if (account.lastSuccessText) {
     const line = el("div", "last-success", account.lastSuccessText);
@@ -751,6 +786,8 @@ function subscriptionCard(sub) {
       if (!peak) continue;
       const group = el("span", "sub-mini-group");
       const meterEl = el("span", `meter ${meterLevel(peak.usedPercent)}`);
+      const miniKey = motionKey("mini", section.id);
+      if (miniKey) meterEl.setAttribute("data-motion-key", miniKey);
       const fill = el("span");
       fill.style.width = `${Math.round(clampedPercent(peak.usedPercent))}%`;
       meterEl.append(fill);
@@ -794,7 +831,10 @@ function subscriptionCard(sub) {
         const chip = el("span", "bal-chip");
         const dot = el("span", "dot");
         dot.style.background = PROVIDER_COLORS[providerKey(section.provider || section.id)] || "#8e8e93";
-        chip.append(dot, el("b", null, section.balance.amountText));
+        const chipNumber = animatedNumberNode(section.balance.amountText, "b");
+        const chipKey = motionKey("chip", section.id);
+        if (chipKey) chipNumber.setAttribute("data-balance-key", chipKey);
+        chip.append(dot, chipNumber);
         chip.title = section.balance.label;
         h.append(chip);
       }
@@ -808,15 +848,17 @@ function subscriptionCard(sub) {
       if (multi) {
         if (expandedSections.has(section.id)) {
           const list = el("div", "account-list-inline");
-          for (const account of section.accounts) list.append(accountCard(account));
+          for (const account of section.accounts) list.append(accountCard(account, section.id));
           block.append(list);
         } else if (section.collapsedWindow) {
-          block.append(windowRow(section.collapsedWindow));
+          block.append(windowRow(section.collapsedWindow, motionKey("collapsed", section.id)));
         }
       } else if (balanceBased) {
         block.append(balanceSlots(section));
       } else {
-        for (const row of section.windows || []) block.append(windowRow(row));
+        for (const row of section.windows || []) {
+          block.append(windowRow(row, motionKey("meter", section.id, "", row.label)));
+        }
       }
 
       // error/empty 段保留 collector 说明, 不静默吞掉 (与 mac 门控一致)
@@ -1316,8 +1358,9 @@ function renderStatus(panel) {
   refresh.disabled = resolved.isRefreshing;
   refresh.classList.toggle("spinning", resolved.isRefreshing);
 }
-function render(panel) {
+function render(panel, options = {}) {
   if (!panel || typeof panel !== "object") throw new Error("看板数据不可用");
+  const previousPanel = currentPanel;
   currentPanel = panel;
   const activeCount = panel.hourly?.rows.filter(r => r.todayTotal > 0).length || 0;
   document.getElementById("hud-dot-wrap").classList.toggle("live", Boolean(panel.usage?.isLive));
@@ -1407,6 +1450,14 @@ function render(panel) {
     empty.append(inner);
     stack.append(empty);
   }
+
+  // C158: 全量重建后按旧/新 panel 补间; 渲染值本身已是终值, 动画不写回内联样式.
+  if (window.BruceMotion && typeof window.BruceMotion.animatePanelMotion === "function") {
+    window.BruceMotion.animatePanelMotion(previousPanel, panel, {
+      animate: options.animate !== false,
+      motionSuppressed: motionSuppressed(),
+    });
+  }
 }
 // 致命错误 (面板无法渲染 / IPC 失败): 顶部零输出 (C080/C100), 只把 HUD 状态灯标为红色「失败」,
 // 详情走控制台保留可诊断性。
@@ -1454,6 +1505,14 @@ function renderWhenVisible(panel) {
   render(panel);
 }
 
+function renderPendingPanel() {
+  if (pendingPanel === null) return;
+  const panel = pendingPanel;
+  pendingPanel = null;
+  // C158: 隐藏期间累积的变化在重新可见时直接落值, 不补播用户没看到的动画.
+  render(panel, { animate: false });
+}
+
 function triggerCurtainEnter() {
   const panelEl = document.getElementById("panel");
   if (!panelEl) return;
@@ -1489,11 +1548,7 @@ function requestHideDashboard() {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden !== true) {
     triggerCurtainEnter();
-    if (pendingPanel !== null) {
-      const panel = pendingPanel;
-      pendingPanel = null;
-      render(panel);
-    }
+    renderPendingPanel();
   }
 });
 window.addEventListener("focus", () => {

@@ -310,7 +310,9 @@ struct PanelViewModelHarness {
         try workbenchLegacyArtifactShowsDashesContracts()
         try billionTokenFormattingContracts()
         try subscriptionEmptyStatePolicyContracts()
-        print("PanelViewModel tests passed: 61")
+        try meterMotionPolicyContracts()
+        try balanceRowAmountMatchesTextContracts()
+        print("PanelViewModel tests passed: 63")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -2218,6 +2220,107 @@ struct PanelViewModelHarness {
             )
         }
         #endif
+    }
+
+    /// C158: 更新动效的时长 / 曲线 / 门控单一来源; 弹簧零过冲, 隐藏或减弱时一律不播.
+    private static func meterMotionPolicyContracts() throws {
+        let expected: [(MeterMotionKind, MeterMotionCurve)] = [
+            (.fill, .spring(duration: 0.85, bounce: 0)),
+            (.percent, .spring(duration: 0.85, bounce: 0)),
+            (.balance, .spring(duration: 0.6, bounce: 0)),
+            (.levelCrossfade, .easeOut(duration: 0.34)),
+            (.thresholdColor, .easeOut(duration: 0.25)),
+            (.highlight, .easeOut(duration: 0.2)),
+            (.sheen, .timingCurve(c0x: 0.33, c0y: 0, c1x: 0.2, c1y: 1, duration: 0.85)),
+        ]
+        try expect(expected.count == MeterMotionKind.allCases.count, "每种动效都必须有断言")
+        for (kind, curve) in expected {
+            let visible = MeterMotionPolicy.curve(for: kind, panelVisible: true, motionSuppressed: false)
+            try expect(visible == curve, "\(kind) 曲线错误: \(String(describing: visible))")
+            if case let .spring(_, bounce) = curve {
+                try expect(bounce == 0, "\(kind) 弹簧必须零过冲")
+            }
+            for (panelVisible, motionSuppressed) in [(false, false), (true, true), (false, true)] {
+                try expect(
+                    MeterMotionPolicy.curve(
+                        for: kind,
+                        panelVisible: panelVisible,
+                        motionSuppressed: motionSuppressed
+                    ) == nil,
+                    "\(kind) 在隐藏或减弱动态时必须直接落值"
+                )
+            }
+        }
+        // 百分比与量条同一事务; 高光保持覆盖整段量条动画.
+        try expect(
+            MeterMotionPolicy.curve(for: .percent, panelVisible: true, motionSuppressed: false)
+                == MeterMotionPolicy.curve(for: .fill, panelVisible: true, motionSuppressed: false),
+            "百分比必须与量条同曲线"
+        )
+        try expect(
+            MeterMotionPolicy.highlightHoldSeconds >= MeterMotionCurve.spring(duration: 0.85, bounce: 0).duration,
+            "高光必须覆盖整段量条动画"
+        )
+
+        let playCases: [(Double, Double, Bool, Bool, Bool, String)] = [
+            (0.40, 0.42, true, false, true, "可见增长应播放"),
+            (0.42, 0.40, true, false, true, "可见下降应播放"),
+            (0.40, 0.4004, true, false, false, "同值抖动不空转"),
+            (0.40, 0.42, false, false, false, "面板隐藏不播放"),
+            (0.40, 0.42, true, true, false, "减弱动态不播放"),
+            (0.40, .nan, true, false, false, "非有限值不播放"),
+        ]
+        for (old, new, panelVisible, motionSuppressed, shouldPlay, message) in playCases {
+            try expect(
+                MeterMotionPolicy.shouldPlayUpdate(
+                    from: old,
+                    to: new,
+                    panelVisible: panelVisible,
+                    motionSuppressed: motionSuppressed
+                ) == shouldPlay,
+                message
+            )
+        }
+    }
+
+    /// C158: BalanceRow.amount 与 amountText 同源; 滚动方向取 amount, 展示仍以 amountText 为准.
+    private static func balanceRowAmountMatchesTextContracts() throws {
+        let deepseek = makeService(
+            id: "deepseek",
+            name: "DeepSeek",
+            kind: "balance",
+            balance: 12_345.6,
+            currency: "CNY"
+        )
+        let codex = makeService(
+            id: "codex",
+            name: "Codex",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 10, windowMinutes: 300)],
+            balance: 1_520.5,
+            currency: "credits"
+        )
+        let sections = try subscriptionSections(services: [deepseek, codex])
+        let money = try unwrap(sections.first { $0.id == "deepseek" }?.balance)
+        try expect(money.amount == 12_345.6, "货币余额 amount 必须取自 artifact: \(money.amount)")
+        try expect(
+            money.amountText == PanelFormat.balanceText(money.amount, currency: "CNY"),
+            "货币余额文案必须由 amount 格式化: \(money.amountText)"
+        )
+        let credits = try unwrap(sections.first { $0.id == "codex" }?.balance)
+        try expect(credits.amount == 1_520.5, "Credits amount 必须取自 artifact: \(credits.amount)")
+        try expect(
+            credits.amountText == PanelFormat.creditsText(credits.amount),
+            "Credits 文案必须由 amount 格式化: \(credits.amountText)"
+        )
+        for amount in [0, -3.5, 999.99, 1_000.12] {
+            let row = BalanceRow(amount: amount, currency: "USD")
+            try expect(row.amount == amount, "amount 必须原样保留: \(amount)")
+            try expect(
+                row.amountText == PanelFormat.balanceText(amount, currency: "USD"),
+                "amountText 与 amount 不一致: \(row.amountText)"
+            )
+        }
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.

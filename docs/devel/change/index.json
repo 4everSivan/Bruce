@@ -41,7 +41,8 @@
         "C145",
         "C147",
         "C148",
-        "C157"
+        "C157",
+        "C158"
       ]
     },
     "PricingEngine": {
@@ -121,7 +122,8 @@
         "C149",
         "C150",
         "C151",
-        "C157"
+        "C157",
+        "C158"
       ]
     },
     "SubscriptionQuota": {
@@ -1603,6 +1605,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.16.0",
       "file": "docs/devel/change/C157.json"
+    },
+    "C158": {
+      "title": "额度条与余额数字的更新动效（mac spring/numericText + Windows 渲染后补间）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "feat/C158-dashboard-update-motion",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C158.json"
     }
   }
 }

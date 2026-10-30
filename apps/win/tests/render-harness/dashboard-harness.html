@@ -72,10 +72,15 @@ link.rel = "stylesheet";
 link.href = `/apps/win/src/styles.css?v=${Date.now()}`;   // 真实样式表 (同字节, 带缓存破坏)
 document.head.append(link);
 document.body.innerHTML = doc.body.innerHTML;   // 真实 body 标记 (内含 script 不执行)
-const script = document.createElement("script");
-script.src = `/apps/win/src/app.js?v=${Date.now()}`;      // 真实脚本 (同字节, 带缓存破坏)
-script.onload = () => { window.__ready = true; };
-document.body.append(script);
+const motion = document.createElement("script");
+motion.src = `/apps/win/src/motion.js?v=${Date.now()}`;   // C158: 渲染后补间
+motion.onload = () => {
+  const script = document.createElement("script");
+  script.src = `/apps/win/src/app.js?v=${Date.now()}`;    // 真实脚本 (同字节, 带缓存破坏)
+  script.onload = () => { window.__ready = true; };
+  document.body.append(script);
+};
+document.body.append(motion);
 </script>
 </body>
 </html>

@@ -181,7 +181,7 @@ struct SubscriptionCard: View {
                             providerID: section.badgeProviderID,
                             name: section.name
                         )
-                        MiniMeterBar(usedFraction: peak.usedPercent / 100)
+                        MiniMeterBar(usedFraction: peak.usedPercent / 100, panelVisible: panelVisible)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -271,7 +271,7 @@ private struct ProviderSectionView: View {
             if expanded {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(section.accounts, id: \.id) { account in
-                        ProviderAccountCard(account: account)
+                        ProviderAccountCard(account: account, panelVisible: panelVisible)
                     }
                 }
                 .padding(.top, 4)
@@ -279,7 +279,7 @@ private struct ProviderSectionView: View {
                 .readingNaturalHeight(into: $accountsHeight)
                 .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.20)))
             } else if let collapsed = section.collapsedWindow {
-                WindowRowView(row: collapsed)
+                WindowRowView(row: collapsed, panelVisible: panelVisible)
                     .readingNaturalHeight(into: $collapsedRowHeight)
                     .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.20)))
             }
@@ -298,10 +298,10 @@ private struct ProviderSectionView: View {
     @ViewBuilder
     private var singleAccountContent: some View {
         if isBalanceBased {
-            BalanceDualSlotView(section: section)
+            BalanceDualSlotView(section: section, panelVisible: panelVisible)
         } else {
-            ForEach(Array(section.windows.enumerated()), id: \.offset) { _, row in
-                WindowRowView(row: row)
+            ForEach(section.windows, id: \.label) { row in
+                WindowRowView(row: row, panelVisible: panelVisible)
             }
         }
     }
@@ -335,8 +335,10 @@ private struct ProviderSectionView: View {
             if !isBalanceBased, let balance = section.balance {
                 BalanceChip(
                     amountText: balance.amountText,
+                    amount: balance.amount,
                     accessibilityText: balance.label,
-                    color: Color(hex: ProviderBrandPalette.hex(for: section.badgeProviderID))
+                    color: Color(hex: ProviderBrandPalette.hex(for: section.badgeProviderID)),
+                    panelVisible: panelVisible
                 )
             }
             if let accountCountText = section.accountCountText {
@@ -414,9 +416,11 @@ private struct ProviderRefreshButton: View {
 /// 底部: 微型覆盖说明 (如 coverageText)
 private struct BalanceDualSlotView: View {
     let section: SubscriptionProviderSection
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
@@ -443,6 +447,17 @@ private struct BalanceDualSlotView: View {
             Text(balanceText)
                 .font(isNothing ? NothingFont.mono(13, weight: .bold) : .system(size: 14, weight: .bold))
                 .monospacedDigit()
+                .contentTransition(.numericText(value: section.balance?.amount ?? 0))
+                .animation(
+                    MeterMotionPolicy.animation(
+                        for: .balance,
+                        panelVisible: panelVisible,
+                        motionSuppressed: motionSuppressed
+                    ),
+                    value: balanceText
+                )
+                // `--` 占位与数值之间切身份: 占位不参与滚动, 首个数值直接落定.
+                .id(section.balance == nil)
                 .foregroundStyle(isNothing ? NothingTokens.display(colorScheme) : Color.primary.opacity(0.9))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -527,9 +542,12 @@ private struct BalanceDualSlotView: View {
 private struct WindowRowView: View {
     let row: SubscriptionWindowRow
     var animateEntrance: Bool = true
+    /// C044/C158: 面板隐藏时不挂更新动画.
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
@@ -545,21 +563,24 @@ private struct WindowRowView: View {
             MeterBar(
                 usedFraction: row.usedPercent / 100,
                 level: meterLevel,
-                animateEntrance: animateEntrance
+                animateEntrance: animateEntrance,
+                panelVisible: panelVisible
             )
             // Nothing 下百分比按档位取阈值色 (定稿 .meter-head .v),
             // classic / liquidGlass 保持默认前景色不变.
             if isNothing {
-                Text(row.percentText)
-                    .font(NothingFont.mono(12, weight: .bold))
-                    .monospacedDigit()
+                percentText(meterLevel)
                     .foregroundStyle(nothingThresholdColor(for: meterLevel))
-                    .frame(width: 46, alignment: .trailing)
+                    .animation(
+                        MeterMotionPolicy.animation(
+                            for: .thresholdColor,
+                            panelVisible: panelVisible,
+                            motionSuppressed: motionSuppressed
+                        ),
+                        value: meterLevel
+                    )
             } else {
-                Text(row.percentText)
-                    .font(.system(size: 10, weight: .semibold))
-                    .monospacedDigit()
-                    .frame(width: 46, alignment: .trailing)
+                percentText(meterLevel)
             }
             Text(row.resetText)
                 .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
@@ -568,6 +589,23 @@ private struct WindowRowView: View {
         }
         .padding(.vertical, 2.5)
         .accessibilityElement(children: .combine)
+    }
+
+    /// 百分比数字与量条同拍滚动: numericText 逐位上下滚动, 方向由 usedPercent 决定.
+    private func percentText(_ level: MeterLevel) -> some View {
+        Text(row.percentText)
+            .font(isNothing ? NothingFont.mono(12, weight: .bold) : .system(size: 10, weight: .semibold))
+            .monospacedDigit()
+            .contentTransition(.numericText(value: row.usedPercent))
+            .animation(
+                MeterMotionPolicy.animation(
+                    for: .percent,
+                    panelVisible: panelVisible,
+                    motionSuppressed: motionSuppressed
+                ),
+                value: row.percentText
+            )
+            .frame(width: 46, alignment: .trailing)
     }
 
     private var labelStyle: AnyShapeStyle {
@@ -587,9 +625,11 @@ private struct WindowRowView: View {
 /// classic / liquidGlass: 与 MeterBar 同款三档渐变; Nothing: 直角 + 阈值纯色.
 private struct MiniMeterBar: View {
     let usedFraction: Double
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     private var isNothing: Bool { theme.interfaceStyle == .nothing }
     private var level: MeterLevel { MeterLevel(usedPercent: usedFraction * 100) }
@@ -607,6 +647,14 @@ private struct MiniMeterBar: View {
                 RoundedRectangle(cornerRadius: isNothing ? 0 : 3, style: .continuous)
                     .fill(fillStyle)
                     .frame(width: proxy.size.width * min(max(usedFraction, 0), 1))
+                    .animation(
+                        MeterMotionPolicy.animation(
+                            for: .fill,
+                            panelVisible: panelVisible,
+                            motionSuppressed: motionSuppressed
+                        ),
+                        value: usedFraction
+                    )
             }
         }
         .frame(height: 5)
@@ -633,7 +681,7 @@ private struct MiniMeterBar: View {
 
 /// 量条告警级别 (消耗式, 阈值唯一来源, 全站统一口径不分主题):
 /// 已用 <50% 绿 (normal), 50-79% 橙 (warning), >=80% 红 (critical).
-private enum MeterLevel {
+private enum MeterLevel: Hashable {
     case normal
     case warning
     case critical
@@ -648,22 +696,28 @@ private enum MeterLevel {
             self = .critical
         }
     }
+
+    static let all: [MeterLevel] = [.normal, .warning, .critical]
 }
 
 /// 量条: 消耗式填充 (已用量从 0 向 100 增长).
-/// classic / liquidGlass: 高 5pt 圆角渐变条, <50 绿渐变, 50-79% 橙渐变, >=80% 红渐变
-/// (档位颜色映射不变, 仅阈值口径随 MeterLevel 全局统一).
-/// Nothing: 24 段方角分段条, 段间 2pt, 高 10pt, 零渐变.
-/// 出现动画尊重 Reduce Motion.
+/// classic / liquidGlass: 高 5pt 圆角渐变条, 三档渐变叠放做 0.34s 交叉淡入;
+/// 增长时附 2px 右缘高光 + 一次 46px 扫光. Nothing: 24 段方角分段条, 逐帧推进,
+/// 动画期前沿段提亮. 更新动效只挂叶子, 时长 / 曲线 / 门控统一取自 MeterMotionPolicy.
 private struct MeterBar: View {
     let usedFraction: Double
     let level: MeterLevel
     var animateEntrance: Bool = true
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var appeared = false
+    @State private var isMoving = false
+    @State private var isGrowing = false
+    @State private var motionToken = 0
+    @State private var sheenPhase: CGFloat = 0
 
     var body: some View {
         Group {
@@ -671,9 +725,13 @@ private struct MeterBar: View {
                 NothingSegmentedMeter(
                     usedFraction: Double(fillWidth),
                     level: level,
-                    colorScheme: colorScheme
+                    colorScheme: colorScheme,
+                    thresholdAnimation: motionAnimation(.thresholdColor),
+                    highlightActive: isMoving,
+                    highlightAnimation: motionAnimation(.highlight)
                 )
                 .frame(height: 10)
+                .animation(motionAnimation(.fill), value: usedFraction)
             } else {
                 legacyBody
                     .frame(height: 5)
@@ -685,21 +743,80 @@ private struct MeterBar: View {
                 appeared = true
             }
         }
+        .onChange(of: usedFraction) { oldValue, newValue in
+            guard MeterMotionPolicy.shouldPlayUpdate(
+                from: oldValue,
+                to: newValue,
+                panelVisible: panelVisible,
+                motionSuppressed: motionSuppressed
+            ) else { return }
+            startUpdateMotion(growing: newValue > oldValue)
+        }
     }
 
-    /// classic / liquidGlass 原渲染路径, 视觉 token 与改动前逐字节一致.
+    private func motionAnimation(_ kind: MeterMotionKind) -> Animation? {
+        MeterMotionPolicy.animation(
+            for: kind,
+            panelVisible: panelVisible,
+            motionSuppressed: motionSuppressed
+        )
+    }
+
+    /// 增长提示只在增长动画期存在: 右缘高光 + 一次扫光; 下降只保留高光.
+    private func startUpdateMotion(growing: Bool) {
+        motionToken += 1
+        let token = motionToken
+        isMoving = true
+        isGrowing = growing
+        if growing {
+            sheenPhase = 0
+            withAnimation(motionAnimation(.sheen)) {
+                sheenPhase = 1
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + MeterMotionPolicy.highlightHoldSeconds) {
+            guard token == motionToken else { return }
+            isMoving = false
+            isGrowing = false
+        }
+    }
+
     private var legacyBody: some View {
         GeometryReader { proxy in
+            let width = proxy.size.width * fillWidth
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(Color.adaptive(
                         light: Color.black.opacity(0.07),
                         dark: Color.white.opacity(0.12)
                     ))
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(fillGradient)
-                    .frame(width: proxy.size.width * fillWidth)
+                ZStack(alignment: .leading) {
+                    ForEach(MeterLevel.all, id: \.self) { candidate in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(gradient(for: candidate))
+                            .opacity(candidate == level ? 1 : 0)
+                    }
+                    if isMoving && isGrowing {
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [.clear, Color.white.opacity(0.55), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
+                            .frame(width: 46)
+                            .offset(x: -46 + sheenPhase * (width + 46))
+                    }
+                    Rectangle()
+                        .fill(Color.white.opacity(isMoving ? 0.85 : 0))
+                        .frame(width: 2)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .animation(motionAnimation(.highlight), value: isMoving)
+                }
+                .frame(width: width, alignment: .leading)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .animation(motionAnimation(.levelCrossfade), value: level)
             }
+            .animation(motionAnimation(.fill), value: usedFraction)
         }
     }
 
@@ -710,7 +827,7 @@ private struct MeterBar: View {
         return CGFloat(min(max(usedFraction, 0), 1))
     }
 
-    private var fillGradient: LinearGradient {
+    private func gradient(for level: MeterLevel) -> LinearGradient {
         let colors: [Color]
         switch level {
         case .normal:
@@ -732,33 +849,76 @@ private struct NothingSegmentedMeter: View {
     let usedFraction: Double
     let level: MeterLevel
     let colorScheme: ColorScheme
+    /// C158: 档位色过渡 (MeterMotionPolicy.thresholdColor); 隐藏或减弱动态时为 nil.
+    var thresholdAnimation: Animation? = nil
+    /// C158: 更新动画期为 true, 前沿段 (最后点亮的一段) 提亮.
+    var highlightActive: Bool = false
+    var highlightAnimation: Animation? = nil
 
     private static let segmentCount = 24
     private static let segmentSpacing: CGFloat = 2
 
     var body: some View {
-        GeometryReader { proxy in
-            let segmentWidth = max(
-                (proxy.size.width - CGFloat(Self.segmentCount - 1) * Self.segmentSpacing)
-                    / CGFloat(Self.segmentCount),
-                0
-            )
+        ZStack(alignment: .leading) {
             HStack(spacing: Self.segmentSpacing) {
-                ForEach(0..<Self.segmentCount, id: \.self) { index in
+                ForEach(0..<Self.segmentCount, id: \.self) { _ in
                     Rectangle()
-                        .fill(
-                            index < filledCount
-                                ? nothingThresholdColor(for: level)
-                                : NothingTokens.emptySegment(colorScheme)
-                        )
-                        .frame(width: segmentWidth)
+                        .fill(NothingTokens.emptySegment(colorScheme))
                 }
             }
+            // 填充段用一个可动画 Shape 绘制: animatableData 逐帧插值,
+            // 段数才会随动画推进而逐段点亮, 而不是终点一次性跳变.
+            NothingFilledSegmentsShape(
+                fraction: usedFraction,
+                segmentCount: Self.segmentCount,
+                spacing: Self.segmentSpacing
+            )
+            .fill(nothingThresholdColor(for: level))
+            .animation(thresholdAnimation, value: level)
+            // 前沿段随同一插值分数逐段前移: 每段点亮时提亮, 被下一段接替后回落.
+            NothingFilledSegmentsShape(
+                fraction: usedFraction,
+                segmentCount: Self.segmentCount,
+                spacing: Self.segmentSpacing,
+                frontierOnly: true
+            )
+            .fill(Color.white.opacity(colorScheme == .dark ? 0.45 : 0.35))
+            .opacity(highlightActive ? 1 : 0)
+            .animation(highlightAnimation, value: highlightActive)
         }
     }
+}
 
-    private var filledCount: Int {
-        Int((usedFraction * Double(Self.segmentCount)).rounded())
+/// Nothing 填充段路径: 按插值分数取前 N 段, 与空段 HStack 使用同一宽度/间距.
+/// Shape 的 animatableData 在非 MainActor 隔离下逐帧插值, 避免 View 版 Animatable
+/// 在 Swift 6 的隔离告警. `frontierOnly` 只取最后点亮的一段.
+private struct NothingFilledSegmentsShape: Shape {
+    var fraction: Double
+    let segmentCount: Int
+    let spacing: CGFloat
+    var frontierOnly: Bool = false
+
+    var animatableData: Double {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let segmentWidth = max(
+            (rect.width - CGFloat(segmentCount - 1) * spacing) / CGFloat(segmentCount),
+            0
+        )
+        let filled = min(segmentCount, max(0, Int((fraction * Double(segmentCount)).rounded())))
+        var path = Path()
+        for index in (frontierOnly ? max(filled - 1, 0) : 0)..<filled {
+            path.addRect(CGRect(
+                x: CGFloat(index) * (segmentWidth + spacing),
+                y: 0,
+                width: segmentWidth,
+                height: rect.height
+            ))
+        }
+        return path
     }
 }
 
@@ -767,6 +927,7 @@ private struct NothingSegmentedMeter: View {
 /// 多账号子卡 (原 CodexAccountCard): 圆角 10pt 内层玻璃, 头部账号名 + 套餐, 下方各自窗口行.
 private struct ProviderAccountCard: View {
     let account: CodexAccountViewModel
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -784,8 +945,8 @@ private struct ProviderAccountCard: View {
             }
             .padding(.bottom, 2)
 
-            ForEach(Array(account.windows.enumerated()), id: \.offset) { _, row in
-                WindowRowView(row: row, animateEntrance: false)
+            ForEach(account.windows, id: \.label) { row in
+                WindowRowView(row: row, animateEntrance: false, panelVisible: panelVisible)
             }
 
             // 分组段本身不带 note, 账号级 error 说明在子卡内展示.
@@ -840,11 +1001,14 @@ private struct ProviderAccountCard: View {
 /// Nothing 主题 (与 .plan 同款定稿): 圆角 3, 透明底 + 1px 加强边框, Space Mono, secondary 文字。
 private struct BalanceChip: View {
     let amountText: String
+    let amount: Double
     let accessibilityText: String
     let color: Color
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.motionSuppressed) private var motionSuppressed
 
     private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
@@ -855,6 +1019,8 @@ private struct BalanceChip: View {
                     Circle().fill(color).frame(width: 4, height: 4)
                     Text(amountText)
                         .font(NothingFont.mono(9))
+                        .contentTransition(.numericText(value: amount))
+                        .animation(balanceAnimation, value: amountText)
                         .foregroundStyle(NothingTokens.secondary(colorScheme))
                 }
                 .padding(.horizontal, 6)
@@ -869,6 +1035,8 @@ private struct BalanceChip: View {
                     Text(amountText)
                         .font(.system(size: 9.5, weight: .semibold))
                         .monospacedDigit()
+                        .contentTransition(.numericText(value: amount))
+                        .animation(balanceAnimation, value: amountText)
                         .foregroundStyle(Color.primary.opacity(0.85))
                 }
                 .padding(.horizontal, 6)
@@ -885,6 +1053,14 @@ private struct BalanceChip: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
+    }
+
+    private var balanceAnimation: Animation? {
+        MeterMotionPolicy.animation(
+            for: .balance,
+            panelVisible: panelVisible,
+            motionSuppressed: motionSuppressed
+        )
     }
 }
 
