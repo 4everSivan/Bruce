@@ -546,6 +546,86 @@
         ],
         "rateLimitedProviders": []
       }
+    },
+    {
+      "name": "one_minute_interval_respects_three_minute_floor",
+      "description": "C164: 刷新间隔 1 分钟, 2 分钟前刚查询: 额度最短间隔 3 分钟, 仍新鲜, 本地专用 run",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 60,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:58:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:58:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "one_minute_interval_queries_after_three_minutes",
+      "description": "C164: 刷新间隔 1 分钟, 距上次查询 3 分 30 秒 (≥ 3 分钟最短间隔): 查询",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 60,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:56:30Z",
+          "quotaAttemptedAt": "2026-10-26T11:56:30Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "manual_refresh_ignores_three_minute_floor",
+      "description": "C164: 手动刷新 (force + bypass) 不受 3 分钟最短间隔约束, 30 秒前刚查询也全部查询",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 60,
+      "forceRefresh": true,
+      "bypassCooldown": true,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:59:30Z",
+          "quotaAttemptedAt": "2026-10-26T11:59:30Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
     }
   ]
 }

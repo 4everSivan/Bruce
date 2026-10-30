@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C164",
+  "title": "订阅额度自动查询增加 3 分钟最短间隔：刷新间隔低于 3 分钟时额度接口不再逐分钟轮询（双端共享 collector-policy）",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C164-quota-poll-floor",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector (collector-policy) + apps/macos + apps/win",
+    "component": "订阅额度新鲜度门禁 plan / 回填 merge 与设置页「刷新间隔」说明",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "C065 起订阅额度查询周期与「刷新间隔」联动（mac RefreshScheduler.updateRefreshInterval 令 quotaRefreshInterval = interval，Windows 以 refresh_interval_secs 作新鲜度间隔），C160 又把刷新间隔下限从 5 分钟放开到 1 分钟（预设 3 / 6 分钟）。结果是所有已启用订阅 Provider 的外部额度接口会跟随本地采集每 1–3 分钟被查询一次，只能依赖 429 冷却兜底，有被限流或封禁的风险。2026-10-30 C160–C163 复核中提出，维护者决定额度自动查询最短 3 分钟。",
+  "precheck": {
+    "description": "确认额度门禁仍直接使用用户刷新间隔、共享 collector-policy 中没有最短间隔",
+    "command": "rg -n \"configuration.quotaRefreshInterval = interval|MIN_QUOTA_INTERVAL|fn effective_interval\" apps/macos/Sources core/collector/crates/collector-policy/src apps/win/src-tauri/src",
+    "expected": "只命中 mac RefreshScheduler.swift:310 `configuration.quotaRefreshInterval = interval`；collector-policy 与 Windows 无任何最短间隔常量",
+    "is_completed": true,
+    "evidence": "2026-10-30 在 main 9daf074 执行：仅命中 apps/macos/Sources/BruceAppCore/RefreshScheduler.swift:310 `configuration.quotaRefreshInterval = interval`；collector-policy/src/quota.rs:259 `all_recent` 与 :409 `mark_carried` 直接以传入的 interval_secs 判定，无下限。缺陷存在，未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C164-quota-poll-floor"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy -p collector-policy-ffi",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test quota_policy_coverage",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C164 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "额度新鲜度门禁与回填标注（共享 collector-policy，双端同一实现）",
+      "before": "plan 以传入的 interval_secs 判定 provider 是否新鲜，merge 的 mark_carried 以同一间隔判定回填 service 是否 stale；刷新间隔 1 分钟时额度每分钟到期。",
+      "after": "新增 MIN_QUOTA_INTERVAL_SECS = 180 与 effective_interval_secs：interval_secs > 0 时按 max(interval_secs, 180) 判定新鲜与 fresh / stale；interval_secs <= 0（不做门禁）语义不变；手动刷新（force + bypass）、单 Provider 定向刷新与窗口边界重查路径不变。",
+      "impact": "core/collector/crates/collector-policy/src/quota.rs、lib.rs；mac 经 collector-policy-ffi、Windows 经 quota_policy.rs 调用，调用方无需改动；本地采集周期仍按用户间隔"
+    },
+    {
+      "scope": "双端对拍用例",
+      "before": "quota-policy-parity / quota-carry-over-parity 只有 0 / 1800 / 3600 秒间隔用例。",
+      "after": "新增 4 例：1 分钟间隔 2 分钟前查询 → 跳过；1 分钟间隔 3 分 30 秒前查询 → 查询；手动刷新不受下限；1 分钟间隔跳过的 provider 回填仍标 fresh。",
+      "impact": "tests/fixtures/quota-policy-parity/cases.json、tests/fixtures/quota-carry-over-parity/cases.json（collector-policy 单测、C ABI 用例、Windows quota_policy_coverage、mac RefreshSchedulerHarness 共同消费）"
+    },
+    {
+      "scope": "设置页说明文案（双端）",
+      "before": "mac「本地统计采集与订阅额度自动刷新周期；遇 429 限流时自动冷却」；Windows「已授权模块的自动采集周期，变更后立即重新计时」。",
+      "after": "两端追加「订阅额度最短 3 分钟查询一次」，避免用户以为设 1 分钟后额度也每分钟刷新。",
+      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift、apps/win/src/settings-maintenance.js"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 12：用户「刷新间隔」同时决定本地会话扫描周期与订阅额度查询周期，距 quotaAttemptedAt 不足用户配置周期的 provider 跳过外部查询。",
+      "after": "规则 12：额度周期 = max(用户刷新间隔, 3 分钟)（collector-policy MIN_QUOTA_INTERVAL_SECS = 180，门禁与回填同一口径）；本地采集仍按刷新间隔；手动 / 定向 / 窗口边界重查不受下限约束。design/05 新鲜度门禁描述同步。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261030-05",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector-policy / FFI / Windows quota_policy_coverage / mac RefreshSchedulerHarness 全绿，新增对拍用例在去掉修复后失败、加上修复后通过",
+        "false_if": "任一测试失败，或新增用例在无修复时也能通过（未覆盖缺陷）",
+        "evidence": "2026-10-30：`cargo test -p collector-policy -p collector-policy-ffi` 全部 ok（quota_parity 8 项含 plan / merge 对拍、c_abi 4 项）；暂存 quota.rs / lib.rs 修复后重跑 quota_parity → plan_matches_shared_parity_fixture 与 merge_matches_shared_carry_over_fixture FAILED（one_minute_interval_respects_three_minute_floor、one_minute_interval_carries_within_floor_as_fresh），恢复修复后通过，证明新增用例覆盖缺陷；`cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test quota_policy_coverage` → 15 passed；`zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」：Rust 49 组 486 项 ok、Refresh scheduler tests passed: 115（消费两份共享 fixture）、PanelViewModel 63、BruceOnboardingCore 173 等 18 项 Harness、Windows 前端 106/106、geometry 2/2、update 6/6、双端对拍 5 项）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "刷新间隔 1 分钟时订阅额度最快约 3 分钟查询一次，本地 Token 统计仍按 1 分钟刷新；手动刷新立即查询额度",
+        "false_if": "额度仍逐分钟查询，或本地统计被拖慢到 3 分钟，或手动刷新被下限拦截",
+        "evidence": "未在真机执行。门禁行为由共享 fixture 在 Rust、C ABI、mac RefreshSchedulerHarness、Windows quota_policy_coverage 四条调用路径上断言（1 分钟间隔 2 分钟内跳过、3 分 30 秒后查询、手动刷新绕过）；本地采集周期未改（RefreshScheduler.updateRefreshInterval 与 Windows refresh_interval_secs 计时逻辑不变）。需在本机把刷新间隔设为 1 分钟后观察额度 quotaAttemptedAt 间隔约 3 分钟、Token 统计每分钟更新。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "间隔 ≥ 3 分钟时门禁行为与改动前逐例一致（既有对拍用例零漂移）；429 冷却、锁屏抑制、窗口边界重查、Codex 例外不受影响",
+        "false_if": "既有对拍用例结果改变或上述任一路径回归",
+        "evidence": "2026-10-30：既有 quota-policy-parity 全部用例（1800 / 3600 / 0 秒间隔）与 quota-carry-over-parity 既有用例结果零漂移；下限只作用于 interval_secs > 0 的新鲜度判定与 mark_carried，429 冷却（is_cooling）、锁屏抑制（suppress_external_quotas）、窗口边界重查（has_passed_boundary）、Codex 永不跳过与 force+bypass 全量路径代码未改；verify-local 全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

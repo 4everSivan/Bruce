@@ -1083,6 +1083,62 @@
           "freshness": "unavailable"
         }
       ]
+    },
+    {
+      "name": "one_minute_interval_carries_within_floor_as_fresh",
+      "description": "C164: 刷新间隔 1 分钟, kimi 2 分钟前成功、本轮按 3 分钟最短间隔跳过: 回填仍标 fresh (不按 1 分钟判 stale)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 60,
+      "policy": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:58:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:58:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:58:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:58:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ]
     }
   ]
 }

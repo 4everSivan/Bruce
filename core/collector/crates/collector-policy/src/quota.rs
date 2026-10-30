@@ -1,7 +1,7 @@
 //! 订阅额度 per-provider 门禁与回填 (C062 / C071 / C077 / C118 / C120, T13 收敛为单份实现)。
 //!
 //! - 新鲜度门禁: provider 的 `quotaAttemptedAt` (回退 `capturedAt`) 距今不足刷新间隔时
-//!   跳过额度查询;
+//!   跳过额度查询; 间隔最短按 3 分钟计 (C164), 本地采集更快时额度查询不跟随;
 //! - 429 冷却: service 带 `rateLimitedAt` 且距今不足 30 分钟时跳过 (仅该 provider);
 //! - 手动刷新绕过新鲜度与冷却; 窗口边界唤醒绕过新鲜度但尊重冷却;
 //! - Codex 永不进入 skip (其四源合并 / 重试链路需要完整首轮结果);
@@ -17,6 +17,19 @@ use serde_json::{Map, Value};
 
 /// 自动额度查询的 429 冷却 (秒)。
 pub const RATE_LIMIT_COOLDOWN_SECS: i64 = 30 * 60;
+
+/// 自动额度查询的最短间隔 (秒, C164): 刷新间隔可设到 1 分钟 (C160), 但外部额度接口
+/// 最快 3 分钟查询一次; 手动刷新与窗口边界重查不受此限。
+pub const MIN_QUOTA_INTERVAL_SECS: i64 = 3 * 60;
+
+/// 门禁与回填实际使用的间隔: `<= 0` 保持「不做门禁」语义, 其余不低于最短间隔。
+fn effective_interval_secs(interval_secs: i64) -> i64 {
+    if interval_secs <= 0 {
+        interval_secs
+    } else {
+        interval_secs.max(MIN_QUOTA_INTERVAL_SECS)
+    }
+}
 
 /// 本轮查询失败时从合格旧 service 借用的展示字段 (design/02 规则 12)。
 pub const BORROWED_FIELDS: [&str; 7] = [
@@ -319,8 +332,9 @@ pub fn plan(input: &PlanInput<'_>) -> QuotaRunPolicy {
             due = true;
             continue;
         }
-        let fresh = all_recent(services, input.now_ms, input.interval_secs, attempt_at)
-            || all_recent(services, input.now_ms, input.interval_secs, captured_at);
+        let interval_secs = effective_interval_secs(input.interval_secs);
+        let fresh = all_recent(services, input.now_ms, interval_secs, attempt_at)
+            || all_recent(services, input.now_ms, interval_secs, captured_at);
         if !fresh {
             due = true;
         } else if skippable {
@@ -405,6 +419,7 @@ fn stamp_attempt(object: &mut Map<String, Value>, now_iso: &str) {
 
 /// 被跳过 provider 的回填标注: 失败 / 冷却 / 成功快照已过间隔 → stale, 否则缺省补 fresh。
 fn mark_carried(object: &mut Map<String, Value>, cooling: bool, now_ms: i64, interval_secs: i64) {
+    let interval_secs = effective_interval_secs(interval_secs);
     let aged =
         parse_ms(object.get("capturedAt")).is_none_or(|at| now_ms - at >= interval_secs * 1000);
     if object_failed(object) || cooling || aged {

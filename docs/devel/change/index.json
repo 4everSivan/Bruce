@@ -160,7 +160,8 @@
         "C120",
         "C124",
         "C127",
-        "C131"
+        "C131",
+        "C164"
       ]
     },
     "TokenUsage": {
@@ -1671,6 +1672,15 @@
       "topic": "AgentAnalytics",
       "version": "0.16.0",
       "file": "docs/devel/change/C163.json"
+    },
+    "C164": {
+      "title": "订阅额度自动查询增加 3 分钟最短间隔：刷新间隔低于 3 分钟时额度接口不再逐分钟轮询（双端共享 collector-policy）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C164-quota-poll-floor",
+      "topic": "SubscriptionQuota",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C164.json"
     }
   }
 }

@@ -18,7 +18,7 @@ pub use quota::{
     annotate_provider, annotate_services, attempt_at, captured_at, is_failed_status,
     is_qualified_previous, is_rate_limited, is_rate_limited_note, merge, merge_round, parse_ms,
     plan, provider_id, provider_of_id, rate_limited_at, rate_limited_providers_in, timestamp_iso,
-    PlanInput, QuotaRunPolicy, BORROWED_FIELDS, RATE_LIMIT_COOLDOWN_SECS,
+    PlanInput, QuotaRunPolicy, BORROWED_FIELDS, MIN_QUOTA_INTERVAL_SECS, RATE_LIMIT_COOLDOWN_SECS,
 };
 pub use refresh::{
     backoff_seconds, boundary_delay, boundary_ids, boundary_vec, capped_backoff, window_boundaries,
