@@ -388,31 +388,43 @@ package enum WorkbenchAnalytics {
         )
     }
 
-    /// 计算时序图 X 轴抽稀刻度与峰值高亮状态 (C162: 方案 A1 + 峰值防撞吸附).
+    /// 计算时序图 X 轴抽稀刻度与峰值高亮状态 (C162 / C163: 方案 A1 + 动态 LOD 视口缩放自适应 + 峰值防撞吸附).
     ///
-    /// - 点数 ≤ 8: 全量显示;
-    /// - 24 小时粒度 (`count == 24` 且首点为 `"00:00"`): 基准取 3 小时严格等步长
+    /// - 点数 ≤ 8: 全量显示 (1h 全显或局部全显);
+    /// - 小时粒度中度放大 (`count <= 14` 且为小时标签): 采用 2 小时等步长 (`minGap = 1`);
+    /// - 24 小时全景 (`count == 24` 且首点为 `"00:00"`): 基准取 3 小时严格等步长
     ///   `[0, 3, 6, 9, 12, 15, 18, 21]` (`00:00` .. `21:00`), 最小防撞间距 `minGap = 1`;
     /// - 其余长跨度 (如近 30 天 / 本月): 步长 `step = max(2, Int(ceil(Double(count - 1) / 6.0)))`,
     ///   收口末点 `count - 1`, `minGap = max(1, step / 2)`;
-    /// - 峰值点 (`totalTokens > 0` 的首个最大点, 与 `peakSummary` 同口径):
+    /// - 峰值点: 若传入 `globalPeakLabel` 则匹配全局峰值，否则取当前切片内最大点;
     ///   若不在基准刻度中, 与最近基准刻度距离 `<= minGap` 时替换该最近刻度以防重叠, 否则追加.
-    package static func timelineAxisTicks(for points: [AnalyticsTimelinePoint]) -> [AnalyticsTimelineAxisTick] {
+    package static func timelineAxisTicks(
+        for points: [AnalyticsTimelinePoint],
+        globalPeakLabel: String? = nil
+    ) -> [AnalyticsTimelineAxisTick] {
         let count = points.count
         guard count > 0 else { return [] }
 
         var peakIndex: Int? = nil
-        var maxTokens = 0
-        for (idx, point) in points.enumerated() where point.totalTokens > maxTokens {
-            maxTokens = point.totalTokens
-            peakIndex = idx
+        if let target = globalPeakLabel {
+            peakIndex = points.firstIndex(where: { $0.label == target })
+        } else {
+            var maxTokens = 0
+            for (idx, point) in points.enumerated() where point.totalTokens > maxTokens {
+                maxTokens = point.totalTokens
+                peakIndex = idx
+            }
         }
 
+        let isHourly = points.first?.label.hasSuffix(":00") == true
         let baseIndices: [Int]
         let minGap: Int
         if count <= 8 {
             baseIndices = Array(0..<count)
             minGap = 0
+        } else if isHourly && count <= 14 {
+            baseIndices = Array(stride(from: 0, to: count, by: 2))
+            minGap = 1
         } else if count == 24 && points.first?.label == "00:00" {
             baseIndices = [0, 3, 6, 9, 12, 15, 18, 21]
             minGap = 1

@@ -14,6 +14,14 @@ struct TimelineChartCard: View {
     @State private var displayType: AnalyticsChartDisplayType = .line
     @State private var selectedLabel: String? = nil
 
+    // C163: 视口缩放与平移状态 (双端同构)
+    @State private var zoomLevel: Double = 1.0
+    @State private var startIndex: Int = 0
+    @State private var dragInitialStart: Int = 0
+    @State private var isDragging: Bool = false
+    @State private var isHoveringChart: Bool = false
+    @State private var scrollMonitor: Any? = nil
+
     private struct ChartDataPoint: Identifiable {
         var id: String { "\(date)_\(seriesKey)" }
         let date: String
@@ -41,6 +49,9 @@ struct TimelineChartCard: View {
 
                     Spacer(minLength: 8)
 
+                    // 缩放控制条 (C163)
+                    zoomControls
+
                     // 形态切换: 折线 vs 面积
                     FluentSegmentedPicker(
                         options: [
@@ -66,6 +77,10 @@ struct TimelineChartCard: View {
                 } else {
                     chartView
                         .frame(height: 220)
+
+                    if zoomLevel > 1.0 && points.count > 0 {
+                        minimapIndicator
+                    }
                 }
 
                 // 悬停数据探针 / 底部均线概览
@@ -131,7 +146,7 @@ struct TimelineChartCard: View {
                 .lineStyle(StrokeStyle(lineWidth: 2))
                 .interpolationMethod(.catmullRom)
 
-                if points.count <= 14 {
+                if visiblePoints.count <= 14 {
                     PointMark(
                         x: .value("Time", item.date),
                         y: .value(yAxisTitle, item.value)
@@ -147,7 +162,56 @@ struct TimelineChartCard: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
             }
         }
-        .chartXSelection(value: $selectedLabel)
+        .chartXSelection(value: isDragging ? .constant(nil) : $selectedLabel)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        dragInitialStart = clampedStartIndex
+                        selectedLabel = nil
+                    }
+                    guard visibleCount > 0 else { return }
+                    let pointWidth = max(8.0, 500.0 / CGFloat(visibleCount))
+                    let indexDelta = Int(round(-value.translation.width / pointWidth))
+                    let maxStart = max(0, points.count - visibleCount)
+                    startIndex = max(0, min(maxStart, dragInitialStart + indexDelta))
+                }
+                .onEnded { _ in
+                    isDragging = false
+                }
+        )
+        .simultaneousGesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        zoomLevel = 1.0
+                        startIndex = 0
+                    }
+                }
+        )
+        .simultaneousGesture(
+            MagnificationGesture()
+                .onChanged { scale in
+                    let newZoom = max(1.0, min(4.0, zoomLevel * scale))
+                    zoomLevel = (newZoom * 10).rounded() / 10.0
+                }
+        )
+        .onHover { hovering in
+            isHoveringChart = hovering
+            if hovering {
+                setupScrollMonitor()
+            } else {
+                tearDownScrollMonitor()
+            }
+        }
+        .onDisappear {
+            tearDownScrollMonitor()
+        }
+        .onChange(of: points.count) { _, _ in
+            zoomLevel = 1.0
+            startIndex = 0
+        }
         .chartXAxis {
             AxisMarks(values: xAxisTicks.map(\.label)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
@@ -295,15 +359,48 @@ struct TimelineChartCard: View {
         }
     }
 
+    // MARK: - 视口与缩放计算 (C163: 视口切片与动态 LOD 步长)
+
+    private var visibleCount: Int {
+        let count = points.count
+        guard count > 0 else { return 0 }
+        return max(4, min(count, Int(round(Double(count) / zoomLevel))))
+    }
+
+    private var clampedStartIndex: Int {
+        let count = points.count
+        guard count > 0 else { return 0 }
+        let maxStart = max(0, count - visibleCount)
+        return max(0, min(maxStart, startIndex))
+    }
+
+    private var visiblePoints: [AnalyticsTimelinePoint] {
+        let count = points.count
+        guard count > 0 else { return [] }
+        let start = clampedStartIndex
+        let end = min(count, start + visibleCount)
+        guard start < end else { return points }
+        return Array(points[start..<end])
+    }
+
+    private var globalPeakPoint: AnalyticsTimelinePoint? {
+        points.max(by: { $0.totalTokens < $1.totalTokens })
+    }
+
+    private var globalPeakLabel: String? {
+        guard let peak = globalPeakPoint, peak.totalTokens > 0 else { return nil }
+        return peak.label
+    }
+
     // MARK: - 数据转换与元数据
 
     private var selectedPoint: AnalyticsTimelinePoint? {
         guard let label = selectedLabel else { return nil }
-        return points.first { $0.label == label }
+        return visiblePoints.first { $0.label == label }
     }
 
     private var xAxisTicks: [AnalyticsTimelineAxisTick] {
-        WorkbenchAnalytics.timelineAxisTicks(for: points)
+        WorkbenchAnalytics.timelineAxisTicks(for: visiblePoints, globalPeakLabel: globalPeakLabel)
     }
 
     private var peakTickLabel: String? {
@@ -311,7 +408,7 @@ struct TimelineChartCard: View {
     }
 
     private var peakHighlightColor: Color {
-        Color(hex: WorkbenchAnalytics.peakDominantColorHex(points: points, series: activeSeriesMeta))
+        Color(hex: WorkbenchAnalytics.peakDominantColorHex(points: visiblePoints, series: activeSeriesMeta))
     }
 
     private var yAxisTitle: String {
@@ -368,7 +465,7 @@ struct TimelineChartCard: View {
 
     private var chartPoints: [ChartDataPoint] {
         var result: [ChartDataPoint] = []
-        for p in points {
+        for p in visiblePoints {
             switch mode {
             case .byAgent:
                 for agent in availableAgents {
@@ -420,5 +517,127 @@ struct TimelineChartCard: View {
             .replacingOccurrences(of: "<b>", with: "**")
             .replacingOccurrences(of: "</b>", with: "**")
         return (try? AttributedString(markdown: normalized)) ?? AttributedString(text)
+    }
+
+    // MARK: - 缩放平移辅助组件与事件监听 (C163)
+
+    private var zoomControls: some View {
+        HStack(spacing: 3) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    zoomLevel = max(1.0, ((zoomLevel - 0.5) * 10).rounded() / 10.0)
+                }
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(zoomLevel > 1.0 ? SettingsDemoTokens.text : SettingsDemoTokens.text3)
+                    .background(SettingsDemoTokens.bg.opacity(0.6), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(zoomLevel <= 1.0)
+            .help("缩小 (亦可使用滚轮向下 / 双指捏合)")
+
+            Text(String(format: "%.1fx", zoomLevel))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(zoomLevel > 1.0 ? SettingsDemoTokens.accent : SettingsDemoTokens.text2)
+                .frame(minWidth: 30)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    zoomLevel = min(4.0, ((zoomLevel + 0.5) * 10).rounded() / 10.0)
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(zoomLevel < 4.0 ? SettingsDemoTokens.text : SettingsDemoTokens.text3)
+                    .background(SettingsDemoTokens.bg.opacity(0.6), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(zoomLevel >= 4.0)
+            .help("放大 (亦可使用滚轮向上 / 双指张开)")
+
+            if zoomLevel > 1.0 || clampedStartIndex > 0 {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        zoomLevel = 1.0
+                        startIndex = 0
+                    }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 8.5, weight: .semibold))
+                        Text("全景")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .padding(.horizontal, 5)
+                    .frame(height: 20)
+                    .foregroundStyle(SettingsDemoTokens.text)
+                    .background(SettingsDemoTokens.separator.opacity(0.4), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("复位全景 (亦可双击图表区域)")
+            }
+        }
+        .padding(2)
+        .background(
+            SettingsDemoTokens.bg.opacity(0.4),
+            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+        )
+    }
+
+    private var minimapIndicator: some View {
+        GeometryReader { geo in
+            let total = CGFloat(points.count)
+            let visible = CGFloat(visibleCount)
+            let start = CGFloat(clampedStartIndex)
+            let thumbWidth = max(24, (visible / max(1, total)) * geo.size.width)
+            let maxTravel = max(0, geo.size.width - thumbWidth)
+            let thumbX = total > visible ? (start / max(1, total - visible)) * maxTravel : 0
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(SettingsDemoTokens.separator.opacity(0.3))
+                    .frame(height: 2)
+
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(SettingsDemoTokens.accent.opacity(0.8))
+                    .frame(width: thumbWidth, height: 2)
+                    .offset(x: thumbX)
+            }
+        }
+        .frame(height: 2)
+        .padding(.horizontal, 2)
+    }
+
+    private func setupScrollMonitor() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [self] event in
+            guard isHoveringChart else { return event }
+            let dy = event.scrollingDeltaY != 0 ? event.scrollingDeltaY : event.deltaY * 10
+            let dx = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.deltaX * 10
+            if abs(dy) > abs(dx) && abs(dy) > 1 {
+                let zoomDelta = dy > 0 ? 0.25 : -0.25
+                let newZoom = max(1.0, min(4.0, (zoomLevel + zoomDelta * 0.4)))
+                if abs(newZoom - zoomLevel) > 0.05 {
+                    zoomLevel = (newZoom * 10).rounded() / 10.0
+                }
+                return nil
+            } else if abs(dx) > 2 {
+                let panDelta = dx > 0 ? -1 : 1
+                let maxStart = max(0, points.count - visibleCount)
+                startIndex = max(0, min(maxStart, startIndex + panDelta))
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func tearDownScrollMonitor() {
+        if let monitor = scrollMonitor {
+            NSEvent.removeMonitor(monitor)
+            scrollMonitor = nil
+        }
     }
 }

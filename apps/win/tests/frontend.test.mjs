@@ -2602,3 +2602,49 @@ test("agent brand badges replace colour dots on settings and dashboard (C161)", 
   assert.ok(dashboard.document.querySelectorAll(".agent-row .ab-badge").length >= 1);
   assert.equal(dashboard.document.querySelectorAll(".daily-legend .sw").length, 0, "图例不应再留旧色块");
 });
+
+// ---------- C163: 时序图缩放平移与动态 LOD 刻度 (双端同构) ----------
+
+test("timeline chart supports zoom toolbar, wheel LOD adapting and double-click reset (C163)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="agentUsage"]').click();
+  await settle();
+  const pane = app.node("pane-agentUsage");
+  const chartCard = pane.querySelector(".workbench-chart-card");
+  assert.ok(chartCard, "时序趋势卡片存在");
+
+  // 1. 初始 1.0x 全景: 缩放工具条存在, 缩小按钮置灰, 无复位按钮
+  const zoomBar = chartCard.querySelector(".wb-zoom-bar");
+  assert.ok(zoomBar, "存在缩放控制工具栏");
+  assert.equal(zoomBar.querySelector(".wb-zoom-label").textContent, "1.0x");
+  const minusBtn = zoomBar.querySelectorAll(".wb-zoom-btn")[0];
+  const plusBtn = zoomBar.querySelectorAll(".wb-zoom-btn")[1];
+  assert.ok(minusBtn.classList.contains("disabled"), "1.0x 时缩小按钮禁用");
+  assert.equal(chartCard.querySelector(".wb-zoom-reset-btn"), null, "1.0x 无复位按钮");
+
+  // 2. 点击 [+] 放大至 1.5x: 出现复位按钮与视口迷你指示器
+  await plusBtn.click();
+  await settle();
+  const currentCard = () => pane.querySelector(".workbench-chart-card");
+  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.5x");
+  const resetBtn = currentCard().querySelector(".wb-zoom-reset-btn");
+  assert.ok(resetBtn, "放大后浮现 ↺ 全景复位按钮");
+  assert.ok(currentCard().querySelector(".wb-chart-minimap"), "放大后展示视口迷你条");
+
+  // 3. 点击复位按钮恢复 1.0x
+  await resetBtn.click();
+  await settle();
+  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.0x");
+  assert.equal(currentCard().querySelector(".wb-zoom-reset-btn"), null, "复位后隐藏全景按钮");
+
+  // 4. 滚轮向上缩放
+  const plot = currentCard().querySelector(".wb-chart-plot");
+  await plot.dispatch("wheel", { deltaY: -100 });
+  await settle();
+  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.3x");
+
+  // 5. 双击绘图区一键复原 1.0x
+  await currentCard().querySelector(".wb-chart-plot").dispatch("dblclick");
+  await settle();
+  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.0x");
+});

@@ -98,6 +98,9 @@
     chartMode: "agent",
     chartType: "line",
     selectedIndex: null,
+    zoomLevel: 1.0,
+    viewStart: 0,
+    lastPointsLength: 0,
     mergedModels: true,
     expandedModels: new Set(),
     expandedAgents: new Set(),
@@ -168,6 +171,8 @@
     if (seq !== workbench.seq) return;
     workbench.snapshot = snapshot;
     workbench.selectedIndex = null;
+    workbench.zoomLevel = 1.0;
+    workbench.viewStart = 0;
     drawWorkbench();
   }
 
@@ -271,8 +276,14 @@
     const snapshot = workbench.snapshot;
     const timeline = snapshot.timeline;
     const series = chartSeries(snapshot);
+    if (timeline.points.length !== workbench.lastPointsLength) {
+      workbench.zoomLevel = 1.0;
+      workbench.viewStart = 0;
+      workbench.lastPointsLength = timeline.points.length;
+    }
     const card = node("section", null, { class: "fluent-card wb-card workbench-chart-card" });
     card.append(cardHeader("时序趋势", null, null, "多维度用量走势与峰值下钻分析", [
+      zoomToolbar(),
       segButtons([["line", "折线"], ["area", "面积"]], workbench.chartType, type => { workbench.chartType = type; drawTimeline(); }, "chart-type-picker"),
       segButtons(CHART_MODES, workbench.chartMode, mode => { workbench.chartMode = mode; workbench.selectedIndex = null; drawTimeline(); }, "chart-dim-tabs"),
     ]));
@@ -298,13 +309,80 @@
     drawTimelineSummary();
   }
 
+  // 缩放控制工具栏 (C163: [−] 1.0x [+] ↺, 双端同构)
+  function zoomToolbar() {
+    const bar = node("div", null, { class: "wb-zoom-bar" });
+    const zoom = workbench.zoomLevel || 1.0;
+    const minusBtn = node("button", "−", {
+      class: "wb-zoom-btn" + (zoom <= 1.0 ? " disabled" : ""),
+      title: "缩小 (亦可使用滚轮向下)",
+      type: "button",
+    });
+    minusBtn.addEventListener("click", () => {
+      if (workbench.zoomLevel > 1.0) {
+        workbench.zoomLevel = Math.max(1.0, Math.round((workbench.zoomLevel - 0.5) * 10) / 10);
+        drawTimeline();
+      }
+    });
+
+    const label = node("span", `${zoom.toFixed(1)}x`, {
+      class: "wb-zoom-label" + (zoom > 1.0 ? " active" : ""),
+    });
+
+    const plusBtn = node("button", "+", {
+      class: "wb-zoom-btn" + (zoom >= 4.0 ? " disabled" : ""),
+      title: "放大 (亦可使用滚轮向上)",
+      type: "button",
+    });
+    plusBtn.addEventListener("click", () => {
+      if (workbench.zoomLevel < 4.0) {
+        workbench.zoomLevel = Math.min(4.0, Math.round((workbench.zoomLevel + 0.5) * 10) / 10);
+        drawTimeline();
+      }
+    });
+
+    bar.append(minusBtn, label, plusBtn);
+
+    if (zoom > 1.0 || (workbench.viewStart && workbench.viewStart > 0)) {
+      const resetBtn = node("button", "↺ 全景", {
+        class: "wb-zoom-reset-btn",
+        title: "复位全景 (亦可双击图表区域)",
+        type: "button",
+      });
+      resetBtn.addEventListener("click", () => {
+        workbench.zoomLevel = 1.0;
+        workbench.viewStart = 0;
+        drawTimeline();
+      });
+      bar.append(resetBtn);
+    }
+    return bar;
+  }
+
   function timelineChart(points, series) {
+    const totalCount = points.length;
+    const zoom = workbench.zoomLevel || 1.0;
+    const visibleCount = Math.max(4, Math.min(totalCount, Math.round(totalCount / zoom)));
+    const maxStart = Math.max(0, totalCount - visibleCount);
+    workbench.viewStart = Math.max(0, Math.min(maxStart, Math.round(workbench.viewStart || 0)));
+    const visiblePoints = points.slice(workbench.viewStart, workbench.viewStart + visibleCount);
+
+    let globalPeakPoint = null;
+    let maxTokens = 0;
+    for (const p of points) {
+      if (p.totalTokens > maxTokens) {
+        maxTokens = p.totalTokens;
+        globalPeakPoint = p;
+      }
+    }
+    const globalPeakLabel = maxTokens > 0 ? globalPeakPoint.label : null;
+
     const width = 1000;
     const height = 200;
-    const values = points.flatMap(point => series.map(item => item.value(point)));
+    const values = visiblePoints.flatMap(point => series.map(item => item.value(point)));
     const { top, ticks } = niceTicks(Math.max(0, ...values));
     // Swift Charts 对字符串 x 值用分带刻度: 点位于各带中心, 首末点不贴边
-    const xAt = index => ((index + 0.5) / points.length) * width;
+    const xAt = index => ((index + 0.5) / visiblePoints.length) * width;
     const yAt = value => height - (value / top) * height;
 
     const chart = node("div", null, { class: "wb-chart" });
@@ -318,7 +396,7 @@
     const defs = svgEl("defs");
     svg.append(defs);
     series.forEach((item, index) => {
-      const { pathD, areaD } = catmullRomToBezier(points.map((point, at) => ({ x: xAt(at), y: yAt(item.value(point)) })), height, width);
+      const { pathD, areaD } = catmullRomToBezier(visiblePoints.map((point, at) => ({ x: xAt(at), y: yAt(item.value(point)) })), height, width);
       if (workbench.chartType === "area") {
         const gradient = svgEl("linearGradient", { id: `wb-grad-${index}`, x1: "0", y1: "0", x2: "0", y2: "1" });
         gradient.append(svgEl("stop", { offset: "0%", "stop-color": item.color, "stop-opacity": "0.35" }));
@@ -332,8 +410,8 @@
     svg.append(rule);
     plot.append(svg);
     // mac 在 ≤14 个点时画点标记; HTML 圆点避免 preserveAspectRatio=none 把圆拉成椭圆
-    if (points.length <= 14) {
-      series.forEach(item => points.forEach((point, index) => {
+    if (visiblePoints.length <= 14) {
+      series.forEach(item => visiblePoints.forEach((point, index) => {
         plot.append(node("i", null, {
           class: "wb-point",
           style: `left: ${(xAt(index) / width) * 100}%; bottom: ${(item.value(point) / top) * 100}%; background: ${item.color};`,
@@ -341,27 +419,81 @@
       }));
     }
     // 悬停选点 (mac chartXSelection): 就近点, 移出清除
-    const select = index => {
-      if (index === workbench.selectedIndex) return;
-      workbench.selectedIndex = index;
-      rule.setAttribute("class", index == null ? "wb-rule hidden" : "wb-rule");
-      if (index != null) {
-        rule.setAttribute("x1", xAt(index));
-        rule.setAttribute("x2", xAt(index));
+    const select = localIndex => {
+      const globalIndex = localIndex == null ? null : (workbench.viewStart + localIndex);
+      if (globalIndex === workbench.selectedIndex) return;
+      workbench.selectedIndex = globalIndex;
+      rule.setAttribute("class", localIndex == null ? "wb-rule hidden" : "wb-rule");
+      if (localIndex != null) {
+        rule.setAttribute("x1", xAt(localIndex));
+        rule.setAttribute("x2", xAt(localIndex));
       }
       drawTimelineSummary();
     };
+
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartViewStart = 0;
+
+    plot.addEventListener("mousedown", event => {
+      if (event.button !== 0) return;
+      isDragging = true;
+      dragStartX = event.clientX;
+      dragStartViewStart = workbench.viewStart;
+      plot.classList.add("dragging");
+      select(null);
+    });
+
+    const onMouseUp = () => {
+      if (isDragging) {
+        isDragging = false;
+        plot.classList.remove("dragging");
+      }
+    };
+    window.addEventListener("mouseup", onMouseUp, { once: true });
+
     plot.addEventListener("mousemove", event => {
       const rect = plot.getBoundingClientRect?.();
       if (!rect || !rect.width) return;
-      const band = Math.floor(((event.clientX - rect.left) / rect.width) * points.length);
-      select(Math.min(points.length - 1, Math.max(0, band)));
+      if (isDragging) {
+        const dx = event.clientX - dragStartX;
+        const pointWidth = rect.width / visiblePoints.length;
+        const deltaIndices = Math.round(-dx / pointWidth);
+        const newStart = Math.max(0, Math.min(maxStart, dragStartViewStart + deltaIndices));
+        if (newStart !== workbench.viewStart) {
+          workbench.viewStart = newStart;
+          drawTimeline();
+        }
+        return;
+      }
+      const band = Math.floor(((event.clientX - rect.left) / rect.width) * visiblePoints.length);
+      select(Math.min(visiblePoints.length - 1, Math.max(0, band)));
     });
-    plot.addEventListener("mouseleave", () => select(null));
+
+    plot.addEventListener("mouseleave", () => {
+      if (!isDragging) select(null);
+    });
+
+    plot.addEventListener("wheel", event => {
+      event.preventDefault();
+      const delta = event.deltaY < 0 ? 0.25 : -0.25;
+      const oldZoom = workbench.zoomLevel || 1.0;
+      const newZoom = Math.max(1.0, Math.min(4.0, Math.round((oldZoom + delta) * 100) / 100));
+      if (newZoom !== oldZoom) {
+        workbench.zoomLevel = newZoom;
+        drawTimeline();
+      }
+    }, { passive: false });
+
+    plot.addEventListener("dblclick", () => {
+      workbench.zoomLevel = 1.0;
+      workbench.viewStart = 0;
+      drawTimeline();
+    });
 
     const xAxis = node("div", null, { class: "wb-chart-x" });
-    const peakColor = peakDominantColor(points, series);
-    for (const tick of timelineAxisTicks(points)) {
+    const peakColor = peakDominantColor(visiblePoints, series);
+    for (const tick of timelineAxisTicks(visiblePoints, globalPeakLabel)) {
       if (tick.isPeak) {
         xAxis.append(node("span", `🔥 ${tick.label}`, {
           class: "wb-chart-x-peak",
@@ -372,27 +504,49 @@
       }
     }
     chart.append(yAxis, plot, xAxis);
+
+    if (zoom > 1.0 && totalCount > 0) {
+      const minimap = node("div", null, { class: "wb-chart-minimap" });
+      const thumbWidthPct = Math.max(4, (visibleCount / totalCount) * 100);
+      const thumbLeftPct = maxStart > 0 ? (workbench.viewStart / (totalCount - visibleCount)) * (100 - thumbWidthPct) : 0;
+      const thumb = node("div", null, {
+        class: "wb-chart-minimap-thumb",
+        style: `left: ${thumbLeftPct}%; width: ${thumbWidthPct}%;`,
+      });
+      minimap.append(thumb);
+      chart.append(minimap);
+    }
+
     return chart;
   }
 
-  // X 轴抽稀刻度与峰值高亮状态 (C162: 方案 A1 3h 等步长 + 峰值防撞吸附, 与 mac WorkbenchAnalytics.timelineAxisTicks 一致)
-  function timelineAxisTicks(points) {
+  // X 轴抽稀刻度与峰值高亮状态 (C162 / C163: 方案 A1 3h 等步长 + 动态 LOD 刻度步长 + 峰值防撞吸附, 与 mac WorkbenchAnalytics.timelineAxisTicks 一致)
+  function timelineAxisTicks(points, globalPeakLabel = null) {
     const count = points.length;
     if (!count) return [];
     let peakIndex = -1;
-    let maxTokens = 0;
-    points.forEach((point, idx) => {
-      if (point.totalTokens > maxTokens) {
-        maxTokens = point.totalTokens;
-        peakIndex = idx;
-      }
-    });
+    if (globalPeakLabel != null) {
+      peakIndex = points.findIndex(point => point.label === globalPeakLabel);
+    } else {
+      let maxTokens = 0;
+      points.forEach((point, idx) => {
+        if (point.totalTokens > maxTokens) {
+          maxTokens = point.totalTokens;
+          peakIndex = idx;
+        }
+      });
+    }
 
+    const isHourly = points[0]?.label?.endsWith(":00");
     let baseIndices = [];
     let minGap = 0;
     if (count <= 8) {
       baseIndices = Array.from({ length: count }, (_, idx) => idx);
       minGap = 0;
+    } else if (isHourly && count <= 14) {
+      baseIndices = [];
+      for (let idx = 0; idx < count; idx += 2) baseIndices.push(idx);
+      minGap = 1;
     } else if (count === 24 && points[0].label === "00:00") {
       baseIndices = [0, 3, 6, 9, 12, 15, 18, 21];
       minGap = 1;

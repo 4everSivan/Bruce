@@ -2097,6 +2097,31 @@ struct PanelViewModelHarness {
         )
         try expect(grid15Ticks.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 标记为峰值")
 
+        // C163: 视口缩放平移与动态 LOD 刻度步长自适应 (双端同构)
+        // 1. 中度放大 2.0x (12 点视口): 步长自动细化为 2 小时等步长
+        let slice12 = Array(grid15Points[10...21]) // 10:00 ~ 21:00
+        let ticks12 = WorkbenchAnalytics.timelineAxisTicks(for: slice12, globalPeakLabel: "15:00")
+        try expect(
+            ticks12.map(\.label).contains("15:00"),
+            "15:00 峰值在 12 点视口中正确保留"
+        )
+        try expect(ticks12.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 标记为峰值")
+        // 2. 深度放大 4.0x (6 点视口 ≤ 8): 点间距充裕，展开为逐 1 小时全显
+        let slice6 = Array(grid15Points[12...17]) // 12:00 ~ 17:00
+        let ticks6 = WorkbenchAnalytics.timelineAxisTicks(for: slice6, globalPeakLabel: "15:00")
+        try expect(
+            ticks6.map(\.label) == ["12:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
+            "≤8 点视口展开逐 1 小时全量刻度: \(ticks6.map(\.label))"
+        )
+        try expect(ticks6.filter(\.isPeak).map(\.label) == ["15:00"], "15:00 在 6 点全显中标记为峰值")
+        // 3. 峰值移出视口 (00:00 ~ 07:00, 8 点视口): 不产生虚假峰值胶囊
+        let morningSlice = Array(grid15Points[0...7])
+        let morningTicks = WorkbenchAnalytics.timelineAxisTicks(for: morningSlice, globalPeakLabel: "15:00")
+        try expect(
+            morningTicks.filter(\.isPeak).isEmpty,
+            "全局峰值 15:00 不在早间视口中，刻度无峰值高亮"
+        )
+
         // 项目分布只有今日数据, 今日范围才下发
         let claude = try unwrap(snapshot.agents.first { $0.agentID == "claude-code" })
         try expect(claude.topProjects.map(\.name) == ["bruce"], "今日范围下发项目分布")

@@ -200,7 +200,8 @@
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
       "changes": [
         "C070",
-        "C162"
+        "C162",
+        "C163"
       ]
     },
     "SoftwareUpdate": {
@@ -1661,6 +1662,15 @@
       "topic": "AgentAnalytics",
       "version": "0.16.0",
       "file": "docs/devel/change/C162.json"
+    },
+    "C163": {
+      "title": "模型用量时序趋势图支持滚轮/双指缩放、水平平移与刻度自适应细化（LOD 1h/2h/3h，双端同构）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C163-timeline-zoom-pan",
+      "topic": "AgentAnalytics",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C163.json"
     }
   }
 }

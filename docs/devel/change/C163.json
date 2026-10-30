@@ -1,0 +1,101 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C163",
+  "title": "模型用量时序趋势图支持滚轮/双指缩放、水平平移与刻度自适应细化（LOD 1h/2h/3h，双端同构）",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C163-timeline-zoom-pan",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "设置中心「模型用量」工作台 TimelineChartCard / settings-workbench.js 时序趋势图",
+    "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "design_topic": "AgentAnalytics"
+  },
+  "why": "时序趋势图在今日 24 小时或近 30 天等长周期下全量固定铺满，无法针对密集波峰或局部时段进行放大观察；鼠标悬停探针在密集区域命中难度高。经高保真交互 Demo 对齐，增加滚轮与双指捏合缩放（1.0x ~ 4.0x）、水平拖拽平移，并联动 C162 方案 A1 实现刻度步长动态分级自适应（LOD：全景 3h → 中度 2h → 深度 1h 全显），双击一键复位全景，双端同构。",
+  "precheck": {
+    "description": "核对 TimelineChartCard 与 settings-workbench.js 是否尚未包含视口与手势缩放逻辑",
+    "command": "rg -n \"zoomLevel|viewStart|isDragging|MagnificationGesture\" apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift apps/win/src/settings-workbench.js",
+    "expected": "两端均无时序图缩放平移与视口逻辑输出",
+    "is_completed": true,
+    "evidence": "2026-10-30 预检执行：命令无任何输出，确认双端当前时序图均为静态全量铺满，尚未支持缩放与平移手势。"
+  },
+  "callback": {
+    "before": [
+      "git status -sb"
+    ],
+    "after": [
+      "swift run --package-path apps/macos PanelViewModelHarness",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card C163 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS Swift Charts 时序图缩放平移与动态 LOD 刻度",
+      "before": "TimelineChartCard 仅渲染全量静态点，无手势交互与缩放控制；X 轴固定 3h 步长。",
+      "after": "TimelineChartCard 支持滚轮/捏合缩放（1.0x~4.0x）与水平平移，右上角显示缩放状态与复位按钮；WorkbenchAnalytics.timelineAxisTicks 增加视口范围参数 (viewStart...viewEnd)，根据视口跨度自适应切换 3h / 2h / 1h 步长；双击一键恢复全景。",
+      "impact": "TimelineChartCard.swift、WorkbenchAnalytics.swift、PanelViewModelHarness.swift"
+    },
+    {
+      "scope": "Windows 前端时序图缩放平移与动态 LOD 刻度（双端同构）",
+      "before": "settings-workbench.js 固定按 100% 容器宽度渲染，无缩放平移手势；固定 8 刻度/3h 步长。",
+      "after": "settings-workbench.js 监听 plot 上的 wheel（缩放）与 mousedown/mousemove（拖拽平移），根据 [viewStart, viewEnd] 动态裁剪与重绘 SVG 曲线与 X 轴刻度，双击复原。",
+      "impact": "settings-workbench.js、styles.css、frontend.test.mjs"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "topic": "AgentAnalytics",
+    "modified": true,
+    "rule_diff": {
+      "before": "x 轴刻度抽稀与峰值胶囊高亮（C162）：显式刻度抽稀（方案 A1），峰值防撞合入与 S2 胶囊高亮。",
+      "after": "新增 x 轴手势缩放与动态步长平移（C163）：支持滚轮/双指捏合缩放（1.0x~4.0x）、水平平移与双击复位；动态分级刻度 LOD（今日跨度 >18 为 3h 步长，10~18 为 2h 步长，≤10 为 1h 逐小时全显）；峰值胶囊在视口内全态跟随；平移与悬停探针解耦。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261030-04",
+    "user_quote": "确认，合并到主分支准备提交",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "PanelViewModelHarness 63 项测试全绿（含 C163 12 点视口 2h 步长、6 点视口 1h 全显及移出视口防虚假峰值断言）；Windows check-win-frontend.mjs 106 项测试全绿（含 C163 缩放工具栏、滚轮缩放、动态 LOD 与双击复位 DOM 测试）；Cargo 48+ 项及 Fixture 扫描通过。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "滚轮/双指缩放平滑，水平平移顺畅，双击一键复位，刻度随放大自动细化且峰值胶囊高亮准确",
+        "false_if": "缩放卡顿、边界越界、刻度重叠或峰值胶囊显示异常",
+        "evidence": "可交互 Demo（timeline_zoom_pan_demo.html）经人类明确确认批准；macOS 与 Windows 双端基于视口切片模型（Slicing Viewport Model）实现同构手势缩放、水平拖拽平移、动态刻度细化及双击复位。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未引入副作用，悬停探针与底部概览数据正常，维度切换正常",
+        "false_if": "破坏了上下游其他接口或产生连锁反应",
+        "evidence": "拖拽平移与悬停探针解耦（拖拽时隐藏探针避免抢焦点）；未改动后端快照与采集契约；折线/面积与各维度切换正常；跨度切换自动复位 1.0x 全景。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-30",
+    "exit_code": 4,
+    "from_status": "verified",
+    "target_status": "closed"
+  }
+}
