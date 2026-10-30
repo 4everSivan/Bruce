@@ -1264,13 +1264,67 @@ test("settings saves are serialized and each merges the latest backend state (C0
   app.node("setting-notifications").checked = false;
   pending.push(app.node("setting-notifications").dispatch("change"));
   await Promise.all(pending);
-  assert.equal(app.state.settings.refreshIntervalSecs, 300);
+  assert.equal(app.state.settings.refreshIntervalSecs, 180);
   assert.deepEqual([...app.state.settings.cardOrder], ["subscription", "usage", "hourly"]);
   assert.equal(app.state.settings.notificationsEnabled, false);
   // C146: 开关旁不再有状态字节点, 开合位置即唯一状态表达.
   assert.equal(app.node("setting-notifications-state"), null, "不得再渲染已开启/已关闭状态字");
   const saves = app.calls.filter((call) => call.command === "save_settings_command").length;
   assert.equal(saves, 3, "每个控件各保存一次");
+});
+
+test("refresh interval offers 3 / 6 minute presets plus a custom minute field (C160)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const select = app.node("setting-interval");
+  const labels = [...select.querySelectorAll("option")].map((option) => option.textContent);
+  assert.deepEqual(labels, ["3 分钟", "6 分钟", "自定义"], "预设与自定义分段必须与 mac 一致");
+  // 默认 30 分钟不在预设内 -> 回显为自定义, 但只读展示当前值, 不展开输入框
+  assert.equal(select.value, "custom");
+  const field = app.node("setting-interval-custom");
+  const customWrap = app.node("setting-interval-custom-wrap");
+  const current = app.node("setting-interval-current");
+  const editBtn = app.node("setting-interval-edit");
+  const editGroup = app.node("setting-interval-edit-group");
+  assert.equal(customWrap.style.display, "flex");
+  assert.equal(current.textContent, "30 分钟");
+  assert.equal(current.style.display, "");
+  assert.equal(editBtn.style.display, "");
+  assert.equal(editGroup.style.display, "none", "打开设置时不得出现输入框");
+  assert.equal(field.value, "30");
+  // 选 6 分钟 -> 保存 360 秒并收起自定义组
+  const group = select.parentElement.querySelector(".fluent-seg");
+  await group.querySelectorAll(".seg-opt")[1].click();
+  assert.equal(app.state.settings.refreshIntervalSecs, 360);
+  assert.equal(customWrap.style.display, "none");
+  // 选自定义 -> 用户主动点击后才展开输入并回填当前生效值
+  await group.querySelectorAll(".seg-opt")[2].click();
+  assert.equal(customWrap.style.display, "flex");
+  assert.equal(editGroup.style.display, "flex");
+  assert.equal(current.style.display, "none");
+  assert.equal(editBtn.style.display, "none");
+  assert.equal(field.value, "6");
+  // 输入 12 分钟 -> 保存 720 秒并退出编辑态, 回到只读展示
+  field.value = "12";
+  await field.dispatch("change");
+  assert.equal(app.state.settings.refreshIntervalSecs, 720);
+  assert.equal(editGroup.style.display, "none");
+  assert.equal(current.textContent, "12 分钟");
+  // 「编辑」可再次进入编辑态
+  await editBtn.click();
+  assert.equal(editGroup.style.display, "flex");
+  assert.equal(field.value, "12");
+  // 越界输入 -> 还原当前生效值, 不写回, 保持编辑态
+  const savesBefore = app.calls.filter((call) => call.command === "save_settings_command").length;
+  field.value = "0";
+  await field.dispatch("change");
+  assert.equal(field.value, "12");
+  assert.equal(app.state.settings.refreshIntervalSecs, 720);
+  assert.equal(editGroup.style.display, "flex");
+  assert.equal(
+    app.calls.filter((call) => call.command === "save_settings_command").length,
+    savesBefore,
+    "越界输入不得触发保存",
+  );
 });
 
 test("Claude local login state renders status text and imports from the machine (C075)", async () => {

@@ -1064,6 +1064,13 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   min-width: 140px;
 }
 
+/* C160: 刷新间隔自定义分钟数只需容纳 1–4 位, 覆盖通用 140px 最小宽。 */
+.fluent-card input.interval-custom-input {
+  min-width: 64px;
+  width: 64px;
+  text-align: center;
+}
+
 /* Fluent 2 现代药丸滑动开关 (对齐 WinUI ToggleSwitch) */
 .fluent-card input[type="checkbox"],
 .sheet input[type="checkbox"],

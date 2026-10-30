@@ -437,14 +437,8 @@ struct SettingsView: View {
                     sub: "本地统计采集与订阅额度自动刷新周期；遇 429 限流时自动冷却",
                     divided: true
                 ) {
-                    FluentSegmentedPicker(
-                        options: OnboardingConfiguration.allowedRefreshIntervalMinutes
-                            .map { ("\($0) 分钟", $0) },
-                        selection: Binding(
-                            get: { coordinator.refreshIntervalMinutes },
-                            set: { coordinator.setRefreshIntervalMinutes($0) }
-                        )
-                    )
+                    // C160: 预设 3 / 6 分钟, 其余 1–1440 分钟经「自定义」输入.
+                    RefreshIntervalControl(coordinator: coordinator)
                 }
                 FluentRow(
                     "锁屏暂停订阅刷新",
@@ -467,24 +461,16 @@ struct SettingsView: View {
                     sub: "额度紧缺时在菜单栏图标下方弹出提示微卡; 关闭后不弹出",
                     divided: true
                 ) {
-                    HStack(spacing: 8) {
-                        Button("测试气泡") {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("Bruce.TriggerTestQuotaAlert"),
-                                object: nil
-                            )
-                        }
-                        .fluentButton()
-                        Toggle(
-                            "",
-                            isOn: Binding(
-                                get: { coordinator.systemNotificationsEnabled },
-                                set: { coordinator.setSystemNotificationsEnabled($0) }
-                            )
+                    // C160: 验证期「测试气泡」入口已移除, 行内只保留开关.
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { coordinator.systemNotificationsEnabled },
+                            set: { coordinator.setSystemNotificationsEnabled($0) }
                         )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                    }
+                    )
+                    .labelsHidden()
+                    .toggleStyle(.switch)
                 }
                 FluentRow(
                     "凭据存储",
@@ -1331,4 +1317,99 @@ struct LiveReorderDropDelegate<ID: RawRepresentable & Equatable & Sendable>: Dro
     }
 
     func performDrop(info: DropInfo) -> Bool { true }
+}
+
+// MARK: - 刷新间隔 (C160)
+
+/// 刷新间隔选择: 预设 3 / 6 分钟, 其余合法值经「自定义」输入 (1–1440 整数分钟).
+/// 自定义值默认只以「X 分钟 + 编辑」只读呈现, 只有用户点击分段或「编辑」后才渲染
+/// 并聚焦输入框 —— 避免设置窗口打开时输入框被系统当作初始焦点 (C160).
+private struct RefreshIntervalControl: View {
+    @ObservedObject var coordinator: OnboardingCoordinator
+    @State private var customEditing = false
+    @State private var customText = ""
+    @FocusState private var customFocused: Bool
+
+    private enum Choice: Hashable {
+        case preset(Int)
+        case custom
+    }
+
+    private var minutes: Int { coordinator.refreshIntervalMinutes }
+
+    private var isPreset: Bool {
+        OnboardingConfiguration.presetRefreshIntervalMinutes.contains(minutes)
+    }
+
+    private var selection: Choice {
+        if customEditing { return .custom }
+        return isPreset ? .preset(minutes) : .custom
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            FluentSegmentedPicker(
+                options: OnboardingConfiguration.presetRefreshIntervalMinutes.map {
+                    ("\($0) 分钟", Choice.preset($0))
+                } + [("自定义", Choice.custom)],
+                selection: Binding(
+                    get: { selection },
+                    set: { next in
+                        switch next {
+                        case .preset(let value):
+                            customEditing = false
+                            coordinator.setRefreshIntervalMinutes(value)
+                        case .custom:
+                            beginCustomEditing()
+                        }
+                    }
+                ),
+                accessibilityHintText: "选择自动刷新间隔"
+            )
+            if customEditing {
+                TextField("", text: $customText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 56)
+                    .focused($customFocused)
+                    .onAppear { customFocused = true }
+                    .onSubmit(commitCustom)
+                    .onChange(of: customText) { _, next in
+                        let digits = next.filter { $0.isNumber }
+                        if digits != next { customText = digits }
+                    }
+                Text("分钟")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(SettingsDemoTokens.text2)
+                    .fixedSize()
+            } else if !isPreset {
+                Text("\(minutes) 分钟")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(SettingsDemoTokens.text2)
+                    .fixedSize()
+                Button("编辑") { beginCustomEditing() }
+                    .fluentButton(.link)
+            }
+        }
+        .onAppear { customText = String(minutes) }
+        .onChange(of: minutes) { _, next in
+            if !customFocused { customText = String(next) }
+        }
+    }
+
+    private func beginCustomEditing() {
+        guard !customEditing else { return }
+        customText = String(minutes)
+        customEditing = true
+    }
+
+    private func commitCustom() {
+        guard let raw = Int(customText),
+              OnboardingConfiguration.refreshIntervalRange.contains(raw) else {
+            customText = String(minutes)
+            return
+        }
+        coordinator.setRefreshIntervalMinutes(raw)
+        customEditing = false
+        customText = String(raw)
+    }
 }

@@ -215,8 +215,8 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    /// refreshIntervalMinutes: 缺键, 显式 null 与非法值一律回落默认 30 分钟,
-    /// 合法值 (5/15/30/60) 原样保留; 原子读写往返一致.
+    /// refreshIntervalMinutes: 缺键, 显式 null 与超出 1–1440 的值一律回落默认 30 分钟,
+    /// 区间内任意整数 (含预设 3/6 与自定义 15/60/1440) 原样保留; 原子读写往返一致 (C160).
     static func configRefreshIntervalDecodeAndFallback() throws {
         // 缺键 -> nil -> 默认 30
         let missing = try JSONDecoder().decode(
@@ -245,30 +245,46 @@ extension BruceOnboardingCoreHarness {
             "显式 null 必须回落默认 30 分钟"
         )
 
-        // 非法值: 原始值保留可诊断, resolved 回落默认 30
-        let invalid = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(#"{"schemaVersion": 2, "refreshIntervalMinutes": 7}"#.utf8)
-        )
-        try coreExpect(
-            invalid.refreshIntervalMinutes == 7,
-            "非法原始值必须保留"
-        )
-        try coreExpect(
-            invalid.resolvedRefreshIntervalMinutes == 30,
-            "非法值必须回落默认 30 分钟"
-        )
-
-        // 合法值原样生效
-        let valid = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(
-                #"{"schemaVersion": 2, "refreshIntervalMinutes": 15}"#.utf8
+        // 越界值 (0 / 1441): 原始值保留可诊断, resolved 回落默认 30
+        for outOfRange in [0, 1441] {
+            let invalid = try JSONDecoder().decode(
+                OnboardingConfiguration.self,
+                from: Data(
+                    #"{"schemaVersion": 2, "refreshIntervalMinutes": \#(outOfRange)}"#.utf8
+                )
             )
+            try coreExpect(
+                invalid.refreshIntervalMinutes == outOfRange,
+                "越界原始值 \(outOfRange) 必须保留"
+            )
+            try coreExpect(
+                invalid.resolvedRefreshIntervalMinutes == 30,
+                "越界值 \(outOfRange) 必须回落默认 30 分钟"
+            )
+        }
+
+        // 区间内任意整数原样生效: 预设 3/6 与自定义 7/15/1440
+        for validMinutes in [3, 6, 7, 15, 1440] {
+            let valid = try JSONDecoder().decode(
+                OnboardingConfiguration.self,
+                from: Data(
+                    #"{"schemaVersion": 2, "refreshIntervalMinutes": \#(validMinutes)}"#.utf8
+                )
+            )
+            try coreExpect(
+                valid.resolvedRefreshIntervalMinutes == validMinutes,
+                "区间内值 \(validMinutes) 必须原样生效"
+            )
+        }
+
+        // 预设与区间常量契约
+        try coreExpect(
+            OnboardingConfiguration.presetRefreshIntervalMinutes == [3, 6],
+            "设置页预设必须为 3 / 6 分钟"
         )
         try coreExpect(
-            valid.resolvedRefreshIntervalMinutes == 15,
-            "合法值 15 必须原样生效"
+            OnboardingConfiguration.refreshIntervalRange == 1...1440,
+            "自定义刷新间隔区间必须为 1–1440 分钟"
         )
 
         // 原子读写往返

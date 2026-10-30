@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-29",
+  "updated_at": "2026-10-30",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -62,7 +62,8 @@
         "C153",
         "C154",
         "C155",
-        "C156"
+        "C156",
+        "C160"
       ]
     },
     "WindowsCompat": {
@@ -125,7 +126,8 @@
         "C151",
         "C157",
         "C158",
-        "C159"
+        "C159",
+        "C160"
       ]
     },
     "SubscriptionQuota": {
@@ -1625,6 +1627,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.16.0",
       "file": "docs/devel/change/C159.json"
+    },
+    "C160": {
+      "title": "刷新间隔收敛为 3 / 6 分钟预设 + 自定义 1–1440 分钟，并移除验证期「测试气泡」入口（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C160-refresh-interval-presets",
+      "topic": "PricingEngine",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C160.json"
     }
   }
 }

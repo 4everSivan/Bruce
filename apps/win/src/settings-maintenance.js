@@ -3,7 +3,7 @@
   const core = window.BruceSettingsCore;
   const S = window.BruceSettingsSections;
   const coreState = core.state;
-  const { invoke, listen, providers, CATEGORIES, node, byId, UP, REFRESH_PRESETS, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory } = core;
+  const { invoke, listen, providers, CATEGORIES, node, byId, UP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory } = core;
   // 跨分节调用经共享命名空间在调用时解析 (脚本按顺序加载, 调用发生在全部加载完成之后)。
   const providerDescriptor = (...args) => S.providerDescriptor(...args);
   const providerConfigured = (...args) => S.providerConfigured(...args);
@@ -13,6 +13,47 @@
   const renderAgentUsageWorkbench = (...args) => S.renderAgentUsageWorkbench(...args);
   const renderSessionProbes = (...args) => S.renderSessionProbes(...args);
   const renderPricingPane = (...args) => S.renderPricingPane(...args);
+
+  // 当前生效的刷新间隔 (分钟); 后端缺省 1800 秒即 30 分钟 (C160)。
+  function currentIntervalMinutes() {
+    return Math.max(1, Math.round((coreState.settings.refreshIntervalSecs || 1800) / 60));
+  }
+
+  // 自定义分钟输入是否处于编辑态。默认只读展示「X 分钟 + 编辑」, 避免任何
+  // 未点击就展开的输入框 (C160, 与 mac RefreshIntervalControl 同语义)。
+  let intervalCustomEditing = false;
+
+  function setIntervalCustomEditing(editing) {
+    intervalCustomEditing = editing;
+    const current = byId("setting-interval-current");
+    const editBtn = byId("setting-interval-edit");
+    const editGroup = byId("setting-interval-edit-group");
+    if (current) current.style.display = editing ? "none" : "";
+    if (editBtn) editBtn.style.display = editing ? "none" : "";
+    if (editGroup) editGroup.style.display = editing ? "flex" : "none";
+  }
+
+  // 仅在用户主动点击「自定义」分段或「编辑」后展开输入并聚焦。
+  function enterCustomIntervalEditing() {
+    const field = byId("setting-interval-custom");
+    if (!field) return;
+    field.value = String(currentIntervalMinutes());
+    setIntervalCustomEditing(true);
+    field.focus?.();
+  }
+
+  // 「自定义」分段被选中时展开只读值/编辑组, 其余分段全部收起 (C160)。
+  function syncIntervalCustomVisibility() {
+    const select = byId("setting-interval");
+    const wrap = byId("setting-interval-custom-wrap");
+    const current = byId("setting-interval-current");
+    if (!select || !wrap) return;
+    const custom = select.value === "custom";
+    if (!custom) intervalCustomEditing = false;
+    wrap.style.display = custom ? "flex" : "none";
+    if (current) current.textContent = `${currentIntervalMinutes()} 分钟`;
+    setIntervalCustomEditing(intervalCustomEditing);
+  }
 
   function buildGeneral(host) {
     host.replaceChildren();
@@ -38,22 +79,70 @@
     layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
     row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
       "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
-    // 刷新间隔对齐 mac 允许集合 (5/15/30/60 分钟); 当前值不在集合内时由 loadSettings
-    // 追加为一项, 避免静默改写用户既有配置。
+    // C160: 预设 3 / 6 分钟, 其余 1–1440 分钟经「自定义」输入; 与 mac 同语义。
+    // 历史值 (含默认 30) 不在预设集合时由 loadSettings 回显为「自定义」, 禁止静默改写。
     const interval = node("select", null, { id: "setting-interval" });
     for (const minutes of REFRESH_PRESETS) interval.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
-    row(c1, "刷新间隔", segmented(interval, (value, revert) => persist({ refreshIntervalSecs: Number(value) * 60 }, { revert })),
-      "已授权模块的自动采集周期，变更后立即重新计时");
-    // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
-    const notifyWrap = node("div", null, { class: "toggle-with-state", style: "display: flex; gap: 8px; align-items: center;" });
-    const testBubbleBtn = button(notifyWrap, "setting-test-quota-bubble", "测试气泡", async () => {
-      try {
-        await invoke("test_quota_alert");
-      } catch (err) {
-        console.error("test_quota_alert failed:", err);
-      }
+    interval.append(node("option", "自定义", { value: "custom" }));
+    const intervalCustomWrap = node("div", null, {
+      id: "setting-interval-custom-wrap",
+      class: "interval-custom",
+      style: "display: none; gap: 6px; align-items: center;",
     });
-    testBubbleBtn.className = "fluent-btn";
+    const intervalCurrent = node("span", "", { id: "setting-interval-current", class: "row-sub" });
+    button(intervalCustomWrap, "setting-interval-edit", "编辑", () => enterCustomIntervalEditing(), "btn link");
+    const intervalEditGroup = node("span", null, {
+      id: "setting-interval-edit-group",
+      style: "display: none; gap: 6px; align-items: center;",
+    });
+    const intervalCustom = input("setting-interval-custom", "number", {
+      min: String(REFRESH_CUSTOM_RANGE[0]),
+      max: String(REFRESH_CUSTOM_RANGE[1]),
+      step: "1",
+    });
+    intervalCustom.className = "interval-custom-input";
+    intervalEditGroup.append(intervalCustom, node("span", "分钟", { class: "row-sub" }));
+    intervalCustomWrap.append(intervalCurrent, intervalEditGroup);
+    const commitCustomInterval = async () => {
+      const minutes = Number(intervalCustom.value);
+      if (!Number.isInteger(minutes) || minutes < REFRESH_CUSTOM_RANGE[0] || minutes > REFRESH_CUSTOM_RANGE[1]) {
+        intervalCustom.value = String(currentIntervalMinutes());
+        message(
+          byId("settings-status"),
+          `刷新间隔须为 ${REFRESH_CUSTOM_RANGE[0]}–${REFRESH_CUSTOM_RANGE[1]} 的整数分钟`,
+          "warn",
+        );
+        return;
+      }
+      const ok = await persist({ refreshIntervalSecs: minutes * 60 });
+      if (ok) {
+        intervalCustom.value = String(minutes);
+        intervalCustomEditing = false;
+        syncIntervalCustomVisibility();
+      }
+    };
+    intervalCustom.addEventListener("change", commitCustomInterval);
+    const intervalWrap = node("div", null, { class: "interval-wrap", style: "display: flex; gap: 8px; align-items: center;" });
+    intervalWrap.append(
+      segmented(interval, (value, revert) => {
+        if (value === "custom") {
+          syncIntervalCustomVisibility();
+          enterCustomIntervalEditing();
+          return undefined;
+        }
+        setIntervalCustomEditing(false);
+        syncIntervalCustomVisibility();
+        // 保存失败时分段会回滚到原值, 同步刷新只读值/编辑组的显隐, 避免停在隐藏态。
+        return persist({ refreshIntervalSecs: Number(value) * 60 }, {
+          revert: () => { revert(); syncIntervalCustomVisibility(); },
+        });
+      }),
+      intervalCustomWrap,
+    );
+    row(c1, "刷新间隔", intervalWrap, "已授权模块的自动采集周期，变更后立即重新计时");
+    // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
+    // C160: 验证期「测试气泡」入口已移除, 行内只保留开关.
+    const notifyWrap = node("div", null, { class: "toggle-with-state" });
     const notify = input("setting-notifications", "checkbox");
     notifyWrap.append(notify);
     notify.addEventListener("change", () => persist({ notificationsEnabled: notify.checked }, {
@@ -651,11 +740,12 @@
     const intervalSelect = byId("setting-interval");
     if (intervalSelect) {
       const minutes = Math.round(coreState.settings.refreshIntervalSecs / 60);
-      // 当前值不在 mac 允许集合内 (历史配置) 时追加为一项, 避免静默改写为默认 30 分钟
-      if (minutes > 0 && !REFRESH_PRESETS.includes(minutes) && !intervalSelect.querySelector(`option[value="${minutes}"]`)) {
-        intervalSelect.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
-      }
-      intervalSelect.value = String(minutes);
+      // C160: 预设 3 / 6 分钟命中预设分段; 其余历史值 (含默认 30) 回显为「自定义」, 禁止静默改写。
+      intervalSelect.value = REFRESH_PRESETS.includes(minutes) ? String(minutes) : "custom";
+      const customField = byId("setting-interval-custom");
+      if (customField) customField.value = String(minutes);
+      intervalCustomEditing = false;
+      syncIntervalCustomVisibility();
     }
     if (byId("setting-notifications")) byId("setting-notifications").checked = coreState.settings.notificationsEnabled;
     if (byId("setting-tray-hover-preview")) byId("setting-tray-hover-preview").checked = coreState.settings.trayHoverPreview !== false;

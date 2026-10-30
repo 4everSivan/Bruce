@@ -37,8 +37,11 @@
   // 软件更新共享表现层 (T11): 文案与状态区语义和 mac 同源, 双端同读
   // tests/fixtures/update-copy-parity/cases.json 对拍 (check-win-frontend.mjs 执行)。
   const UP = window.BruceUpdatePresentation;
-  // mac 允许的自动采集周期 (OnboardingConfiguration.allowedRefreshIntervalMinutes)
-  const REFRESH_PRESETS = [5, 15, 30, 60];
+  // mac 预设的自动采集周期 (OnboardingConfiguration.presetRefreshIntervalMinutes);
+  // 其余 1–1440 分钟经设置页「自定义」输入 (C160)。
+  const REFRESH_PRESETS = [3, 6];
+  // 自定义刷新间隔的合法区间 (分钟), 与 src-tauri settings.rs 的 60–86400 秒钳制一致。
+  const REFRESH_CUSTOM_RANGE = [1, 1440];
 
   // 共享可变状态 (TD-011): 所有分节脚本读写同一对象, 界面更新不会分叉。
   const state = {
@@ -267,6 +270,6 @@
   window.BruceSettingsSections = window.BruceSettingsSections || {};
   window.BruceSettingsCore = {
     state,
-    invoke, listen, providers, CATEGORIES, node, byId, UP, REFRESH_PRESETS, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory,
+    invoke, listen, providers, CATEGORIES, node, byId, UP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory,
   };
 })();

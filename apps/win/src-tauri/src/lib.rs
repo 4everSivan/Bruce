@@ -1211,33 +1211,6 @@ mod desktop {
         app.exit(0);
     }
 
-    #[tauri::command]
-    fn test_quota_alert(app: tauri::AppHandle) {
-        let mock_alerts = vec![
-            crate::alerts::QuotaAlert {
-                service_id: "kimi_coding".to_string(),
-                service_name: "Kimi Coding".to_string(),
-                window_label: "5 小时".to_string(),
-                used_percent: 85.0,
-                tier: 80,
-                provider_id: Some("kimi".to_string()),
-                reset_text: Some("01:28:45".to_string()),
-                resets_at: Some("2026-10-30T15:28:45Z".to_string()),
-            },
-            crate::alerts::QuotaAlert {
-                service_id: "codex_standard".to_string(),
-                service_name: "Codex".to_string(),
-                window_label: "5 小时".to_string(),
-                used_percent: 96.0,
-                tier: 95,
-                provider_id: Some("codex".to_string()),
-                reset_text: Some("00:15:20".to_string()),
-                resets_at: Some("2026-10-30T14:15:20Z".to_string()),
-            },
-        ];
-        show_quota_alert(&app, &mock_alerts);
-    }
-
     /// 打开设置窗口 (mac SettingsWindowController 单实例语义: 已存在则置前)。
     /// 静态配置于 tauri.conf.json，随应用在主线程完成 WebView2 初始化并隐藏预备。
     /// 若窗口因异常缺失，在主线程兜底创建并显式呈现。
@@ -1505,7 +1478,6 @@ mod desktop {
                 hide_preview_window,
                 hide_quota_alert_window,
                 show_dashboard_from_alert,
-                test_quota_alert,
                 expand_dashboard,
                 set_hotkey_recording,
                 quit_app,

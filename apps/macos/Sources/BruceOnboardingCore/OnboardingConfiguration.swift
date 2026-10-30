@@ -159,6 +159,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 模型单价人工校准覆盖, 键为模型标识 (如 "k3-agent", "deepseek-v4-flash").
     public var pricingOverrides: [String: ModelPricingOverride]?
     /// 自动刷新间隔 (分钟). nil (含 JSON 显式 null) 表示使用默认 30 分钟.
+    /// 合法区间见 `refreshIntervalRange`; 3 / 6 为设置页预设, 其余值经「自定义」输入 (C160).
     public var refreshIntervalMinutes: Int?
     /// 外观偏好. nil (含 JSON 显式 null 或非法值) 表示跟随系统.
     public var appearanceMode: AppearancePreference?
@@ -192,13 +193,15 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
-    /// 设置页可选的刷新间隔 (分钟).
-    public static let allowedRefreshIntervalMinutes: [Int] = [5, 15, 30, 60]
+    /// 设置页分段选择器预置的刷新间隔 (分钟); 其余合法值经「自定义」输入 (C160).
+    public static let presetRefreshIntervalMinutes: [Int] = [3, 6]
+    /// 自定义刷新间隔的合法区间 (分钟), 与 Windows `refresh_interval_secs` 的 60–86400 秒钳制一致 (C160).
+    public static let refreshIntervalRange: ClosedRange<Int> = 1...1440
 
-    /// 解析后的刷新间隔: nil 或非法值一律回落默认 30 分钟.
+    /// 解析后的刷新间隔: nil 或超出合法区间的值一律回落默认 30 分钟.
     public var resolvedRefreshIntervalMinutes: Int {
         guard let value = refreshIntervalMinutes,
-              Self.allowedRefreshIntervalMinutes.contains(value) else {
+              Self.refreshIntervalRange.contains(value) else {
             return Self.defaultRefreshIntervalMinutes
         }
         return value

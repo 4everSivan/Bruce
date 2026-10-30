@@ -468,10 +468,10 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// 用户变更自动刷新间隔: 先持久化再通知 Scheduler 重启计时
-    /// (先存后生效); 非法值回落默认 30 分钟, 保存失败不变更运行中间隔.
+    /// (先存后生效); 超出 1–1440 分钟的非法值回落默认 30 分钟, 保存失败不变更运行中间隔.
     func setRefreshIntervalMinutes(_ minutes: Int) {
         let normalized = OnboardingConfiguration
-            .allowedRefreshIntervalMinutes.contains(minutes)
+            .refreshIntervalRange.contains(minutes)
             ? minutes : OnboardingConfiguration.defaultRefreshIntervalMinutes
         guard let configStore else {
             model.setSettingsError("配置存储不可用, 无法保存刷新间隔")
