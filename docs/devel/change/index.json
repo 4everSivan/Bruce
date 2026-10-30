@@ -1648,7 +1648,7 @@
     "C161": {
       "title": "Agent / 模型身份从色点升级为品牌徽章：真彩 App 图标优先、逐档降级，设置中心与仪表盘双端同构",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C161-agent-brand-badges",
       "topic": "AgentBrandIdentity",
       "version": "0.16.0",
