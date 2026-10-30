@@ -26,7 +26,7 @@ const fail = (message) => {
   failed = true;
 };
 
-for (const file of ["app.js", ...settingsScripts]) {
+for (const file of ["app.js", "agent-brand.js", ...settingsScripts]) {
   try {
     new vm.Script(readFileSync(join(repoRoot, "apps/win/src", file), "utf8"), { filename: file });
     console.log(`ok: ${file} 语法合法`);

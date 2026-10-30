@@ -2526,3 +2526,33 @@ html[data-motion="off"] *::before {
   flex: none;
   box-shadow: 0 0 6px rgba(76, 156, 255, 0.8);
 }
+
+/* ==========================================================================
+   Agent / 模型品牌身份徽章 (C161) —— 与 mac AgentBrandBadge 同口径
+   真彩档 (>=14px): 位图或 品牌底色+图形 + 系列色环;
+   系列色档 (<14px): 系列色瓷砖 + 白图形; Nothing: 单色方角。
+   ========================================================================== */
+.ab-badge {
+  width: var(--ab-size, 14px);
+  height: var(--ab-size, 14px);
+  border-radius: calc(var(--ab-size, 14px) * .27);
+  background: var(--ab-tile, #3A3A3A);
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .16);
+}
+.ab-badge > svg { width: 58%; height: 58%; fill: var(--ab-mark, #fff); display: block; }
+.ab-badge .ab-mono { font: 700 calc(var(--ab-size, 14px) * .54)/1 var(--mono-font); color: var(--ab-mark, #fff); }
+.ab-badge--img { background: transparent; }
+.ab-badge--img .ab-img { width: 100%; height: 100%; border-radius: inherit; display: block; }
+.ab-badge--img > svg { display: none; }
+.ab-badge--ring {
+  box-shadow:
+    0 0 0 1.2px color-mix(in srgb, var(--ab-series, #8E8E93) 70%, transparent),
+    inset 0 0 0 .5px rgba(255, 255, 255, .16);
+}
+.ab-badge--nothing { background: transparent; border-radius: 1px; box-shadow: inset 0 0 0 1px var(--ab-nothing, #4A9E5C); }
+.ab-badge--nothing > svg { fill: var(--ab-nothing, #4A9E5C); }
+.ab-badge--nothing .ab-mono { color: var(--ab-nothing, #4A9E5C); }

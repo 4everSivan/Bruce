@@ -2564,3 +2564,29 @@ test("quota-alert.html defines 280pt capsule micro-card with R3-A countdown and 
   assert.ok(html.includes("theme-nothing"), "适配 Nothing 极客点阵主题");
   assert.ok(html.includes("progress-track segmented"), "包含 Nothing 风格 14 段方块分段量条结构");
 });
+
+test("agent brand badges replace colour dots on settings and dashboard (C161)", async () => {
+  // 设置窗口: Agent 行首 20px (真彩档, 带系列色环) + 模型 chip 12px (系列色档)
+  const settings = await boot({ html: "settings.html" });
+  await settings.document.querySelector('[data-category="agentUsage"]').click();
+  const pane = settings.node("pane-agentUsage");
+  const agentBadges = pane.querySelectorAll(".agent-matrix-card .ab-badge");
+  assert.ok(agentBadges.length >= 3, "Agent 行首应渲染品牌徽章");
+  assert.ok(agentBadges.every(badge => badge.style.getPropertyValue("--ab-size") === "20px"));
+  assert.ok(agentBadges.some(badge => badge.classList.contains("ab-badge--ring")), "大尺寸应带系列色环");
+  assert.ok(
+    agentBadges.every(badge => badge.querySelector("svg") || badge.querySelector(".ab-mono")),
+    "徽章必须有图形或字标, 不能空块",
+  );
+  await pane.querySelector(".agent-matrix-card .wb-expand").click();
+  const chipBadges = pane.querySelectorAll(".wb-flow-tag .ab-badge");
+  assert.ok(chipBadges.length >= 1, "模型 chip 应渲染品牌徽章");
+  assert.ok(chipBadges.every(badge => badge.style.getPropertyValue("--ab-size") === "12px"));
+  assert.ok(chipBadges.every(badge => !badge.classList.contains("ab-badge--ring")), "小尺寸不应带色环");
+
+  // 仪表盘: 14 日图例与逐小时行首同样换成徽章
+  const dashboard = await boot();
+  assert.ok(dashboard.document.querySelectorAll(".daily-legend .ab-badge").length >= 1);
+  assert.ok(dashboard.document.querySelectorAll(".agent-row .ab-badge").length >= 1);
+  assert.equal(dashboard.document.querySelectorAll(".daily-legend .sw").length, 0, "图例不应再留旧色块");
+});

@@ -514,6 +514,7 @@ const PROVIDER_GLYPHS = {
   opencodeGo: { vb: "0 0 24 24", shapes: [["M22 24L2 24L2 0L22 0ZM17 4.8L7 4.8L7 19.2L17 19.2Z", 1]] },
   stepfun: { vb: "0 0 24 24", shapes: [["M22.012 0L23.044 0L23.044 0.927L24 0.927L24 1.895L23.044 1.895L23.044 3.78L22.012 3.78L22.012 1.896L20.134 1.896L20.134 0.926L22.012 0.926ZM2.6 12.371L2.6 1.87L3.569 1.87L3.569 12.372ZM13.023 13.031L23.973 13.031L23.973 13.949L17.765 13.949L17.765 23.528L13.023 23.528L13.023 13.03ZM5.629 3.333L5.629 15.689L0 15.689L0 20.199L10.386 20.199L10.386 8L20.859 8L20.856 3.332Z", 1]] },
   volcengine: { vb: "0 0 24 24", shapes: [["M7.29 5.36L3.148 21.737C3.134 21.799 3.149 21.865 3.188 21.915C3.228 21.966 3.287 21.996 3.351 21.998L11.641 21.998C11.707 22 11.77 21.971 11.812 21.92C11.854 21.869 11.871 21.802 11.856 21.737L7.7 5.359C7.673 5.268 7.59 5.206 7.495 5.206C7.4 5.206 7.317 5.268 7.29 5.359Z", 0.5], ["M4.553 16.18L3.147 21.738C3.133 21.8 3.148 21.866 3.187 21.916C3.226 21.967 3.286 21.997 3.35 21.999L5.77 21.999L1.219 21.999C1.153 22.001 1.091 21.972 1.049 21.921C1.007 21.87 0.991 21.803 1.005 21.739L3.28 12.778C3.308 12.688 3.391 12.627 3.484 12.627C3.578 12.627 3.661 12.688 3.689 12.778Z", 1], ["M14.44 0.15C14.413 0.059 14.33 -0.003 14.235 -0.003C14.14 -0.003 14.057 0.059 14.03 0.15L8.366 21.739C8.351 21.803 8.367 21.871 8.409 21.922C8.451 21.973 8.514 22.002 8.58 22L19.9 22C19.966 22.002 20.029 21.973 20.071 21.922C20.113 21.871 20.13 21.804 20.115 21.739Z", 0.5], ["M16.694 22L19.901 22C19.967 22.001 20.03 21.972 20.072 21.921C20.113 21.87 20.129 21.802 20.115 21.738L18.276 14.745L19.44 10.153C19.467 10.062 19.55 9.999 19.646 9.999C19.741 9.999 19.824 10.062 19.851 10.153L22.802 21.739C22.817 21.803 22.801 21.871 22.759 21.922C22.717 21.973 22.654 22.002 22.588 22Z", 1], ["M10.278 7.741L6.685 21.736C6.669 21.801 6.685 21.869 6.727 21.921C6.769 21.973 6.832 22.002 6.899 22L14.069 22C14.17 22.002 14.26 21.933 14.283 21.834C14.291 21.802 14.291 21.768 14.283 21.736L10.687 7.742C10.659 7.652 10.576 7.591 10.482 7.591C10.389 7.591 10.306 7.652 10.278 7.742Z", 1]] },
+  zcode: { vb: "0 0 24 24", shapes: [["M5 4.5L19 4.5L19 7L9.5 17L19 17L19 19.5L5 19.5L5 17L14.5 7L5 7Z", 1]] },
   zhipu: { vb: "5.7 5.7 18.6 18.6", shapes: [["M15.47 7.1L14.17 8.95C13.97 9.24 13.63 9.42 13.27 9.42L6.17 9.42L6.17 7.09C6.16 7.1 15.47 7.1 15.47 7.1Z", 1], ["M24.3 7.1L13.14 22.91L5.7 22.91L16.86 7.1Z", 1], ["M14.53 22.91L15.84 21.05C16.04 20.76 16.38 20.58 16.74 20.58L23.83 20.58L23.83 22.91L14.53 22.91Z", 1]] },
 };
 // END GENERATED provider-glyphs
@@ -973,6 +974,23 @@ function nothingProjectConsole(projects) {
   return consoleEl;
 }
 
+// Agent 身份徽章 (C161): 有 agent-brand.js 时用品牌徽章, 否则退回原来的色点。
+function agentBadgeFor({ agentId, seriesHex, size, nothingHex }) {
+  const brand = window.BRUCE_AGENT_BRAND;
+  if (brand && typeof brand.create === "function") {
+    return brand.create({
+      agentId,
+      seriesHex,
+      size,
+      nothing: isNothingTheme(),
+      nothingHex,
+    });
+  }
+  const dot = el("span", size >= 14 ? "dot ab-dot-lg" : "dot");
+  dot.style.background = seriesHex;
+  return dot;
+}
+
 // agent 色: classic 取品牌色 (视图模型 colorHex), Nothing 取 5 档绿阶 (mac nothingRampHex),
 // 与 14 日点阵分段、图例色块同源。
 function agentColor(agentId, colorHex) {
@@ -983,8 +1001,12 @@ function agentRow(row, rerender) {
   const block = el("div", "agent-row");
   const expanded = expandedAgents.has(row.agentId);
   const line1 = el("div", "line1");
-  const dot = el("span", "dot");
-  dot.style.background = agentColor(row.agentId, row.colorHex);
+  const dot = agentBadgeFor({
+    agentId: row.agentId,
+    seriesHex: row.colorHex,
+    size: isNothingTheme() ? 9 : 14,
+    nothingHex: agentColor(row.agentId, row.colorHex),
+  });
   line1.append(dot, el("span", "an", row.name));
   if (row.isExpandable) {
     const chevron = el("span", expanded ? "row-chev open" : "row-chev");
@@ -1106,8 +1128,12 @@ function hourlyCard(hourly, usage) {
         const legend = el("div", "daily-legend");
         for (const item of usage.legend) {
           const span = el("span");
-          const sw = el("span", "sw");
-          sw.style.background = agentColor(item.agentId, item.colorHex);
+          const sw = agentBadgeFor({
+            agentId: item.agentId,
+            seriesHex: item.colorHex,
+            size: isNothingTheme() ? 9 : 14,
+            nothingHex: agentColor(item.agentId, item.colorHex),
+          });
           span.append(sw, el("span", null, item.name));
           legend.append(span);
         }

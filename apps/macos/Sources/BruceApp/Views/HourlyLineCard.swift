@@ -411,20 +411,17 @@ struct HourlyLineCard: View {
         HStack(spacing: 10) {
             ForEach(Array(dailyLegend.enumerated()), id: \.element.agentID) { index, item in
                 HStack(spacing: 4) {
-                    if isNothing {
-                        // 图例色块 = 分段点阵的绿阶档色, 与柱状图分段一一对应 (F3 定稿);
-                        // 不再用图案 swatch (旧版单色柱与 per-agent 图例对不上).
-                        Rectangle()
-                            .fill(Color(hex: PanelAgentColor.nothingRampHex(
-                                agentID: item.agentID,
-                                darkMode: colorScheme == .dark
-                            )))
-                            .frame(width: 8, height: 8)
-                    } else {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(hex: item.color.hex))
-                            .frame(width: 7, height: 7)
-                    }
+                    // Agent 品牌徽章 (C161): Nothing 走绿阶单色, 其余真彩档.
+                    AgentBrandBadge(
+                        asset: AgentBrandPalette.asset(forAgent: item.agentID),
+                        seriesHex: item.color.hex,
+                        size: isNothing ? 9 : 14,
+                        nothingHex: PanelAgentColor.nothingRampHex(
+                            agentID: item.agentID,
+                            darkMode: colorScheme == .dark
+                        ),
+                        fallbackMonogram: String(item.name.prefix(1)).uppercased()
+                    )
                     Text(item.name)
                 }
             }
@@ -501,18 +498,17 @@ struct HourlyLineCard: View {
     /// 其余主题保持品牌色块.
     private func headRow(_ row: HourlyAgentRow, expanded: Bool, index: Int) -> some View {
         HStack(spacing: 7) {
-            if isNothing {
-                Rectangle()
-                    .fill(Color(hex: PanelAgentColor.nothingRampHex(
-                        agentID: row.agentID,
-                        darkMode: colorScheme == .dark
-                    )))
-                    .frame(width: 7, height: 7)
-            } else {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(agentColor(row))
-                    .frame(width: 7, height: 7)
-            }
+            // Agent 品牌徽章 (C161): Nothing 走绿阶单色, 其余真彩档.
+            AgentBrandBadge(
+                asset: AgentBrandPalette.asset(forAgent: row.agentID),
+                seriesHex: row.color.hex,
+                size: isNothing ? 9 : 14,
+                nothingHex: PanelAgentColor.nothingRampHex(
+                    agentID: row.agentID,
+                    darkMode: colorScheme == .dark
+                ),
+                fallbackMonogram: String(row.name.prefix(1)).uppercased()
+            )
             if isNothing {
                 Text(row.name)
                     .font(NothingFont.ui(12, weight: .medium))

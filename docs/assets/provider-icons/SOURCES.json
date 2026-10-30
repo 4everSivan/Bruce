@@ -61,6 +61,33 @@
       "library": "Simple Icons",
       "license": "CC0-1.0",
       "url": "https://cdn.simpleicons.org/cline"
+    },
+    "zcode": {
+      "file": "zcode.svg",
+      "library": "ZCode 官方 App 图标字形重绘 (黑底白 Z)",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://zcode.z.ai/"
+    }
+  },
+  "agent_icons": {
+    "$comment": "Agent 真彩 App 图标 (C161). 位图直接取自本机已安装应用的内置图标, 仅作指示性识别 (徽章旁恒有 Agent 名称), 商标权归权利人.",
+    "codebuddy": {
+      "file": "agent-icons/agent-codebuddy.png",
+      "library": "@tencent-ai/codebuddy-code 内置 vendor/assets/icon.png",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://copilot.tencent.com/"
+    },
+    "codex": {
+      "file": "agent-icons/agent-codex.png",
+      "library": "ChatGPT.app 内置 Resources/icon-codex-dark-color.png",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://openai.com/codex/"
+    },
+    "zcode": {
+      "file": "agent-icons/agent-zcode.png",
+      "library": "ZCode.app 内置 Resources/icon.png",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://zcode.z.ai/"
     }
   }
 }

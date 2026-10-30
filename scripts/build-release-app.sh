@@ -133,6 +133,9 @@ Bruce_validate_release_bundle "$BRUCE_STAGED_APP"
 
 ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AppIcon.icns" \
     "$BRUCE_RESOURCES/AppIcon.icns"
+# Agent / 模型品牌身份位图 (C161), AgentBrandIconStore 从 Resources/AgentIcons 读取.
+ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AgentIcons" \
+    "$BRUCE_RESOURCES/AgentIcons"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
 plutil -create xml1 "$BRUCE_INFO_PLIST"

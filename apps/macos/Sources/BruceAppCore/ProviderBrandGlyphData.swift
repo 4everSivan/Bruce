@@ -87,6 +87,13 @@ package enum ProviderBrandGlyphData {
             ],
             source: "theSVG (Iconify set: thesvg) (MIT)"
         ),
+        "zcode": Glyph(
+            viewBox: CGRect(x: 0, y: 0, width: 24, height: 24),
+            shapes: [
+                Shape(path: "M5 4.5L19 4.5L19 7L9.5 17L19 17L19 19.5L5 19.5L5 17L14.5 7L5 7Z", opacity: 1),
+            ],
+            source: "ZCode 官方 App 图标字形重绘 (黑底白 Z) (品牌官方资源, 用于指示性识别)"
+        ),
         "zhipu": Glyph(
             viewBox: CGRect(x: 5.7, y: 5.7, width: 18.6, height: 18.6),
             shapes: [

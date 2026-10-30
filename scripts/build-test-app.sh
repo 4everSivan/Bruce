@@ -131,6 +131,9 @@ ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AppIcon.icns" \
 # 由 NothingFont.FontRegistry 以 .process scope 注册.
 ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/Fonts" \
     "$BRUCE_RESOURCES/Fonts"
+# Agent / 模型品牌身份位图 (C161), 由 AgentBrandIconStore 从 Resources/AgentIcons 读取.
+ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AgentIcons" \
+    "$BRUCE_RESOURCES/AgentIcons"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
 plutil -create xml1 "$BRUCE_INFO_PLIST"

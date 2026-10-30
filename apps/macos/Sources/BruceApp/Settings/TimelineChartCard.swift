@@ -83,9 +83,15 @@ struct TimelineChartCard: View {
             HStack(spacing: 12) {
                 ForEach(activeSeriesMeta) { meta in
                     HStack(spacing: 5) {
-                        Circle()
-                            .fill(Color(hex: meta.colorHex))
-                            .frame(width: 7, height: 7)
+                        // 有品牌素材才换徽章; token 类型 / 未知系列保留原色点。
+                        if let asset = seriesAsset(for: meta.key) {
+                            AgentBrandBadge(asset: asset, seriesHex: meta.colorHex, size: 13, followsTheme: false)
+                        } else {
+                            Circle()
+                                .fill(Color(hex: meta.colorHex))
+                                .frame(width: 7, height: 7)
+                        }
+
                         Text(meta.name)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(SettingsDemoTokens.text2)
@@ -294,6 +300,14 @@ struct TimelineChartCard: View {
                 return "\(intVal)"
             }
         }
+    }
+
+    /// 图例键 → 品牌素材: byModel 的键带 model_ 前缀, byAgent 直接用 agentID。
+    private func seriesAsset(for key: String) -> AgentBrandAsset? {
+        if key.hasPrefix("model_") {
+            return AgentBrandPalette.asset(forModelKey: String(key.dropFirst(6)))
+        }
+        return AgentBrandPalette.asset(forAgent: key)
     }
 
     private var activeSeriesMeta: [AnalyticsChartSeriesMeta] {

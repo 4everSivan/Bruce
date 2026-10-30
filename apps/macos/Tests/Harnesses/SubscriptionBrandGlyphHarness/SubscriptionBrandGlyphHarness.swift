@@ -41,10 +41,12 @@ struct SubscriptionBrandGlyphHarness {
         try opacityPreservation()
         try menuIcons()
         try menuSpacingEffect()
+        try agentBrandPaletteCoverage()
+        try agentBrandAssetFiles()
         if let directory = exportDirectory() {
             try exportMenuIcons(to: directory)
         }
-        print("SubscriptionBrandGlyph tests passed: 9")
+        print("SubscriptionBrandGlyph tests passed: 11")
     }
 
     /// 开发期导出开关 (不参与断言): `--write-icons <dir>` 把菜单图标导出为 PNG,
@@ -316,5 +318,82 @@ struct SubscriptionBrandGlyphHarness {
             "图标留白 6pt 应把标题右移至少 4pt, 实际 \(delta) (base=\(base), spaced=\(spaced))"
         )
         print("菜单标题位移量测: 无留白 x=\(base) -> 留白 6pt x=\(spaced) (右移 \(delta)pt)")
+    }
+// MARK: - C161 Agent 品牌身份
+
+    /// 已知 Agent / 模型厂商的身份表必须完整: 图形键真实存在, 字标非空,
+    /// 未知 Agent 返回 nil 由调用方兜底 (fail-closed)。
+    private static func agentBrandPaletteCoverage() throws {
+        let knownAgents = [
+            "zcode", "claude-code", "codex", "kimi-code-cli", "kimi-work",
+            "opencode", "codebuddy", "grok", "pi",
+        ]
+        for agentID in knownAgents {
+            guard let asset = AgentBrandPalette.asset(forAgent: agentID) else {
+                throw SubscriptionBrandGlyphFailure.expectation("\(agentID) 缺少品牌身份登记")
+            }
+            try expect(!asset.monogram.isEmpty, "\(agentID) 字标为空")
+            if let glyphID = asset.glyphID {
+                try expect(
+                    ProviderBrandGlyphData.glyphs[glyphID] != nil,
+                    "\(agentID) 引用了不存在的图形键 \(glyphID)"
+                )
+            }
+            try expect(
+                asset.imageName != nil || asset.glyphID != nil || !asset.monogram.isEmpty,
+                "\(agentID) 三档素材全缺"
+            )
+        }
+        try expect(
+            AgentBrandPalette.asset(forAgent: "unknown-agent") == nil,
+            "未知 Agent 不应凭空造品牌图形"
+        )
+
+        let modelCases: [(String, String)] = [
+            ("claude-opus-5-5", "claude"),
+            ("deepseek-v4.1-flash", "deepseek"),
+            ("glm-5.3", "zhipu"),
+            ("gpt-6.1-terra", "codex"),
+            ("kimi-k3", "kimi"),
+        ]
+        for (key, expectedGlyph) in modelCases {
+            guard let asset = AgentBrandPalette.asset(forModelKey: key) else {
+                throw SubscriptionBrandGlyphFailure.expectation("\(key) 缺少模型品牌图形")
+            }
+            try expect(
+                asset.glyphID == expectedGlyph,
+                "\(key) 应映射到 \(expectedGlyph), 实际 \(asset.glyphID ?? "nil")"
+            )
+        }
+        try expect(
+            AgentBrandPalette.asset(forModelKey: "gemini-3-pro") == nil,
+            "未登记厂商应返回 nil, 由调用方保留原色点"
+        )
+        print("Agent 品牌身份表: \(knownAgents.count) 个 Agent + \(modelCases.count) 个模型厂商通过")
+    }
+
+    /// 真彩档引用的位图必须真实入库 (生成器投放目标), 防止改名后运行时静默退回矢量。
+    private static func agentBrandAssetFiles() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iconDirectory = repoRoot.appendingPathComponent("apps/macos/Assets/AgentIcons")
+        let agentIDs = [
+            "zcode", "claude-code", "codex", "kimi-code-cli", "kimi-work",
+            "opencode", "codebuddy", "grok", "pi",
+        ]
+        for agentID in agentIDs {
+            guard let name = AgentBrandPalette.asset(forAgent: agentID)?.imageName else { continue }
+            let file = iconDirectory.appendingPathComponent(name + ".png")
+            try expect(
+                FileManager.default.fileExists(atPath: file.path),
+                "\(agentID) 的位图缺失: \(file.path)"
+            )
+        }
+        print("Agent 位图入库校验通过: \(iconDirectory.path)")
     }
 }

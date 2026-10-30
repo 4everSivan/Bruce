@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C161",
+  "title": "Agent / 模型身份从色点升级为品牌徽章：真彩 App 图标优先、逐档降级，设置中心与仪表盘双端同构",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C161-agent-brand-badges",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "设置「Agent 表现」/ 归并模型行 / 时间线图例 与 仪表盘「Agent 用量」图例、逐小时行",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "AgentBrandIdentity"
+  },
+  "why": "设置中心「Agent 表现」行首、模型 chip 与仪表盘「Agent 用量」图例/逐小时行目前只用 6–9pt 色点表示身份。色点无法回答「这是哪个 Agent」，且模型品牌色与 Agent 系列色存在硬撞车（glm #40C8E0 = ZCode、gpt #0A84FF = Kimi Code CLI、kimi 模型 #BF5AF2 = Codex），同一屏里语义混淆。用户已确认改为品牌图标：真彩 App 图标优先，拿不到素材逐 Agent 退化到品牌瓷砖，再退化到单色/字标；模型 chip 一并更换；Nothing 主题保持单色。",
+  "precheck": {
+    "description": "核对 Agent 行首、模型 chip、仪表盘图例与逐小时行是否仍是色点，且双端是否已有可复用的品牌图形管线",
+    "command": "rg -n \"Circle\\(\\)|wb-dot|agent-row .dot|daily-legend .sw\" apps/macos/Sources/BruceApp apps/win/src/app.js apps/win/src/settings-workbench.js",
+    "expected": "mac AgentComparisonMatrixCard/CanonicalModelAnalyticsCard/TimelineChartCard/HourlyLineCard 使用 Circle/RoundedRectangle 色点；Windows 使用 .wb-dot(6–9px)/.dot/.sw 色块；两端均无 Agent 身份图形组件",
+    "is_completed": true,
+    "evidence": "2026-10-30 在 a918fb8 基线上执行：mac AgentComparisonMatrixCard.swift:61(9pt 圆点)/:184(6pt 模型点)、CanonicalModelAnalyticsCard.swift:105(9pt)、TimelineChartCard.swift:86(7pt)、HourlyLineCard.swift headRow(7pt 方点/色点)；Windows settings-workbench.js:447/511/537 与 app.js hourly/legend 均为色块。既有 ProviderBrandGlyph 管线只服务订阅 Provider 徽章，无 Agent 映射。诉求未被前序提交实现。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/C161-agent-brand-badges",
+      "node scripts/gen-provider-glyphs.mjs --check"
+    ],
+    "after": [
+      "node scripts/gen-provider-glyphs.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "cargo check --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C161 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Agent / 模型身份徽章（macOS）",
+      "before": "Agent 行首与仪表盘逐小时行用 7–9pt 色点、方点；模型 chip 用 6pt 色点；归并模型行 9pt 圆点；时间线图例 7pt 圆点。身份完全依赖颜色。",
+      "after": "新增 AgentBrandBadge(size:)：≥14pt 真彩档（有官方位图用位图，否则品牌底色 + 品牌图形，外圈 1.2pt 系列色环）；<14pt 系列色瓷砖 + 白图形；Nothing 单色方角 + 绿阶档色；无素材回落字标。新增 AgentBrandPalette（Agent 9 个 + 模型厂商 7 组映射）与 AgentBrandIconStore（Resources/AgentIcons 位图缓存、缺失静默降级）。接入设置行 20pt、模型 chip 12pt、归并模型行 18pt、时间线图例 13pt、仪表盘图例与逐小时行 14pt（Nothing 9pt）。 设置窗口内徽章显式关闭主题跟随（followsTheme: false），看板切 Nothing 时设置页仍保持真彩，不出现绿色扁平图标。",
+      "impact": "AgentBrandPalette.swift（新）、AgentBrandBadge.swift（新）、AgentComparisonMatrixCard、CanonicalModelAnalyticsCard、TimelineChartCard、HourlyLineCard；系列色/图表配色不动"
+    },
+    {
+      "scope": "Agent / 模型身份徽章（Windows）",
+      "before": "settings-workbench.js 的 Agent 行 .wb-dot-lg(9px)、模型行与模型 chip .wb-dot-lg/.wb-dot-sm；app.js 仪表盘图例 .sw(7px)、逐小时行 .dot(7px)。",
+      "after": "新增 agent-brand.js（与 mac 同表同档位，挂 window.BRUCE_AGENT_BRAND）与 .ab-badge 样式；设置 Agent 行 20px、模型行 18px、模型 chip 12px、时间线图例 13px；仪表盘图例与逐小时行 14px（Nothing 9px 单色）。缺脚本时退回原色点，设置窗口不会空窗。",
+      "impact": "agent-brand.js（新）、agent-brand 样式块、settings-workbench.js、app.js、index.html/settings.html 装载顺序"
+    },
+    {
+      "scope": "素材与生成管线",
+      "before": "docs/assets/provider-icons 只服务 10 个订阅 Provider 的矢量图形，无 Agent 位图；生成器只产出 ProviderBrandGlyphData.swift / app.js / provider-brand.js。",
+      "after": "新增 agent-icons/（ZCode / Codex / CodeBuddy 官方 App 位图）与 zcode.svg（Z 字重绘）；SOURCES.json 增补 agent_icons 登记；gen-provider-glyphs.mjs 增 zcode 图形与位图投放（mac Assets/AgentIcons、win src/assets/agent-icons），--check 逐字节比对；build-test-app.sh 与 build-release-app.sh 把 AgentIcons 复制进 .app Resources。",
+      "impact": "docs/assets/provider-icons、scripts/gen-provider-glyphs.mjs、build-test-app.sh、build-release-app.sh、ProviderBrandGlyphData.swift(+zcode)、app.js/provider-brand.js(+zcode)"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "AgentBrandIdentity",
+    "modified": true,
+    "rule_diff": {
+      "before": "Agent 与模型身份仅用系列色点表示，无品牌图形规则；模型 chip 与归并模型行沿用模型识别色。",
+      "after": "新增规则 11（C161）：身份与数据分层（系列色只表示用量，徽章只表示身份）；三档尺寸纪律（≥14pt 真彩 + 系列色环 / <14pt 系列色瓷砖 / Nothing 单色方角）；素材只登记官方来源、无图形用字标、禁止猜测品牌；位图由生成器投放并入 --check；模型厂商按 canonicalKey 子串映射，未登记保留原色点。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261030-03",
+    "user_quote": "“确认” 签收",
+    "signoff": "2026-10-30 用户会话内确认 C161 收口（原话「“确认” 签收」），AI 代为签署",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "2026-10-30：swift build --package-path apps/macos --build-tests → Build complete；SubscriptionBrandGlyphHarness → tests passed: 11（Agent 品牌表 9 项 + 模型厂商 5 项、位图入库）；check-win-frontend → frontend.test.mjs 105/105（含 C161 20px 带环 / 12px 不带环 / 徽章非空）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "mac 设置与仪表盘、Windows 设置与看板均显示品牌徽章，尺寸分流与 Nothing 单色符合设计",
+        "false_if": "出现空白徽章、错图、尺寸错档或图例与图表色脱节",
+        "evidence": "2026-10-30 重装本机 macOS 版（build-test-app.sh --universal --install，SHA 2d77f3d3…，Universal 2、ad-hoc 签名、PID 62516 稳定），用户实机查看设置「Agent 表现」行首/模型 chip/模型列表行/时间线图例与看板「Agent 用量」图例、逐小时行后签收；设置页在 Nothing 主题下保持真彩（followsTheme:false），看板按主题转绿阶单色。Windows 侧为前端 DOM 用例覆盖（105 项），Windows WebView2 真机未执行。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未引入副作用：图表折线/堆叠柱/占比条配色不变，订阅 Provider 徽章与生成产物一致性门禁不受影响",
+        "false_if": "破坏订阅徽章、生成器 --check 或图表配色语义",
+        "evidence": "2026-10-30 修订后：zsh scripts/verify-local.sh → Exit 0（末行「Bruce 本地验证全部通过」，含 Rust 全量、Swift 构建、18 项 Harness、Windows 前端 105 项、双端对拍 5 项）；gen-provider-glyphs --check 11 项一致；设置页徽章显式 followsTheme:false，不再随看板 Nothing 变绿（C067：设置恒用 Fluent）；图表系列色未改。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-30",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

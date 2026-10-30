@@ -212,6 +212,12 @@
     "SharedPolicyCore": {
       "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
       "changes": []
+    },
+    "AgentBrandIdentity": {
+      "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+      "changes": [
+        "C161"
+      ]
     }
   },
   "cards": {
@@ -1636,6 +1642,15 @@
       "topic": "PricingEngine",
       "version": "0.16.0",
       "file": "docs/devel/change/C160.json"
+    },
+    "C161": {
+      "title": "Agent / 模型身份从色点升级为品牌徽章：真彩 App 图标优先、逐档降级，设置中心与仪表盘双端同构",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C161-agent-brand-badges",
+      "topic": "AgentBrandIdentity",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C161.json"
     }
   }
 }

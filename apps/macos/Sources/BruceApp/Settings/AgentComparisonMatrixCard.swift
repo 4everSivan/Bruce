@@ -57,10 +57,14 @@ struct AgentComparisonMatrixCard: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                // Agent 标识点
-                Circle()
-                    .fill(Color(hex: agent.colorHex))
-                    .frame(width: 9, height: 9)
+                // Agent 品牌徽章 (C161)
+                AgentBrandBadge(
+                    asset: AgentBrandPalette.asset(forAgent: agent.agentID),
+                    seriesHex: agent.colorHex,
+                    size: 20,
+                    followsTheme: false,
+                    fallbackMonogram: String(agent.name.prefix(1)).uppercased()
+                )
 
                 // Agent 名称与状态
                 VStack(alignment: .leading, spacing: 1) {
@@ -181,9 +185,13 @@ struct AgentComparisonMatrixCard: View {
                             FlowLayout(spacing: 6) {
                                 ForEach(agent.topModels.prefix(3)) { model in
                                     HStack(spacing: 4) {
-                                        Circle()
-                                            .fill(Color(hex: model.colorHex))
-                                            .frame(width: 6, height: 6)
+                                        AgentBrandBadge(
+                                            asset: AgentBrandPalette.asset(forModelKey: model.canonicalKey),
+                                            seriesHex: model.colorHex,
+                                            size: 12,
+                                            followsTheme: false,
+                                            fallbackMonogram: String(model.displayName.prefix(1)).uppercased()
+                                        )
                                         Text(model.displayName)
                                             .font(.system(size: 10.5, weight: .medium))
                                             .foregroundStyle(SettingsDemoTokens.text)

@@ -101,10 +101,14 @@ struct CanonicalModelAnalyticsCard: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                // 厂商与模型颜色指示点
-                Circle()
-                    .fill(Color(hex: model.colorHex))
-                    .frame(width: 9, height: 9)
+                // 厂商品牌徽章 (C161)
+                AgentBrandBadge(
+                    asset: AgentBrandPalette.asset(forModelKey: model.canonicalKey),
+                    seriesHex: model.colorHex,
+                    size: 18,
+                    followsTheme: false,
+                    fallbackMonogram: String(model.displayName.prefix(1)).uppercased()
+                )
 
                 // 模型显示名与厂商标签
                 VStack(alignment: .leading, spacing: 1) {

@@ -17,7 +17,7 @@
 // 开发期像素级自检 (需 rsvg-convert + Pillow, 不进入标准验证):
 //   见变更卡 C026 证据记录 —— 归一化几何与原始 SVG 渲染差异 0.00%。
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,7 +45,20 @@ const ICONS = {
   opencodeGo: ["opencode.svg", null, null],
   stepfun: ["stepfun.svg", null, null],
   cline: ["cline.svg", null, null],
+  zcode: ["zcode.svg", null, null],
 };
+
+// Agent 真彩 App 图标 (C161): 源文件在 docs/assets/provider-icons/agent-icons/,
+// 生成期原样投放到两端运行时目录 —— mac 走 .app Resources/AgentIcons,
+// win 走前端静态 assets/agent-icons; --check 逐字节比对。
+const AGENT_ICON_FILES = {
+  codebuddy: "agent-codebuddy.png",
+  codex: "agent-codex.png",
+  zcode: "agent-zcode.png",
+};
+const agentIconSrcDir = join(assetsDir, "agent-icons");
+const macAgentIconDir = join(repoRoot, "apps/macos/Assets/AgentIcons");
+const winAgentIconDir = join(repoRoot, "apps/win/src/assets/agent-icons");
 
 const NUMBER_RE = /[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g;
 const COMMAND_RE = /[MmLlHhVvCcSsQqTtAaZz]/;
@@ -444,9 +457,40 @@ function main() {
   const args = process.argv.slice(2);
   const icons = buildIcons();
 
+  if (args.includes("--check")) {
+    const drift = [];
+    for (const [id, file] of Object.entries(AGENT_ICON_FILES)) {
+      const src = readFileSync(join(agentIconSrcDir, file));
+      for (const dir of [macAgentIconDir, winAgentIconDir]) {
+        const target = join(dir, file);
+        let same = false;
+        try {
+          same = Buffer.compare(src, readFileSync(target)) === 0;
+        } catch {
+          same = false;
+        }
+        if (!same) drift.push(target);
+      }
+    }
+    if (drift.length > 0) {
+      console.error(
+        `Agent 图标产物与源文件不一致, 请运行 scripts/gen-provider-glyphs.mjs:\n  ${drift.join("\n  ")}`
+      );
+      return 1;
+    }
+  }
+
   if (args.includes("--dump-json")) {
     process.stdout.write(JSON.stringify(icons, null, 1) + "\n");
     return 0;
+  }
+
+  // 位图投放 (幂等): 两端运行时目录与源文件保持字节一致
+  for (const dir of [macAgentIconDir, winAgentIconDir]) {
+    mkdirSync(dir, { recursive: true });
+    for (const file of Object.values(AGENT_ICON_FILES)) {
+      writeFileSync(join(dir, file), readFileSync(join(agentIconSrcDir, file)));
+    }
   }
 
   const swift = renderSwift(icons);

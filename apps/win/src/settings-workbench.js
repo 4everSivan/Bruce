@@ -279,7 +279,10 @@
     const legend = node("div", null, { class: "wb-legend" });
     for (const item of series) {
       const entry = node("span", null, { class: "wb-legend-item" });
-      entry.append(node("i", null, { class: "wb-dot", style: `background: ${item.color};` }), item.name);
+      entry.append(
+        seriesBadge(item, 13) || node("i", null, { class: "wb-dot", style: `background: ${item.color};` }),
+        item.name,
+      );
       legend.append(entry);
     }
     card.append(legend);
@@ -444,7 +447,12 @@
     amountLine.append(node("span", model.totalTokensText, { class: "wb-tokens" }));
     if (model.costText) amountLine.append(node("span", model.costText, { class: "wb-cost" }));
     figures.append(shareLine, amountLine);
-    line.append(node("i", null, { class: "wb-dot wb-dot-lg", style: `background: ${model.colorHex};` }), meta, node("span", null, { class: "wb-spacer" }), figures);
+    line.append(
+      brandBadge({ modelKey: model.canonicalKey, displayName: model.displayName, seriesHex: model.colorHex, size: 18 }),
+      meta,
+      node("span", null, { class: "wb-spacer" }),
+      figures,
+    );
     line.append(multi
       ? expandButton(expanded, expanded ? "收起渠道明细" : `展开 ${model.sources.length} 个渠道明细`, () => {
         workbench.expandedModels[expanded ? "delete" : "add"](model.canonicalKey);
@@ -472,6 +480,31 @@
   }
 
   // MARK: Agent 表现 (mac AgentComparisonMatrixCard)
+
+  // Agent / 模型品牌徽章 (C161): 与 mac AgentBrandBadge 同口径;
+  // 缺 agent-brand.js 时退回原来的色点, 保证设置窗口不会因脚本缺失而空窗。
+  function brandBadge({ agentId, modelKey, displayName, seriesHex, size }) {
+    const brand = window.BRUCE_AGENT_BRAND;
+    if (brand && typeof brand.create === "function") {
+      return brand.create({ agentId, modelKey, displayName, seriesHex, size });
+    }
+    return node("i", null, {
+      class: size >= 14 ? "wb-dot wb-dot-lg" : "wb-dot wb-dot-sm",
+      style: "background: " + seriesHex + ";",
+    });
+  }
+
+  // 时序图例的 series key: agent 直接用 agentId, 模型带 model_ 前缀, 其余无色卡。
+  function seriesBadge(item, size) {
+    const brand = window.BRUCE_AGENT_BRAND;
+    if (!brand) return null;
+    if (item.key.startsWith("model_")) {
+      const key = item.key.slice(6);
+      return brand.assetForModel(key) ? brandBadge({ modelKey: key, displayName: item.name, seriesHex: item.color, size }) : null;
+    }
+    if (item.key === "cost" || item.key.startsWith("type_")) return null;
+    return brand.assetForAgent(item.key) ? brandBadge({ agentId: item.key, displayName: item.name, seriesHex: item.color, size }) : null;
+  }
 
   function drawAgents() {
     const agents = workbench.snapshot.agents;
@@ -508,7 +541,12 @@
       node("span", percentText(agent.sharePercent), { class: "wb-share wb-share-narrow" }),
     );
     figures.append(stack, amounts);
-    line.append(node("i", null, { class: "wb-dot wb-dot-lg", style: `background: ${agent.colorHex};` }), meta, node("span", null, { class: "wb-spacer" }), figures);
+    line.append(
+      brandBadge({ agentId: agent.agentId, seriesHex: agent.colorHex, size: 20 }),
+      meta,
+      node("span", null, { class: "wb-spacer" }),
+      figures,
+    );
     line.append(hasDetails
       ? expandButton(expanded, expanded ? "收起关联工程与模型" : "展开关联工程与模型下钻", () => {
         workbench.expandedAgents[expanded ? "delete" : "add"](agent.agentId);
@@ -534,7 +572,11 @@
         const tags = node("div", null, { class: "wb-flow" });
         for (const model of agent.topModels.slice(0, 3)) {
           const tag = node("span", null, { class: "wb-flow-tag" });
-          tag.append(node("i", null, { class: "wb-dot wb-dot-sm", style: `background: ${model.colorHex};` }), node("span", model.displayName, { class: "wb-flow-name" }), node("span", `(${model.totalTokensText})`, { class: "wb-flow-dim" }));
+          tag.append(
+            brandBadge({ modelKey: model.canonicalKey, displayName: model.displayName, seriesHex: model.colorHex, size: 12 }),
+            node("span", model.displayName, { class: "wb-flow-name" }),
+            node("span", `(${model.totalTokensText})`, { class: "wb-flow-dim" }),
+          );
           tags.append(tag);
         }
         row.append(node("span", "⚡️ 主要消耗模型:", { class: "wb-detail-label" }), tags);
