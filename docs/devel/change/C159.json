@@ -4,7 +4,7 @@
   "title": "订阅额度预警由系统通知升级为双端图标锚定气泡（280pt 方案 A + 50/80/95 三档阶梯 + R3-A 电子表读秒）",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "feat/C159-quota-alert-bubble",
   "is_hotfix": false,
   "target": {
@@ -92,15 +92,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "36d1f9c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-30",
-    "exit_code": 4,
-    "from_status": "verified",
+    "exit_code": 0,
+    "from_status": "closed",
     "target_status": "closed"
   }
 }

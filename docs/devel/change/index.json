@@ -1620,7 +1620,7 @@
     "C159": {
       "title": "订阅额度预警由系统通知升级为双端图标锚定气泡（280pt 方案 A + 50/80/95 三档阶梯 + R3-A 电子表读秒）",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C159-quota-alert-bubble",
       "topic": "MenuBarIndicator",
       "version": "0.16.0",
