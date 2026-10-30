@@ -96,7 +96,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "fab8880",
     "tag": ""
   },
   "gate": {
