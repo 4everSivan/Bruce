@@ -49,6 +49,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private var lastRenderedContent: MenuBarStatusItemContent?
     private var refreshTimer: Timer?
     private var refreshPhase: CGFloat = 0
+    /// 额度预警气泡控制器 (方案 A 胶囊微卡)
+    private let quotaAlertBubbleController = QuotaAlertBubbleController()
     /// 仪表盘 AppKit 系统材质宿主; 与业务模型和刷新流程隔离.
     private var dashboardGlassController: DashboardGlassPanelController?
     /// 物理卷轴抽屉动画执行中标志 (C137). 动画期间抑制动态尺寸重排, 避免布局竞态.
@@ -78,6 +80,9 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         self.openSubscriptionSettings = openSubscriptionSettings
         self.terminateApplication = terminateApplication
         super.init()
+        quotaAlertBubbleController.onOpenDashboard = { [weak self] in
+            self?.openDashboardIfNeeded()
+        }
     }
 
     isolated deinit {
@@ -494,6 +499,28 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// 弹出额度预警气泡 (方案 A · 280pt 胶囊微卡)
+    func showQuotaAlertBubble(alerts: [QuotaAlert], force: Bool = false) {
+        if !force {
+            guard coordinator.systemNotificationsEnabled else { return }
+        }
+        guard let button = statusItem?.button else { return }
+        quotaAlertBubbleController.show(
+            alerts: alerts,
+            theme: coordinator.resolvedTheme,
+            colorScheme: coordinator.appearanceMode.colorScheme,
+            relativeTo: button
+        )
+    }
+
+    /// 若主看板未处于打开状态则展开主看板
+    func openDashboardIfNeeded() {
+        guard installed, let button = statusItem?.button else { return }
+        if dashboardToggleState != .open {
+            openDashboard(relativeTo: button)
+        }
+    }
+
     /// 退出时清理.
     func teardown() {
         NotificationCenter.default.removeObserver(self)
@@ -503,6 +530,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         statusItemVisibilityObservation = nil
         contentSizeApplyWorkItem?.cancel()
         contentSizeApplyWorkItem = nil
+        quotaAlertBubbleController.hide(animated: false)
         closeDashboard(restorePreviousFrontmostApp: false)
         panel.delegate = nil
         dashboardGlassController = nil
@@ -539,6 +567,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     private func openDashboard(relativeTo button: NSStatusBarButton) {
+        quotaAlertBubbleController.hide(animated: false)
         dashboardToggleState = .open
         // 先记录打开前的前台应用 (打开路径会把 Bruce 激活, 前台切到 Bruce).
         let frontmost = NSWorkspace.shared.frontmostApplication
@@ -787,6 +816,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         // 用户点击了其他应用 → 关闭面板, 不强制归还前台.
         contentSizeApplyWorkItem?.cancel()
         contentSizeApplyWorkItem = nil
+        quotaAlertBubbleController.hide(animated: false)
         closeDashboard(restorePreviousFrontmostApp: false)
     }
 

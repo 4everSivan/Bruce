@@ -47,6 +47,21 @@
         "resizable": false,
         "shadow": false,
         "alwaysOnTop": true
+      },
+      {
+        "label": "quota-alert",
+        "title": "Bruce 配额预警",
+        "url": "quota-alert.html",
+        "width": 300,
+        "height": 90,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "focusable": false
       }
     ]
   },

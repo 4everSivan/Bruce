@@ -42,7 +42,8 @@
         "C147",
         "C148",
         "C157",
-        "C158"
+        "C158",
+        "C159"
       ]
     },
     "PricingEngine": {
@@ -123,7 +124,8 @@
         "C150",
         "C151",
         "C157",
-        "C158"
+        "C158",
+        "C159"
       ]
     },
     "SubscriptionQuota": {
@@ -1614,6 +1616,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.16.0",
       "file": "docs/devel/change/C158.json"
+    },
+    "C159": {
+      "title": "订阅额度预警由系统通知升级为双端图标锚定气泡（280pt 方案 A + 50/80/95 三档阶梯 + R3-A 电子表读秒）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C159-quota-alert-bubble",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C159.json"
     }
   }
 }

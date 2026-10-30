@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-29 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-30 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -101,7 +101,7 @@
 | 弹出看板 | `DashboardGlassPanelController`（NSGlassEffectView） | Tauri WebviewWindow（skip taskbar、失焦自动隐藏） |
 | 液态玻璃 | `GlassTheme` macOS 26 门控 | **不移植**，恒走 Fluent/Mica 观感分支 |
 | 全局热键 | Carbon `RegisterEventHotKey`（`GlobalHotkeyMonitor`） | Tauri global-shortcut 插件（`RegisterHotKey`） |
-| 配额通知 | `UNUserNotificationCenter`（`QuotaAlertNotifier`） | Tauri notification 插件（Windows Toast） |
+| 配额通知 | 菜单栏图标锚定气泡（QuotaAlertBubblePanel，C159 退役 UNUserNotificationCenter） | 托盘图标锚定气泡（独立无焦点微卡，C159 退役 Windows Toast） |
 | 唤醒补采 | `NSWorkspace.didWake`（`RefreshScheduler.swift:174`） | 可选 `WM_POWERBROADCAST` 监听；首版可由退避调度兜底 |
 | 自启 | mac 侧未实现 | 可选：Run 注册表键 / 启动文件夹（Tauri autostart 插件） |
 | 凭证存储 | `OnboardingConfiguration` SecItemAdd → Keychain + `credentials.json` 0600 | `%APPDATA%\Bruce\credentials.json` + Windows ACL 限定当前用户（等价 0600），temp + rename 原子写 |
@@ -267,6 +267,7 @@ Windows Tauri 后端 (Rust)
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | C157 | 界面对齐 | 订阅卡空状态与 Tab 回退（Windows 同构） | 新增规则 33：两态空态卡接入、订阅页签不再回退到 Token 用量卡、CTA 直达订阅额度分类 |
 | C158 | 界面对齐 | 额度条与余额数字更新动效（Windows 渲染后补间） | 新增规则 34：渲染后 WAAPI 补间、`linear()` 弹簧、分段错峰、余额数字列与基线稳定 |
+| C159 | 架构升级 | 订阅额度预警改用托盘图标锚定气泡（双端支持）：三档阶梯 `[50%, 80%, 95%]` 去重判定，废弃 Windows Toast 弹窗 | 新增规则 35：Windows 托盘预警气泡与 Toast 替代（无焦点微卡、四边贴靠、6s 静默淡出与悬停常亮） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -404,6 +405,19 @@ Windows Tauri 后端 (Rust)
     - **百分比数字**：复用同一数字列滚动，key 为 `keys.percent(<行 key>)`，与量条同一 0.85s 弹簧事务；骨架变化同样退化为整体换行。
     - **门控**：`motionSuppressed()`、`document.hidden`、`html[data-motion="off"]` 为逻辑与；首渲、隐藏后补渲、Tab 切换（`render(currentPanel)` 值未变）不播动画。Tauri `hide_dashboard` 若不触发 `document.hidden`，必须在 show / hide 事件维护 visible 标志，禁止窗口不可见时跑动画帧。
     - **测试**：`typeof Element.prototype.animate === "function"` 特性检测，Node DOM 桩内自动 inert；key 映射（渲染器打标的 key 必须全部被补间层识别）、金额 token 化、方向与 `segmentPlan` 纯函数进 `apps/win/tests/frontend.test.mjs`；动画与几何用 `apps/win/tests/render-harness/` 在真实内核核对（非 CI 门禁）：同一面板与改动前逐像素对拍、滚动中途几何不变、错峰段 delay 期显示起点色。余额方向优先由 viewmodel `amount` 提供；在补上该字段前，前端允许从 `amountText` 解析数值，但不得把解析结果回写契约。
+
+35. **订阅额度预警托盘锚定气泡与 Toast 替代规范 (C159，对齐 mac 规则 14 与 design/02 规则 15)**：
+    - **非激活无焦点微卡浮层**：在 Windows 端彻底废弃 `tauri-plugin-notification` 系统 Toast 弹窗通知通道。采用轻量级独立 WebviewWindow 或微缩面板（`focusable: false`，`skip_taskbar: true`，`always_on_top: true`，无边框透明背景），展示与 mac 方案 A 一致的 280pt 紧凑胶囊微卡（左侧 24pt 品牌瓷砖徽章，中段服务名、窗口名、百分比与 5pt 进度条，次行右侧 R3-A `HH:MM:SS` 电子表读秒，右侧关闭 `✕`）。
+    - **几何贴靠四边模型**：气泡弹出位置严格依据 `runtime_core/geometry.rs` 任务栏四边模型与托盘坐标（`tray_bounds`）定位：
+      - 底任务栏：托盘正上方 8px 贴靠，气泡小三角向下居中锚定托盘；
+      - 顶任务栏：托盘正下方 8px 贴靠，气泡小三角向上居中锚定托盘；
+      - 左右任务栏：托盘内侧 8px 贴靠，小三角对应侧水平锚定；
+      - 极端边界与多屏：当托盘坐标不可用或贴边超出工作区（`work_area`）时，自动平移并保证完整落在工作区内。
+    - **交互与生命周期**：
+      - 采用 T2 规范，6 秒后平滑静默淡出（无可见倒计时进度条，避免与额度量条视觉冲突）；
+      - 鼠标移入浮层（`mouseenter`）立即挂起淡出定时器保持常亮，鼠标移出（`mouseleave`）后重新开始 3 秒淡出；
+      - 点击卡片主体：立即隐藏气泡，并联动呼出主看板面板（`show_dashboard`）；点击右侧关闭 `✕`：立即注销每秒定时器并收起气泡；
+      - 气泡关闭后彻底注销每秒 1 次的读秒定时器，满足 0% CPU 空转要求。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

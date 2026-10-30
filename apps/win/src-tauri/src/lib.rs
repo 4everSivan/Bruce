@@ -18,6 +18,9 @@ pub mod tray_icon_renderer;
 pub mod runtime_core;
 
 #[cfg(feature = "desktop")]
+pub(crate) use desktop::show_quota_alert;
+
+#[cfg(feature = "desktop")]
 mod desktop {
     use std::collections::BTreeMap;
 
@@ -165,10 +168,61 @@ mod desktop {
         }
     }
 
+    fn apply_quota_alert_geometry(
+        window: &tauri::WebviewWindow,
+        tray_bounds: Option<&TrayIconBounds>,
+        height: f64,
+    ) {
+        let target_monitor = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .or_else(|| window.primary_monitor().ok().flatten());
+
+        if let Some(m) = target_monitor {
+            let monitor_bounds = monitor_to_bounds(&m);
+            let geom = crate::runtime_core::compute_preview_geometry_custom(
+                &monitor_bounds,
+                tray_bounds,
+                280.0,
+                height,
+            );
+            let _ = window.set_size(PhysicalSize::new(geom.width, geom.height));
+            let _ = window.set_position(PhysicalPosition::new(geom.x, geom.y));
+        }
+    }
+
+    pub(crate) fn show_quota_alert(app: &tauri::AppHandle, alerts: &[crate::alerts::QuotaAlert]) {
+        let Some(window) = app.get_webview_window("quota-alert") else {
+            return;
+        };
+        let theme = crate::settings::load_settings(&crate::paths::data_root()).theme;
+        #[derive(serde::Serialize, Clone)]
+        struct QuotaAlertPayload<'a> {
+            alerts: &'a [crate::alerts::QuotaAlert],
+            theme: String,
+        }
+        let _ = window.emit("quota-alert-data", QuotaAlertPayload { alerts, theme });
+        let tray_bounds = app
+            .try_state::<TrayBoundsState>()
+            .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
+        let height = if alerts.len() > 1 { 76.0 } else { 54.0 };
+        apply_quota_alert_geometry(&window, tray_bounds.as_ref(), height);
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
+    }
+
+    pub fn hide_quota_alert(app: &tauri::AppHandle) {
+        if let Some(window) = app.get_webview_window("quota-alert") {
+            let _ = window.hide();
+        }
+    }
+
     /// `refresh`: 是否顺带请求一次手动刷新。用户唤出恒为 true; 启动呈现为 false ——
     /// 调度器首轮采集紧随其后, 再排一次手动唤醒会让同一轮扫描重复一次。
     fn show_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource, refresh: bool) {
         hide_preview(app);
+        hide_quota_alert(app);
         let Some(window) = app.get_webview_window("dashboard") else {
             if let Some(stage) = classify_dashboard_show(false, false) {
                 show_native_failure(stage);
@@ -1125,6 +1179,20 @@ mod desktop {
     #[tauri::command]
     fn expand_dashboard(app: tauri::AppHandle) -> Result<(), String> {
         hide_preview(&app);
+        hide_quota_alert(&app);
+        reveal_dashboard(&app, DashboardOpenSource::Tray, true);
+        Ok(())
+    }
+
+    #[tauri::command]
+    fn hide_quota_alert_window(app: tauri::AppHandle) -> Result<(), String> {
+        hide_quota_alert(&app);
+        Ok(())
+    }
+
+    #[tauri::command]
+    fn show_dashboard_from_alert(app: tauri::AppHandle) -> Result<(), String> {
+        hide_quota_alert(&app);
         reveal_dashboard(&app, DashboardOpenSource::Tray, true);
         Ok(())
     }
@@ -1141,6 +1209,33 @@ mod desktop {
     #[tauri::command]
     fn quit_app(app: tauri::AppHandle) {
         app.exit(0);
+    }
+
+    #[tauri::command]
+    fn test_quota_alert(app: tauri::AppHandle) {
+        let mock_alerts = vec![
+            crate::alerts::QuotaAlert {
+                service_id: "kimi_coding".to_string(),
+                service_name: "Kimi Coding".to_string(),
+                window_label: "5 小时".to_string(),
+                used_percent: 85.0,
+                tier: 80,
+                provider_id: Some("kimi".to_string()),
+                reset_text: Some("01:28:45".to_string()),
+                resets_at: Some("2026-10-30T15:28:45Z".to_string()),
+            },
+            crate::alerts::QuotaAlert {
+                service_id: "codex_standard".to_string(),
+                service_name: "Codex".to_string(),
+                window_label: "5 小时".to_string(),
+                used_percent: 96.0,
+                tier: 95,
+                provider_id: Some("codex".to_string()),
+                reset_text: Some("00:15:20".to_string()),
+                resets_at: Some("2026-10-30T14:15:20Z".to_string()),
+            },
+        ];
+        show_quota_alert(&app, &mock_alerts);
     }
 
     /// 打开设置窗口 (mac SettingsWindowController 单实例语义: 已存在则置前)。
@@ -1408,6 +1503,9 @@ mod desktop {
                 open_settings,
                 hide_dashboard,
                 hide_preview_window,
+                hide_quota_alert_window,
+                show_dashboard_from_alert,
+                test_quota_alert,
                 expand_dashboard,
                 set_hotkey_recording,
                 quit_app,

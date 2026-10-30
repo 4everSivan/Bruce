@@ -18,7 +18,8 @@ final class ApplicationBootstrap {
     /// Codex token manager: 启动时发布一次非敏感状态,
     /// 并在每个调度周期后刷新, 供设置页订阅.
     private let codexTokenManager: CodexTokenManager
-    private let quotaAlertNotifier = QuotaAlertNotifier()
+    /// 额度预警回调 (弹出气泡微卡)
+    var onQuotaAlerts: (([QuotaAlert]) -> Void)?
     private weak var model: AppModel?
     private var started = false
     private var appearanceObserver: AnyCancellable?
@@ -77,9 +78,9 @@ final class ApplicationBootstrap {
         }
         // credentialUpdates 由 RefreshScheduler 注入的 CredentialUpdateCoordinator
         // 在 RefreshExecutionPipeline 中于 publish 前应用; 写回失败降级为 partial + 诊断.
-        // 后台刷新发现 5h 额度新跨越 80% 阈值时弹系统通知.
-        scheduler.onQuotaAlerts = { [quotaAlertNotifier] _, alerts in
-            quotaAlertNotifier.deliver(alerts)
+        // C159: 后台刷新发现 5h 额度新跨越阶梯阈值时弹出气泡微卡 (退役系统通知).
+        scheduler.onQuotaAlerts = { [weak self] _, alerts in
+            self?.onQuotaAlerts?(alerts)
         }
         // 每个调度周期后刷新 Codex 账号状态 (token 决议会改变授权/存储状态).
         scheduler.onRunCycleCompleted = { [weak self] in
@@ -112,12 +113,6 @@ final class ApplicationBootstrap {
             .sink { [weak self] state in
                 guard state == .allowed else { return }
                 self?.scheduleKeychainBackedStartup()
-            }
-        quotaAlertNotifier.isEnabled = coordinator.systemNotificationsEnabled
-        notificationPreferenceObserver = coordinator.$systemNotificationsEnabled
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                self?.quotaAlertNotifier.isEnabled = enabled
             }
         coordinator.scanAndReconcile()
         refreshCodexAccountStatuses()

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C159",
+  "title": "订阅额度预警由系统通知升级为双端图标锚定气泡（280pt 方案 A + 50/80/95 三档阶梯 + R3-A 电子表读秒）",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C159-quota-alert-bubble",
+  "is_hotfix": false,
+  "target": {
+    "module": "BruceApp / BruceAppCore / win",
+    "component": "QuotaAlertBubble / QuotaAlertEvaluator / alerts.rs",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "原系统级通知（macOS UNUserNotificationCenter 与 Windows Toast 弹窗）在全屏或 IDE 专注编码时打扰感过强，且缺少直观的额度重置倒计时提示。将其演进为轻量非激活无焦点微气泡（280pt 胶囊微卡方案 A、50/80/95 三档阶梯、R3-A 电子表读秒、T2 静默 6s 淡出），彻底替代系统通知。",
+  "precheck": {
+    "description": "预检当前分支与基线设计文档先行修订状态",
+    "command": "git status -s",
+    "expected": "仅包含先行修订的设计文档变动",
+    "is_completed": true,
+    "evidence": "基线设计文档 03、02、05 先行修订完成，分支已切至 feat/C159-quota-alert-bubble"
+  },
+  "callback": {
+    "before": [
+      "git checkout -B feat/C159-quota-alert-bubble"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C159 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "业务规则与告警评定",
+      "before": "QuotaAlertEvaluator 与 alerts.rs 仅按单档 >80.0% 评定，以布尔值去重",
+      "after": "升级为三档阶梯 [50%, 80%, 95%] 评定，按 serviceID|windowLabel 记录最高跨越档位去重，窗口重置自动恢复",
+      "impact": "macOS QuotaAlertEvaluator 与 Windows alerts.rs / scheduler.rs"
+    },
+    {
+      "scope": "通知通道与交互形态",
+      "before": "调用操作系统系统通知（UNUserNotificationCenter 与 Windows Toast）",
+      "after": "全面退役系统通知通道，升级为菜单栏/托盘图标锚定的非激活无焦点 280pt 胶囊微卡气泡（方案 A、R3-A 电子表读秒、T2 静默淡出）",
+      "impact": "macOS QuotaAlertBubblePanel / MenuBarStatusItemController 与 Windows 气泡浮层 / scheduler.rs"
+    },
+    {
+      "scope": "设置中心界面文案",
+      "before": "通用设置中展示「系统通知」开关",
+      "after": "升级为「额度预警气泡」开关，复用既有存储键保障平滑向前兼容",
+      "impact": "macOS SettingsView 与 Windows settings-maintenance.js / settings.js"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "订阅额度超阈值（>80%）时通过操作系统系统通知弹窗提示用户",
+      "after": "规则 14：订阅额度预警改用图标锚定气泡（280pt 方案 A 胶囊微卡、R3-A 电子表秒级跳动、T2 6s 静默淡出、双端无焦点浮层与系统通知全面退役）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261030-01",
+    "user_quote": "“确认” 签收",
+    "signoff": "2026-10-30 用户会话内确认 C159 收口（原话「“确认” 签收」），AI 代为签署收口",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "zsh scripts/verify-local.sh 全部通过 (Exit 0): Rust fmt/test/clippy 全绿，Collector 21 项，Windows 158 项 (含 alerts_coverage/runtime_coverage)，Swift 18 项 Harness (含 RefreshScheduler 115 项)，Windows 前端 check-win-frontend 103 项，Panel 对拍 5 项全部通过",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "三档阶梯（50/80/95）正常触发，气泡微卡 280pt 渲染正常，电子表秒级倒计时跳动，6s 静默淡出，鼠标悬停常亮，点击直达主看板，不打断打字焦点",
+        "false_if": "出现报错、非预期返回值或行为失真",
+        "evidence": "macOS QuotaAlertBubbleView 280pt 方案 A 实现完成，非激活 QuotaAlertBubblePanel 不抢占焦点；Windows 端 quota-alert.html 与 scheduler deliver_alerts 退役 Toast；三档阶梯 50/80/95 单元与回归测试验证通过",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未引入副作用，关联模块（主面板呈现、设置中心开关切换、跨平台对拍测试）运行正常",
+        "false_if": "破坏了上下游其他接口或产生连锁反应",
+        "evidence": "主面板开合联动正常，设置中心原系统通知平滑重命名为额度预警气泡并复用配置键，对拍 Harness 与全链路回归无副作用",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-30",
+    "exit_code": 4,
+    "from_status": "verified",
+    "target_status": "closed"
+  }
+}

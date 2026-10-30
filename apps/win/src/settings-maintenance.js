@@ -45,13 +45,21 @@
     row(c1, "刷新间隔", segmented(interval, (value, revert) => persist({ refreshIntervalSecs: Number(value) * 60 }, { revert })),
       "已授权模块的自动采集周期，变更后立即重新计时");
     // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
-    const notifyWrap = node("div", null, { class: "toggle-with-state" });
+    const notifyWrap = node("div", null, { class: "toggle-with-state", style: "display: flex; gap: 8px; align-items: center;" });
+    const testBubbleBtn = button(notifyWrap, "setting-test-quota-bubble", "测试气泡", async () => {
+      try {
+        await invoke("test_quota_alert");
+      } catch (err) {
+        console.error("test_quota_alert failed:", err);
+      }
+    });
+    testBubbleBtn.className = "fluent-btn";
     const notify = input("setting-notifications", "checkbox");
     notifyWrap.append(notify);
     notify.addEventListener("change", () => persist({ notificationsEnabled: notify.checked }, {
       revert: () => { notify.checked = !notify.checked; },
     }));
-    row(c1, "系统通知", notifyWrap, "预警与额度提醒; 关闭后 Bruce 不会投递通知");
+    row(c1, "额度预警气泡", notifyWrap, "额度紧缺时在托盘图标上方弹出提示微卡; 关闭后不弹出");
 
     // 方案 1: 任务栏托盘悬停预览开关
     const previewWrap = node("div", null, { class: "toggle-with-state" });

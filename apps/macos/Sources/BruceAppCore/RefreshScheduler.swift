@@ -68,6 +68,8 @@ struct ModuleScheduleState: Equatable, Sendable {
     var lastTriggerWasManual: Bool = false
     /// 上次刷新后已超预警阈值的 5h 窗口 key 集合; 只有新跨越的窗口才报警.
     var quotaAlertedKeys: Set<String> = []
+    /// 记录每个 key 已告警的最高阶梯档位 [key: highestDeliveredTier (50, 80, 95)].
+    var quotaAlertedTiers: [String: Int] = [:]
 }
 
 // MARK: - RefreshScheduler
@@ -421,9 +423,11 @@ package final class RefreshScheduler {
                 state.lastSuccessAt = stored.metadata.lastSuccessAt
                     .flatMap { ISODate.parse($0) }
                 // 用缓存快照回填预警阈值状态, 重启后不对已超的窗口重复报警
-                state.quotaAlertedKeys = Set(
-                    QuotaAlertEvaluator.overThresholdEntries(artifact: stored.artifact)
-                        .map(\.key)
+                let cachedEntries = QuotaAlertEvaluator.overThresholdEntries(artifact: stored.artifact)
+                state.quotaAlertedKeys = Set(cachedEntries.map(\.key))
+                state.quotaAlertedTiers = Dictionary(
+                    cachedEntries.map { ($0.key, $0.alert.tier) },
+                    uniquingKeysWith: { max($0, $1) }
                 )
                 states[module] = state
             }
@@ -757,14 +761,26 @@ package final class RefreshScheduler {
             // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
             windowBoundaries = SubscriptionBoundaryWakePolicy.boundaries(in: artifact)
 
-            // 额度预警: 阈值状态每次都同步 (回落后再次跨越会重新报警),
-            // 但只有非 manual 且窗口新跨越 80% 才弹通知.
+            // 额度预警: 阶梯状态每次都同步 (回落后再次跨越或跨越到更高阶梯会报警),
+            // 但只有非 manual 且窗口新跨越更高阶梯才弹通知.
             // includesManual 来自本轮 intent (与 lastTriggerWasManual 一致).
             let entries = run.quotaAlertEntries
-            let newAlerts = run.includesManual
-                ? []
-                : entries.filter { !state.quotaAlertedKeys.contains($0.key) }
-            state.quotaAlertedKeys = Set(entries.map(\.key))
+            let newAlerts: [(key: String, alert: QuotaAlert)]
+            if run.includesManual {
+                newAlerts = []
+            } else {
+                newAlerts = entries.filter { entry in
+                    let prevTier = state.quotaAlertedTiers[entry.key] ?? 0
+                    return entry.alert.tier > prevTier
+                }
+            }
+            let currentKeys = Set(entries.map(\.key))
+            for entry in entries {
+                let currentMax = state.quotaAlertedTiers[entry.key] ?? 0
+                state.quotaAlertedTiers[entry.key] = max(currentMax, entry.alert.tier)
+            }
+            state.quotaAlertedTiers = state.quotaAlertedTiers.filter { currentKeys.contains($0.key) }
+            state.quotaAlertedKeys = Set(state.quotaAlertedTiers.keys)
             if !newAlerts.isEmpty {
                 onQuotaAlerts?(module, newAlerts.map(\.alert))
             }

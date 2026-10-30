@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bruce 额度预警</title>
+  <style>
+    :root {
+      --bg-acrylic: rgba(24, 28, 38, 0.94);
+      --border-acrylic: rgba(255, 255, 255, 0.12);
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+      --track-bg: rgba(255, 255, 255, 0.10);
+      --tier-notice: #EAB308;
+      --tier-warn: #F59E0B;
+      --tier-danger: #EF4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      width: 280px;
+      margin: 0 auto;
+      overflow: hidden;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .quota-card {
+      width: 280px;
+      border-radius: 10px;
+      background: var(--bg-acrylic);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid var(--border-acrylic);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      padding: 8px 10px;
+      gap: 6px;
+      cursor: pointer;
+      transition: opacity 0.3s ease;
+    }
+
+    .alert-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .badge-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .badge-icon svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    .info-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .info-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .service-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .right-time-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .window-chip {
+      font-size: 8.5px;
+      font-weight: 500;
+      color: var(--text-sub);
+      padding: 1px 4.5px;
+      border-radius: 3.5px;
+      background: rgba(128, 128, 128, 0.12);
+      border: 0.5px solid rgba(128, 128, 128, 0.2);
+      white-space: nowrap;
+      line-height: 1.2;
+    }
+
+    body.theme-nothing .window-chip {
+      font-family: "Space Mono", monospace;
+      border-radius: 3px;
+      border: 1px solid #333333;
+      background: #181818;
+      color: #999999;
+    }
+
+    .info-bottom {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      margin-top: 2px;
+    }
+
+    .progress-track {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--track-bg);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .percent-val {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: system-ui, -apple-system, sans-serif;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    .countdown-timer {
+      font-size: 9px;
+      font-weight: 600;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+    }
+
+    .close-btn {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      border: none;
+      color: var(--text-sub);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 9px;
+      line-height: 1;
+      transition: all 0.15s ease;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text-main);
+    }
+
+    /* Nothing 极客硬核点阵风格适配 */
+    body.theme-nothing {
+      --bg-acrylic: #000000;
+      --border-acrylic: #303030;
+      --text-main: #FFFFFF;
+      --text-sub: #999999;
+      --track-bg: #222222;
+      --tier-notice: #4A9E5C;
+      --tier-warn: #D4A843;
+      --tier-danger: #D71921;
+    }
+    body.theme-nothing .quota-card {
+      border-radius: 8px;
+      background: #000000;
+      border: 1px solid #303030;
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    body.theme-nothing .service-title {
+      font-family: "Space Grotesk", sans-serif;
+      color: #FFFFFF;
+    }
+    body.theme-nothing .window-label {
+      font-family: "Space Mono", monospace;
+      color: #999999;
+    }
+    body.theme-nothing .percent-val {
+      font-family: "Space Mono", monospace;
+    }
+    body.theme-nothing .countdown-timer {
+      font-family: "Space Mono", monospace;
+      font-weight: 700;
+    }
+    body.theme-nothing .close-btn {
+      border-radius: 2px;
+      background: transparent;
+      color: #999999;
+      font-family: "Space Mono", monospace;
+    }
+    body.theme-nothing .close-btn:hover {
+      background: #222222;
+      color: #D71921;
+    }
+    body.theme-nothing .progress-track.segmented {
+      display: flex;
+      gap: 1.5px;
+      background: transparent;
+      height: 4px;
+    }
+    body.theme-nothing .nothing-seg {
+      flex: 1;
+      height: 100%;
+      background: #222222;
+      border-radius: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="quota-card" id="quotaCard">
+    <div id="alertsContainer"></div>
+  </div>
+
+  <script src="provider-brand.js"></script>
+  <script>
+    const tauri = window.__TAURI__;
+    let alertsData = [];
+    let countdownInterval = null;
+    let dismissTimeout = null;
+    let isHovering = false;
+
+    function invokeTauri(cmd, args = {}) {
+      if (tauri && tauri.core && typeof tauri.core.invoke === "function") {
+        return tauri.core.invoke(cmd, args);
+      }
+      return Promise.resolve();
+    }
+
+    function getTierColor(tier) {
+      if (tier >= 95) return "var(--tier-danger)";
+      if (tier >= 80) return "var(--tier-warn)";
+      return "var(--tier-notice)";
+    }
+
+    function formatCountdown(resetsAt, resetText) {
+      if (!resetsAt) return resetText || "";
+      const target = new Date(resetsAt).getTime();
+      const now = Date.now();
+      const diffSecs = Math.max(0, Math.floor((target - now) / 1000));
+      if (diffSecs <= 0) return "00:00:00";
+      const h = Math.floor(diffSecs / 3600);
+      const m = Math.floor((diffSecs % 3600) / 60);
+      const s = diffSecs % 60;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
+    function formatWindow(label) {
+      if (!label) return "每5小时";
+      const s = String(label).trim();
+      if (s.includes("5") && (s.includes("小时") || s.includes("h"))) return "每5小时";
+      if (s.includes("周") || s.includes("week")) return "每周";
+      if (s.includes("月") || s.includes("month")) return "每月";
+      if (s.includes("天") || s.includes("日") || s.includes("day")) return "每日";
+      return s.replace(/\s+/g, "");
+    }
+
+    function renderAlerts(alerts) {
+      alertsData = alerts || [];
+      const container = document.getElementById("alertsContainer");
+      container.innerHTML = "";
+
+      alertsData.forEach(alert => {
+        const row = document.createElement("div");
+        row.className = "alert-row";
+
+        const tierColor = getTierColor(alert.tier || 80);
+        const usedPct = Math.round(alert.usedPercent || 0);
+        const countdown = formatCountdown(alert.resetsAt, alert.resetText);
+
+        let iconSvg = "";
+        if (window.ProviderBrand && window.ProviderBrand.getGlyph) {
+          iconSvg = window.ProviderBrand.getGlyph(alert.providerId || alert.serviceId, 16);
+        }
+        if (!iconSvg) {
+          iconSvg = `<span style="font-size:10px;font-weight:700;">${(alert.serviceName || "A")[0]}</span>`;
+        }
+
+        const isNothing = document.body.classList.contains("theme-nothing");
+        let progressHtml = "";
+        if (isNothing) {
+          const segs = [];
+          for (let i = 0; i < 14; i++) {
+            const threshold = (i + 1) / 14 * 100;
+            const filled = (usedPct >= threshold) || (i === 0 && usedPct > 0);
+            segs.push(`<div class="nothing-seg ${filled ? 'should-fill' : ''}" data-fill-color="${tierColor}"></div>`);
+          }
+          progressHtml = `<div class="progress-track segmented">${segs.join("")}</div>`;
+        } else {
+          progressHtml = `
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 0%; background: ${tierColor}; transition: width 0.85s cubic-bezier(0.33, 0, 0.2, 1);" data-target-width="${Math.min(100, usedPct)}"></div>
+            </div>`;
+        }
+
+        row.innerHTML = `
+          <div class="badge-icon">${iconSvg}</div>
+          <div class="info-col">
+            <div class="info-top">
+              <span class="service-title">${alert.serviceName || alert.serviceId}</span>
+              <div class="right-time-group">
+                <span class="window-chip">${formatWindow(alert.windowLabel)}</span>
+                ${countdown ? `<span class="countdown-timer" style="color: ${tierColor};" data-resets-at="${alert.resetsAt || ''}" data-reset-text="${alert.resetText || ''}">${countdown}</span>` : ""}
+              </div>
+            </div>
+            <div class="info-bottom">
+              ${progressHtml}
+              <span class="percent-val" style="color: ${tierColor};">${usedPct}%</span>
+            </div>
+          </div>
+          <button class="close-btn" title="关闭" onclick="event.stopPropagation(); window.closeAlert();">✕</button>
+        `;
+        container.appendChild(row);
+      });
+
+      // 气泡展示动画: 进度条从 0 平滑增长至目标用量
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          document.querySelectorAll(".progress-fill").forEach(el => {
+            el.style.width = el.getAttribute("data-target-width") + "%";
+          });
+          document.querySelectorAll(".nothing-seg.should-fill").forEach((el, idx) => {
+            setTimeout(() => {
+              el.style.background = el.getAttribute("data-fill-color");
+              el.classList.add("filled");
+            }, idx * 40);
+          });
+        }, 30);
+      });
+
+      startCountdownTimer();
+      scheduleAutoDismiss(6000);
+    }
+
+    function startCountdownTimer() {
+      if (countdownInterval) clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => {
+        const timers = document.querySelectorAll(".countdown-timer");
+        timers.forEach(el => {
+          const resetsAt = el.getAttribute("data-resets-at");
+          const resetText = el.getAttribute("data-reset-text");
+          el.textContent = formatCountdown(resetsAt, resetText);
+        });
+      }, 1000);
+    }
+
+    function scheduleAutoDismiss(ms) {
+      if (dismissTimeout) clearTimeout(dismissTimeout);
+      dismissTimeout = setTimeout(() => {
+        if (!isHovering) {
+          window.closeAlert();
+        }
+      }, ms);
+    }
+
+    window.closeAlert = function() {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      if (dismissTimeout) {
+        clearTimeout(dismissTimeout);
+        dismissTimeout = null;
+      }
+      const card = document.getElementById("quotaCard");
+      card.style.opacity = "0";
+      setTimeout(() => {
+        invokeTauri("hide_quota_alert_window");
+        card.style.opacity = "1";
+      }, 250);
+    };
+
+    const card = document.getElementById("quotaCard");
+    card.addEventListener("mouseenter", () => {
+      isHovering = true;
+      if (dismissTimeout) clearTimeout(dismissTimeout);
+    });
+
+    card.addEventListener("mouseleave", () => {
+      isHovering = false;
+      scheduleAutoDismiss(3000);
+    });
+
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".close-btn")) return;
+      window.closeAlert();
+      invokeTauri("show_dashboard_from_alert");
+    });
+
+    if (tauri && tauri.event) {
+      tauri.event.listen("quota-alert-data", (e) => {
+        if (e.payload) {
+          const payload = e.payload;
+          const alerts = Array.isArray(payload) ? payload : (payload.alerts || []);
+          const theme = Array.isArray(payload) ? "fluent" : (payload.theme || "fluent");
+          document.body.classList.toggle("theme-nothing", theme === "nothing");
+          renderAlerts(alerts);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

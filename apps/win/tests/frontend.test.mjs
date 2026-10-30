@@ -2278,9 +2278,9 @@ test("settings sidebar locks a 17.6% window-width ratio instead of a fixed pixel
 
 // ---------- C153: 通用页配置项分组顺序 ----------
 
-test("general pane rows keep the appearance → layout → refresh → notification order (C153)", async () => {
+test("general pane rows keep the appearance → layout → refresh → notification order (C153 / C159)", async () => {
   const source = readFileSync(new URL("../src/settings-maintenance.js", import.meta.url), "utf8");
-  const order = ["界面风格", "界面动效", "看板布局", "刷新间隔", "系统通知"];
+  const order = ["界面风格", "界面动效", "看板布局", "刷新间隔", "额度预警气泡"];
   const positions = order.map((label) => source.indexOf(`row(c1, "${label}"`));
   positions.forEach((position, index) => {
     assert.ok(position >= 0, `通用页缺少「${order[index]}」行`);
@@ -2493,4 +2493,20 @@ test("renderer stamps exactly the motion keys the tween layer computes (C158)", 
   // 收起行 / 迷你条的保留 key 不会与任何窗口 label 撞键。
   assert.notEqual(keys.mini("kimi"), keys.meter("kimi", "", "mini"));
   assert.notEqual(keys.collapsed("kimi"), keys.meter("kimi", "", "collapsed"));
+});
+
+// ---------- C159: 订阅额度预警气泡微卡 ----------
+
+test("quota-alert.html defines 280pt capsule micro-card with R3-A countdown and auto-dismiss (C159)", async () => {
+  const html = readFileSync(new URL("../src/quota-alert.html", import.meta.url), "utf8");
+  assert.ok(html.includes("width: 280px"), "气泡微卡宽度固定 280px");
+  assert.ok(html.includes("badge-icon"), "包含品牌瓷砖徽章容器");
+  assert.ok(html.includes("progress-track"), "包含 4pt 进度条容器");
+  assert.ok(html.includes("countdown-timer"), "包含 R3-A 电子表倒计时容器");
+  assert.ok(html.includes("window-chip"), "包含窗口卡片感微标签");
+  assert.ok(html.includes("6000"), "包含 6 秒自动平滑淡出定时器");
+  assert.ok(html.includes("show_dashboard_from_alert"), "点击卡片主体唤出主看板并收起气泡");
+  assert.ok(html.includes("hide_quota_alert_window"), "点击关闭微按钮收起气泡");
+  assert.ok(html.includes("theme-nothing"), "适配 Nothing 极客点阵主题");
+  assert.ok(html.includes("progress-track segmented"), "包含 Nothing 风格 14 段方块分段量条结构");
 });

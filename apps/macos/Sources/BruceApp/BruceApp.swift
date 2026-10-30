@@ -152,6 +152,40 @@ struct BruceApp: App {
             }
         )
         self.statusItemController = statusController
+        bootstrap.onQuotaAlerts = { [weak statusController] alerts in
+            statusController?.showQuotaAlertBubble(alerts: alerts)
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("Bruce.TriggerTestQuotaAlert"),
+            object: nil,
+            queue: .main
+        ) { [weak statusController] _ in
+            let mockAlerts = [
+                QuotaAlert(
+                    serviceID: "kimi_coding",
+                    serviceName: "Kimi Coding",
+                    windowLabel: "5小时",
+                    usedPercent: 85.0,
+                    tier: 80,
+                    providerID: "kimi",
+                    resetText: "01:28:45",
+                    resetsAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(5325))
+                ),
+                QuotaAlert(
+                    serviceID: "codex_standard",
+                    serviceName: "Codex",
+                    windowLabel: "5小时",
+                    usedPercent: 96.0,
+                    tier: 95,
+                    providerID: "codex",
+                    resetText: "00:15:20",
+                    resetsAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(920))
+                ),
+            ]
+            Task { @MainActor in
+                statusController?.showQuotaAlertBubble(alerts: mockAlerts, force: true)
+            }
+        }
         let monitor = GlobalHotkeyMonitor(
             onPress: { [weak statusController] in
                 statusController?.toggleDashboard()

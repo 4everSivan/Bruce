@@ -463,11 +463,18 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
                 }
                 FluentRow(
-                    "系统通知",
-                    sub: "预警与额度提醒; 关闭后 Bruce 不会投递通知",
+                    "额度预警气泡",
+                    sub: "额度紧缺时在菜单栏图标下方弹出提示微卡; 关闭后不弹出",
                     divided: true
                 ) {
                     HStack(spacing: 8) {
+                        Button("测试气泡") {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("Bruce.TriggerTestQuotaAlert"),
+                                object: nil
+                            )
+                        }
+                        .fluentButton()
                         Toggle(
                             "",
                             isOn: Binding(
@@ -477,17 +484,8 @@ struct SettingsView: View {
                         )
                         .labelsHidden()
                         .toggleStyle(.switch)
-                        if notificationDenied {
-                            Button("前往系统设置") {
-                                NSWorkspace.shared.open(
-                                    URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
-                                )
-                            }
-                            .fluentButton()
-                        }
                     }
                 }
-                .onAppear(perform: refreshNotificationStatus)
                 FluentRow(
                     "凭据存储",
                     sub: "统一管理 Bruce 保存的订阅凭证访问权限",

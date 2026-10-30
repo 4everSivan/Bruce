@@ -8,16 +8,41 @@ fn service(id: &str, name: &str, windows: serde_json::Value) -> serde_json::Valu
 }
 
 #[test]
-fn threshold_is_strictly_greater_than_eighty() {
+fn threshold_tier_boundaries_are_strictly_evaluated() {
+    // 50% 边界: 50.0% 不触发, 50.01% 触发 50 档
+    let artifact = json!({"services": [service("kimi_coding", "Kimi",
+        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 50.0}]))]});
+    assert!(over_threshold_entries(&artifact).is_empty(), "50% 不触发");
+
+    let artifact = json!({"services": [service("kimi_coding", "Kimi",
+        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 50.01}]))]});
+    let alerts = over_threshold_entries(&artifact);
+    assert_eq!(alerts.len(), 1);
+    assert_eq!(alerts[0].tier, 50);
+
+    // 80% 边界: 80.0% 属于 50 档, 80.01% 跃升为 80 档
     let artifact = json!({"services": [service("kimi_coding", "Kimi",
         json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 80.0}]))]});
-    assert!(over_threshold_entries(&artifact).is_empty(), "80% 不触发");
+    let alerts = over_threshold_entries(&artifact);
+    assert_eq!(alerts.len(), 1);
+    assert_eq!(alerts[0].tier, 50);
 
     let artifact = json!({"services": [service("kimi_coding", "Kimi",
         json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 80.01}]))]});
     let alerts = over_threshold_entries(&artifact);
     assert_eq!(alerts.len(), 1);
-    assert_eq!(alerts[0].used_percent, 80.01);
+    assert_eq!(alerts[0].tier, 80);
+
+    // 95% 边界: 94.99% 属于 80 档, 95.0% 属于 95 档 (>=95.0%)
+    let artifact = json!({"services": [service("kimi_coding", "Kimi",
+        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 94.99}]))]});
+    let alerts = over_threshold_entries(&artifact);
+    assert_eq!(alerts[0].tier, 80);
+
+    let artifact = json!({"services": [service("kimi_coding", "Kimi",
+        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 95.0}]))]});
+    let alerts = over_threshold_entries(&artifact);
+    assert_eq!(alerts[0].tier, 95);
 }
 
 #[test]

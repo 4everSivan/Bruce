@@ -342,14 +342,24 @@ pub fn compute_preview_geometry(
     monitor: &MonitorBounds,
     tray: Option<&TrayIconBounds>,
 ) -> DashboardGeometry {
+    compute_preview_geometry_custom(monitor, tray, 420.0, 260.0)
+}
+
+/// 计算微缩浮层 (预览卡 / 配额预警卡) 的自适应几何贴靠位置
+pub fn compute_preview_geometry_custom(
+    monitor: &MonitorBounds,
+    tray: Option<&TrayIconBounds>,
+    width_pt: f64,
+    height_pt: f64,
+) -> DashboardGeometry {
     let scale = if monitor.scale_factor > 0.0 {
         monitor.scale_factor
     } else {
         1.0
     };
 
-    let win_w = ((420.0 * scale).round() as u32).min(monitor.work_width);
-    let win_h = ((260.0 * scale).round() as u32).min(monitor.work_height);
+    let win_w = ((width_pt * scale).round() as u32).min(monitor.work_width);
+    let win_h = ((height_pt * scale).round() as u32).min(monitor.work_height);
     let (win_w, win_h) = (win_w as i32, win_h as i32);
 
     let margin_x = ((12.0 * scale).round() as i32).max(4);

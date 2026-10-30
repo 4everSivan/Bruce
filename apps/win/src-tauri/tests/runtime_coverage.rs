@@ -587,6 +587,10 @@ fn manual_alert_refresh_observes_threshold_without_delivery() {
         service_name: "Codex".into(),
         window_label: "5h".into(),
         used_percent: 90.0,
+        tier: 80,
+        provider_id: Some("codex".into()),
+        reset_text: None,
+        resets_at: None,
     };
     assert!(state
         .alerts_for_refresh(std::slice::from_ref(&alert), true, true)

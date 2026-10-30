@@ -114,7 +114,6 @@ mod desktop {
     use serde_json::Value;
     use std::time::Duration;
     use tauri::{AppHandle, Emitter, Manager};
-    use tauri_plugin_notification::NotificationExt;
 
     fn deliver_alerts(app: &AppHandle, settings: &AppSettings, artifact: &Value, manual: bool) {
         let alerts = over_threshold_entries(artifact);
@@ -127,16 +126,10 @@ mod desktop {
                 state.alerts_for_refresh(&alerts, manual, settings.notifications_enabled)
             })
             .unwrap_or_default();
-        for alert in to_notify {
-            let _ = app
-                .notification()
-                .builder()
-                .title("Bruce 配额预警")
-                .body(format!(
-                    "{} {} 窗口已用 {:.0}%",
-                    alert.service_name, alert.window_label, alert.used_percent
-                ))
-                .show();
+        if !to_notify.is_empty() {
+            // C159: 退役 Windows Toast 弹窗通知, 改为向托盘气泡浮层派发并展现
+            crate::show_quota_alert(app, &to_notify);
+            let _ = app.emit("quota-alert-bubble", &to_notify);
         }
     }
 
