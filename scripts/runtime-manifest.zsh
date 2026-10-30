@@ -4,9 +4,13 @@
 BRUCE_RUST_PACKAGE_DIR="core/collector"
 BRUCE_RUST_BINARY_NAME="Bruce-collector"
 
+# Static resources copied into Contents/Resources/<basename> by both bundles.
+# Preview 与 Release 只经 Bruce_copy_bundle_resources 投放, 清单只此一份 (C168):
+# 此前两个脚本各自 ditto, Release 漏了 Nothing 主题字体.
 BRUCE_BUNDLE_FILES=(
     apps/macos/Assets/AppIcon.icns
     apps/macos/Assets/Fonts
+    apps/macos/Assets/AgentIcons
 )
 
 Bruce_validate_packaging_sources() {
@@ -15,6 +19,34 @@ Bruce_validate_packaging_sources() {
     for relative_path in "${BRUCE_BUNDLE_FILES[@]}"; do
         if [[ ! -e "$repo_root/$relative_path" ]]; then
             echo "缺少打包资源: $repo_root/$relative_path" >&2
+            return 1
+        fi
+    done
+}
+
+Bruce_copy_bundle_resources() {
+    local repo_root="$1"
+    local resources_root="$2"
+    local relative_path
+    for relative_path in "${BRUCE_BUNDLE_FILES[@]}"; do
+        ditto "$repo_root/$relative_path" "$resources_root/${relative_path:t}" || return 1
+    done
+}
+
+# 组装后的 Bundle 必须带齐清单内全部静态资源; 目录型资源不得为空 (C168).
+Bruce_validate_bundle_resources() {
+    local app_root="$1"
+    local resources_root="$app_root/Contents/Resources"
+    local relative_path target
+    for relative_path in "${BRUCE_BUNDLE_FILES[@]}"; do
+        target="$resources_root/${relative_path:t}"
+        if [[ -d "$target" ]]; then
+            if [[ -z "$(ls -A "$target")" ]]; then
+                echo "Bundle 静态资源目录为空: $target" >&2
+                return 1
+            fi
+        elif [[ ! -f "$target" ]]; then
+            echo "Bundle 缺少静态资源: $target" >&2
             return 1
         fi
     done

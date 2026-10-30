@@ -37,6 +37,9 @@ if [[ -n "$BRUCE_LEGACY_SOURCE" ]]; then
 fi
 
 zsh -n "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh"
+zsh -n "$BRUCE_SCRIPT_DIR/build-test-app.sh"
+zsh -n "$BRUCE_SCRIPT_DIR/build-release-app.sh"
+zsh "$BRUCE_SCRIPT_DIR/check-bundle-resources.zsh"
 zsh "$BRUCE_SCRIPT_DIR/verify-rust.sh"
 
 if [[ ! -x "$BRUCE_RUST_BIN" ]]; then

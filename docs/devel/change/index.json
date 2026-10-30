@@ -20,7 +20,8 @@
         "C125",
         "C128",
         "C130",
-        "C140"
+        "C140",
+        "C168"
       ]
     },
     "MenuBarIndicator": {
@@ -1711,6 +1712,15 @@
       "topic": "PricingEngine",
       "version": "0.16.0",
       "file": "docs/devel/change/C167.json"
+    },
+    "C168": {
+      "title": "打包静态资源单一清单：Preview / Release 共用 BRUCE_BUNDLE_FILES 投放与校验，补 Release 漏装的 Nothing 主题字体",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C168-bundle-resources-shared",
+      "topic": "SystemOverview",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C168.json"
     }
   }
 }

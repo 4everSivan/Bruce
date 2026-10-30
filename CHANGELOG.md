@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **正式版打包补装 Nothing 主题字体 (C168)**：Developer ID 正式版脚本 `build-release-app.sh` 此前漏拷 `Assets/Fonts`，用它打出的包在 Nothing 主题下会静默回退为系统字体（当前 CI 发版走 `build-test-app.sh`，已发布版本不受影响）。两个打包脚本改为共用 `runtime-manifest.zsh` 的同一份资源清单投放并校验，本地验证新增 `check-bundle-resources.zsh` 防止再次漂移。
 - **mac 自定义刷新间隔点别处即保存 (C167，修正 C160)**：设置页「刷新间隔 · 自定义」输入后点击别处或切走窗口即生效（此前只认回车，点别处后数字仍显示在框里却没有保存）；非法输入回到当前生效值，未改动时不重启刷新计时。
 - **Agent / 模型品牌徽章补漏 (C166，修正 C161)**：Windows 端补登记 Cline 模型图形（此前 Cline 模型在 Windows 仍显示色点，mac 已是徽章）；Windows 真彩位图加载失败时改为显示矢量图形或字标，不再留下空白徽章；mac `AgentBrandBadge` 消除编译告警。两端品牌表新增共享对拍用例 `tests/fixtures/agent-brand-parity`，防止再次各改各的。
 - **模型用量时序趋势图缩放 / 平移 / 刻度修复 (C165，修正 C162 / C163)**：
