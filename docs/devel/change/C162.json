@@ -4,7 +4,7 @@
   "title": "模型用量「时序趋势」图 X 轴采用方案 A1（3h 严格等步长）+ S2 峰值胶囊高亮（🔥 前缀 + 跟随主导曲线色，双端同构）",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C162-timeline-xaxis-ticks",
   "is_hotfix": false,
   "target": {
@@ -87,7 +87,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "f799494",
     "tag": ""
   },
   "gate": {
@@ -95,7 +95,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-30",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

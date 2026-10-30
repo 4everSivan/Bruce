@@ -1656,7 +1656,7 @@
     "C162": {
       "title": "模型用量「时序趋势」图 X 轴采用方案 A1（3h 严格等步长）+ S2 峰值胶囊高亮（🔥 前缀 + 跟随主导曲线色，双端同构）",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C162-timeline-xaxis-ticks",
       "topic": "AgentAnalytics",
       "version": "0.16.0",
