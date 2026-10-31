@@ -131,7 +131,9 @@
         "C157",
         "C158",
         "C159",
-        "C160"
+        "C160",
+        "C172",
+        "C178"
       ]
     },
     "SubscriptionQuota": {
@@ -165,7 +167,9 @@
         "C124",
         "C127",
         "C131",
-        "C164"
+        "C164",
+        "C171",
+        "C173"
       ]
     },
     "TokenUsage": {
@@ -198,7 +202,10 @@
         "C134",
         "C136",
         "C138",
-        "C139"
+        "C139",
+        "C175",
+        "C176",
+        "C177"
       ]
     },
     "AgentAnalytics": {
@@ -214,7 +221,8 @@
       "design_doc": "docs/devel/design/07-软件更新.md",
       "changes": [
         "C105",
-        "C113"
+        "C113",
+        "C174"
       ]
     },
     "SharedPolicyCore": {
@@ -1745,6 +1753,78 @@
       "topic": "SystemOverview",
       "version": "0.16.0",
       "file": "docs/devel/change/C170.json"
+    },
+    "C171": {
+      "title": "额度刷新换得的轮换令牌在失败路径被丢弃：刷新成功后查询失败、本轮采集失败或超时，新令牌均不回写",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C171-rotated-token-loss",
+      "topic": "SubscriptionQuota",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C171.json"
+    },
+    "C172": {
+      "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C172-win-claude-rotation",
+      "topic": "WindowsCompat",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C172.json"
+    },
+    "C173": {
+      "title": "删除订阅凭据后旧值仍残留在 credentials.json.bak：备份恒为上一版（含刚删除的密钥），损坏现场副本无清理",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C173-credential-bak-residue",
+      "topic": "SubscriptionQuota",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C173.json"
+    },
+    "C174": {
+      "title": "mac 软件更新未校验发布签名：只比对同源清单的 SHA256 后 xattr -cr 剥离隔离属性，清单与包可被一并替换",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C174-mac-update-signature",
+      "topic": "SoftwareUpdate",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C174.json"
+    },
+    "C175": {
+      "title": "本机会话缓存逐条目强制落盘：冷扫描约四分之三耗时在 F_FULLFSYNC，版本升级后全量重建易逼近 90 s 预算",
+      "type": "Enhancement",
+      "status": "pending",
+      "branch": "fix/C175-cache-fsync",
+      "topic": "TokenUsage",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C175.json"
+    },
+    "C176": {
+      "title": "采集进程内存峰值与缓存体积随观测数线性膨胀：40 万条观测热扫描峰值 251 MB、缓存 102 MB",
+      "type": "Enhancement",
+      "status": "pending",
+      "branch": "fix/C176-collector-memory",
+      "topic": "TokenUsage",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C176.json"
+    },
+    "C177": {
+      "title": "Bridge 超时契约失真：localScanSeconds 只校验不执行，mac 与 Windows 预算各异且无记录",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C177-timeout-contract",
+      "topic": "TokenUsage",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C177.json"
+    },
+    "C178": {
+      "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
+      "type": "Enhancement",
+      "status": "pending",
+      "branch": "fix/C178-win-csp",
+      "topic": "WindowsCompat",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C178.json"
     }
   }
 }

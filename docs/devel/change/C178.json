@@ -1,0 +1,93 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C178",
+  "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C178-win-csp",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win（src-tauri / src）",
+    "component": "tauri.conf.json app.security / build.rs AppManifest / capabilities",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-31 对抗审查发现。tauri.conf.json 未配置 app.security.csp，withGlobalTauri: true，build.rs 未以 AppManifest 限定应用命令，60 余个 #[tauri::command]（含凭据保存 / 删除、导入、更新下载与安装）对 dashboard / settings / preview / quota-alert 全部窗口可调。当前前端以 DOM API 构建、IPC 不回传密钥值，未发现可利用路径；但缺少纵深防护，任一处内容注入即可直达凭据写入与更新安装命令。",
+  "precheck": {
+    "description": "确认 CSP 缺失且命令未按窗口限定",
+    "command": "grep -c '\"csp\"' apps/win/src-tauri/tauri.conf.json; cat apps/win/src-tauri/build.rs",
+    "expected": "csp 计数为 0；build.rs 仅 tauri_build::build()",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C178 -b fix/C178-win-csp docs/C171-C178-register"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C178 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "webview 内容安全策略",
+      "before": "无 CSP。",
+      "after": "配置严格 CSP（default-src 'self'，禁止内联脚本与远程源，按实际需要放行 ipc: 与资源协议）。",
+      "impact": "Windows 全部本地页面；内联样式 / 字体加载需逐项核对。"
+    },
+    {
+      "scope": "命令按窗口授权",
+      "before": "全部应用命令对所有窗口开放。",
+      "after": "以 AppManifest + capabilities 按窗口最小权限授予（preview / quota-alert 仅保留所需命令）；check-win-frontend.mjs 反查前端调用与授权一致。",
+      "impact": "build.rs、capabilities/*.json、前端 invoke 调用面。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "窗口事件授权（C149）：订阅事件的窗口须有 core:event:allow-listen；应用命令无窗口级限制，无 CSP。",
+      "after": "前端安全基线：严格 CSP；应用命令按窗口最小权限授权并由 check-win-frontend.mjs 反查。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "check-win-frontend.mjs 断言 CSP 存在且各窗口实际调用的命令均已授权、未调用的未授权；Windows 壳测试与 verify-local.sh 退出码 0",
+        "false_if": "断言缺失、授权与调用不一致或测试失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Windows 真机上四个窗口加载无 CSP 违规、全部功能可用（需人工在 Windows 上确认，本机无法运行 Windows GUI）",
+        "false_if": "出现 CSP 拦截或命令被拒导致功能失效",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
