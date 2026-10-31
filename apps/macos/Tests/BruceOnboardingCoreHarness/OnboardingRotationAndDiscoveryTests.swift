@@ -89,8 +89,9 @@ extension BruceOnboardingCoreHarness {
             ),
             providerID: .claude
         )
+        // C171: Claude 写回恒生成 Collector 可读的嵌套 claudeAiOauth.
         try coreExpect(
-            merged == #"{"access_token":"a","keep":"yes"}"#,
+            merged == #"{"access_token":"a","claudeAiOauth":{"accessToken":"a"},"keep":"yes"}"#,
             "白名单外键必须过滤, got \(merged ?? "nil")"
         )
         try coreExpect(
@@ -169,6 +170,34 @@ extension BruceOnboardingCoreHarness {
             dict["access_token"] as? String == "new-access",
             "顶层 access_token 未被同步更新"
         )
+    }
+
+    /// C171: 首次写回零配置 claude-cli (尚无已存记录) 也必须生成 Collector 可读的嵌套
+    /// claudeAiOauth; 只写顶层键时 Collector 读不到新 refresh token, 下一轮回落到已被
+    /// 轮换作废的 CLI 令牌.
+    static func rotationMergeClaudeCreatesNestedOAuthForNewCLIRecord() throws {
+        let merged = CredentialRotationMerge.mergedAccountJSON(
+            existingCredentialJSON: nil,
+            update: CredentialRotationUpdate(
+                provider: "claude",
+                accountId: "claude-cli",
+                tokens: [
+                    "access_token": "new-access",
+                    "refresh_token": "new-refresh",
+                    "expiry": "1700028800"
+                ]
+            ),
+            providerID: .claude
+        )
+        guard let merged,
+              let data = merged.data(using: .utf8),
+              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let oauth = dict["claudeAiOauth"] as? [String: Any] else {
+            throw CoreTestFailure.expectation("新建 claude-cli 记录缺少嵌套 claudeAiOauth: \(merged ?? "nil")")
+        }
+        try coreExpect(oauth["accessToken"] as? String == "new-access", "accessToken 未写入嵌套条目")
+        try coreExpect(oauth["refreshToken"] as? String == "new-refresh", "refreshToken 未写入嵌套条目")
+        try coreExpect(oauth["expiresAt"] as? Int64 == 1700028800000, "expiresAt 应为毫秒")
     }
 
     // MARK: - 任务 5: 登录接入与账号发现
