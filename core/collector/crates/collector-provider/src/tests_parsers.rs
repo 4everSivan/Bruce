@@ -1015,3 +1015,56 @@ fn encode_varint(mut value: u64) -> Vec<u8> {
         }
     }
 }
+
+#[test]
+fn stepfun_rotated_token_survives_retry_failure_after_401_refresh() {
+    // C171: 401 → 刷新成功 (两段令牌均已轮换) → 重试 429, 新令牌仍须随 outcome 带出
+    let old_token =
+        "header.part1.sig...header.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJkZXYtMSJ9.sig";
+    let refresh_resp = json!({
+        "accessToken": {"raw": "header.new_part1.sig"},
+        "refreshToken": {"raw": "header.new_part2.sig"}
+    });
+    let http = FixtureHttp::new(vec![
+        Ok(HttpResponse {
+            status: 401,
+            body: b"unauthenticated".to_vec(),
+        }),
+        Ok(HttpResponse {
+            status: 200,
+            body: serde_json::to_vec(&refresh_resp).unwrap(),
+        }),
+        Ok(HttpResponse {
+            status: 429,
+            body: b"{}".to_vec(),
+        }),
+    ]);
+    let request = ProviderRequest {
+        account_id: Some("test-acc".to_owned()),
+        captured_at: "2026-09-21T00:00:00Z".to_owned(),
+        timeout: Duration::from_secs(5),
+        max_response_body_bytes: 65536,
+        credential: Some(json!({ "token": old_token })),
+    };
+    let result = StepFunProvider.query(&request, &http, &CancellationToken::default());
+    assert_eq!(
+        result.as_ref().unwrap_err().diagnostic.code,
+        "PROVIDER_RATE_LIMIT"
+    );
+    let template = crate::service_template(
+        &crate::ServiceDescriptor {
+            id: "stepfun_a".to_owned(),
+            name: "StepFun".to_owned(),
+            app: "stepfun".to_owned(),
+            is_current: false,
+        },
+        "2026-09-21T00:00:00Z",
+    );
+    let outcome = StepFunProvider.finalize_outcome(template, Some("test-acc"), result);
+    assert_eq!(outcome.service["status"], "error");
+    assert_eq!(outcome.credential_updates.len(), 1);
+    assert_eq!(
+        outcome.credential_updates[0]["credentials"]["access_token"],
+        "header.new_part1.sig...header.new_part2.sig"
+    );
+}

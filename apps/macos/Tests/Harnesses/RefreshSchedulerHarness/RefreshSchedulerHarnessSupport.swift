@@ -914,16 +914,26 @@ final class ThrowingCredentialStoreForScheduler: CredentialStore, @unchecked Sen
     }
 }
 
-/// 成功响应携带 credentialUpdates 的执行器, 用于验证 Scheduler 写回路径.
+/// 响应携带 credentialUpdates 的执行器, 用于验证 Scheduler 写回路径.
+/// 默认成功信封; C171 起也用于 error 信封 (无 artifact) 仍须写回的场景.
 @MainActor
 final class CredentialUpdateExecutor: CollectorExecuting {
-    let artifact: JSONValue
+    let artifact: JSONValue?
     let updates: [JSONValue]
+    let status: BridgeStatus
+    let diagnostics: [BridgeDiagnostic]
     private(set) var runCount: [CollectorModule: Int] = [:]
 
-    init(artifact: JSONValue, updates: [JSONValue]) {
+    init(
+        artifact: JSONValue?,
+        updates: [JSONValue],
+        status: BridgeStatus = .success,
+        diagnostics: [BridgeDiagnostic] = []
+    ) {
         self.artifact = artifact
         self.updates = updates
+        self.status = status
+        self.diagnostics = diagnostics
     }
 
     func run(
@@ -937,11 +947,11 @@ final class CredentialUpdateExecutor: CollectorExecuting {
                 schemaVersion: 1,
                 runId: UUID().uuidString.lowercased(),
                 generatedAt: "2026-07-28T12:00:00Z",
-                status: .success,
+                status: status,
                 artifact: artifact,
                 credentialUpdates: updates,
-                diagnostics: [],
-            credentialChallenges: []
+                diagnostics: diagnostics,
+                credentialChallenges: []
             ),
             stderrDiagnostic: nil
         )

@@ -1757,7 +1757,7 @@
     "C171": {
       "title": "额度刷新换得的轮换令牌在失败路径被丢弃：刷新成功后查询失败、本轮采集失败或超时，新令牌均不回写",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C171-rotated-token-loss",
       "topic": "SubscriptionQuota",
       "version": "0.16.0",

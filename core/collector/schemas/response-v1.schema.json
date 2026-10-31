@@ -39,6 +39,7 @@
       ]
     },
     "credentialUpdates": {
+      "description": "轮换后的凭据更新。C171: status 为 error 的信封同样可携带 (本轮已刷新成功、随后失败), 宿主须先写回再判定是否发布。",
       "type": "array",
       "items": {
         "$ref": "#/$defs/credentialUpdate"

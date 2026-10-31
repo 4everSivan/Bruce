@@ -883,3 +883,167 @@ fn services_carry_explicit_provider_and_failure_kind() {
     );
     assert_eq!(crate::failure_kind_for_code("PROVIDER_TIMEOUT"), "network");
 }
+
+fn claude_expired_oauth() -> Value {
+    json!({
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-oat01-stale_token",
+            "refreshToken": "sk-ant-ort01-refresh_me",
+            "expiresAt": 1_700_000_000_000_i64,
+            "scopes": ["user:profile", "user:inference"]
+        }
+    })
+}
+
+fn claude_refresh_response() -> HttpResponse {
+    HttpResponse {
+        status: 200,
+        body: serde_json::to_vec(&json!({
+            "token_type": "Bearer",
+            "access_token": "sk-ant-oat01-fresh_token",
+            "refresh_token": "sk-ant-ort01-new_refresh",
+            "expires_in": 28800
+        }))
+        .unwrap(),
+    }
+}
+
+fn claude_request() -> ProviderRequest {
+    ProviderRequest {
+        account_id: Some("claude-a".to_owned()),
+        captured_at: "2026-10-20T00:00:00Z".to_owned(),
+        timeout: Duration::from_secs(5),
+        max_response_body_bytes: 65536,
+        credential: Some(claude_expired_oauth()),
+    }
+}
+
+fn claude_template() -> Value {
+    service_template(
+        &super::ServiceDescriptor {
+            id: "claude_a".to_owned(),
+            name: "Claude".to_owned(),
+            app: "claude".to_owned(),
+            is_current: false,
+        },
+        "2026-10-20T00:00:00Z",
+    )
+}
+
+fn assert_rotated_claude_update(outcome: &crate::ProviderOutcome) {
+    assert_eq!(outcome.service["status"], "error");
+    assert_eq!(
+        outcome.credential_updates.len(),
+        1,
+        "rotated tokens dropped"
+    );
+    let update = &outcome.credential_updates[0];
+    assert_eq!(update["provider"], "claude");
+    assert_eq!(update["accountId"], "claude-a");
+    assert_eq!(
+        update["credentials"]["access_token"],
+        "sk-ant-oat01-fresh_token"
+    );
+    assert_eq!(
+        update["credentials"]["refresh_token"],
+        "sk-ant-ort01-new_refresh"
+    );
+}
+
+#[test]
+fn claude_rotated_tokens_survive_usage_failure_after_proactive_refresh() {
+    // C171: 刷新成功后 usage 查询失败, 服务端已轮换 refresh token, 新令牌必须随 outcome 带出
+    let failures: Vec<Result<HttpResponse, ProviderError>> = vec![
+        Ok(HttpResponse {
+            status: 429,
+            body: b"{}".to_vec(),
+        }),
+        Ok(HttpResponse {
+            status: 503,
+            body: b"{}".to_vec(),
+        }),
+        Err(ProviderError::new(
+            "PROVIDER_TRANSPORT_ERROR",
+            "request",
+            "fixture transport failure",
+            true,
+        )),
+    ];
+    for failure in failures {
+        let http = FixtureHttp::new(vec![Ok(claude_refresh_response()), failure]);
+        let result = ClaudeProvider.query(&claude_request(), &http, &CancellationToken::default());
+        let requests = http.requests();
+        assert!(requests[0].url.contains("/v1/oauth/token"));
+        assert!(requests[1].url.contains("/api/oauth/usage"));
+        assert!(result.is_err());
+        let outcome = ClaudeProvider.finalize_outcome(claude_template(), Some("claude-a"), result);
+        assert_rotated_claude_update(&outcome);
+    }
+}
+
+#[test]
+fn claude_rotated_tokens_survive_retry_failure_after_401_refresh() {
+    let mut fresh = claude_expired_oauth();
+    fresh["claudeAiOauth"]["expiresAt"] = json!(2_100_000_000_000_i64);
+    let http = FixtureHttp::new(vec![
+        Ok(HttpResponse {
+            status: 401,
+            body: b"{}".to_vec(),
+        }),
+        Ok(claude_refresh_response()),
+        Ok(HttpResponse {
+            status: 429,
+            body: b"{}".to_vec(),
+        }),
+    ]);
+    let request = ProviderRequest {
+        credential: Some(fresh),
+        ..claude_request()
+    };
+    let result = ClaudeProvider.query(&request, &http, &CancellationToken::default());
+    assert_eq!(http.requests().len(), 3);
+    let outcome = ClaudeProvider.finalize_outcome(claude_template(), Some("claude-a"), result);
+    assert_rotated_claude_update(&outcome);
+}
+
+/// 刷新响应返回后立即取消 (模拟 Collector deadline 恰在刷新与查询之间到期)。
+struct CancelAfterRefresh {
+    cancellation: CancellationToken,
+}
+
+impl crate::HttpClient for CancelAfterRefresh {
+    fn send(
+        &self,
+        request: crate::HttpRequest,
+        cancellation: &CancellationToken,
+    ) -> Result<HttpResponse, ProviderError> {
+        cancellation.check().map_err(ProviderError::from_runtime)?;
+        assert!(request.url.contains("/v1/oauth/token"));
+        self.cancellation.cancel();
+        Ok(claude_refresh_response())
+    }
+}
+
+#[test]
+fn claude_rotated_tokens_survive_cancellation_after_refresh() {
+    let cancellation = CancellationToken::default();
+    let http = CancelAfterRefresh {
+        cancellation: cancellation.clone(),
+    };
+    let result = ClaudeProvider.query(&claude_request(), &http, &cancellation);
+    assert_eq!(
+        result.as_ref().unwrap_err().diagnostic.code,
+        "PROVIDER_CANCELLED"
+    );
+    let outcome = ClaudeProvider.finalize_outcome(claude_template(), Some("claude-a"), result);
+    assert_rotated_claude_update(&outcome);
+}
+
+#[test]
+fn provider_error_debug_redacts_credential_update() {
+    let error = ProviderError::new("PROVIDER_RATE_LIMIT", "response", "limited", true)
+        .with_credential_update(Some(json!({"refresh_token": "sk-ant-ort01-secret"})));
+    let debug = format!("{error:?}");
+    assert!(!debug.contains("sk-ant-ort01-secret"), "{debug}");
+    assert!(debug.contains("<redacted>"));
+}

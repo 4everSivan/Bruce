@@ -372,7 +372,8 @@ struct RefreshExecutionPipeline {
 
     /// T15 降级: 采集已完成但回填 / 时间戳失败 —— 不发布本轮结果 (未回填的 artifact 会丢掉
     /// 被跳过 provider 的订阅卡, 未记账的查询会在下一轮重复), 按采集失败退避, 上一份 artifact
-    /// 保持展示. 轮换令牌仍先写回 (与可发布路径同条件), 避免一次性 refresh token 随本轮丢失.
+    /// 保持展示. 轮换令牌仍先写回 (与可发布路径同条件, C171 起不论 status), 避免一次性
+    /// refresh token 随本轮丢失.
     private func policyFailed(
         _ error: Error,
         after output: CollectorRunOutput
@@ -381,7 +382,7 @@ struct RefreshExecutionPipeline {
             return .cancelled
         }
         let response = output.response
-        if response.status != .error, !response.credentialUpdates.isEmpty {
+        if !response.credentialUpdates.isEmpty {
             _ = credentialUpdates?.apply(credentialUpdates: response.credentialUpdates)
         }
         return .collectorFailed(error)
@@ -418,8 +419,8 @@ struct RefreshExecutionPipeline {
 
     // MARK: - Publishable path
 
-    /// 对齐原 handleResult success 分支: auth-no-artifact / status.error 不写回不发布;
-    /// 其余路径先 apply 凭证, 再 publish, 失败诊断与 partial 降级在 Pipeline 落地.
+    /// 对齐原 handleResult success 分支: 先 apply 凭证, 再按 auth-no-artifact / status.error
+    /// 不发布, 其余路径 publish, 失败诊断与 partial 降级在 Pipeline 落地.
     private func finishPublishablePath(
         output: CollectorRunOutput,
         request: RefreshPipelineRequest
@@ -428,12 +429,21 @@ struct RefreshExecutionPipeline {
         let includesManual = request.intent.includesManual
         let emptyApply = CredentialUpdateApplyResult()
 
+        // 6. applyCredentialUpdates — 轮换令牌先于发布判定写回. C171: error envelope
+        // (本机扫描失败 / 超时) 也可能携带服务端已轮换的令牌, 不写回只能重新登录.
+        var applyResult = emptyApply
+        if !response.credentialUpdates.isEmpty {
+            applyResult = credentialUpdates?.apply(
+                credentialUpdates: response.credentialUpdates
+            ) ?? emptyApply
+        }
+
         let hasAuthError = response.diagnostics.contains { $0.category == "auth" }
         // 任务 9: auth diagnostic 只在拿不到 artifact 时整模块 authRequired.
         if hasAuthError && response.artifact == nil {
             return .completed(CompletedRun(
                 output: output,
-                credentialApply: emptyApply,
+                credentialApply: applyResult,
                 quotaAlertEntries: [],
                 includesManual: includesManual,
                 publishedArtifact: nil
@@ -442,35 +452,28 @@ struct RefreshExecutionPipeline {
         if response.status == .error {
             return .completed(CompletedRun(
                 output: output,
-                credentialApply: emptyApply,
+                credentialApply: applyResult,
                 quotaAlertEntries: [],
                 includesManual: includesManual,
                 publishedArtifact: nil
             ))
         }
 
-        // 6. applyCredentialUpdates — 轮换令牌先于 artifact 发布写回
         var publishedDiagnostics = response.diagnostics
         var effectiveStatus = response.status
-        var applyResult = emptyApply
-        if !response.credentialUpdates.isEmpty {
-            applyResult = credentialUpdates?.apply(
-                credentialUpdates: response.credentialUpdates
-            ) ?? emptyApply
-            if !applyResult.failed.isEmpty {
-                for failure in applyResult.failed {
-                    publishedDiagnostics.append(BridgeDiagnostic(
-                        code: "CREDENTIAL_PERSIST_FAILED",
-                        category: "storage",
-                        stage: "credentialUpdate",
-                        message: "\(failure.provider) 凭证写回失败",
-                        retryable: true
-                    ))
-                }
-                // 有 artifact 时将 success 降级为 partial (在 Pipeline 落地)
-                if effectiveStatus == .success, response.artifact != nil {
-                    effectiveStatus = .partial
-                }
+        if !applyResult.failed.isEmpty {
+            for failure in applyResult.failed {
+                publishedDiagnostics.append(BridgeDiagnostic(
+                    code: "CREDENTIAL_PERSIST_FAILED",
+                    category: "storage",
+                    stage: "credentialUpdate",
+                    message: "\(failure.provider) 凭证写回失败",
+                    retryable: true
+                ))
+            }
+            // 有 artifact 时将 success 降级为 partial (在 Pipeline 落地)
+            if effectiveStatus == .success, response.artifact != nil {
+                effectiveStatus = .partial
             }
         }
 

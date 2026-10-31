@@ -91,7 +91,7 @@ fn main() -> io::Result<()> {
     let started = Instant::now();
     let physical_disk_read_start = collector_bridge::physical_disk_read_bytes();
     let output = collect_agent_usage_with_dependencies(&request, &http, &credentials)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.message))?;
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.diagnostic.message))?;
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
     let physical_disk_read_bytes = physical_disk_read_start.and_then(|start| {
         collector_bridge::physical_disk_read_bytes().map(|end| end.saturating_sub(start))

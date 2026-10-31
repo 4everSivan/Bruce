@@ -69,8 +69,37 @@ pub struct CollectionOutput {
     pub credential_challenges: Vec<Value>,
 }
 
+/// A failed run. C171: 额度账号在本轮已刷新成功时, 服务端已轮换 refresh token;
+/// 整轮随后因本机扫描失败 / 取消 / 超时而失败, 新令牌也必须随错误交给 Bridge,
+/// 由 error envelope 带回宿主写回, 否则本地只剩已作废的旧令牌。
+pub struct CollectionFailure {
+    pub diagnostic: Diagnostic,
+    /// 装箱切片: 让各 Result 的 Err 变体保持在 clippy result_large_err 门槛内。
+    pub credential_updates: Box<[Value]>,
+}
+
+impl From<Diagnostic> for CollectionFailure {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Self {
+            diagnostic,
+            credential_updates: Box::default(),
+        }
+    }
+}
+
+/// 手写 Debug: credential_updates 携带令牌明文, 只输出条数。
+impl std::fmt::Debug for CollectionFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CollectionFailure")
+            .field("diagnostic", &self.diagnostic)
+            .field("credential_updates", &self.credential_updates.len())
+            .finish()
+    }
+}
+
 /// Execute one collection run with production read-only adapters.
-pub fn collect_agent_usage(request: &BridgeRequest) -> Result<CollectionOutput, Diagnostic> {
+pub fn collect_agent_usage(request: &BridgeRequest) -> Result<CollectionOutput, CollectionFailure> {
     let http = UreqHttpClient::default();
     let credentials = SystemCredentialSource::default();
     collect_agent_usage_with_dependencies(request, &http, &credentials)
@@ -83,7 +112,7 @@ pub fn collect_agent_usage_with_dependencies(
     request: &BridgeRequest,
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
-) -> Result<CollectionOutput, Diagnostic> {
+) -> Result<CollectionOutput, CollectionFailure> {
     collect_agent_usage_with_dependencies_inner(
         request,
         http,
@@ -98,7 +127,7 @@ fn collect_agent_usage_with_dependencies_inner(
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
     #[cfg(test)] final_probe: Option<&mut dyn FnMut(&collector_runtime::CancellationToken)>,
-) -> Result<CollectionOutput, Diagnostic> {
+) -> Result<CollectionOutput, CollectionFailure> {
     validate_account_request(request)?;
     let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
     let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
@@ -134,11 +163,20 @@ fn collect_agent_usage_with_dependencies_inner(
         });
         (local, quota)
     });
-    let local = local_result?;
+    // C171: 额度线程已完成, 其轮换令牌在服务端已生效; 此后任何一步失败都随错误带出。
+    let pending_updates = quota_result
+        .as_ref()
+        .map(|quota| quota.credential_updates.clone())
+        .unwrap_or_default();
+    let failed = |diagnostic: Diagnostic| CollectionFailure {
+        diagnostic,
+        credential_updates: pending_updates.clone().into_boxed_slice(),
+    };
+    let local = local_result.map_err(failed)?;
     context
         .cancellation
         .check()
-        .map_err(local_source_runtime_diagnostic)?;
+        .map_err(|error| failed(local_source_runtime_diagnostic(error)))?;
     let mut diagnostics = local.diagnostics;
     let scan_stats = local.scan_stats;
     let source_metrics = local.source_metrics;
@@ -280,7 +318,7 @@ fn collect_agent_usage_with_dependencies_inner(
     context
         .cancellation
         .check()
-        .map_err(local_source_runtime_diagnostic)?;
+        .map_err(|error| failed(local_source_runtime_diagnostic(error)))?;
     let total_cost = agents
         .iter()
         .filter_map(|agent| agent.today_cost_usd)
@@ -294,18 +332,18 @@ fn collect_agent_usage_with_dependencies_inner(
         total_cost_usd: (total_cost > 0.0).then_some(total_cost),
     };
     let artifact = serde_json::to_value(artifact).map_err(|_| {
-        Diagnostic::new(
+        failed(Diagnostic::new(
             "ARTIFACT_SERIALIZATION_FAILED",
             "collector",
             "serialize",
             "artifact 序列化失败",
             false,
-        )
+        ))
     })?;
     context
         .cancellation
         .check()
-        .map_err(local_source_runtime_diagnostic)?;
+        .map_err(|error| failed(local_source_runtime_diagnostic(error)))?;
     Ok(CollectionOutput {
         artifact,
         diagnostics,
@@ -655,7 +693,7 @@ fn collect_agent_usage_with_final_probe<F>(
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
     mut probe: F,
-) -> Result<CollectionOutput, Diagnostic>
+) -> Result<CollectionOutput, CollectionFailure>
 where
     F: FnMut(&collector_runtime::CancellationToken),
 {
@@ -672,7 +710,9 @@ fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
     }
 }
 
-fn collect_quota_retry_only(context: &RunContext<'_>) -> Result<CollectionOutput, Diagnostic> {
+fn collect_quota_retry_only(
+    context: &RunContext<'_>,
+) -> Result<CollectionOutput, CollectionFailure> {
     let quota = match build_account_plan(context.request) {
         Ok(plans) => execute_quota_accounts(context, &plans),
         Err(diagnostic) => QuotaExecution {
@@ -695,7 +735,14 @@ fn collect_quota_retry_only(context: &RunContext<'_>) -> Result<CollectionOutput
             true,
         ));
     }
-    context.cancellation.check().map_err(runtime_diagnostic)?;
+    // C171: 重试轮已拿到的轮换令牌同样随超时错误带出。
+    context
+        .cancellation
+        .check()
+        .map_err(|error| CollectionFailure {
+            diagnostic: runtime_diagnostic(error),
+            credential_updates: quota.credential_updates.clone().into_boxed_slice(),
+        })?;
     Ok(CollectionOutput {
         artifact: json!({
             "schemaVersion": AGENT_USAGE_SCHEMA_VERSION,
@@ -1029,6 +1076,114 @@ mod tests {
         }
     }
 
+    /// C171: 依次返回固定响应 (Claude 刷新 → usage)。
+    struct SequenceHttp {
+        responses: std::sync::Mutex<std::collections::VecDeque<HttpResponse>>,
+    }
+
+    impl HttpClient for SequenceHttp {
+        fn send(
+            &self,
+            _request: HttpRequest,
+            cancellation: &CancellationToken,
+        ) -> Result<HttpResponse, ProviderError> {
+            cancellation.check().map_err(ProviderError::from_runtime)?;
+            Ok(self
+                .responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("unexpected extra request"))
+        }
+    }
+
+    fn claude_refresh_then_usage_http() -> SequenceHttp {
+        let refresh = json!({
+            "token_type": "Bearer",
+            "access_token": "sk-ant-oat01-fresh_token",
+            "refresh_token": "sk-ant-ort01-new_refresh",
+            "expires_in": 28800
+        });
+        let usage = json!({
+            "five_hour": { "utilization": 5.0, "resets_at": null },
+            "seven_day": { "utilization": 20.0, "resets_at": null }
+        });
+        SequenceHttp {
+            responses: std::sync::Mutex::new(
+                [refresh, usage]
+                    .into_iter()
+                    .map(|body| HttpResponse {
+                        status: 200,
+                        body: serde_json::to_vec(&body).unwrap(),
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    fn expired_claude_request(capabilities: &[&str]) -> BridgeRequest {
+        let mut request = request(capabilities);
+        request.credentials.insert(
+            "claudeQuotaAccounts".to_owned(),
+            json!({
+                "acc": {
+                    "display_name": "Claude",
+                    "oauth": {"claudeAiOauth": {
+                        "accessToken": "sk-ant-oat01-stale_token",
+                        "refreshToken": "sk-ant-ort01-refresh_me",
+                        "expiresAt": 1_700_000_000_000_i64
+                    }}
+                }
+            }),
+        );
+        request.credentials.insert(
+            "providerMeta".to_owned(),
+            json!({"claude": {"enabled": true}}),
+        );
+        request
+    }
+
+    fn assert_carries_rotated_claude_tokens(updates: &[serde_json::Value]) {
+        assert_eq!(
+            updates.len(),
+            1,
+            "rotated tokens dropped with the failed run"
+        );
+        assert_eq!(updates[0]["accountId"], "acc");
+        assert_eq!(
+            updates[0]["credentials"]["refresh_token"],
+            "sk-ant-ort01-new_refresh"
+        );
+    }
+
+    #[test]
+    fn deadline_after_quota_refresh_still_returns_rotated_tokens() {
+        let failure = super::collect_agent_usage_with_final_probe(
+            &expired_claude_request(&["externalQuotas"]),
+            &claude_refresh_then_usage_http(),
+            &EmptyCredentialSource,
+            |cancellation| cancellation.cancel(),
+        )
+        .unwrap_err();
+        assert_eq!(failure.diagnostic.code, "LOCAL_SOURCE_CANCELLED");
+        assert_carries_rotated_claude_tokens(&failure.credential_updates);
+        let debug = format!("{failure:?}");
+        assert!(!debug.contains("sk-ant-ort01-new_refresh"), "{debug}");
+    }
+
+    #[test]
+    fn local_scan_failure_still_returns_rotated_tokens() {
+        // 授权 localSessions 却缺 home: 本机通道失败, 额度通道照常完成并已刷新令牌
+        let failure = collect_agent_usage_with_dependencies(
+            &expired_claude_request(&["localSessions", "externalQuotas"]),
+            &claude_refresh_then_usage_http(),
+            &EmptyCredentialSource,
+        )
+        .unwrap_err();
+        assert_eq!(failure.diagnostic.code, "BRIDGE_INVALID_REQUEST");
+        assert_carries_rotated_claude_tokens(&failure.credential_updates);
+    }
+
     #[test]
     fn application_preserves_capability_denied_local_semantics() {
         let output = collect_agent_usage(&request(&[])).unwrap();
@@ -1187,7 +1342,7 @@ mod tests {
         );
 
         assert_eq!(
-            result.unwrap_err().code,
+            result.unwrap_err().diagnostic.code,
             "LOCAL_SOURCE_CANCELLED",
             "a cancelled local run must fail before publishing a partial artifact"
         );
@@ -1207,7 +1362,7 @@ mod tests {
         );
 
         assert_eq!(
-            result.unwrap_err().code,
+            result.unwrap_err().diagnostic.code,
             "LOCAL_SOURCE_CANCELLED",
             "final cancellation must prevent a new artifact from being returned"
         );

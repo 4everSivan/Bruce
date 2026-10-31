@@ -65,6 +65,13 @@ struct CollectorTimeouts: Encodable, Equatable, Sendable {
     /// Swift 侧取消子进程的宽限期, 不属于 Bridge 请求协议.
     let cancellationGraceSeconds: Double
 
+    /// 外层超时 (C171): 晚于 Collector 自身的 moduleSeconds deadline. 到期时在途 HTTP
+    /// 请求最长还需 externalRequestSeconds 才返回, 再留一个宽限期输出信封 —— 信封里
+    /// 可能带着已轮换的令牌, 外层抢先 SIGTERM 会让它们随进程丢失.
+    var hostTimeoutSeconds: Double {
+        moduleSeconds + externalRequestSeconds + cancellationGraceSeconds
+    }
+
     static let `default` = CollectorTimeouts(
         localScanSeconds: 30,
         externalRequestSeconds: 10,
@@ -495,7 +502,7 @@ package final class CollectorRunner {
             )
             activeRuns[module] = active
             active.timeoutTimer = timerScheduler.schedule(
-                after: timeouts.moduleSeconds
+                after: timeouts.hostTimeoutSeconds
             ) { [weak self, weak active] in
                 guard let self, let active else { return }
                 self.timeout(module: module, active: active)

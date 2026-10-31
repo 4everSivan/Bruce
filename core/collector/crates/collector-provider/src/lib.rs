@@ -439,9 +439,13 @@ pub trait QuotaProvider: Send + Sync {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProviderError {
     pub diagnostic: Diagnostic,
+    /// C171: 查询前已刷新成功换得的新凭据。服务端此时已轮换 refresh token,
+    /// 查询本身失败 (429 / 5xx / 取消) 时也必须随错误带出, 由 finalize 转成
+    /// credential update, 否则本地只剩已作废的旧令牌。装箱以免撑大所有 Result 的 Err 变体。
+    pub credential_update: Option<Box<Value>>,
 }
 
 impl ProviderError {
@@ -453,7 +457,15 @@ impl ProviderError {
     ) -> Self {
         Self {
             diagnostic: Diagnostic::new(code, "provider", stage, message, retryable),
+            credential_update: None,
         }
+    }
+
+    pub fn with_credential_update(mut self, update: Option<Value>) -> Self {
+        if let Some(update) = update {
+            self.credential_update = Some(Box::new(update));
+        }
+        self
     }
 
     pub fn from_runtime(error: RuntimeError) -> Self {
@@ -468,6 +480,20 @@ impl ProviderError {
             }
         };
         Self::new(code, "request", message, retryable)
+    }
+}
+
+/// 手写 Debug: credential_update 携带令牌明文, 只标注是否存在。
+impl fmt::Debug for ProviderError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderError")
+            .field("diagnostic", &self.diagnostic)
+            .field(
+                "credential_update",
+                &self.credential_update.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
     }
 }
 
@@ -634,17 +660,21 @@ pub fn finalize_provider_outcome(
 ) -> ProviderOutcome {
     let mut credential_updates = Vec::new();
     let mut clean_result = result;
-    if let Ok(Some(Value::Object(map))) = &mut clean_result {
-        if let Some(update_val) = map.remove("credential_update") {
-            if let Some(account_id) = account_id.filter(|s| !s.is_empty()) {
-                credential_updates.push(json!({
-                    "provider": app,
-                    "accountId": account_id,
-                    "kind": "oauthTokens",
-                    "operation": "replace",
-                    "credentials": update_val,
-                }));
-            }
+    // C171: 成功结果里的 credential_update 键与失败结果上挂的更新同等对待。
+    let update = match &mut clean_result {
+        Ok(Some(Value::Object(map))) => map.remove("credential_update"),
+        Err(error) => error.credential_update.take().map(|update| *update),
+        _ => None,
+    };
+    if let Some(update_val) = update {
+        if let Some(account_id) = account_id.filter(|s| !s.is_empty()) {
+            credential_updates.push(json!({
+                "provider": app,
+                "accountId": account_id,
+                "kind": "oauthTokens",
+                "operation": "replace",
+                "credentials": update_val,
+            }));
         }
     }
     let service = finalize_service(service, clean_result);
