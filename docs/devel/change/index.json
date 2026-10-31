@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-30",
+  "updated_at": "2026-10-31",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -65,7 +65,8 @@
         "C155",
         "C156",
         "C160",
-        "C167"
+        "C167",
+        "C169"
       ]
     },
     "WindowsCompat": {
@@ -1725,6 +1726,15 @@
       "topic": "SystemOverview",
       "version": "0.16.0",
       "file": "docs/devel/change/C168.json"
+    },
+    "C169": {
+      "title": "更新 GPT-6.1 系列模型价格（Sol / Terra / Luna 官方单价与缓存读取对齐）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C169-gpt-6.1-pricing",
+      "topic": "PricingEngine",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C169.json"
     }
   }
 }
