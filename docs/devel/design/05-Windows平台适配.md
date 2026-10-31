@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-30 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-31 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -269,6 +269,7 @@ Windows Tauri 后端 (Rust)
 | C158 | 界面对齐 | 额度条与余额数字更新动效（Windows 渲染后补间） | 新增规则 34：渲染后 WAAPI 补间、`linear()` 弹簧、分段错峰、余额数字列与基线稳定 |
 | C159 | 架构升级 | 订阅额度预警改用托盘图标锚定气泡（双端支持）：三档阶梯 `[50%, 80%, 95%]` 去重判定，废弃 Windows Toast 弹窗 | 新增规则 35：Windows 托盘预警气泡与 Toast 替代（无焦点微卡、四边贴靠、6s 静默淡出与悬停常亮） |
 | C160 | 界面对齐 | 刷新间隔收敛为 3 / 6 分钟预设 + 自定义 1–1440 分钟（与 mac 同口径），移除验证期「测试气泡」入口 | 通用页刷新间隔改为预设分段 + 只读「X 分钟 / 编辑」，点击后才展开 `setting-interval-custom` 数字输入；历史值回显自定义、越界不写盘；`test_quota_alert` 命令与行内测试按钮退役（见 design/04 规则 10） |
+| C172 | 缺陷修复 | Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 `CREDENTIAL_UPDATE_UNSUPPORTED` 未写回 | 规则 6 补充 Collector 轮换更新写回：Claude 与 mac 同口径写嵌套 `claudeAiOauth`、零配置 `claude-cli` 自动建立、error envelope 同样写回；新增 `credential-rotation-parity` 双端对拍 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -278,7 +279,7 @@ Windows Tauri 后端 (Rust)
 4. **调度纪律**（C007）：采集周期不随面板可见性门控（对齐 mac `RefreshScheduler` 常驻语义，配额告警依赖后台周期采集）；面板打开即时手动刷新，隐藏态开销控制由前端渲染层自然暂停承载；刷新间隔在设置加载侧钳制到 `[60, 86400]` 秒。**窗口边界唤醒（C037，双端同构）**：定时唤醒不得跨过未来的额度窗口重置时刻 —— 下次唤醒 = min(间隔剩余, 最近未来 `services[].windows[].resetsAt` + slack 20s)，只在采集成功时参与调度；防风暴三道防线（只认未来边界 / 同一边界单次消费 / 未命中回落间隔）见 design/02 规则 9。
 
 5. **刷新与发布**（C009）：`get_dashboard` 只读最近快照；所有采集经单一调度器执行。手动请求合并，失败后等待退避而不叠加正常周期；手动刷新不弹额度预警。失败和坏 artifact 保留上一有效快照，过期服务必须明确 stale，不得伪装成功。
-6. **凭据生命周期**（C009）：落盘前保证目录/临时文件仅当前 SID 可访问，收权失败拒绝写入；轮换结果先安全持久化再发布，Codex accessRejected 仅允许一次刷新令牌恢复和一次重试，失败保留诊断；开发版使用隔离目录，不覆盖 mac 凭据。
+6. **凭据生命周期**（C009）：落盘前保证目录/临时文件仅当前 SID 可访问，收权失败拒绝写入；轮换结果先安全持久化再发布，Codex accessRejected 仅允许一次刷新令牌恢复和一次重试，失败保留诊断；开发版使用隔离目录，不覆盖 mac 凭据。Collector 轮换更新（含 C171 起 error envelope 携带的更新）由 `apply_updates` 不看 status 写回：StepFun 写 `token`；Claude（C172）经 `merge_claude_tokens` 与 mac `CredentialRotationMerge` 同口径写入嵌套 `claudeAiOauth`（已有 `claude.ai_oauth` 时沿用，`expiry` 秒 → `expiresAt` 毫秒，其余字段保留，不写顶层令牌键），用户账号须与本轮发出时一致（中途删除 / 替换则放弃），零配置 `claude-cli` 合并进已存记录、尚无记录时自动建立；Kimi 等不轮换的 provider 记 `CREDENTIAL_UPDATE_UNSUPPORTED`。合并口径由 `tests/fixtures/credential-rotation-parity` 双端对拍锁定。
 7. **配置闭环**（C009）：主题、卡片顺序、价格覆盖、Provider 启用/排序与出站同意必须消费到渲染/采集；账户与 stale/extra 信息必须可见。热键保存失败不能宣称成功；设置窗口失焦不隐藏、关闭后可重开。
 8. **证据边界**（C009）：真实 JS 渲染/事件回归、Rust 纯逻辑测试和 mac fixture 对拍不能替代 Win10/11 WebView2、系统热键、Toast 与 SID ACL 的真机验收。C009 与 T02/T03 在人工确认前保持 in_progress。
 9. **界面与窗口形态对齐**（C014）：主面板（HUD 面板）恒为纯净看板，严禁在主面板内以 Tab 或折叠方式内嵌设置/凭证表单；主面板只加载 `app.js`，不挂载 `settings.js`；设置窗口恒为独立窗口（1040×680），内部采用 Fluent L2 侧边栏结构导航 6 大分类面板（通用、Agent 用量、模型计费、订阅额度、授权与隐私、维护），右侧展示面包屑与 FluentCard 卡片组，彻底解耦主面板与配置中心。

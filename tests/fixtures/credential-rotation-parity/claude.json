@@ -1,0 +1,88 @@
+{
+  "description": "C172 Claude 轮换写回双端对拍: mac CredentialRotationMerge.mergedAccountJSON(.claude) 生成的嵌套条目 ≡ Windows lifecycle::merge_claude_tokens 写入 account.oauth 的嵌套条目。oauth 为 null 表示尚无已存记录 (零配置 claude-cli 首次写回)。mac 另在顶层同步写令牌键, Windows 账号只允许 display_name / oauth, 对拍只比 expectedKey 下的嵌套条目。 tokens 使用 fixture 扫描允许的两种不同脱敏占位 (access → <redacted>, refresh → [REDACTED_TOKEN]), 仍可区分字段映射。",
+  "cases": [
+    {
+      "name": "nested claudeAiOauth keeps unrelated fields",
+      "oauth": {
+        "claudeAiOauth": {
+          "accessToken": "old-access",
+          "refreshToken": "old-refresh",
+          "expiresAt": 1700000000000,
+          "scopes": [
+            "user:profile",
+            "user:inference"
+          ]
+        }
+      },
+      "tokens": {
+        "access_token": "<redacted>",
+        "refresh_token": "[REDACTED_TOKEN]",
+        "expiry": "1700028800"
+      },
+      "expectedKey": "claudeAiOauth",
+      "expected": {
+        "accessToken": "<redacted>",
+        "refreshToken": "[REDACTED_TOKEN]",
+        "expiresAt": 1700028800000,
+        "scopes": [
+          "user:profile",
+          "user:inference"
+        ]
+      }
+    },
+    {
+      "name": "legacy claude.ai_oauth wrapper is kept",
+      "oauth": {
+        "claude.ai_oauth": {
+          "accessToken": "old-access",
+          "refreshToken": "old-refresh"
+        }
+      },
+      "tokens": {
+        "access_token": "<redacted>",
+        "refresh_token": "[REDACTED_TOKEN]",
+        "expiry": "1700028800"
+      },
+      "expectedKey": "claude.ai_oauth",
+      "expected": {
+        "accessToken": "<redacted>",
+        "refreshToken": "[REDACTED_TOKEN]",
+        "expiresAt": 1700028800000
+      }
+    },
+    {
+      "name": "first write-back of the follow account creates claudeAiOauth",
+      "oauth": null,
+      "tokens": {
+        "access_token": "<redacted>",
+        "refresh_token": "[REDACTED_TOKEN]",
+        "expiry": "1700028800"
+      },
+      "expectedKey": "claudeAiOauth",
+      "expected": {
+        "accessToken": "<redacted>",
+        "refreshToken": "[REDACTED_TOKEN]",
+        "expiresAt": 1700028800000
+      }
+    },
+    {
+      "name": "access-only rotation keeps the stored refresh token and expiry",
+      "oauth": {
+        "claudeAiOauth": {
+          "accessToken": "old-access",
+          "refreshToken": "keep-refresh",
+          "expiresAt": 1700000000000
+        }
+      },
+      "tokens": {
+        "access_token": "<redacted>"
+      },
+      "expectedKey": "claudeAiOauth",
+      "expected": {
+        "accessToken": "<redacted>",
+        "refreshToken": "keep-refresh",
+        "expiresAt": 1700000000000
+      }
+    }
+  ]
+}

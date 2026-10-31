@@ -4,7 +4,7 @@
   "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C172-win-claude-rotation",
   "is_hotfix": false,
   "target": {
@@ -18,8 +18,8 @@
     "description": "确认 Windows 写回仍只支持 StepFun",
     "command": "grep -n 'if update\\[\"provider\"\\] != \"stepfun\"' apps/win/src-tauri/src/credentials/lifecycle.rs",
     "expected": "命中 1 处，非 stepfun 更新记 CREDENTIAL_UPDATE_UNSUPPORTED",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-10-31 在 worktree local/worktrees/C172（fix/C172-win-claude-rotation，基于 fix/C171-rotated-token-loss 48737ad）执行预检命令：lifecycle.rs:225 命中 `if update[\"provider\"] != \"stepfun\" {`，非 stepfun 更新记 CREDENTIAL_UPDATE_UNSUPPORTED 后 continue。另查 scheduler.rs:242–243：`with_local_claude` 在采集闭包内注入零配置 claude-cli 账号，`apply_updates` 收到的 expected 不含该账号——即便放开 provider 判断，按 compare-and-replace 也永远写不回跟随账号。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -36,13 +36,13 @@
     {
       "scope": "Windows 凭据写回（apply_updates）",
       "before": "仅 StepFun 更新写回；Claude 更新记 CREDENTIAL_UPDATE_UNSUPPORTED 并丢弃。",
-      "after": "Claude 更新按 mac CredentialRotationMerge 同口径合并 access_token / refresh_token / expiry（秒→ expiresAt 毫秒）到 claudeQuotaAccounts 对应账号的 claudeAiOauth，compare-and-replace 持久化；Kimi 等不轮换的 provider 维持 UNSUPPORTED。",
+      "after": "apply_updates 按 provider 分派：StepFun 原逻辑抽为 apply_stepfun_update（行为不变）；Claude 走 apply_claude_update + merge_claude_tokens——令牌写入嵌套 claudeAiOauth（已有 claude.ai_oauth 时沿用），expiry 秒 → expiresAt 毫秒，其余字段（scopes 等）保留，不写顶层令牌键（Windows 账号只允许 display_name / oauth）；用户账号须与本轮发出时一致（中途删除 / 替换则放弃，同 C009）；零配置 claude-cli 合并进已存记录，尚无记录时以 display_name「Claude CLI」自动建立（对齐 mac CredentialUpdateCoordinator）；合并结果不满足存储校验（缺 accessToken）时放弃而不让整轮失败；Kimi 等不轮换的 provider 维持 UNSUPPORTED。",
       "impact": "Windows 凭据存储、刷新调度与诊断。"
     },
     {
       "scope": "error envelope 写回（承接 C171）",
       "before": "Windows 只在可发布路径处理 credential_updates。",
-      "after": "error envelope 中经校验的更新同样先写回再按原逻辑处理。",
+      "after": "apply_updates 本就不看 status；C171 起 error envelope 携带的 Claude / StepFun 更新同样写回（新增回归锁定）。",
       "impact": "Windows 采集失败 / 超时路径。"
     }
   ],
@@ -57,7 +57,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261031-11",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -65,29 +65,29 @@
         "item": "自动化测试",
         "true_if": "新增回归：Claude 更新写回 claudeAiOauth 三字段且 expiresAt 为毫秒；账号已被并发修改时 compare-and-replace 放弃；error envelope 更新写回；Windows 壳测试与 verify-local.sh 退出码 0",
         "false_if": "任一回归缺失或失败，或 verify-local.sh 非 0",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-31 在 worktree local/worktrees/C172 执行 `zsh scripts/verify-local.sh`：首轮 exit=1——check-collector-fixtures.sh 判新 fixture「含未脱敏凭证字段」（tokens 中 access_token / refresh_token 用了可读占位值）；改用扫描允许的两种不同占位（access → `<redacted>`、refresh → `[REDACTED_TOKEN]`，仍可区分映射）后重跑 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=35 secretFindings=[]，告警仅 cargo `unused config key` 与 CLT `ld: search path` 环境噪音）。其后仅把 merge_claude_tokens 由 pub(crate) 收为私有，单独复跑 Windows 壳 crate：fmt --check 通过、cargo test 14 组 241 项通过 0 失败、clippy --all-targets -D warnings 通过。新增 Windows 回归：`claude_rotation_is_persisted_for_user_account`（嵌套三字段写回、expiresAt 毫秒、scopes 与 display_name 保留、无 UNSUPPORTED）、`claude_follow_account_is_created_on_first_rotation_even_from_error_envelope`（status=Error、无 artifact 的信封仍建立 claude-cli）、`claude_user_replacement_midrun_wins_over_inflight_rotation`（中途替换的用户账号不被覆盖）、`non_rotating_provider_updates_remain_unsupported`（kimi 仍 UNSUPPORTED）。",
+        "result": true
       },
       {
         "item": "双端口径一致",
         "true_if": "同一组 Claude 轮换输入经 mac CredentialRotationMerge 与 Windows apply_updates 合并后的 claudeAiOauth 字段一致（共享 fixture 对拍）",
         "false_if": "两端合并结果字段名、单位或缺省处理不一致",
-        "evidence": "",
-        "result": null
+        "evidence": "新增共享 fixture tests/fixtures/credential-rotation-parity/claude.json（4 例：嵌套 claudeAiOauth 保留 scopes、旧 claude.ai_oauth 包装沿用、无记录首次写回生成 claudeAiOauth、仅 access_token 轮换保留原 refreshToken / expiresAt）。Windows `claude_merge_matches_shared_parity_fixture` 与 mac Onboarding Core `rotationMergeClaudeMatchesSharedParityFixture`（175 → 176 项）均逐例比对 expectedKey 下的嵌套条目通过。差异按设计登记：mac 另写顶层令牌键，Windows 账号只允许 display_name / oauth，故不写，对拍不比顶层。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "StepFun 写回与 Codex 恢复行为不变；非轮换 provider 仍报 UNSUPPORTED；Windows 真机行为由人工确认（本机无法运行 Windows GUI）",
         "false_if": "StepFun / Codex 回归，或 UNSUPPORTED 语义被放宽到不轮换的 provider",
-        "evidence": "",
+        "evidence": "StepFun 写回逻辑原样抽为 apply_stepfun_update，既有 `rotation_is_persisted_without_deleting_other_accounts` 通过；Codex 恢复用例（`challenge_refreshes_once_persists_then_retries_once`、`concurrent_user_replacement_wins_over_inflight_refresh`、`refreshed_tokens_cannot_switch_account_identity`、`invalid_grant_requires_reauth_and_has_no_secret_diagnostic`）通过；kimi 仍 UNSUPPORTED。未做：Windows 真机实测（本机无法运行 Windows GUI / WebView2），需人工在 Windows 上确认 Claude 访问令牌过期后刷新仍可用且账号列表出现「Claude CLI」跟随项属预期。",
         "result": null
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },

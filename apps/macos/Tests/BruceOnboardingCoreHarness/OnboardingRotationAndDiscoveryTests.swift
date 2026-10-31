@@ -200,6 +200,51 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(oauth["expiresAt"] as? Int64 == 1700028800000, "expiresAt 应为毫秒")
     }
 
+    /// C172: Claude 轮换写回与 Windows lifecycle::merge_claude_tokens 共享对拍
+    /// (tests/fixtures/credential-rotation-parity), 只比 expectedKey 下的嵌套条目.
+    static func rotationMergeClaudeMatchesSharedParityFixture() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/fixtures/credential-rotation-parity/claude.json")
+        let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        guard let cases = fixture?["cases"] as? [[String: Any]], !cases.isEmpty else {
+            throw CoreTestFailure.expectation("credential rotation parity fixture 格式无效")
+        }
+        for item in cases {
+            let name = item["name"] as? String ?? "?"
+            guard let tokens = item["tokens"] as? [String: String],
+                  let key = item["expectedKey"] as? String,
+                  let expected = item["expected"] as? [String: Any] else {
+                throw CoreTestFailure.expectation("parity case 格式无效: \(name)")
+            }
+            var existing: String?
+            if let oauth = item["oauth"] as? [String: Any] {
+                existing = String(
+                    data: try JSONSerialization.data(withJSONObject: oauth, options: [.sortedKeys]),
+                    encoding: .utf8
+                )
+            }
+            let merged = CredentialRotationMerge.mergedAccountJSON(
+                existingCredentialJSON: existing,
+                update: CredentialRotationUpdate(provider: "claude", accountId: "acc", tokens: tokens),
+                providerID: .claude
+            )
+            guard let merged,
+                  let dict = (try? JSONSerialization.jsonObject(with: Data(merged.utf8))) as? [String: Any],
+                  let nested = dict[key] as? [String: Any] else {
+                throw CoreTestFailure.expectation("\(name): 缺少嵌套条目 \(key): \(merged ?? "nil")")
+            }
+            try coreExpect(
+                (nested as NSDictionary).isEqual(to: expected),
+                "\(name): 与 Windows 对拍不一致, got \(nested)"
+            )
+        }
+    }
+
     // MARK: - 任务 5: 登录接入与账号发现
 
     /// 永不触发的 stub OAuth 客户端 (登录测试只验证入库, 不发起网络).
