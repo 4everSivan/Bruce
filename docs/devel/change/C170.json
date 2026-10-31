@@ -1,0 +1,118 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C170",
+  "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C170-ci-tool-deps",
+  "is_hotfix": false,
+
+  "target": {
+    "module": ".github/workflows/ci.yml / scripts（本地门禁）",
+    "component": "verify 作业 / check-bundle-resources.zsh / check-collector-fixtures.sh / check-ci-tool-deps.mjs",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "2026-10-31 push 触发的 CI run 41204211118（HEAD 24ba90e）中「本地验证套件 (macOS 26)」失败：日志为 `check-bundle-resources.zsh:20: command not found: rg` 紧跟 `build-test-app.sh 未调用 Bruce_copy_bundle_resources`。根因是 verify 作业只做了 checkout / 版本号 / 跑 verify-local.sh，未像 build-release-app 与 release 作业那样安装 ripgrep，而 macOS runner 不预装 rg；C168 新增的 check-bundle-resources.zsh 用 `if ! rg -q` 把「命令不存在」(127) 取反后误判成「规则不满足」，报出与事实相反的结论（build-test-app.sh:130 实际有该调用）。同一提交前的 verify-local.sh 无 rg 直接依赖，故 C168 合入（2b5cf88）前 CI 为绿。次生缺陷：check-collector-fixtures.sh 用 `if rg ...` 正向形式，缺 rg 时返回 127 被当作条件不成立，凭证与隐私扫描长期静默空转（受限 PATH 实测输出 `passed: files=34 secretFindings=[]`，rg 从未执行）。影响：push 级门禁全红阻断主干，且安全检查在 CI 上没有任何实际覆盖。",
+
+  "precheck": {
+    "description": "在缺少 rg 的 PATH 下复现 verify 作业失败与 fixture 扫描静默跳过",
+    "command": "env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/zsh scripts/check-bundle-resources.zsh; echo EXIT=$?; env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/zsh scripts/check-collector-fixtures.sh; echo EXIT=$?",
+    "expected": "第一个脚本报 `command not found: rg` 后以 `build-test-app.sh 未调用 Bruce_copy_bundle_resources` 退出 1；第二个脚本在 rg 未执行的情况下输出 `Collector fixture scan passed` 并退出 0",
+    "is_completed": true,
+    "evidence": "2026-10-31 在 worktree local/worktrees/C170（基于 main 24ba90e）执行上述命令：check-bundle-resources.zsh → `scripts/check-bundle-resources.zsh:20: command not found: rg` / `build-test-app.sh 未调用 Bruce_copy_bundle_resources` / EXIT=1，与 CI 日志逐字一致；check-collector-fixtures.sh → `Collector fixture scan passed: files=34 secretFindings=[]` / EXIT=0。`gh api .../runs/41204211118/jobs` 显示同名 run 中仅「本地验证套件 (macOS 26)」失败（步骤「运行标准本地验证 (verify-local.sh)」），构建测试版 App 等作业 success；`git log -S'brew install ripgrep' -- .github/workflows/ci.yml` 证明安装步骤只存在于 build-release-app / release 作业。缺陷存在且未被前序提交修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C170 -b fix/C170-ci-tool-deps main"
+    ],
+    "after": [
+      "zsh -n scripts/check-bundle-resources.zsh",
+      "zsh -n scripts/check-collector-fixtures.sh",
+      "node scripts/check-ci-tool-deps.mjs",
+      "zsh scripts/check-bundle-resources.zsh",
+      "zsh scripts/check-collector-fixtures.sh",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C170 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "CI 作业工具依赖（.github/workflows/ci.yml）",
+      "before": "verify 作业（runs-on macos-26）只 checkout、打印版本号并运行 verify-local.sh，未安装 ripgrep；build-release-app 与 release 作业各自安装。",
+      "after": "verify 作业新增 `安装 ripgrep (verify-local.sh 前置依赖)` → `brew install ripgrep`，与另外两个作业一致。",
+      "impact": "push 级本地验证套件恢复绿色；后续门禁脚本新增第三方命令依赖时，作业内安装点与脚本预检由契约检查共同约束。"
+    },
+    {
+      "scope": "门禁脚本缺工具时的失败语义",
+      "before": "check-bundle-resources.zsh 直接用 `if ! rg -q`，命令缺失时取反为真并打印「未调用」；check-collector-fixtures.sh 用 `if rg`，命令缺失时静默视为不命中并输出通过。",
+      "after": "两个脚本在依赖 rg 前执行 `command -v rg` 预检，缺失时打印「缺少 ripgrep (rg)」及安装提示并 exit 1；fixture 扫描不再可能空转。",
+      "impact": "scripts/check-bundle-resources.zsh、scripts/check-collector-fixtures.sh；成功路径行为与输出不变。"
+    },
+    {
+      "scope": "回归门禁",
+      "before": "无任何检查能发现「CI 作业未安装门禁脚本依赖」这一漂移；C168 后命令缺失被误判为规则不满足。",
+      "after": "新增 scripts/check-ci-tool-deps.mjs：解析 ci.yml，断言运行 verify-local / 打包脚本的作业都安装 ripgrep；断言两个脚本含 `command -v rg` 预检；在抹掉 rg 的 PATH 下实跑两个脚本，断言必须 exit 1 且提示「缺少 ripgrep」，且不得出现「未调用 Bruce_copy_bundle_resources」。verify-local.sh 在 check-bundle-resources.zsh 之后调用该检查。",
+      "impact": "scripts/check-ci-tool-deps.mjs（新）、scripts/verify-local.sh"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "§3.4 只规定 verify-local.sh 的构建方式、剪枝与耗时 SLA，未约束门禁脚本的第三方命令依赖及 CI 安装一致性；脚本可用 `if ! cmd` 把命令缺失误判为规则不满足。",
+      "after": "§3.4 新增第 4 条「外部命令依赖预检」：门禁脚本依赖的第三方命令必须 `command -v` 预检并给出缺少提示，CI 运行 verify-local.sh 的作业必须显式安装同一依赖（macOS runner 不预装 rg），由 check-ci-tool-deps.mjs 在本地与 CI 双跑；§6 演进记录新增 C170。"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261031-02",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "zsh -n 两个脚本通过，check-ci-tool-deps.mjs 通过，verify-local.sh 退出码 0",
+        "false_if": "任一脚本语法错误、契约检查失败或 verify-local 非 0",
+        "evidence": "2026-10-31 在 worktree local/worktrees/C170（fix/C170-ci-tool-deps，基于 main 24ba90e）执行：`zsh -n` 两个脚本通过；`node scripts/check-ci-tool-deps.mjs` Exit 0（ci.yml 的 verify / build-release-app / release 三个门禁作业均安装 ripgrep，两脚本均有 rg 预检，缺 rg 时两脚本均明确失败）；`zsh scripts/verify-local.sh` Exit 0（末行「Bruce 本地验证全部通过」），日志第 2–10 行为新接入的静态资源清单检查与 CI 工具依赖契约检查；Rust 45+12+10+13+2 项测试全绿、Clippy 无警告；Swift Harness 全通过（Onboarding 174、PanelViewModel 64、ArtifactStore 7、CollectorRunner 28、RefreshScheduler 115、NativeLifecycle 16、Diagnostics 8、LocalIntegration 2、Widget 5、Subscription 38、GlobalHotkey 全通过、AppModelCache 5、GlassSurface 10、RefreshControl 4、BrandGlyph 12、StatusTone 3、SettingsMetrics 5、SoftwareUpdate 46、PricingCatalogSync 12）；双端对拍 5 项通过；价卡 86 行。",
+        "result": true
+      },
+      {
+        "item": "缺工具失败语义",
+        "true_if": "受限 PATH（无 rg）下两个脚本都以退出码 1 失败并提示「缺少 ripgrep」，且不再出现「未调用」误导信息；rg 可用时两者照常通过",
+        "false_if": "缺 rg 时静默通过、报错仍为「未调用」，或 rg 可用时行为回归",
+        "evidence": "受限 PATH（/usr/bin:/bin:/usr/sbin:/sbin，无 rg）下：check-bundle-resources.zsh 输出「缺少 ripgrep (rg): 无法检查打包脚本的资源投放调用 (安装: brew install ripgrep)」并 exit 1；check-collector-fixtures.sh 输出「缺少 ripgrep (rg): 无法扫描 fixture 凭证与隐私模式」并 exit 1；两者均不再出现「未调用 Bruce_copy_bundle_resources」。非空转证明：把 git HEAD（改动前）的 ci.yml、两个脚本与 runtime-manifest.zsh 复制到临时目录后运行同一契约检查 → Exit 1，7 项 FAIL（verify 作业未装 ripgrep、两脚本无预检、旧 bundle 脚本仍输出误导信息、旧 fixtures 脚本 status=0）。rg 可用时两脚本照常通过。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "fixture 扫描在 rg 可用时仍覆盖 34 个文件且无发现；打包脚本调用方式与资源清单检查不变；CI 其他作业配置未被改动",
+        "false_if": "fixture 覆盖数量变化、打包检查或 CI 其他作业出现回归",
+        "evidence": "verify-local 日志显示 fixture 扫描仍为 `files=34 secretFindings=[]`（与改动前一致）；check-bundle-resources.zsh 输出「Bundle 静态资源清单检查通过 (3 项, Preview / Release 同源)」；build-test-app.sh、build-release-app.sh、runtime-manifest.zsh 未改动；ci.yml 仅 verify 作业新增安装步骤，其余作业块未变；契约检查对三个门禁作业的 ripgrep 断言全部通过。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

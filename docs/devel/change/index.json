@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-30",
+  "updated_at": "2026-10-31",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -21,7 +21,8 @@
         "C128",
         "C130",
         "C140",
-        "C168"
+        "C168",
+        "C170"
       ]
     },
     "MenuBarIndicator": {
@@ -1725,6 +1726,15 @@
       "topic": "SystemOverview",
       "version": "0.16.0",
       "file": "docs/devel/change/C168.json"
+    },
+    "C170": {
+      "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C170-ci-tool-deps",
+      "topic": "SystemOverview",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C170.json"
     }
   }
 }

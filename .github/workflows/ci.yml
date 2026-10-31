@@ -16,6 +16,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # verify-local.sh 经 check-bundle-resources.zsh / check-collector-fixtures.sh 依赖
+      # ripgrep, 而 macOS runner 不预装; 缺席会让门禁脚本误判或静默跳过扫描 (C170)。
+      - name: 安装 ripgrep (verify-local.sh 前置依赖)
+        run: brew install ripgrep
       - name: 显示工具链版本
         run: |
           swift --version

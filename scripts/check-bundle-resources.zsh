@@ -15,6 +15,13 @@ BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 
+# 缺 rg 时 `if ! rg` 会把命令不存在 (127) 误判成规则不满足 (C170),
+# 故先预检并给出明确提示, 成功路径行为不变.
+if ! command -v rg >/dev/null 2>&1; then
+    echo "缺少 ripgrep (rg): 无法检查打包脚本的资源投放调用 (安装: brew install ripgrep)" >&2
+    exit 1
+fi
+
 for script in build-test-app.sh build-release-app.sh; do
     script_path="$BRUCE_SCRIPT_DIR/$script"
     if ! rg -q '^Bruce_copy_bundle_resources ' "$script_path"; then

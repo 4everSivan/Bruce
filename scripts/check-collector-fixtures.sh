@@ -2,7 +2,9 @@
 
 # Validate JSON fixtures and reject credentials, personal paths or account
 # identifiers. The collector implementation is Rust-only; this check is
-# intentionally implemented with macOS-native tools.
+# intentionally implemented with macOS-native tools, plus ripgrep for the
+# PCRE pattern scan. rg is preflighted (C170): a missing rg must fail here,
+# never silently skip the scan via `if rg` returning 127.
 
 set -euo pipefail
 
@@ -11,6 +13,11 @@ BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_FIXTURE_ROOT="${1:-$BRUCE_REPO_ROOT/tests/fixtures}"
 BRUCE_FINDINGS=0
 BRUCE_FILE_COUNT=0
+
+if ! command -v rg >/dev/null 2>&1; then
+    echo "缺少 ripgrep (rg): 无法扫描 fixture 凭证与隐私模式 (安装: brew install ripgrep)" >&2
+    exit 1
+fi
 
 if [[ ! -d "$BRUCE_FIXTURE_ROOT" ]]; then
     echo "fixture 目录不存在: $BRUCE_FIXTURE_ROOT" >&2
