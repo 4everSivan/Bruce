@@ -21,7 +21,8 @@
         "C128",
         "C130",
         "C140",
-        "C168"
+        "C168",
+        "C170"
       ]
     },
     "MenuBarIndicator": {
@@ -1735,6 +1736,15 @@
       "topic": "PricingEngine",
       "version": "0.16.0",
       "file": "docs/devel/change/C169.json"
+    },
+    "C170": {
+      "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C170-ci-tool-deps",
+      "topic": "SystemOverview",
+      "version": "0.16.0",
+      "file": "docs/devel/change/C170.json"
     }
   }
 }
