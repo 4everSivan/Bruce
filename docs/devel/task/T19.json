@@ -4,7 +4,7 @@
   "title": "价格表抽离至 config/pricing-catalog.json 与 Collector 动态价卡契约",
   "version": "0.16.0",
   "milestone": "M10-模型价格表远端同步",
-  "status": "pending",
+  "status": "completed",
   "branch": "feat/T19-pricing-catalog-extract-contract",
   "depends_on": [],
   "target": {
@@ -18,7 +18,7 @@
     "command": "test -f config/pricing-catalog.json; rg -n 'pricingCatalog|with_catalog|parse_and_validate' core/collector/crates/collector-domain/src/pricing.rs core/collector/crates/collector-bridge/src/lib.rs scripts/gen-pricing-catalog.mjs",
     "expected": "config/pricing-catalog.json 不存在；pricing.rs 与 collector-bridge 无 pricingCatalog / with_catalog / parse_and_validate",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-10-31: test -f config/pricing-catalog.json 返回 1 (文件不存在); rg 查找 pricingCatalog/with_catalog/parse_and_validate 返回 1 (均未实现)"
   },
   "callback": {
     "before": [
@@ -38,55 +38,57 @@
       "id": "T19-1",
       "title": "价格表文件迁移与元数据扩充",
       "capability": "将 pricing-catalog.json 迁至 config/pricing-catalog.json，顶层补充 schemaVersion: 1 与 updatedAt: \"2026-10-31\"；同步更新 scripts/gen-pricing-catalog.mjs 的 sourcePath 并导出内置 updatedAt / schemaVersion 常量供 macOS 使用。",
-      "done": false
+      "done": true
     },
     {
       "id": "T19-2",
       "title": "collector-domain 严格校验与动态 PricingTable",
       "capability": "CatalogFile 扩充 schema_version 与 updated_at 字段；实现 parse_and_validate（校验 schemaVersion==1、updatedAt 格式、非空唯一模型键、有限非负单价、合法 peak/longContext/cacheWrite）与防倒退比较；PricingTable 新增 with_catalog(models, overrides) 构造器，保留 builtin_catalog() 作为默认基线。",
-      "done": false
+      "done": true
     },
     {
       "id": "T19-3",
       "title": "collector-bridge 与 collector-application 动态价卡注入",
       "capability": "collector-bridge ALLOWED_CONTEXT_FIELDS 新增 pricingCatalog，schemas/request-v1.schema.json 同步登记；collector-application 读取 context.pricingCatalog（校验通过且不早于内置基线时采用，否则回退内置基线）构造 PricingTable，补齐单元与集成测试。",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261031-19",
     "checks": [
       {
         "item": "单一事实源与脚本同源",
         "true_if": "config/pricing-catalog.json 含合法 schemaVersion=1 与 updatedAt，旧路径已移除，gen-pricing-catalog.mjs --check 通过",
         "false_if": "双份 JSON 并存或生成脚本校验失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-31: config/pricing-catalog.json 顶层补充 schemaVersion=1 与 updatedAt=2026-10-31，旧 core/collector/crates/collector-domain/pricing-catalog.json 已移除；node scripts/gen-pricing-catalog.mjs --check 校验通过并生成 86 条 listed 模型与内置常量",
+        "result": true
       },
       {
         "item": "严格校验与动态计费生效",
         "true_if": "parse_and_validate 拒绝非法 schema/单价/重复键/过期版本；context.pricingCatalog 注入新模型或新单价后 Collector 产出的 costUsd 按动态价卡核算，pricingOverrides 仍具最高优先级",
         "false_if": "非法价卡被接受、动态价卡未生效或覆盖优先级倒置",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-31: collector-domain 单元测试 parse_and_validate_rejects_malformed_catalogs、anti_rollback_version_comparison 与 pricing_table_with_catalog_and_overrides_priority 全绿；collector-application 新增 application_pricing_table_selection_logic 与 finalize_local_agent_with_dynamic_catalog_and_overrides 测试全绿，实测动态注入计费生效且 overrides 具最高优先级、过期版本平滑回退内置基线",
+        "result": true
       },
       {
         "item": "全量验证",
         "true_if": "Rust fmt / clippy / test 与 verify-local.sh 全部退出码 0",
         "false_if": "任一检查失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-31: cargo fmt --check、cargo clippy -D warnings、cargo test --workspace 与 zsh scripts/verify-local.sh 全部通过 (全部 18 项 Harness 测试、Swift build、Rust verify 与 fixture 扫描通过，退出码 0)",
+        "result": true
       }
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "54ac84e"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-31",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

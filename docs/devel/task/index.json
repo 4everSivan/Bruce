@@ -347,7 +347,7 @@
     },
     "T19": {
       "title": "价格表抽离至 config/pricing-catalog.json 与 Collector 动态价卡契约",
-      "status": "pending",
+      "status": "completed",
       "branch": "feat/T19-pricing-catalog-extract-contract",
       "topic": "PricingCatalogSync",
       "milestone": "M10-模型价格表远端同步",
