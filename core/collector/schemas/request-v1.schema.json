@@ -156,6 +156,34 @@
           },
           "maxItems": 64,
           "uniqueItems": true
+        },
+        "pricingCatalog": {
+          "type": "object",
+          "description": "运行期从 GitHub 在线同步生效的模型价格表 (T19)",
+          "properties": {
+            "schemaVersion": {
+              "type": "integer"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "models": {
+              "type": "array"
+            }
+          }
+        },
+        "pricingOverrides": {
+          "type": "object",
+          "description": "用户自定义模型价格覆盖"
+        },
+        "localUsageOnly": {
+          "type": "boolean"
+        },
+        "quotaSkipProviders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

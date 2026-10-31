@@ -150,7 +150,23 @@ fn collect_agent_usage_with_dependencies_inner(
         .or_else(|| request.context.get("pricing_overrides"))
         .and_then(|val| serde_json::from_value(val.clone()).ok())
         .unwrap_or_default();
-    let pricing_table = PricingTable::new(pricing_overrides);
+    let pricing_table = match request.context.get("pricingCatalog") {
+        Some(raw) => {
+            let bytes = serde_json::to_vec(raw).unwrap_or_default();
+            match collector_domain::pricing::CatalogFile::parse_and_validate(&bytes) {
+                Ok(catalog_file) => {
+                    // 防倒退 Anti-Rollback: 若传入价格表早于内置基线版本，回退至内置基线
+                    if catalog_file.is_older_than(collector_domain::pricing::builtin_updated_at()) {
+                        PricingTable::new(pricing_overrides)
+                    } else {
+                        PricingTable::with_catalog(&catalog_file.models, pricing_overrides)
+                    }
+                }
+                Err(_) => PricingTable::new(pricing_overrides),
+            }
+        }
+        None => PricingTable::new(pricing_overrides),
+    };
     let placeholder_status = if sessions_allowed {
         "not_found"
     } else {
@@ -1875,5 +1891,151 @@ mod tests {
         assert_eq!(service["status"], "ok");
         assert!(service.get("credential_update").is_none());
         assert_eq!(http.calls.load(Ordering::Acquire), 3);
+    }
+
+    #[test]
+    fn application_pricing_table_selection_logic() {
+        // Test 1: valid pricingCatalog is accepted and used
+        let mut req = request(&[]);
+        req.context.insert(
+            "pricingCatalog".to_string(),
+            json!({
+                "schemaVersion": 1,
+                "updatedAt": "2026-10-31",
+                "models": [
+                    {
+                        "model": "dynamic-model",
+                        "displayName": "Dynamic Model",
+                        "vendor": "Dynamic",
+                        "input": 10.0,
+                        "output": 50.0,
+                        "note": "dynamic"
+                    }
+                ]
+            }),
+        );
+        let res = collect_agent_usage(&req);
+        assert!(res.is_ok());
+
+        // Test 2: invalid pricingCatalog falls back to builtin without failing
+        let mut bad_req = request(&[]);
+        bad_req.context.insert(
+            "pricingCatalog".to_string(),
+            json!({
+                "schemaVersion": 999,
+                "updatedAt": "invalid",
+                "models": []
+            }),
+        );
+        let bad_res = collect_agent_usage(&bad_req);
+        assert!(bad_res.is_ok());
+
+        // Test 3: older updatedAt falls back to builtin baseline
+        let mut stale_req = request(&[]);
+        stale_req.context.insert(
+            "pricingCatalog".to_string(),
+            json!({
+                "schemaVersion": 1,
+                "updatedAt": "2020-01-01",
+                "models": [
+                    {
+                        "model": "stale-model",
+                        "displayName": "Stale",
+                        "vendor": "Stale",
+                        "input": 1.0,
+                        "output": 1.0,
+                        "note": "stale"
+                    }
+                ]
+            }),
+        );
+        let stale_res = collect_agent_usage(&stale_req);
+        assert!(stale_res.is_ok());
+    }
+
+    #[test]
+    fn finalize_local_agent_with_dynamic_catalog_and_overrides() {
+        use collector_domain::{
+            CollectionWindow, PricingTable, UsageContributionBuilder, UsageSample,
+        };
+        use std::collections::HashMap;
+
+        let context: serde_json::Map<String, serde_json::Value> = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "days": 1
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let mut builder = UsageContributionBuilder::new(window.clone());
+        assert!(builder.record(UsageSample {
+            timestamp_millis: 1_785_211_200_000,
+            model: Some("dynamic-test-model"),
+            project: None,
+            input: 1_000_000,
+            output: 1_000_000,
+            cache_read: 0,
+            cache_creation: 0,
+            cache_creation_1h: 0,
+        }));
+        let contribution = builder.contribution();
+        let local_result = LocalAgentResult {
+            found: true,
+            contribution,
+            diagnostic: None,
+            capped: false,
+        };
+
+        // Construct dynamic catalog: dynamic-test-model @ $2 / $10
+        let dynamic_catalog = vec![collector_domain::pricing::CatalogModel {
+            model: "dynamic-test-model".to_string(),
+            display_name: "Dynamic Test".to_string(),
+            vendor: "Dynamic".to_string(),
+            input: 2.0,
+            output: 10.0,
+            cache_read: None,
+            cache_write: None,
+            note: "Dynamic".to_string(),
+            listed: true,
+            peak: None,
+            long_context: None,
+        }];
+
+        let pricing_table = PricingTable::with_catalog(&dynamic_catalog, HashMap::new());
+        let agent = finalize_local_agent(
+            &window,
+            "test_agent",
+            "Test Agent",
+            &local_result,
+            "note",
+            "unavailable",
+            "missing",
+            &pricing_table,
+        );
+
+        // 1M in * $2 + 1M out * $10 = $12
+        assert_eq!(agent.today_cost_usd, Some(12.0));
+
+        // Now with user override: input $5 -> 1M * $5 + 1M * $10 = $15
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "dynamic-test-model".to_string(),
+            collector_domain::ModelPricingOverride {
+                input_price_per_million: Some(5.0),
+                ..Default::default()
+            },
+        );
+        let overridden_table = PricingTable::with_catalog(&dynamic_catalog, overrides);
+        let overridden_agent = finalize_local_agent(
+            &window,
+            "test_agent",
+            "Test Agent",
+            &local_result,
+            "note",
+            "unavailable",
+            "missing",
+            &overridden_table,
+        );
+        assert_eq!(overridden_agent.today_cost_usd, Some(15.0));
     }
 }

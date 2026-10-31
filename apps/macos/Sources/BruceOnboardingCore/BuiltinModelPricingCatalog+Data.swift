@@ -1,8 +1,10 @@
-// 本文件由 scripts/gen-pricing-catalog.mjs 生成, 请勿手改 (C108)。
-// 事实源: core/collector/crates/collector-domain/pricing-catalog.json (采集端计费同源);
+// 本文件由 scripts/gen-pricing-catalog.mjs 生成, 请勿手改 (C108, T19)。
+// 事实源: config/pricing-catalog.json (采集端计费同源);
 // 修改价卡后运行 `node scripts/gen-pricing-catalog.mjs`, verify-local 以 --check 拦截漂移。
 
 extension BuiltinModelPricingCatalog {
+    public static let builtinSchemaVersion: Int = 1
+    public static let builtinUpdatedAt: String = "2026-10-31"
     public static let allModels: [BuiltinModelPricing] = [
         BuiltinModelPricing(
             modelName: "k3-agent",
@@ -777,4 +779,5 @@ extension BuiltinModelPricingCatalog {
             defaultNote: "极低成本高吞吐补全"
         ),
     ]
+    public static let builtinModels: [BuiltinModelPricing] = allModels
 }

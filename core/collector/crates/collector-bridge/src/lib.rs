@@ -33,6 +33,7 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "localUsageOnly",
     "quotaSkipProviders",
     "pricingOverrides",
+    "pricingCatalog",
 ];
 
 /// C123: `localPricing` 已移除 —— 计价恒随本机统计执行, 该能力从未被 collector 读取。
@@ -309,6 +310,12 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
             }
         }
     }
+    if let Some(raw) = request.context.get("pricingCatalog") {
+        let invalid = || protocol_error("BRIDGE_INVALID_REQUEST", "动态模型价格表结构无效");
+        if !raw.is_object() {
+            return Err(invalid());
+        }
+    }
     if let Some(days) = request.context.get("days") {
         let valid = days.as_u64().map(|value| (1..=366).contains(&value));
         if valid != Some(true) {
@@ -485,6 +492,38 @@ mod tests {
             assert!(response.artifact.is_none());
             assert_eq!(response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST");
         }
+    }
+
+    #[test]
+    fn pricing_catalog_in_context_passes_bridge_validation_and_invalid_type_fails_closed() {
+        let mut value: Value = serde_json::from_str(&request()).unwrap();
+        value["context"]["capabilities"] = json!([]);
+        value["context"]["pricingCatalog"] = json!({
+            "schemaVersion": 1,
+            "updatedAt": "2026-10-31",
+            "models": [
+                {
+                    "model": "dynamic-m1",
+                    "displayName": "Dynamic M1",
+                    "vendor": "Dynamic",
+                    "input": 1.0,
+                    "output": 2.0,
+                    "note": "dynamic"
+                }
+            ]
+        });
+        let response = run_bytes(&serde_json::to_vec(&value).unwrap());
+        assert!(
+            response.artifact.is_some(),
+            "valid pricingCatalog in context must pass Bridge validation: {:?}",
+            response.diagnostics
+        );
+
+        // Invalid type (array or primitive instead of object)
+        value["context"]["pricingCatalog"] = json!("not-an-object");
+        let response = run_bytes(&serde_json::to_vec(&value).unwrap());
+        assert!(response.artifact.is_none());
+        assert_eq!(response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST");
     }
 
     #[test]

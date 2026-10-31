@@ -15,7 +15,10 @@ pub const AGENT_USAGE_SCHEMA_VERSION: u8 = 1;
 pub const AGENT_USAGE_MODULE: &str = "agent-usage";
 
 pub mod pricing;
-pub use pricing::{ModelPricing, ModelPricingOverride, PricingTable};
+pub use pricing::{
+    builtin_catalog, builtin_updated_at, CatalogFile, CatalogModel, CatalogValidationError,
+    ModelPricing, ModelPricingOverride, PricingTable,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

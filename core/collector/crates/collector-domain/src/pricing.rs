@@ -54,10 +54,10 @@ pub struct ModelPricing {
     pub long_context: Option<LongContextPricing>,
 }
 
-/// 内置价卡目录行 (C108)。唯一事实源为 crate 根目录的 `pricing-catalog.json`:
+/// 内置价卡目录行 (C108, T19)。唯一事实源为仓库顶层 `config/pricing-catalog.json`:
 /// 采集端计费、Windows 设置页 / 工作台与 mac 设置页 (由 `scripts/gen-pricing-catalog.mjs`
 /// 生成) 均派生自同一份数据, 不再各自维护价卡副本。单位为美元 / 百万 token。
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CatalogModel {
     pub model: String,
@@ -86,22 +86,250 @@ fn listed_by_default() -> bool {
     true
 }
 
-#[derive(Deserialize)]
-struct CatalogFile {
-    models: Vec<CatalogModel>,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogFile {
+    #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub updated_at: String,
+    pub models: Vec<CatalogModel>,
 }
 
-/// 全部内置价卡行, 顺序即设置页展示顺序 (C108)。
-///
-/// 数据随源码编译期嵌入; 可解析性与唯一性由 `catalog_is_well_formed` 用例锁定,
-/// 故运行期解析失败不可达。
-pub fn catalog() -> &'static [CatalogModel] {
-    static CATALOG: std::sync::OnceLock<Vec<CatalogModel>> = std::sync::OnceLock::new();
-    CATALOG.get_or_init(|| {
-        serde_json::from_str::<CatalogFile>(include_str!("../pricing-catalog.json"))
-            .expect("pricing-catalog.json 由 catalog_is_well_formed 用例保证可解析")
-            .models
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CatalogValidationError {
+    Json(String),
+    UnsupportedSchemaVersion(u32),
+    InvalidUpdatedAt(String),
+    InvalidModelCount,
+    InvalidModel(String),
+    DuplicateModel(String),
+}
+
+impl std::fmt::Display for CatalogValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Json(msg) => write!(f, "JSON 格式无效: {msg}"),
+            Self::UnsupportedSchemaVersion(v) => write!(f, "不支持的 schemaVersion: {v} (期望 1)"),
+            Self::InvalidUpdatedAt(s) => write!(f, "updatedAt 格式无效: {s}"),
+            Self::InvalidModelCount => write!(f, "模型列表为空或超出上限 (上限 2000)"),
+            Self::InvalidModel(msg) => write!(f, "模型定义无效: {msg}"),
+            Self::DuplicateModel(k) => write!(f, "存在重复模型键: {k}"),
+        }
+    }
+}
+
+impl std::error::Error for CatalogValidationError {}
+
+pub fn is_valid_updated_at(s: &str) -> bool {
+    let (date_part, rev_part) = match s.split_once('.') {
+        Some((d, r)) => (d, Some(r)),
+        None => (s, None),
+    };
+    let parts: Vec<&str> = date_part.split('-').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+    if parts[0].len() != 4 || !parts[0].chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    if parts[1].len() != 2 || !parts[1].chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    if parts[2].len() != 2 || !parts[2].chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    if let Some(r) = rev_part {
+        if r.is_empty() || !r.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+    }
+    true
+}
+
+fn parse_updated_at(s: &str) -> Option<(&str, u32)> {
+    if !is_valid_updated_at(s) {
+        return None;
+    }
+    match s.split_once('.') {
+        Some((d, r)) => Some((d, r.parse::<u32>().ok()?)),
+        None => Some((s, 0)),
+    }
+}
+
+pub fn compare_updated_at(a: &str, b: &str) -> std::cmp::Ordering {
+    match (parse_updated_at(a), parse_updated_at(b)) {
+        (Some((d1, r1)), Some((d2, r2))) => d1.cmp(d2).then_with(|| r1.cmp(&r2)),
+        _ => a.cmp(b),
+    }
+}
+
+impl CatalogFile {
+    pub fn parse_and_validate(bytes: &[u8]) -> Result<Self, CatalogValidationError> {
+        let raw_str =
+            std::str::from_utf8(bytes).map_err(|e| CatalogValidationError::Json(e.to_string()))?;
+        let file: CatalogFile = serde_json::from_str(raw_str)
+            .map_err(|e| CatalogValidationError::Json(e.to_string()))?;
+        file.validate()?;
+        Ok(file)
+    }
+
+    pub fn validate(&self) -> Result<(), CatalogValidationError> {
+        if self.schema_version != 1 {
+            return Err(CatalogValidationError::UnsupportedSchemaVersion(
+                self.schema_version,
+            ));
+        }
+        if !is_valid_updated_at(&self.updated_at) {
+            return Err(CatalogValidationError::InvalidUpdatedAt(
+                self.updated_at.clone(),
+            ));
+        }
+        if self.models.is_empty() || self.models.len() > 2000 {
+            return Err(CatalogValidationError::InvalidModelCount);
+        }
+        let mut seen_keys = std::collections::HashSet::with_capacity(self.models.len());
+        for (idx, entry) in self.models.iter().enumerate() {
+            let model_key = entry.model.trim();
+            if model_key.is_empty() {
+                return Err(CatalogValidationError::InvalidModel(format!(
+                    "第 {idx} 条 model 键为空"
+                )));
+            }
+            if entry.display_name.trim().is_empty() {
+                return Err(CatalogValidationError::InvalidModel(format!(
+                    "模型 {model_key} displayName 为空"
+                )));
+            }
+            if entry.vendor.trim().is_empty() {
+                return Err(CatalogValidationError::InvalidModel(format!(
+                    "模型 {model_key} vendor 为空"
+                )));
+            }
+            let lower_key = model_key.to_lowercase();
+            if !seen_keys.insert(lower_key) {
+                return Err(CatalogValidationError::DuplicateModel(entry.model.clone()));
+            }
+            if !entry.input.is_finite() || entry.input < 0.0 {
+                return Err(CatalogValidationError::InvalidModel(format!(
+                    "模型 {model_key} input 价格无效: {}",
+                    entry.input
+                )));
+            }
+            if !entry.output.is_finite() || entry.output < 0.0 {
+                return Err(CatalogValidationError::InvalidModel(format!(
+                    "模型 {model_key} output 价格无效: {}",
+                    entry.output
+                )));
+            }
+            if let Some(cache_read) = entry.cache_read {
+                if !cache_read.is_finite() || cache_read < 0.0 {
+                    return Err(CatalogValidationError::InvalidModel(format!(
+                        "模型 {model_key} cacheRead 价格无效: {cache_read}"
+                    )));
+                }
+            }
+            if let Some((five_min, one_hour)) = entry.cache_write {
+                if !five_min.is_finite()
+                    || five_min <= 0.0
+                    || !one_hour.is_finite()
+                    || one_hour <= 0.0
+                {
+                    return Err(CatalogValidationError::InvalidModel(format!(
+                        "模型 {model_key} cacheWrite 倍率必须有限且大于 0"
+                    )));
+                }
+            }
+            if let Some(peak) = &entry.peak {
+                if !peak.input.is_finite()
+                    || peak.input < 0.0
+                    || !peak.output.is_finite()
+                    || peak.output < 0.0
+                {
+                    return Err(CatalogValidationError::InvalidModel(format!(
+                        "模型 {model_key} peak 单价必须有限非负"
+                    )));
+                }
+                if let Some(cr) = peak.cache_read {
+                    if !cr.is_finite() || cr < 0.0 {
+                        return Err(CatalogValidationError::InvalidModel(format!(
+                            "模型 {model_key} peak cacheRead 必须有限非负"
+                        )));
+                    }
+                }
+                if peak.start_minute_utc >= 1440
+                    || peak.end_minute_utc > 1440
+                    || peak.start_minute_utc == peak.end_minute_utc
+                {
+                    return Err(CatalogValidationError::InvalidModel(format!(
+                        "模型 {model_key} peak 时间窗口无效"
+                    )));
+                }
+            }
+            if let Some(long) = &entry.long_context {
+                if !long.input.is_finite()
+                    || long.input < 0.0
+                    || !long.output.is_finite()
+                    || long.output < 0.0
+                {
+                    return Err(CatalogValidationError::InvalidModel(format!(
+                        "模型 {model_key} longContext 单价必须有限非负"
+                    )));
+                }
+                if let Some(cr) = long.cache_read {
+                    if !cr.is_finite() || cr < 0.0 {
+                        return Err(CatalogValidationError::InvalidModel(format!(
+                            "模型 {model_key} longContext cacheRead 必须有限非负"
+                        )));
+                    }
+                }
+                if long.threshold == 0 {
+                    return Err(CatalogValidationError::InvalidModel(format!(
+                        "模型 {model_key} longContext threshold 必须大于 0"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 比较两个价格表的 updatedAt 版本。
+    pub fn compare_version(&self, other_updated_at: &str) -> std::cmp::Ordering {
+        compare_updated_at(&self.updated_at, other_updated_at)
+    }
+
+    /// 判断当前价格表是否落后于指定基线版本 (用于防倒退 Anti-Rollback)。
+    pub fn is_older_than(&self, base_updated_at: &str) -> bool {
+        self.compare_version(base_updated_at).is_lt()
+    }
+}
+
+static BUILTIN_CATALOG_FILE: OnceLock<CatalogFile> = OnceLock::new();
+
+pub fn builtin_catalog_file() -> &'static CatalogFile {
+    BUILTIN_CATALOG_FILE.get_or_init(|| {
+        serde_json::from_str::<CatalogFile>(include_str!(
+            "../../../../../config/pricing-catalog.json"
+        ))
+        .expect("config/pricing-catalog.json 由 catalog_is_well_formed 用例保证可解析")
     })
+}
+
+pub fn builtin_catalog() -> &'static [CatalogModel] {
+    &builtin_catalog_file().models
+}
+
+pub fn builtin_updated_at() -> &'static str {
+    &builtin_catalog_file().updated_at
+}
+
+pub fn builtin_schema_version() -> u32 {
+    builtin_catalog_file().schema_version
+}
+
+/// 全部内置价卡行, 顺序即设置页展示顺序 (C108, T19)。
+pub fn catalog() -> &'static [CatalogModel] {
+    builtin_catalog()
 }
 
 fn default_usd() -> String {
@@ -138,7 +366,14 @@ impl Default for PricingTable {
 
 impl PricingTable {
     pub fn new(overrides: HashMap<String, ModelPricingOverride>) -> Self {
-        let builtin = catalog()
+        Self::with_catalog(builtin_catalog(), overrides)
+    }
+
+    pub fn with_catalog(
+        models: &[CatalogModel],
+        overrides: HashMap<String, ModelPricingOverride>,
+    ) -> Self {
+        let builtin = models
             .iter()
             .map(|entry| {
                 (
@@ -760,10 +995,15 @@ mod tests {
         assert!((cost - 17.0).abs() < 1e-9, "cost = {cost}");
     }
 
-    /// C108: 价卡目录可解析、键唯一 (大小写不敏感)、单价非负、展示字段齐备。
+    /// C108, T19: 价卡目录可解析、键唯一 (大小写不敏感)、单价非负、展示字段齐备。
     #[test]
     fn catalog_is_well_formed() {
-        let models = catalog();
+        let file = builtin_catalog_file();
+        assert_eq!(file.schema_version, 1);
+        assert!(is_valid_updated_at(&file.updated_at));
+        assert!(file.validate().is_ok());
+
+        let models = builtin_catalog();
         assert!(models.len() >= 90, "目录行数异常: {}", models.len());
         let mut keys = std::collections::BTreeSet::new();
         for entry in models {
@@ -794,6 +1034,145 @@ mod tests {
                 entry.model
             );
         }
+    }
+
+    #[test]
+    fn parse_and_validate_rejects_malformed_catalogs() {
+        // Bad schemaVersion
+        let bad_schema = br#"{"schemaVersion": 2, "updatedAt": "2026-10-31", "models": [{"model":"m1","displayName":"M1","vendor":"V1","input":1.0,"output":2.0,"note":"n"}]}"#;
+        assert!(matches!(
+            CatalogFile::parse_and_validate(bad_schema),
+            Err(CatalogValidationError::UnsupportedSchemaVersion(2))
+        ));
+
+        // Bad updatedAt
+        let bad_date = br#"{"schemaVersion": 1, "updatedAt": "invalid-date", "models": [{"model":"m1","displayName":"M1","vendor":"V1","input":1.0,"output":2.0,"note":"n"}]}"#;
+        assert!(matches!(
+            CatalogFile::parse_and_validate(bad_date),
+            Err(CatalogValidationError::InvalidUpdatedAt(_))
+        ));
+
+        // Empty models
+        let empty_models = br#"{"schemaVersion": 1, "updatedAt": "2026-10-31", "models": []}"#;
+        assert!(matches!(
+            CatalogFile::parse_and_validate(empty_models),
+            Err(CatalogValidationError::InvalidModelCount)
+        ));
+
+        // Duplicate model
+        let dup = br#"{"schemaVersion": 1, "updatedAt": "2026-10-31", "models": [
+            {"model":"m1","displayName":"M1","vendor":"V1","input":1.0,"output":2.0,"note":"n"},
+            {"model":"M1","displayName":"M1 dup","vendor":"V1","input":1.0,"output":2.0,"note":"n"}
+        ]}"#;
+        assert!(matches!(
+            CatalogFile::parse_and_validate(dup),
+            Err(CatalogValidationError::DuplicateModel(_))
+        ));
+
+        // Negative price
+        let neg = br#"{"schemaVersion": 1, "updatedAt": "2026-10-31", "models": [
+            {"model":"m1","displayName":"M1","vendor":"V1","input":-1.0,"output":2.0,"note":"n"}
+        ]}"#;
+        assert!(matches!(
+            CatalogFile::parse_and_validate(neg),
+            Err(CatalogValidationError::InvalidModel(_))
+        ));
+
+        // Non-finite price
+        let nan = br#"{"schemaVersion": 1, "updatedAt": "2026-10-31", "models": [
+            {"model":"m1","displayName":"M1","vendor":"V1","input":1.0,"output":null,"note":"n"}
+        ]}"#;
+        assert!(CatalogFile::parse_and_validate(nan).is_err());
+    }
+
+    #[test]
+    fn anti_rollback_version_comparison() {
+        assert_eq!(
+            compare_updated_at("2026-10-31", "2026-10-31"),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_updated_at("2026-10-30", "2026-10-31"),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_updated_at("2026-11-01", "2026-10-31"),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_updated_at("2026-10-31", "2026-10-31.1"),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_updated_at("2026-10-31.2", "2026-10-31.10"),
+            std::cmp::Ordering::Less
+        );
+
+        let file = CatalogFile {
+            schema_version: 1,
+            updated_at: "2026-10-30".to_string(),
+            models: vec![],
+        };
+        assert!(file.is_older_than("2026-10-31"));
+        assert!(!file.is_older_than("2026-10-30"));
+        assert!(!file.is_older_than("2026-10-29"));
+    }
+
+    #[test]
+    fn pricing_table_with_catalog_and_overrides_priority() {
+        let custom_catalog = vec![
+            CatalogModel {
+                model: "dynamic-model-x".to_string(),
+                display_name: "Dynamic Model X".to_string(),
+                vendor: "Dynamic".to_string(),
+                input: 5.0,
+                output: 25.0,
+                cache_read: Some(0.5),
+                cache_write: None,
+                note: "Synced".to_string(),
+                listed: true,
+                peak: None,
+                long_context: None,
+            },
+            CatalogModel {
+                model: "k3-agent".to_string(),
+                display_name: "K3 Dynamic".to_string(),
+                vendor: "Moonshot Kimi".to_string(),
+                input: 2.0, // altered from 3.0
+                output: 10.0,
+                cache_read: None,
+                cache_write: None,
+                note: "Synced K3".to_string(),
+                listed: true,
+                peak: None,
+                long_context: None,
+            },
+        ];
+
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "k3-agent".to_string(),
+            ModelPricingOverride {
+                input_price_per_million: Some(1.23), // User override takes precedence
+                ..Default::default()
+            },
+        );
+
+        let table = PricingTable::with_catalog(&custom_catalog, overrides);
+
+        // 1. Dynamic model resolves
+        let dynamic_rule = table
+            .resolve("dynamic-model-x")
+            .expect("dynamic model should exist");
+        assert_eq!(dynamic_rule.input_price_per_million, 5.0);
+
+        // 2. Overrides have higher priority than dynamic catalog
+        let k3_rule = table.resolve("k3-agent").expect("k3-agent should exist");
+        assert_eq!(k3_rule.input_price_per_million, 1.23); // override
+        assert_eq!(k3_rule.output_price_per_million, 10.0); // from dynamic catalog
+
+        // 3. Model not in dynamic catalog does not exist
+        assert!(table.resolve("non-existent-model").is_none());
     }
 
     fn utc_millis(value: &str) -> i64 {
