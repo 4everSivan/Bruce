@@ -1,0 +1,161 @@
+{
+  "description": "T20/T21 双端设置页「模型价格表」卡逐字文案与状态机共享对拍用例 (09-模型价格表远端同步 §4.2 R5)",
+  "rows": {
+    "caption": "模型价格表",
+    "autoSyncTitle": "自动同步价格表",
+    "autoSyncSubtitle": "启动 30 秒后静默同步一次, 之后每 24 小时一次; 同步失败不打扰",
+    "currentCatalogTitle": "当前价格表",
+    "syncCatalogTitle": "同步价格表",
+    "syncButton": "同步更新",
+    "restoreButton": "恢复内置"
+  },
+  "currentCatalog": [
+    {
+      "name": "builtin",
+      "source": "builtin",
+      "modelCount": 86,
+      "expectedSubtitle": "内置基线 · 86 款模型"
+    },
+    {
+      "name": "synced",
+      "source": "synced",
+      "modelCount": 89,
+      "expectedSubtitle": "GitHub 已同步 · 89 款模型"
+    }
+  ],
+  "lastSync": [
+    {
+      "name": "never_synced",
+      "at": null,
+      "expected": "上次同步 —"
+    },
+    {
+      "name": "same_day",
+      "at": "2026-10-31T14:02:00+08:00",
+      "expected": "上次同步 今天 14:02"
+    },
+    {
+      "name": "previous_day",
+      "at": "2026-10-30T09:15:00+08:00",
+      "expected": "上次同步 10月30日 09:15"
+    }
+  ],
+  "stages": [
+    {
+      "name": "idle",
+      "phase": { "kind": "idle" },
+      "expected": { "kind": "hidden", "text": null },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "syncing",
+      "phase": { "kind": "syncing" },
+      "expected": { "kind": "spinner", "text": "正在从 GitHub 同步模型价格表…" },
+      "syncEnabled": false,
+      "restoreEnabled": false
+    },
+    {
+      "name": "upToDate",
+      "phase": { "kind": "upToDate", "updatedAt": "2026-10-31", "modelCount": 86 },
+      "expected": { "kind": "confirmation", "text": "已是最新价格表 · 2026-10-31 (86 款模型)" },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "updated_added_and_adjusted",
+      "phase": { "kind": "updated", "updatedAt": "2026-10-31", "modelCount": 89, "addedCount": 2, "adjustedCount": 1 },
+      "expected": { "kind": "confirmation", "text": "已更新至 2026-10-31 · 共 89 款模型 (新增 2 款 / 调价 1 款)" },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "updated_only_added",
+      "phase": { "kind": "updated", "updatedAt": "2026-10-31", "modelCount": 89, "addedCount": 2, "adjustedCount": 0 },
+      "expected": { "kind": "confirmation", "text": "已更新至 2026-10-31 · 共 89 款模型 (新增 2 款)" },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "updated_only_adjusted",
+      "phase": { "kind": "updated", "updatedAt": "2026-10-31", "modelCount": 86, "addedCount": 0, "adjustedCount": 2 },
+      "expected": { "kind": "confirmation", "text": "已更新至 2026-10-31 · 共 86 款模型 (调价 2 款)" },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "updated_no_diff",
+      "phase": { "kind": "updated", "updatedAt": "2026-10-31", "modelCount": 86, "addedCount": 0, "adjustedCount": 0 },
+      "expected": { "kind": "confirmation", "text": "已更新至 2026-10-31 · 共 86 款模型" },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "restored",
+      "phase": { "kind": "restored", "updatedAt": "2026-10-31", "modelCount": 86 },
+      "expected": { "kind": "confirmation", "text": "已恢复为内置基准价格表 · 2026-10-31 (86 款模型)" },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "failed_timeout",
+      "phase": { "kind": "failed", "reason": "timeout" },
+      "expected": {
+        "kind": "failure",
+        "title": "同步失败",
+        "detail": "无法访问 GitHub (超时 10 秒);当前继续使用本地价格表",
+        "statusLine": "同步价格表失败：网络超时"
+      },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "failed_offline",
+      "phase": { "kind": "failed", "reason": "offline" },
+      "expected": {
+        "kind": "failure",
+        "title": "同步失败",
+        "detail": "无法访问 GitHub (网络不可用);当前继续使用本地价格表",
+        "statusLine": "同步价格表失败：网络不可用"
+      },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "failed_http",
+      "phase": { "kind": "failed", "reason": "http_error", "statusCode": 404 },
+      "expected": {
+        "kind": "failure",
+        "title": "同步失败",
+        "detail": "无法获取价格表 (HTTP 404);当前继续使用本地价格表",
+        "statusLine": "同步价格表失败：HTTP 404"
+      },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "failed_invalid",
+      "phase": { "kind": "failed", "reason": "invalid_catalog" },
+      "expected": {
+        "kind": "failure",
+        "title": "同步失败",
+        "detail": "远端价格表格式无法识别;已拒绝覆盖本地价格表",
+        "statusLine": "同步价格表失败：价格表格式无效"
+      },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    },
+    {
+      "name": "failed_stale",
+      "phase": { "kind": "failed", "reason": "stale_version" },
+      "expected": {
+        "kind": "failure",
+        "title": "同步失败",
+        "detail": "远端价格表版本低于本地基线;已保留当前价格表",
+        "statusLine": "同步价格表失败：远端版本过期"
+      },
+      "syncEnabled": true,
+      "restoreEnabled": true
+    }
+  ]
+}

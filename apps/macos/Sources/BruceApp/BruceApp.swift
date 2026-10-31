@@ -10,6 +10,7 @@ struct BruceApp: App {
     @StateObject private var coordinator: OnboardingCoordinator
     @StateObject private var diagnostics: DiagnosticService
     @StateObject private var updates: SoftwareUpdateService
+    @StateObject private var pricingSync: PricingCatalogSyncService
     private let runtime: AppRuntime
     private let scheduler: RefreshScheduler
     private let runner: CollectorExecutable & CollectorRuntimeControlling
@@ -121,6 +122,11 @@ struct BruceApp: App {
             terminate: { NSApplication.shared.terminate(nil) }
         )
         _updates = StateObject(wrappedValue: updates)
+        let pricingSync = PricingCatalogSyncService(model: model)
+        pricingSync.onCatalogUpdated = { [weak scheduler] in
+            scheduler?.refresh(.agentUsage)
+        }
+        _pricingSync = StateObject(wrappedValue: pricingSync)
         bootstrap = ApplicationBootstrap(
             runtime: runtime,
             scheduler: scheduler,
@@ -135,7 +141,8 @@ struct BruceApp: App {
             model: model,
             coordinator: coordinator,
             diagnostics: diagnostics,
-            updates: updates
+            updates: updates,
+            pricingSync: pricingSync
         )
         self.settingsWindowController = settingsController
         let statusController = MenuBarStatusItemController(
@@ -197,6 +204,7 @@ struct BruceApp: App {
                     let didStart = await bootstrap.startIfNeeded()
                     if didStart {
                         updates.start()
+                        pricingSync.start()
                     }
                     if didStart,
                        (!coordinator.consentConfirmed

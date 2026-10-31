@@ -13,6 +13,7 @@ struct SettingsView: View {
     @EnvironmentObject var coordinator: OnboardingCoordinator
     @EnvironmentObject var diagnostics: DiagnosticService
     @EnvironmentObject var updates: SoftwareUpdateService
+    @EnvironmentObject var pricingSync: PricingCatalogSyncService
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.motionSuppressed) var motionSuppressed
 
@@ -1089,6 +1090,9 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             paneCaption(UpdateCopy.caption)
             SoftwareUpdateCard()
+
+            paneCaption(PricingCopy.caption)
+            PricingCatalogSyncCard()
 
             paneCaption("数据")
             FluentCard {

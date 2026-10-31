@@ -52,10 +52,9 @@ function render(catalog) {
     "extension BuiltinModelPricingCatalog {",
     `    public static let builtinSchemaVersion: Int = ${catalog.schemaVersion}`,
     `    public static let builtinUpdatedAt: String = ${swiftString(catalog.updatedAt)}`,
-    "    public static let allModels: [BuiltinModelPricing] = [",
+    "    public static let builtinModels: [BuiltinModelPricing] = [",
     ...rows,
     "    ]",
-    "    public static let builtinModels: [BuiltinModelPricing] = allModels",
     "}",
     "",
   ].join("\n");

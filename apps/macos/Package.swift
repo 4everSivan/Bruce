@@ -128,5 +128,10 @@ let package = Package(
             dependencies: ["BruceAppCore"],
             path: "Tests/Harnesses/SettingsWindowMetricsHarness"
         ),
+        .executableTarget(
+            name: "PricingCatalogSyncHarness",
+            dependencies: ["BruceAppCore", "BruceOnboardingCore"],
+            path: "Tests/Harnesses/PricingCatalogSyncHarness"
+        ),
     ]
 )

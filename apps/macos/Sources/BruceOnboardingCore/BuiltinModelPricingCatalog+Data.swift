@@ -5,7 +5,7 @@
 extension BuiltinModelPricingCatalog {
     public static let builtinSchemaVersion: Int = 1
     public static let builtinUpdatedAt: String = "2026-10-31"
-    public static let allModels: [BuiltinModelPricing] = [
+    public static let builtinModels: [BuiltinModelPricing] = [
         BuiltinModelPricing(
             modelName: "k3-agent",
             displayName: "Kimi K3 (Agent)",
@@ -779,5 +779,4 @@ extension BuiltinModelPricingCatalog {
             defaultNote: "极低成本高吞吐补全"
         ),
     ]
-    public static let builtinModels: [BuiltinModelPricing] = allModels
 }

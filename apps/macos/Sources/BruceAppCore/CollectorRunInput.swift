@@ -424,6 +424,13 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             }
         }
 
+        // T20: 本机存在生效的已同步价格表时向 context.pricingCatalog 注入 (Tier 2)
+        if BuiltinModelPricingCatalog.currentSource == .synced,
+           let catalogData = BuiltinModelPricingCatalog.activeCatalogJSONData,
+           let jsonValue = try? JSONDecoder().decode(JSONValue.self, from: catalogData) {
+            context["pricingCatalog"] = jsonValue
+        }
+
         // C062: 额度仍新鲜/冷却中时只做本地扫描. 不装配订阅凭证, 也不授予
         // externalQuotas; collector 见 localUsageOnly 后返回空 services 且不产生
         // 额度相关占位/诊断.
