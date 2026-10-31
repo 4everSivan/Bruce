@@ -26,7 +26,7 @@ const fail = (message) => {
   failed = true;
 };
 
-for (const file of ["app.js", "agent-brand.js", ...settingsScripts]) {
+for (const file of ["app.js", "agent-brand.js", "update-presentation.js", "pricing-presentation.js", ...settingsScripts]) {
   try {
     new vm.Script(readFileSync(join(repoRoot, "apps/win/src", file), "utf8"), { filename: file });
     console.log(`ok: ${file} 语法合法`);
@@ -98,10 +98,14 @@ if (/\bPANEL\b/.test(appSource)) {
   }
   for (const [label, source, pattern] of [
     ["settings.html 载入表现层", settingsHtml, /<script src="update-presentation\.js"><\/script>/],
+    ["settings.html 载入价格表表现层", settingsHtml, /<script src="pricing-presentation\.js"><\/script>/],
     ["settings.html 导航角标", settingsHtml, /id="nav-update-dot"/],
     ["settings.js 维护页状态区", settingsJs, /id: "update-stage"/],
+    ["settings.js 维护页价格表状态区", settingsJs, /id: "pricing-sync-stage"/],
     ["settings.js 订阅更新事件", settingsJs, /listen\("update-state"/],
+    ["settings.js 订阅价格表同步事件", settingsJs, /listen\("pricing-catalog-state"/],
     ["settings.js 检查更新命令", settingsJs, /invoke\("update_check"/],
+    ["settings.js 同步价格表命令", settingsJs, /invoke\("sync_pricing_catalog"/],
     ["styles.css PART U 状态区", stylesCss, /\.update-stage/],
     ["styles.css PART U 横幅", stylesCss, /\.update-banner/],
     ["styles.css PART U 进度", stylesCss, /\.update-progress/],
@@ -155,7 +159,7 @@ if (/\bPANEL\b/.test(appSource)) {
 }
 
 // 交互回归 + 面板几何对拍 (demo 内联镜像 ↔ Rust runtime_core fixture, C035)
-for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs", "apps/win/tests/update-presentation.test.mjs"]) {
+for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs", "apps/win/tests/update-presentation.test.mjs", "apps/win/tests/pricing-presentation.test.mjs"]) {
   const behavior = spawnSync(process.execPath, ["--test", suite], {
     cwd: repoRoot, stdio: "inherit",
   });

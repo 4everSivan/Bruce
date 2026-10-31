@@ -179,6 +179,13 @@ pub fn build_configured_request(
             serde_json::to_value(&settings.pricing_overrides).unwrap_or_default(),
         );
     }
+    // T21: 本机存在生效的已同步价格表时向 context.pricingCatalog 注入 (Tier 2)
+    let catalog_path = crate::pricing_sync::pricing_catalog_path();
+    if let Some(catalog_value) = crate::pricing_sync::active_catalog_context_value(&catalog_path) {
+        request
+            .context
+            .insert("pricingCatalog".into(), catalog_value);
+    }
     request
 }
 

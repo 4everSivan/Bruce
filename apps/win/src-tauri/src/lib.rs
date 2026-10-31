@@ -7,6 +7,7 @@ pub mod alerts;
 pub mod collector;
 pub mod credentials;
 pub mod paths;
+pub mod pricing_sync;
 pub mod quota_policy;
 pub mod reachability;
 pub mod scheduler;
@@ -521,6 +522,30 @@ mod desktop {
     #[tauri::command]
     fn get_model_prices() -> serde_json::Value {
         model_catalog::as_json()
+    }
+
+    #[tauri::command]
+    fn get_pricing_catalog_state(
+        manager: tauri::State<'_, crate::pricing_sync::PricingSyncManager>,
+    ) -> crate::pricing_sync::PricingCatalogSummary {
+        manager.summary()
+    }
+
+    #[tauri::command]
+    fn sync_pricing_catalog(
+        app: tauri::AppHandle,
+        manager: tauri::State<'_, crate::pricing_sync::PricingSyncManager>,
+        manual: Option<bool>,
+    ) {
+        manager.sync(&app, manual.unwrap_or(true));
+    }
+
+    #[tauri::command]
+    fn restore_builtin_pricing_catalog(
+        app: tauri::AppHandle,
+        manager: tauri::State<'_, crate::pricing_sync::PricingSyncManager>,
+    ) {
+        manager.restore_builtin(&app);
     }
 
     #[tauri::command]
@@ -1270,6 +1295,12 @@ mod desktop {
                 // 软件更新状态机 + 自动检查 (启动 30 秒后首查, 每 24 小时一次)。
                 app.manage(UpdateState::default());
                 crate::software_update::desktop_impl::spawn_auto_check(app.handle().clone());
+                // 模型价格表防倒退检查与状态管理 (T21)
+                crate::pricing_sync::init_pricing_catalog(
+                    &crate::pricing_sync::pricing_catalog_path(),
+                );
+                app.manage(crate::pricing_sync::PricingSyncManager::new());
+                crate::pricing_sync::start_auto_sync_timer(app.handle().clone());
                 // 后台调度器 (常驻周期采集 + 退避 + Toast)。
                 // 全局热键 (设置可配)。
                 let hotkey = settings::load_settings(&paths::data_root()).hotkey;
@@ -1489,7 +1520,10 @@ mod desktop {
                 crate::software_update::desktop_impl::update_dismiss_ready,
                 crate::software_update::desktop_impl::update_skip,
                 crate::software_update::desktop_impl::update_unskip,
-                crate::software_update::desktop_impl::open_release_page
+                crate::software_update::desktop_impl::open_release_page,
+                get_pricing_catalog_state,
+                sync_pricing_catalog,
+                restore_builtin_pricing_catalog
             ])
             .run(tauri::generate_context!());
         if let Some(stage) = initialization_failure(&result) {

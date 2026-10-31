@@ -316,16 +316,17 @@ fn strip_digit_suffix(key: &str, digits: usize) -> Option<String> {
         .then(|| key[..start - 1].to_owned())
 }
 
-fn catalog_entry(key: &str) -> Option<&'static crate::model_catalog::CatalogEntry> {
+fn catalog_entry(key: &str) -> Option<crate::model_catalog::CatalogEntry> {
     catalog()
         .iter()
-        .find(|entry| canonical_key(entry.model_name) == key)
+        .find(|entry| canonical_key(&entry.model_name) == key)
+        .cloned()
 }
 
 /// 展示名: 目录精确命中取目录展示名, 否则即规范键本身。
 pub fn display_name(key: &str) -> String {
     catalog_entry(key)
-        .map(|entry| entry.display_name.to_owned())
+        .map(|entry| entry.display_name)
         .unwrap_or_else(|| key.to_owned())
 }
 
@@ -348,7 +349,7 @@ const VENDOR_PREFIXES: &[(&[&str], &str)] = &[
 /// 厂商: 目录精确命中取目录厂商, 否则按规范键前缀推断, 未知为「其他」。
 pub fn vendor(key: &str) -> String {
     if let Some(entry) = catalog_entry(key) {
-        return entry.vendor.to_owned();
+        return entry.vendor;
     }
     VENDOR_PREFIXES
         .iter()
@@ -1086,6 +1087,8 @@ mod tests {
 
     #[test]
     fn canonical_key_strips_channel_snapshot_and_marker_but_never_aliases() {
+        let _guard = crate::model_catalog::TEST_LOCK.lock().unwrap();
+        crate::model_catalog::reset_to_builtin();
         assert_eq!(
             canonical_key("cline-pass/deepseek-v4.1-flash"),
             "deepseek-v4.1-flash"

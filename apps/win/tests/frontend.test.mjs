@@ -2806,3 +2806,96 @@ test("a failed agent bitmap falls back to the glyph or monogram instead of an em
   assert.equal(codex.classList.contains("ab-badge--img"), false, "去掉隐藏矢量的 ab-badge--img");
   assert.equal(Boolean(codex.querySelector(".ab-mono")), !hasGlyph, "有矢量图形时不追加字标");
 });
+
+test("maintenance pane renders pricing catalog sync card between software update and data (T21)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    pricingCatalogState: {
+      source: "builtin",
+      updatedAt: "2026-10-31",
+      modelCount: 86,
+      lastSyncAt: null,
+      autoSyncEnabled: true,
+      stage: { kind: "idle" },
+    },
+  });
+
+  await app.document.querySelector('[data-category="maintenance"]').click();
+  await settle();
+
+  // 1. 结构断言: 模型价格表卡片在软件更新卡片下方、数据卡片上方
+  const pane = app.node("pane-maintenance-content");
+  const captions = [...pane.querySelectorAll(".card-caption")].map((el) => el.textContent);
+  assert.equal(captions[0], "软件更新");
+  assert.equal(captions[1], "模型价格表");
+  assert.equal(captions[2], "数据");
+
+  // 2. 初始回显与控件状态
+  assert.equal(app.node("pricing-current-subtitle").textContent, "内置基线 · 86 款模型");
+  assert.equal(app.node("pricing-current-date").textContent, "2026-10-31");
+  assert.equal(app.node("pricing-last-sync").textContent, "上次同步 —");
+  assert.equal(app.node("btn-pricing-restore").style.display, "none", "内置基线时不展示恢复按钮");
+  assert.equal(app.node("btn-pricing-sync").disabled, false, "同步按钮处于启用态");
+
+  // 3. 自动同步开关即时持久化
+  const autoSyncBox = app.node("setting-auto-sync-pricing");
+  assert.equal(autoSyncBox.checked, true);
+  autoSyncBox.checked = false;
+  await autoSyncBox.dispatch("change");
+  assert.equal(app.state.settings.autoSyncPricingCatalog, false, "持久化写入设置");
+
+  // 4. 点击同步更新命令
+  await app.node("btn-pricing-sync").click();
+  assert.ok(app.calls.some((c) => c.command === "sync_pricing_catalog" && c.args?.manual === true));
+
+  // 5. 事件驱动状态机: syncing
+  await app.emit("pricing-catalog-state", {
+    source: "builtin",
+    updatedAt: "2026-10-31",
+    modelCount: 86,
+    lastSyncAt: null,
+    autoSyncEnabled: false,
+    stage: { kind: "syncing" },
+  });
+  assert.equal(app.node("btn-pricing-sync").disabled, true, "同步中禁用按钮");
+  assert.match(app.node("pricing-sync-stage").textContent, /正在从 GitHub 同步模型价格表…/);
+
+  // 6. 事件驱动状态机: updated (转入已同步态)
+  await app.emit("pricing-catalog-state", {
+    source: "synced",
+    updatedAt: "2026-11-05",
+    modelCount: 89,
+    lastSyncAt: "2026-11-05T10:00:00+08:00",
+    autoSyncEnabled: false,
+    stage: {
+      kind: "updated",
+      updatedAt: "2026-11-05",
+      modelCount: 89,
+      addedCount: 2,
+      adjustedCount: 1,
+    },
+  });
+  assert.equal(app.node("pricing-current-subtitle").textContent, "GitHub 已同步 · 89 款模型");
+  assert.equal(app.node("pricing-current-date").textContent, "2026-11-05");
+  assert.equal(app.node("btn-pricing-restore").style.display, "", "已同步态展示恢复内置按钮");
+  assert.match(app.node("pricing-sync-stage").textContent, /已更新至 2026-11-05 · 共 89 款模型 \(新增 2 款 \/ 调价 1 款\)/);
+
+  // 7. 点击恢复内置命令
+  await app.node("btn-pricing-restore").click();
+  assert.ok(app.calls.some((c) => c.command === "restore_builtin_pricing_catalog"));
+
+  // 8. 错误状态机
+  await app.emit("pricing-catalog-state", {
+    source: "builtin",
+    updatedAt: "2026-10-31",
+    modelCount: 86,
+    lastSyncAt: null,
+    autoSyncEnabled: false,
+    stage: {
+      kind: "failed",
+      reason: "timeout",
+    },
+  });
+  assert.match(app.node("pricing-sync-stage").textContent, /无法访问 GitHub \(超时 10 秒\);当前继续使用本地价格表/);
+  assert.match(app.node("settings-status").textContent, /同步价格表失败：网络超时/);
+});

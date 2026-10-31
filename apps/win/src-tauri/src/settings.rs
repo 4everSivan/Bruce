@@ -101,6 +101,16 @@ pub struct AppSettings {
     /// 已跳过的版本 (远端出现更新版本时自动解除)。
     #[serde(default)]
     pub update_skipped_version: Option<String>,
+    /// 模型价格表自动同步 (T21, 09-模型价格表远端同步 §4.2): 默认开启。
+    #[serde(default = "default_auto_sync_pricing_catalog")]
+    pub auto_sync_pricing_catalog: bool,
+    /// 上次成功同步价格表 (RFC3339 本地时区; None = 从未)。
+    #[serde(default)]
+    pub pricing_last_sync_at: Option<String>,
+}
+
+fn default_auto_sync_pricing_catalog() -> bool {
+    true
 }
 
 fn default_auto_check_update() -> bool {
@@ -152,6 +162,8 @@ impl Default for AppSettings {
             motion_preference: "system".to_owned(),
             update_last_check_at: None,
             update_skipped_version: None,
+            auto_sync_pricing_catalog: true,
+            pricing_last_sync_at: None,
         }
     }
 }

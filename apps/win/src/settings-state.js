@@ -37,6 +37,8 @@
   // 软件更新共享表现层 (T11): 文案与状态区语义和 mac 同源, 双端同读
   // tests/fixtures/update-copy-parity/cases.json 对拍 (check-win-frontend.mjs 执行)。
   const UP = window.BruceUpdatePresentation;
+  // 模型价格表共享表现层 (T21): 文案与状态区语义和 mac 同源
+  const PP = window.BrucePricingPresentation;
   // mac 预设的自动采集周期 (OnboardingConfiguration.presetRefreshIntervalMinutes);
   // 其余 1–1440 分钟经设置页「自定义」输入 (C160)。
   const REFRESH_PRESETS = [3, 6];
@@ -270,6 +272,6 @@
   window.BruceSettingsSections = window.BruceSettingsSections || {};
   window.BruceSettingsCore = {
     state,
-    invoke, listen, providers, CATEGORIES, node, byId, UP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory,
+    invoke, listen, providers, CATEGORIES, node, byId, UP, PP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory,
   };
 })();

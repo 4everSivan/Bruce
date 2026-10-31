@@ -3,7 +3,7 @@
   const core = window.BruceSettingsCore;
   const S = window.BruceSettingsSections;
   const coreState = core.state;
-  const { invoke, listen, providers, CATEGORIES, node, byId, UP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory } = core;
+  const { invoke, listen, providers, CATEGORIES, node, byId, UP, PP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory } = core;
   // 跨分节调用经共享命名空间在调用时解析 (脚本按顺序加载, 调用发生在全部加载完成之后)。
   const providerDescriptor = (...args) => S.providerDescriptor(...args);
   const providerConfigured = (...args) => S.providerConfigured(...args);
@@ -456,6 +456,38 @@
     cu.append(checkRow);
     cu.append(node("div", null, { id: "update-stage", class: "update-stage" }));
 
+    // 模型价格表卡片 (T21, 09 §4.2 布局 1): 置于「软件更新」下方、「数据」上方。
+    const cp = card(host, PP.copy.caption);
+    const pricingAutoWrap = node("div", null, { class: "toggle-with-state" });
+    const pricingAutoBox = input("setting-auto-sync-pricing", "checkbox");
+    pricingAutoWrap.append(pricingAutoBox);
+    pricingAutoBox.addEventListener("change", () => persist({ autoSyncPricingCatalog: pricingAutoBox.checked }, {
+      revert: () => { pricingAutoBox.checked = !pricingAutoBox.checked; },
+    }));
+    row(cp, PP.copy.autoSyncTitle, pricingAutoWrap, PP.copy.autoSyncSubtitle);
+
+    const pricingCurrentRow = node("label", null, { class: "fluent-row" });
+    const pricingCurrentMeta = node("div", null, { class: "row-meta" });
+    pricingCurrentMeta.append(node("span", PP.copy.currentCatalogTitle, { class: "row-title" }));
+    pricingCurrentMeta.append(node("span", "内置基线 · 87 款模型", { id: "pricing-current-subtitle", class: "row-sub" }));
+    const pricingCurrentRight = node("div", null, { style: "display: flex; gap: 8px; align-items: center;" });
+    const pricingCurrentDate = node("span", "—", { id: "pricing-current-date", class: "row-value font-mono" });
+    const pricingRestoreBtn = node("button", PP.copy.restoreButton, { id: "btn-pricing-restore", type: "button", class: "btn", style: "display: none;" });
+    pricingRestoreBtn.addEventListener("click", () => invoke("restore_builtin_pricing_catalog").catch(() => {}));
+    pricingCurrentRight.append(pricingCurrentDate, pricingRestoreBtn);
+    pricingCurrentRow.append(pricingCurrentMeta, pricingCurrentRight);
+    cp.append(pricingCurrentRow);
+
+    const pricingSyncRow = node("label", null, { class: "fluent-row" });
+    const pricingSyncMeta = node("div", null, { class: "row-meta" });
+    pricingSyncMeta.append(node("span", PP.copy.syncCatalogTitle, { class: "row-title" }));
+    pricingSyncMeta.append(node("span", "上次同步 —", { id: "pricing-last-sync", class: "row-sub" }));
+    const pricingSyncBtn = node("button", PP.copy.syncButton, { id: "btn-pricing-sync", type: "button", class: "btn", style: "min-width: 64px;" });
+    pricingSyncBtn.addEventListener("click", () => invoke("sync_pricing_catalog", { manual: true }).catch(() => {}));
+    pricingSyncRow.append(pricingSyncMeta, pricingSyncBtn);
+    cp.append(pricingSyncRow);
+    cp.append(node("div", null, { id: "pricing-sync-stage", class: "update-stage" }));
+
     const c1 = card(host, "数据");
     const cacheWrap = node("div", null, { class: "actions-inline-flat" });
     button(cacheWrap, "cache-clear", "清理", () => clearCache(), "btn danger");
@@ -698,6 +730,88 @@
     });
   }
 
+  // MARK: - 模型价格表同步状态机 (T21)
+
+  let pricingSnapshot = null;
+
+  function renderPricingStage(display) {
+    const stage = byId("pricing-sync-stage");
+    if (!stage) return;
+    stage.replaceChildren();
+    if (display.kind === "hidden") return;
+    if (display.kind === "spinner" || display.kind === "confirmation") {
+      const line = node("div", null, { class: "update-line" });
+      if (display.kind === "confirmation") line.append(node("span", "✓", { class: "ok-tick" }));
+      else line.append(node("span", null, { class: "update-spinner" }));
+      line.append(document.createTextNode(display.text));
+      stage.append(line);
+      return;
+    }
+    if (display.kind === "failure") {
+      const wrap = node("div", null, { class: "update-banner" });
+      const line = node("div", null, { class: "update-line" });
+      line.append(node("span", "!", { class: "fail-cross", style: "color: var(--color-warn, #d89b00); font-weight: bold; margin-right: 4px;" }));
+      line.append(node("strong", display.title));
+      line.append(document.createTextNode(` · ${display.detail}`));
+      const retryBtn = node("button", "重试", { type: "button", class: "btn link", style: "margin-left: 8px;" });
+      retryBtn.addEventListener("click", () => invoke("sync_pricing_catalog", { manual: true }).catch(() => {}));
+      line.append(retryBtn);
+      wrap.append(line);
+      stage.append(wrap);
+    }
+  }
+
+  function renderPricingUI() {
+    if (!pricingSnapshot) return;
+    const { source, updatedAt, modelCount, lastSyncAt, autoSyncEnabled, stage } = pricingSnapshot;
+    const autoBox = byId("setting-auto-sync-pricing");
+    if (autoBox && autoBox.checked !== autoSyncEnabled) {
+      autoBox.checked = autoSyncEnabled;
+    }
+    const currentSub = byId("pricing-current-subtitle");
+    if (currentSub) {
+      currentSub.textContent = PP.currentCatalogSubtitle(source, modelCount);
+    }
+    const currentDate = byId("pricing-current-date");
+    if (currentDate) {
+      currentDate.textContent = updatedAt || "—";
+    }
+    const restoreBtn = byId("btn-pricing-restore");
+    if (restoreBtn) {
+      restoreBtn.style.display = source === "synced" ? "" : "none";
+      restoreBtn.disabled = !PP.isRestoreButtonEnabled(stage);
+    }
+    const lastSync = byId("pricing-last-sync");
+    if (lastSync) {
+      lastSync.textContent = PP.lastSyncSubtitle(lastSyncAt);
+    }
+    const syncBtn = byId("btn-pricing-sync");
+    if (syncBtn) {
+      syncBtn.disabled = !PP.isSyncButtonEnabled(stage);
+    }
+    const display = PP.stageDisplay(stage);
+    renderPricingStage(display);
+    const status = byId("settings-status");
+    if (display.statusLine && stage && stage.kind === "failed") {
+      message(status, display.statusLine, "warn");
+    }
+  }
+
+  async function initPricingCatalog() {
+    try {
+      pricingSnapshot = await invoke("get_pricing_catalog_state");
+      renderPricingUI();
+    } catch { /* 后端命令不可用时维持占位 */ }
+    await listen("pricing-catalog-state", event => {
+      pricingSnapshot = event.payload;
+      renderPricingUI();
+      // 同步或恢复后刷新模型价格与工作台 (R4)
+      if (pricingSnapshot.stage && (pricingSnapshot.stage.kind === "updated" || pricingSnapshot.stage.kind === "restored")) {
+        loadPrices().catch(() => {});
+      }
+    });
+  }
+
   // MARK: - 数据交互逻辑
 
   async function loadRuntimeInfo() {
@@ -840,7 +954,7 @@
     buildGeneral, resolveHotkeyPrimaryKey, normalizeHotkeyEvent, setHotkeyRecording, saveHotkey,
     syncToggleState, renderConsentSummary, buildConsent, buildMaintenance, runExport,
     clearCache, showDiagnosticsPreview, applyConsent, dispatchUpdateAction, updateActionButton,
-    renderUpdateStage, renderUpdateUI, initSoftwareUpdate, loadRuntimeInfo, loadPrices,
+    renderUpdateStage, renderUpdateUI, initSoftwareUpdate, renderPricingStage, renderPricingUI, initPricingCatalog, loadRuntimeInfo, loadPrices,
     loadSettings, oauthPayload, loadCredentials, providerKeyOfSection, loadPlans,
   });
 })();

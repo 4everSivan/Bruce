@@ -27,7 +27,7 @@
     if (mHost) S.buildMaintenance(mHost);
 
     try {
-      await Promise.all([S.loadSettings(), S.loadCredentials(), S.loadPrices(), S.loadRuntimeInfo(), S.loadPlans(), S.loadClaudeLocalStatus(), S.initSoftwareUpdate()]);
+      await Promise.all([S.loadSettings(), S.loadCredentials(), S.loadPrices(), S.loadRuntimeInfo(), S.loadPlans(), S.loadClaudeLocalStatus(), S.initSoftwareUpdate(), S.initPricingCatalog()]);
       await listen("settings-updated", async () => {
         try { await S.loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });
