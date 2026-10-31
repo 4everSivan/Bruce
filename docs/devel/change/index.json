@@ -1730,7 +1730,7 @@
     "C170": {
       "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C170-ci-tool-deps",
       "topic": "SystemOverview",
       "version": "0.16.0",

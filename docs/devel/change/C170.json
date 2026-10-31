@@ -4,19 +4,16 @@
   "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C170-ci-tool-deps",
   "is_hotfix": false,
-
   "target": {
     "module": ".github/workflows/ci.yml / scripts（本地门禁）",
     "component": "verify 作业 / check-bundle-resources.zsh / check-collector-fixtures.sh / check-ci-tool-deps.mjs",
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-
   "why": "2026-10-31 push 触发的 CI run 41204211118（HEAD 24ba90e）中「本地验证套件 (macOS 26)」失败：日志为 `check-bundle-resources.zsh:20: command not found: rg` 紧跟 `build-test-app.sh 未调用 Bruce_copy_bundle_resources`。根因是 verify 作业只做了 checkout / 版本号 / 跑 verify-local.sh，未像 build-release-app 与 release 作业那样安装 ripgrep，而 macOS runner 不预装 rg；C168 新增的 check-bundle-resources.zsh 用 `if ! rg -q` 把「命令不存在」(127) 取反后误判成「规则不满足」，报出与事实相反的结论（build-test-app.sh:130 实际有该调用）。同一提交前的 verify-local.sh 无 rg 直接依赖，故 C168 合入（2b5cf88）前 CI 为绿。次生缺陷：check-collector-fixtures.sh 用 `if rg ...` 正向形式，缺 rg 时返回 127 被当作条件不成立，凭证与隐私扫描长期静默空转（受限 PATH 实测输出 `passed: files=34 secretFindings=[]`，rg 从未执行）。影响：push 级门禁全红阻断主干，且安全检查在 CI 上没有任何实际覆盖。",
-
   "precheck": {
     "description": "在缺少 rg 的 PATH 下复现 verify 作业失败与 fixture 扫描静默跳过",
     "command": "env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/zsh scripts/check-bundle-resources.zsh; echo EXIT=$?; env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/zsh scripts/check-collector-fixtures.sh; echo EXIT=$?",
@@ -24,7 +21,6 @@
     "is_completed": true,
     "evidence": "2026-10-31 在 worktree local/worktrees/C170（基于 main 24ba90e）执行上述命令：check-bundle-resources.zsh → `scripts/check-bundle-resources.zsh:20: command not found: rg` / `build-test-app.sh 未调用 Bruce_copy_bundle_resources` / EXIT=1，与 CI 日志逐字一致；check-collector-fixtures.sh → `Collector fixture scan passed: files=34 secretFindings=[]` / EXIT=0。`gh api .../runs/41204211118/jobs` 显示同名 run 中仅「本地验证套件 (macOS 26)」失败（步骤「运行标准本地验证 (verify-local.sh)」），构建测试版 App 等作业 success；`git log -S'brew install ripgrep' -- .github/workflows/ci.yml` 证明安装步骤只存在于 build-release-app / release 作业。缺陷存在且未被前序提交修复。"
   },
-
   "callback": {
     "before": [
       "git worktree add local/worktrees/C170 -b fix/C170-ci-tool-deps main"
@@ -39,7 +35,6 @@
       "scripts/adflow-verify --card C170 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "CI 作业工具依赖（.github/workflows/ci.yml）",
@@ -60,7 +55,6 @@
       "impact": "scripts/check-ci-tool-deps.mjs（新）、scripts/verify-local.sh"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/00-系统总体设计.md",
     "topic": "SystemOverview",
@@ -70,12 +64,11 @@
       "after": "§3.4 新增第 4 条「外部命令依赖预检」：门禁脚本依赖的第三方命令必须 `command -v` 预检并给出缺少提示，CI 运行 verify-local.sh 的作业必须显式安装同一依赖（macOS runner 不预装 rg），由 check-ci-tool-deps.mjs 在本地与 CI 双跑；§6 演进记录新增 C170。"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261031-02",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "“确认” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -100,9 +93,7 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": true,
@@ -112,7 +103,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-31",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }
