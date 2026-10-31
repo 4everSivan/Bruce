@@ -369,7 +369,7 @@
     },
     "T21": {
       "title": "Windows 模型价格表远端同步与维护页卡片",
-      "status": "pending",
+      "status": "completed",
       "branch": "feat/T21-windows-pricing-catalog-sync",
       "topic": "PricingCatalogSync",
       "milestone": "M10-模型价格表远端同步",
