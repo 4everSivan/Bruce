@@ -320,7 +320,7 @@ Windows Tauri 后端 (Rust)
     - **补偿**：离线→在线跃迁给出 `Compensate`，本轮刷新即离线期间唯一一次补偿（不补发积压的多轮）；持续在线为 `Online`，语义与既有退避/边界唤醒不变；
     - **手动不变**：`should_skip_refresh` 只在「离线且非手动」时跳过 —— 手动刷新（含定向刷新）离线仍执行一次，不重试。
 19. **订阅额度 per-provider 门禁与 429 冷却**（C077；T13 起实现位于共享 crate `collector-policy`，`quota_policy` 只做路径保留与入参固定；mac 经 T15 子命令、T16 起静态链接同一 crate 进程内调用）：
-    - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足刷新间隔则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查（C120 起 mac 同口径，双端以 `tests/fixtures/quota-policy-parity/cases.json` 对拍）；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
+    - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足额度周期（max(刷新间隔, 3 分钟)，C164）则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查（C120 起 mac 同口径，双端以 `tests/fixtures/quota-policy-parity/cases.json` 对拍）；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
     - **429 冷却**：service 带 `rateLimitedAt` 且距今不足 30 分钟（`RATE_LIMIT_COOLDOWN_SECS`）时该 provider 进入冷却（partial，仅该 provider；其余照常查询）；命中判定以 collector 下发的 `failureKind == "rateLimit"` 为准、provider 归属以 service `provider` 为准，字段缺省的旧 artifact 才回退 note 限流文案（429 / 限流 / RATE_LIMIT）与 id 前缀推断（C118，见 design/02 规则 12）；
     - **Codex 例外**：Codex 永不因新鲜度或冷却进入 `skip_providers`（四源合并/重试链路需要完整首轮结果）；全部 provider 仍新鲜时整轮退化为本地专用 run 并回填全部旧 service；
     - **记账与回填**：本轮真实查询过的 service 写 `quotaAttemptedAt`，命中限流写 `rateLimitedAt`、成功则清除（跨重启保留节流状态）；被跳过的 provider 用上一份 service 原样回填，冷却/失败/过期标 `stale`，不丢旧值也不误标 `fresh`；带门禁的整轮应用由 `quota_policy::merge` 一次完成失败借用、时间戳与回填，输出沿用上一份 service 顺序（T13，口径见 design/02 规则 12，双端以 `tests/fixtures/quota-carry-over-parity/cases.json` 对拍）；

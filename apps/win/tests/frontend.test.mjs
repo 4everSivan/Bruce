@@ -2603,48 +2603,206 @@ test("agent brand badges replace colour dots on settings and dashboard (C161)", 
   assert.equal(dashboard.document.querySelectorAll(".daily-legend .sw").length, 0, "图例不应再留旧色块");
 });
 
-// ---------- C163: 时序图缩放平移与动态 LOD 刻度 (双端同构) ----------
+// ---------- C163 / C165: 时序图缩放平移与视口锚定刻度 (双端以 timeline-axis-parity 对拍) ----------
 
-test("timeline chart supports zoom toolbar, wheel LOD adapting and double-click reset (C163)", async () => {
+async function openTimeline() {
   const app = await boot({ html: "settings.html" });
   await app.document.querySelector('[data-category="agentUsage"]').click();
   await settle();
   const pane = app.node("pane-agentUsage");
-  const chartCard = pane.querySelector(".workbench-chart-card");
-  assert.ok(chartCard, "时序趋势卡片存在");
+  const card = () => pane.querySelector(".workbench-chart-card");
+  // 测试 DOM 无布局: 绘图区按 1000px 宽计
+  const plot = () => {
+    const element = card().querySelector(".wb-chart-plot");
+    element.getBoundingClientRect = () => ({ left: 0, width: 1000 });
+    return element;
+  };
+  const zoomLabel = () => card().querySelector(".wb-zoom-label").textContent;
+  const xLabels = () => card().querySelectorAll(".wb-chart-x span").map(span => span.textContent);
+  const summary = () => pane.querySelector("#wb-timeline-summary").textContent;
+  const pickRange = async label => {
+    await [...pane.querySelectorAll(".time-range-picker .seg-opt")].find(b => b.textContent === label).click();
+    await settle();
+  };
+  const plus = async () => {
+    await card().querySelectorAll(".wb-zoom-btn")[1].click();
+    await settle();
+  };
+  return { app, pane, card, plot, zoomLabel, xLabels, summary, pickRange, plus };
+}
 
-  // 1. 初始 1.0x 全景: 缩放工具条存在, 缩小按钮置灰, 无复位按钮
-  const zoomBar = chartCard.querySelector(".wb-zoom-bar");
+test("timeline zoom toolbar, Ctrl+wheel zoom and double-click reset; plain wheel scrolls the page (C163, C165)", async () => {
+  const { card, plot, zoomLabel, plus } = await openTimeline();
+  const zoomBar = card().querySelector(".wb-zoom-bar");
   assert.ok(zoomBar, "存在缩放控制工具栏");
-  assert.equal(zoomBar.querySelector(".wb-zoom-label").textContent, "1.0x");
-  const minusBtn = zoomBar.querySelectorAll(".wb-zoom-btn")[0];
-  const plusBtn = zoomBar.querySelectorAll(".wb-zoom-btn")[1];
-  assert.ok(minusBtn.classList.contains("disabled"), "1.0x 时缩小按钮禁用");
-  assert.equal(chartCard.querySelector(".wb-zoom-reset-btn"), null, "1.0x 无复位按钮");
+  assert.equal(zoomLabel(), "1.0x");
+  assert.ok(zoomBar.querySelectorAll(".wb-zoom-btn")[0].classList.contains("disabled"), "1.0x 时缩小按钮禁用");
+  assert.equal(card().querySelector(".wb-zoom-reset-btn"), null, "1.0x 无复位按钮");
 
-  // 2. 点击 [+] 放大至 1.5x: 出现复位按钮与视口迷你指示器
-  await plusBtn.click();
+  await plus();
+  assert.equal(zoomLabel(), "1.5x");
+  assert.ok(card().querySelector(".wb-zoom-reset-btn"), "放大后浮现 ↺ 全景复位按钮");
+  assert.ok(card().querySelector(".wb-chart-minimap"), "放大后展示视口迷你条");
+  await card().querySelector(".wb-zoom-reset-btn").click();
   await settle();
-  const currentCard = () => pane.querySelector(".workbench-chart-card");
-  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.5x");
-  const resetBtn = currentCard().querySelector(".wb-zoom-reset-btn");
-  assert.ok(resetBtn, "放大后浮现 ↺ 全景复位按钮");
-  assert.ok(currentCard().querySelector(".wb-chart-minimap"), "放大后展示视口迷你条");
+  assert.equal(zoomLabel(), "1.0x");
+  assert.equal(card().querySelector(".wb-zoom-reset-btn"), null, "复位后隐藏全景按钮");
 
-  // 3. 点击复位按钮恢复 1.0x
-  await resetBtn.click();
+  // 普通纵向滚轮: 不缩放, 也不 preventDefault —— 设置页照常滚动
+  let prevented = false;
+  await plot().dispatch("wheel", { deltaY: -100, deltaX: 0, preventDefault() { prevented = true; } });
   await settle();
-  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.0x");
-  assert.equal(currentCard().querySelector(".wb-zoom-reset-btn"), null, "复位后隐藏全景按钮");
+  assert.equal(zoomLabel(), "1.0x", "普通滚轮不缩放");
+  assert.equal(prevented, false, "普通滚轮不拦截页面滚动");
 
-  // 4. 滚轮向上缩放
-  const plot = currentCard().querySelector(".wb-chart-plot");
-  await plot.dispatch("wheel", { deltaY: -100 });
+  // Ctrl + 滚轮 (WebView2 触控板捏合同样带 ctrlKey): 每格 ×1.2
+  await plot().dispatch("wheel", { deltaY: -100, deltaX: 0, ctrlKey: true, preventDefault() { prevented = true; } });
   await settle();
-  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.3x");
+  assert.equal(zoomLabel(), "1.2x");
+  assert.equal(prevented, true, "Ctrl + 滚轮拦截浏览器缩放");
 
-  // 5. 双击绘图区一键复原 1.0x
-  await currentCard().querySelector(".wb-chart-plot").dispatch("dblclick");
+  await plot().dispatch("dblclick");
   await settle();
-  assert.equal(currentCard().querySelector(".wb-zoom-label").textContent, "1.0x");
+  assert.equal(zoomLabel(), "1.0x");
+});
+
+test("timeline drag keeps panning across redraws and ends on window mouseup (C165)", async () => {
+  const { app, plot, xLabels, summary, pickRange, plus } = await openTimeline();
+  await pickRange("今日");
+  await plus();
+  await plus();
+  // 2.0x 按中心缩放: 12 点视口 06:00–17:00, 2 小时刻度对齐偶数整点
+  assert.deepEqual(xLabels(), ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00"]);
+
+  await plot().dispatch("mousedown", { button: 0, clientX: 900 });
+  await plot().dispatch("mousemove", { clientX: 750, buttons: 1 }); // 左移 150px ≈ 1.8 点 → 后移 2 点
+  // 08:00–19:00: 峰值 19:00 进入视口, 1 格内的 18:00 让位
+  assert.deepEqual(xLabels(), ["08:00", "10:00", "12:00", "14:00", "16:00", "🔥 19:00"]);
+  // 第一次平移已重绘出新 plot; 按键未松开, 继续拖应接着平移 (C163 在此处停住)
+  await plot().dispatch("mousemove", { clientX: 400, buttons: 1 });
+  assert.deepEqual(xLabels(), ["12:00", "14:00", "16:00", "🔥 19:00", "22:00"], "拖到末尾: 峰值两侧 18:00 / 20:00 让位");
+  assert.ok(plot().classList.contains("dragging"), "重绘后的 plot 保持拖拽态光标");
+
+  await app.window.dispatch("mouseup");
+  assert.equal(plot().classList.contains("dragging"), false);
+  await plot().dispatch("mousemove", { clientX: 500, buttons: 0 });
+  assert.ok(summary().includes("📍"), "松开后悬停探针恢复");
+});
+
+test("a second click on the timeline does not leave it stuck in drag mode (C165)", async () => {
+  const { app, plot, summary } = await openTimeline();
+  for (let click = 0; click < 2; click += 1) {
+    await plot().dispatch("mousedown", { button: 0, clientX: 500 });
+    await app.window.dispatch("mouseup");
+  }
+  await plot().dispatch("mousemove", { clientX: 300, buttons: 0 });
+  assert.ok(summary().includes("📍"), "两次点击后悬停探针仍可用");
+  // 窗口外松开收不到 mouseup 时, 以 buttons === 0 兜底结束拖拽
+  await plot().dispatch("mousedown", { button: 0, clientX: 500 });
+  await plot().dispatch("mousemove", { clientX: 400, buttons: 0 });
+  await plot().dispatch("mousemove", { clientX: 300, buttons: 0 });
+  assert.ok(summary().includes("📍"), "无按键的移动结束拖拽并恢复探针");
+});
+
+test("timeline zoom survives a background dashboard refresh and resets on range switch (C165)", async () => {
+  const { app, zoomLabel, pickRange, plus } = await openTimeline();
+  await pickRange("今日");
+  await plus();
+  assert.equal(zoomLabel(), "1.5x");
+  await app.emit("dashboard-updated", fixture);
+  await settle();
+  assert.equal(zoomLabel(), "1.5x", "后台刷新 (同一范围) 不复位缩放");
+  await pickRange("近 7 天");
+  assert.equal(zoomLabel(), "1.0x", "换范围复位全景");
+});
+
+test("cost dimension pins the 🔥 capsule and summary to the cost peak (C165)", async () => {
+  const { pane, card, summary, pickRange } = await openTimeline();
+  await pickRange("近 7 天");
+  const points = analytics["7d"].timeline.points;
+  assert.equal(card().querySelector(".wb-chart-x-peak").textContent, "🔥 07-30", "token 维度标 token 峰值");
+  await [...pane.querySelectorAll(".workbench-chart-card .chart-dim-tabs .seg-opt")].find(b => b.textContent === "费用").click();
+  await settle();
+  const costPeak = points.reduce((best, point) => (point.costUsd > best.costUsd ? point : best));
+  assert.equal(costPeak.label, "08-03", "fixture 中费用峰值与 token 峰值不同日");
+  assert.equal(card().querySelector(".wb-chart-x-peak").textContent, "🔥 08-03", "费用维度胶囊跟随费用峰值");
+  assert.ok(summary().includes("峰值: 08-03 ($1.9325)"), `费用维度底部摘要换成费用口径: ${summary()}`);
+  assert.ok(summary().includes("日均: $"), summary());
+});
+
+test("timeline axis ticks and viewport match the shared parity fixture (C165)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const S = app.window.BruceSettingsSections;
+  const parity = JSON.parse(readFileSync("tests/fixtures/timeline-axis-parity/cases.json", "utf8"));
+  assert.ok(parity.ticks.length >= 14 && parity.viewports.length >= 11, "timeline parity fixture 缺少用例");
+  for (const item of parity.ticks) {
+    const points = parity.labelSets[item.labels].map(label => ({ label, totalTokens: 0, costUsd: 0, seriesValues: {} }));
+    // 返回值来自页面 vm 上下文, 展开成本 realm 数组再比较 (deepStrictEqual 校验原型)
+    const ticks = [...S.timelineAxisTicks(points, item.visible[0], item.visible[1], item.peakIndex)];
+    assert.deepEqual(ticks.map(tick => tick.label), item.expected, item.name);
+    assert.equal(ticks.find(tick => tick.isPeak)?.label ?? null, item.expectedPeak, `${item.name}: 峰值胶囊`);
+  }
+  for (const item of parity.viewports) {
+    const initial = S.timelineViewport(item.count, item.zoom, item.start);
+    let result = initial;
+    const { op } = item;
+    if (op.type === "zoomTo") result = S.zoomViewport(initial, op.zoom);
+    else if (op.type === "wheel") result = S.zoomViewport(initial, initial.zoom * 1.2 ** op.notches);
+    else if (op.type === "pinch") for (const magnification of op.magnifications) result = S.zoomViewport(initial, initial.zoom * magnification);
+    else if (op.type === "drag") for (const translation of op.translations) result = S.dragViewport(initial, translation, op.pointWidth);
+    else if (op.type === "pan") result = S.panViewport(initial, op.delta);
+    else assert.equal(op.type, "none", `${item.name}: 未知视口操作`);
+    assert.ok(Math.abs(result.zoom - item.expected.zoom) < 1e-9, `${item.name}: zoom ${result.zoom}`);
+    assert.equal(result.start, item.expected.start, `${item.name}: start`);
+    assert.equal(result.visibleCount, item.expected.visibleCount, `${item.name}: visibleCount`);
+  }
+  // 费用口径与 mac PanelViewModelHarness C165 用例逐字一致
+  const costPoints = Array.from({ length: 24 }, (_, hour) => ({
+    label: `${String(hour).padStart(2, "0")}:00`,
+    totalTokens: hour === 14 ? 9000 : hour === 9 ? 1000 : 0,
+    costUsd: hour === 9 ? 1.5 : hour === 14 ? 0.25 : 0,
+    seriesValues: {},
+  }));
+  assert.equal(S.timelinePeakIndex(costPoints, "tokens"), 14);
+  assert.equal(S.timelinePeakIndex(costPoints, "cost"), 9);
+  assert.deepEqual({ ...S.costSummaries(costPoints, "hour") }, { peak: "🔥 峰值时段: **09:00** ($1.5000)", average: "时均: **$0.0729**" });
+  assert.deepEqual({ ...S.costSummaries([], "day") }, { peak: "—", average: "日均: **$0.0000**" });
+});
+
+// ---------- C166: Agent / 模型品牌身份表双端对拍与位图失败降级 ----------
+
+test("agent brand table matches the shared parity fixture (C166)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const brand = app.window.BRUCE_AGENT_BRAND;
+  const parity = JSON.parse(readFileSync("tests/fixtures/agent-brand-parity/cases.json", "utf8"));
+  const check = (asset, item, name) => {
+    assert.ok(asset, `${name} 缺少品牌身份登记`);
+    assert.equal(asset.image ?? null, item.image, `${name} image`);
+    assert.equal(asset.glyph ?? null, item.glyph, `${name} glyph`);
+    assert.equal(asset.tile, item.tile, `${name} tile`);
+    assert.equal(asset.mark, item.mark, `${name} mark`);
+    assert.equal(asset.mono, item.monogram, `${name} monogram`);
+  };
+  for (const item of parity.agents) check(brand.assetForAgent(item.id), item, `agent ${item.id}`);
+  for (const item of parity.models) check(brand.assetForModel(item.key), item, `model ${item.key}`);
+  for (const id of parity.unknownAgents) assert.equal(brand.assetForAgent(id), null, `未登记 Agent ${id}`);
+  for (const key of parity.unknownModels) assert.equal(brand.assetForModel(key), null, `未登记厂商 ${key}`);
+});
+
+test("a failed agent bitmap falls back to the glyph or monogram instead of an empty badge (C166)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const brand = app.window.BRUCE_AGENT_BRAND;
+  // CodeBuddy 只有位图: 失败后退字标
+  const buddy = brand.create({ agentId: "codebuddy", seriesHex: "#5B3DF5", size: 20 });
+  assert.ok(buddy.classList.contains("ab-badge--img"));
+  await buddy.querySelector(".ab-img").dispatch("error");
+  assert.equal(buddy.querySelector(".ab-img"), null, "失败的位图被移除");
+  assert.equal(buddy.classList.contains("ab-badge--img"), false, "恢复品牌底色瓷砖");
+  assert.equal(buddy.querySelector(".ab-mono").textContent, "C", "无矢量图形时退字标");
+  // Codex 位图 + 矢量: 失败后露出矢量, 不再追加字标
+  const codex = brand.create({ agentId: "codex", seriesHex: "#30D158", size: 20 });
+  const hasGlyph = Boolean(codex.querySelector("svg"));
+  await codex.querySelector(".ab-img").dispatch("error");
+  assert.equal(codex.classList.contains("ab-badge--img"), false, "去掉隐藏矢量的 ab-badge--img");
+  assert.equal(Boolean(codex.querySelector(".ab-mono")), !hasGlyph, "有矢量图形时不追加字标");
 });

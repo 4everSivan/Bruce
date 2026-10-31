@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C166",
+  "title": "Agent / 模型品牌徽章补漏：品牌表双端对拍（Windows 补登记 Cline）、Windows 位图加载失败降级、AgentBrandBadge 编译告警（修正 C161）",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C166-agent-badge-followups",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "Agent / 模型品牌身份表与徽章（mac AgentBrandPalette / AgentBrandBadge，Windows agent-brand.js）",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "AgentBrandIdentity"
+  },
+  "why": "2026-10-30 复核 C161 发现：(1) C161 声称双端「同表同档位」，但 Windows agent-brand.js MODEL_ASSETS 只有 6 组，漏了 mac AgentBrandPalette 已登记的 cline，Cline 模型在 Windows 仍显示色点；两端是手抄的两张表，没有任何测试比对。(2) Windows buildImage 注释声称「onerror 移除自身, 保留 glyph」，实际没有 error 处理，且 .ab-badge--img > svg 被隐藏，位图加载失败时徽章留空。(3) mac AgentBrandBadge.swift:31 使用 BruceOnboardingCore 的 ResolvedTheme 却未导入该模块，每次构建都产生编译告警。维护者要求按治理流程处理复核遗留项。",
+  "precheck": {
+    "description": "确认 Windows 品牌表缺 cline、位图无 error 处理、mac 告警仍在",
+    "command": "rg -n 'needles: \\[\"cline\"\\]|addEventListener\\(\"error\"|onerror' apps/win/src/agent-brand.js; rg -n '^import' apps/macos/Sources/BruceApp/Views/AgentBrandBadge.swift",
+    "expected": "agent-brand.js 无 cline needles、无 error 监听，只有一条声称 onerror 的注释；AgentBrandBadge.swift 只导入 AppKit / BruceAppCore / SwiftUI",
+    "is_completed": true,
+    "evidence": "2026-10-30 在 C165 分支 f92d976 上执行：agent-brand.js 仅命中 :74 注释「onerror 移除自身, 保留 glyph」，无 cline 条目、无 error 监听；AgentBrandBadge.swift 导入 AppKit / BruceAppCore / SwiftUI，verify-local 日志含 `AgentBrandBadge.swift:31:52: warning: cannot use struct 'ResolvedTheme' … 'BruceOnboardingCore' was not imported by this file`。缺陷存在，未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C166-agent-badge-followups"
+    ],
+    "after": [
+      "swift run --package-path apps/macos SubscriptionBrandGlyphHarness",
+      "SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build --package-path apps/macos --product BruceApp",
+      "node scripts/check-win-frontend.mjs",
+      "node scripts/gen-provider-glyphs.mjs --check",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C166 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "品牌身份表双端对拍",
+      "before": "mac AgentBrandPalette 与 Windows agent-brand.js 各自手抄；mac 用例只覆盖 5 组模型厂商，Windows 用例不检查品牌表内容。",
+      "after": "新增 tests/fixtures/agent-brand-parity/cases.json（9 个 Agent、10 个模型键含顺序优先用例、未登记 Agent / 厂商各 2 例，逐字段 image / glyph / tile / mark / monogram），mac SubscriptionBrandGlyphHarness 与 Windows frontend.test.mjs 共同消费；Windows MODEL_ASSETS 补 cline。",
+      "impact": "apps/win/src/agent-brand.js、SubscriptionBrandGlyphHarness.swift（11 → 12 项）、frontend.test.mjs"
+    },
+    {
+      "scope": "Windows 位图加载失败降级",
+      "before": "真彩档 <img> 无 error 处理，.ab-badge--img 隐藏矢量图形，加载失败时徽章为空。",
+      "after": "img error 时移除位图、去掉 ab-badge--img 恢复品牌底色并露出矢量图形；无矢量图形（如 CodeBuddy）时追加字标；字标生成抽为 monogram()，删除失实注释。",
+      "impact": "apps/win/src/agent-brand.js"
+    },
+    {
+      "scope": "mac 编译告警",
+      "before": "AgentBrandBadge.swift 未导入 BruceOnboardingCore，构建告警 ResolvedTheme 不可用于未标注 @_implementationOnly 的类型成员。",
+      "after": "补 import BruceOnboardingCore，BruceApp 构建无 Swift 源码告警。",
+      "impact": "apps/macos/Sources/BruceApp/Views/AgentBrandBadge.swift"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "AgentBrandIdentity",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 11「双端同构」：两端共享同一张品牌表与同一套尺寸 / 降级规则（无对拍约束）；未定义位图加载失败的降级。",
+      "after": "规则 11 补：品牌表以 agent-brand-parity fixture 逐字段对拍，改表先改 fixture；新增「位图失败降级」——位图缺失或加载失败退回同档矢量图形，无图形退字标。变更历史 C161 更正为 Closed，新增 C166 行。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261030-07",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac SubscriptionBrandGlyphHarness 与 Windows 前端全绿，共享 fixture 双端通过，新增 Windows 用例在旧实现上失败",
+        "false_if": "任一测试失败，或新增用例在旧实现上也能通过",
+        "evidence": "2026-10-30：`swift run --package-path apps/macos SubscriptionBrandGlyphHarness` → tests passed: 12（新增 agentBrandPaletteMatchesSharedParityFixture：9 个 Agent + 10 个模型键逐字段一致）；`node --test apps/win/tests/frontend.test.mjs` → 113/113（新增品牌表对拍、位图失败降级 2 项）；将 agent-brand.js 暂存回 C161 实现重跑 → 2 项新用例失败（`model cline-code 缺少品牌身份登记`、`失败的位图被移除`），恢复后通过；`zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」：Rust 49 组 486 项、18 项 Harness、Windows 前端 113/113、geometry 2/2、update 6/6、双端对拍 5 项），日志中已无 Swift 源码告警（此前每次构建报 AgentBrandBadge.swift:31:52）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Windows 设置页 Cline 模型行 / chip 显示 Cline 徽章；人为移走 agent-icons 位图后 Codex 显示矢量、CodeBuddy 显示字标",
+        "false_if": "Cline 仍为色点或位图失败后徽章空白",
+        "evidence": "未在 Windows 真机执行（无本机 Windows 部署环境）。Cline 徽章与位图失败降级由 DOM 用例覆盖；WebView2 中真实 <img> 加载失败事件与 Cline 模型实际出现在用量数据中的显示需真机确认。mac 侧仅改导入，徽章渲染路径未变。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "已有 Agent / 厂商徽章形态不变；gen-provider-glyphs --check 一致；mac 徽章渲染不受导入改动影响",
+        "false_if": "既有徽章错图、生成产物漂移或 mac 构建回归",
+        "evidence": "2026-10-30：fixture 以 mac AgentBrandPalette 为准，mac 9 个 Agent / 原 6 组厂商与 Windows 逐字段一致，只多出 Windows 漏登记的 cline；C161 既有 DOM 用例（20px 带环 / 12px 不带环 / 徽章非空 / 设置页不随 Nothing 变绿）全部通过；`node scripts/gen-provider-glyphs.mjs --check` → 产物一致 (11 个 provider)；BruceApp 构建通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

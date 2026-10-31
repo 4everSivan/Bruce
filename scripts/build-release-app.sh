@@ -74,6 +74,7 @@ done
 source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
 Bruce_prepare_swift_sdk
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
+Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
 
 # 正式版默认产出 universal Rust binary. 若 CI 尚未安装两个 Rust target,
 # 在这里明确失败, 禁止把单架构产物伪装成 Release.
@@ -131,11 +132,10 @@ strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
 Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 Bruce_validate_release_bundle "$BRUCE_STAGED_APP"
 
-ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AppIcon.icns" \
-    "$BRUCE_RESOURCES/AppIcon.icns"
-# Agent / 模型品牌身份位图 (C161), AgentBrandIconStore 从 Resources/AgentIcons 读取.
-ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AgentIcons" \
-    "$BRUCE_RESOURCES/AgentIcons"
+# 与 Preview 同一份静态资源清单 (runtime-manifest.zsh BRUCE_BUNDLE_FILES): 图标、
+# Nothing 主题字体与 Agent 品牌位图. 此前此处手写 ditto 漏了 Fonts (C168).
+Bruce_copy_bundle_resources "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES"
+Bruce_validate_bundle_resources "$BRUCE_STAGED_APP"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
 plutil -create xml1 "$BRUCE_INFO_PLIST"

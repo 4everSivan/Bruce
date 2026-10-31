@@ -79,6 +79,7 @@ struct BruceOnboardingCoreHarness {
         try configStoreRejectsNewerSchemaV3()
         try configStoreSubscriptionProvidersRoundTrip()
         try configRefreshIntervalDecodeAndFallback()
+        try customRefreshIntervalInputParsing()
         try configSystemNotificationsDefaultsAndRoundTrips()
         try keychainAccessPolicyTests()
         try credentialStoreSubscriptionAccountsRoundTrip()
@@ -177,6 +178,6 @@ struct BruceOnboardingCoreHarness {
         try providerAccountNamingDefaultsAndValidation()
         try providerAccountStoreRenameAndUpsertPreservation()
         try codexCustomNameOverridesAndBackwardCompatibility()
-        print("BruceOnboardingCore tests passed: 173")
+        print("BruceOnboardingCore tests passed: 174")
     }
 }

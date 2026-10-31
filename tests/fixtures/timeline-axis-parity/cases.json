@@ -1,0 +1,553 @@
+{
+  "description": "C165 时序图 X 轴刻度与视口双端对拍: mac WorkbenchAnalytics.timelineAxisTicks / AnalyticsTimelineViewport ≡ Windows settings-workbench.js timelineAxisTicks / timelineViewport。visible 为 [start, end) 全局下标; expected 为刻度标签 (不含 🔥 前缀); 视口 op 均作用于初始视口 (drag / pinch 的多次回调都相对手势起点)。",
+  "labelSets": {
+    "hour24": [
+      "00:00",
+      "01:00",
+      "02:00",
+      "03:00",
+      "04:00",
+      "05:00",
+      "06:00",
+      "07:00",
+      "08:00",
+      "09:00",
+      "10:00",
+      "11:00",
+      "12:00",
+      "13:00",
+      "14:00",
+      "15:00",
+      "16:00",
+      "17:00",
+      "18:00",
+      "19:00",
+      "20:00",
+      "21:00",
+      "22:00",
+      "23:00"
+    ],
+    "day30": [
+      "10-01",
+      "10-02",
+      "10-03",
+      "10-04",
+      "10-05",
+      "10-06",
+      "10-07",
+      "10-08",
+      "10-09",
+      "10-10",
+      "10-11",
+      "10-12",
+      "10-13",
+      "10-14",
+      "10-15",
+      "10-16",
+      "10-17",
+      "10-18",
+      "10-19",
+      "10-20",
+      "10-21",
+      "10-22",
+      "10-23",
+      "10-24",
+      "10-25",
+      "10-26",
+      "10-27",
+      "10-28",
+      "10-29",
+      "10-30"
+    ],
+    "day10": [
+      "10-21",
+      "10-22",
+      "10-23",
+      "10-24",
+      "10-25",
+      "10-26",
+      "10-27",
+      "10-28",
+      "10-29",
+      "10-30"
+    ],
+    "day7": [
+      "10-24",
+      "10-25",
+      "10-26",
+      "10-27",
+      "10-28",
+      "10-29",
+      "10-30"
+    ]
+  },
+  "ticks": [
+    {
+      "name": "full_day_three_hour_grid",
+      "description": "今日全景 24 点: 3 小时网格 (C162 方案 A1)",
+      "labels": "hour24",
+      "visible": [
+        0,
+        24
+      ],
+      "peakIndex": null,
+      "expected": [
+        "00:00",
+        "03:00",
+        "06:00",
+        "09:00",
+        "12:00",
+        "15:00",
+        "18:00",
+        "21:00"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "full_day_offgrid_peak_replaces_neighbor",
+      "description": "今日全景峰值 14:00 不在网格: 移除 1 格内的 15:00 后插入 (C162 用例)",
+      "labels": "hour24",
+      "visible": [
+        0,
+        24
+      ],
+      "peakIndex": 14,
+      "expected": [
+        "00:00",
+        "03:00",
+        "06:00",
+        "09:00",
+        "12:00",
+        "14:00",
+        "18:00",
+        "21:00"
+      ],
+      "expectedPeak": "14:00"
+    },
+    {
+      "name": "slight_zoom_keeps_three_hours",
+      "description": "1.1x (22 点) 仍为 3 小时且按整点对齐, 不再退化为 4 小时 (C163 缺陷)",
+      "labels": "hour24",
+      "visible": [
+        1,
+        23
+      ],
+      "peakIndex": null,
+      "expected": [
+        "03:00",
+        "06:00",
+        "09:00",
+        "12:00",
+        "15:00",
+        "18:00",
+        "21:00"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "nineteen_points_three_hours",
+      "description": "19 点视口仍为 3 小时",
+      "labels": "hour24",
+      "visible": [
+        5,
+        24
+      ],
+      "peakIndex": null,
+      "expected": [
+        "06:00",
+        "09:00",
+        "12:00",
+        "15:00",
+        "18:00",
+        "21:00"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "two_hour_lod_peak_clears_both_neighbors",
+      "description": "12 点视口 2 小时步长, 峰值 15:00 两侧 14:00 / 16:00 都移除 (C163 用例原为 15:00 与 16:00 相邻)",
+      "labels": "hour24",
+      "visible": [
+        10,
+        22
+      ],
+      "peakIndex": 15,
+      "expected": [
+        "10:00",
+        "12:00",
+        "15:00",
+        "18:00",
+        "20:00"
+      ],
+      "expectedPeak": "15:00"
+    },
+    {
+      "name": "two_hour_lod_panned_keeps_anchor",
+      "description": "平移 1 小时: 刻度仍落在偶数整点, 不随视口起点改成奇数",
+      "labels": "hour24",
+      "visible": [
+        11,
+        23
+      ],
+      "peakIndex": 15,
+      "expected": [
+        "12:00",
+        "15:00",
+        "18:00",
+        "20:00",
+        "22:00"
+      ],
+      "expectedPeak": "15:00"
+    },
+    {
+      "name": "one_hour_lod_at_ten_points",
+      "description": "10 点视口逐 1 小时全显 (design/06: ≤10 → 1h)",
+      "labels": "hour24",
+      "visible": [
+        6,
+        16
+      ],
+      "peakIndex": 15,
+      "expected": [
+        "06:00",
+        "07:00",
+        "08:00",
+        "09:00",
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+        "14:00",
+        "15:00"
+      ],
+      "expectedPeak": "15:00"
+    },
+    {
+      "name": "peak_outside_viewport_has_no_capsule",
+      "description": "峰值不在视口内: 无胶囊",
+      "labels": "hour24",
+      "visible": [
+        0,
+        8
+      ],
+      "peakIndex": 15,
+      "expected": [
+        "00:00",
+        "01:00",
+        "02:00",
+        "03:00",
+        "04:00",
+        "05:00",
+        "06:00",
+        "07:00"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "thirty_days_full",
+      "description": "近 30 天全景: 5 天步长并收口末点 (C162 口径)",
+      "labels": "day30",
+      "visible": [
+        0,
+        30
+      ],
+      "peakIndex": null,
+      "expected": [
+        "10-01",
+        "10-06",
+        "10-11",
+        "10-16",
+        "10-21",
+        "10-26",
+        "10-30"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "thirty_days_peak_near_tail",
+      "description": "峰值 10-28 两侧 2 格内的刻度 (10-26 / 10-30) 都移除",
+      "labels": "day30",
+      "visible": [
+        0,
+        30
+      ],
+      "peakIndex": 27,
+      "expected": [
+        "10-01",
+        "10-06",
+        "10-11",
+        "10-16",
+        "10-21",
+        "10-28"
+      ],
+      "expectedPeak": "10-28"
+    },
+    {
+      "name": "thirty_days_zoomed_anchor",
+      "description": "2.0x (15 点) 3 天步长按全局下标对齐; 末点不在视口不收口",
+      "labels": "day30",
+      "visible": [
+        8,
+        23
+      ],
+      "peakIndex": null,
+      "expected": [
+        "10-10",
+        "10-13",
+        "10-16",
+        "10-19",
+        "10-22"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "thirty_days_zoomed_at_end_closes_tail",
+      "description": "视口到达末尾时收口末点",
+      "labels": "day30",
+      "visible": [
+        15,
+        30
+      ],
+      "peakIndex": null,
+      "expected": [
+        "10-16",
+        "10-19",
+        "10-22",
+        "10-25",
+        "10-28",
+        "10-30"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "ten_days_full",
+      "description": "10 点日粒度: 2 天步长, 末点距末个刻度 1 格时替换 (C162 口径)",
+      "labels": "day10",
+      "visible": [
+        0,
+        10
+      ],
+      "peakIndex": null,
+      "expected": [
+        "10-21",
+        "10-23",
+        "10-25",
+        "10-27",
+        "10-30"
+      ],
+      "expectedPeak": null
+    },
+    {
+      "name": "seven_days_all",
+      "description": "7 点全显",
+      "labels": "day7",
+      "visible": [
+        0,
+        7
+      ],
+      "peakIndex": null,
+      "expected": [
+        "10-24",
+        "10-25",
+        "10-26",
+        "10-27",
+        "10-28",
+        "10-29",
+        "10-30"
+      ],
+      "expectedPeak": null
+    }
+  ],
+  "viewports": [
+    {
+      "name": "center_anchored_zoom",
+      "description": "按视口中心缩放: 24 点 1.0x → 2.0x 显示 06:00–17:00",
+      "count": 24,
+      "zoom": 1.0,
+      "start": 0,
+      "op": {
+        "type": "zoomTo",
+        "zoom": 2.0
+      },
+      "expected": {
+        "zoom": 2.0,
+        "start": 6,
+        "visibleCount": 12
+      }
+    },
+    {
+      "name": "zoom_clamps_to_four",
+      "description": "倍率上限 4.0x, 至少 6 点",
+      "count": 24,
+      "zoom": 1.0,
+      "start": 0,
+      "op": {
+        "type": "zoomTo",
+        "zoom": 10.0
+      },
+      "expected": {
+        "zoom": 4.0,
+        "start": 9,
+        "visibleCount": 6
+      }
+    },
+    {
+      "name": "wheel_one_notch",
+      "description": "滚轮一格 ×1.2",
+      "count": 24,
+      "zoom": 1.0,
+      "start": 0,
+      "op": {
+        "type": "wheel",
+        "notches": 1
+      },
+      "expected": {
+        "zoom": 1.2,
+        "start": 2,
+        "visibleCount": 20
+      }
+    },
+    {
+      "name": "wheel_out_returns_to_full",
+      "description": "缩小到底回到全景且起点归零",
+      "count": 24,
+      "zoom": 2.0,
+      "start": 6,
+      "op": {
+        "type": "wheel",
+        "notches": -10
+      },
+      "expected": {
+        "zoom": 1.0,
+        "start": 0,
+        "visibleCount": 24
+      }
+    },
+    {
+      "name": "pinch_uses_gesture_base",
+      "description": "捏合累计倍率 1.1→1.2→1.3 每次都乘在手势起点上, 结果 1.3x (叠乘会到 1.716x)",
+      "count": 24,
+      "zoom": 1.0,
+      "start": 0,
+      "op": {
+        "type": "pinch",
+        "magnifications": [
+          1.1,
+          1.2,
+          1.3
+        ]
+      },
+      "expected": {
+        "zoom": 1.3,
+        "start": 3,
+        "visibleCount": 18
+      }
+    },
+    {
+      "name": "drag_from_base",
+      "description": "按下时视口为基准: 左拖 100pt / 每点 25pt → 后移 4 点",
+      "count": 24,
+      "zoom": 2.0,
+      "start": 6,
+      "op": {
+        "type": "drag",
+        "translations": [
+          -30,
+          -60,
+          -100
+        ],
+        "pointWidth": 25
+      },
+      "expected": {
+        "zoom": 2.0,
+        "start": 10,
+        "visibleCount": 12
+      }
+    },
+    {
+      "name": "drag_half_point_right_rounds_away",
+      "description": "右拖半个点 (-0.5 点) 双端同为远离零取整, 回移 1 点",
+      "count": 24,
+      "zoom": 2.0,
+      "start": 6,
+      "op": {
+        "type": "drag",
+        "translations": [
+          12.5
+        ],
+        "pointWidth": 25
+      },
+      "expected": {
+        "zoom": 2.0,
+        "start": 5,
+        "visibleCount": 12
+      }
+    },
+    {
+      "name": "drag_clamps_at_end",
+      "description": "拖过末尾停在 maxStart",
+      "count": 24,
+      "zoom": 2.0,
+      "start": 6,
+      "op": {
+        "type": "drag",
+        "translations": [
+          -1000
+        ],
+        "pointWidth": 25
+      },
+      "expected": {
+        "zoom": 2.0,
+        "start": 12,
+        "visibleCount": 12
+      }
+    },
+    {
+      "name": "pan_clamps_at_start",
+      "description": "平移越过起点停在 0",
+      "count": 24,
+      "zoom": 2.0,
+      "start": 6,
+      "op": {
+        "type": "pan",
+        "delta": -30
+      },
+      "expected": {
+        "zoom": 2.0,
+        "start": 0,
+        "visibleCount": 12
+      }
+    },
+    {
+      "name": "short_series_shows_all",
+      "description": "点数少于 4: 放大也全显",
+      "count": 3,
+      "zoom": 1.0,
+      "start": 0,
+      "op": {
+        "type": "zoomTo",
+        "zoom": 4.0
+      },
+      "expected": {
+        "zoom": 4.0,
+        "start": 0,
+        "visibleCount": 3
+      }
+    },
+    {
+      "name": "data_shrink_clamps_start",
+      "description": "数据变短后起点被钳制",
+      "count": 7,
+      "zoom": 1.0,
+      "start": 5,
+      "op": {
+        "type": "none"
+      },
+      "expected": {
+        "zoom": 1.0,
+        "start": 0,
+        "visibleCount": 7
+      }
+    }
+  ]
+}

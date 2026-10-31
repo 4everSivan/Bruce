@@ -125,15 +125,10 @@ chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
 strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
 Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 
-ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AppIcon.icns" \
-    "$BRUCE_RESOURCES/AppIcon.icns"
-# Nothing 主题字体 (Doto / Space Grotesk / Space Mono), 运行时
-# 由 NothingFont.FontRegistry 以 .process scope 注册.
-ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/Fonts" \
-    "$BRUCE_RESOURCES/Fonts"
-# Agent / 模型品牌身份位图 (C161), 由 AgentBrandIconStore 从 Resources/AgentIcons 读取.
-ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AgentIcons" \
-    "$BRUCE_RESOURCES/AgentIcons"
+# 图标、Nothing 主题字体 (NothingFont.FontRegistry 以 .process scope 注册) 与
+# Agent 品牌位图 (AgentBrandIconStore): 清单见 runtime-manifest.zsh BRUCE_BUNDLE_FILES (C168).
+Bruce_copy_bundle_resources "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES"
+Bruce_validate_bundle_resources "$BRUCE_STAGED_APP"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
 plutil -create xml1 "$BRUCE_INFO_PLIST"

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C168",
+  "title": "打包静态资源单一清单：Preview / Release 共用 BRUCE_BUNDLE_FILES 投放与校验，补 Release 漏装的 Nothing 主题字体",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C168-bundle-resources-shared",
+  "is_hotfix": false,
+  "target": {
+    "module": "scripts（macOS 打包）",
+    "component": "runtime-manifest.zsh / build-test-app.sh / build-release-app.sh / verify-local.sh",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "2026-10-30 复核发现：Nothing 主题字体自 90c7e14（2026-09-01）起只在 Preview 脚本 build-test-app.sh 中 ditto 进 Contents/Resources/Fonts，Developer ID 正式版脚本 build-release-app.sh 从未拷贝；NothingFont.FontRegistry 找不到目录时静默回退 .system，用正式版脚本打出的包 Nothing 主题会显示系统字体。两份脚本各自手写资源 ditto，runtime-manifest.zsh 的 BRUCE_BUNDLE_FILES 只用于 Preview 的源文件存在性检查，也未登记 C161 新增的 AgentIcons。影响面核实：当前 CI（.github/workflows/ci.yml）发版走 build-test-app.sh --universal --dmg，build-release-app.sh 头注释为「当前不接入 CI/CD, 仅作为未来正式版规划的手工预留脚本」，已发布的 v0.13.0–v0.15.0 不受影响，缺陷在启用 Developer ID 正式版时才会暴露。维护者要求按治理流程处理复核遗留项。",
+  "precheck": {
+    "description": "确认 Release 脚本不拷贝字体、两份脚本各自手写资源清单",
+    "command": "rg -n 'Assets/(Fonts|AgentIcons|AppIcon)|Bruce_copy_bundle_resources|Bruce_validate_packaging_sources' scripts/build-test-app.sh scripts/build-release-app.sh scripts/runtime-manifest.zsh",
+    "expected": "build-test-app.sh 手写 ditto AppIcon / Fonts / AgentIcons；build-release-app.sh 只 ditto AppIcon / AgentIcons，且不调用 Bruce_validate_packaging_sources；runtime-manifest.zsh BRUCE_BUNDLE_FILES 只有 AppIcon.icns 与 Fonts，无共享投放函数",
+    "is_completed": true,
+    "evidence": "2026-10-30 在 C167 分支 0ba408d 上执行：build-test-app.sh:128/132/135 分别 ditto AppIcon.icns / Fonts / AgentIcons，:57 调用 Bruce_validate_packaging_sources；build-release-app.sh:134/137 只 ditto AppIcon.icns / AgentIcons，无 Fonts、无源文件校验；runtime-manifest.zsh:7–10 BRUCE_BUNDLE_FILES 仅 AppIcon.icns 与 Fonts；`git log -S'Assets/Fonts' -- scripts/` 只有 90c7e14 一次提交且只改 build-test-app.sh。缺陷存在，未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C168-bundle-resources-shared"
+    ],
+    "after": [
+      "zsh -n scripts/build-test-app.sh",
+      "zsh -n scripts/build-release-app.sh",
+      "zsh scripts/check-bundle-resources.zsh",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C168 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "静态资源清单与投放（runtime-manifest.zsh）",
+      "before": "BRUCE_BUNDLE_FILES 只有 AppIcon.icns / Fonts，仅用于 Preview 的源文件存在性检查；资源投放由两个脚本各自手写。",
+      "after": "BRUCE_BUNDLE_FILES 补 AgentIcons，成为唯一资源清单；新增 Bruce_copy_bundle_resources（按清单 ditto 到 Contents/Resources/<basename>）与 Bruce_validate_bundle_resources（清单项必须存在、目录不得为空）。",
+      "impact": "scripts/runtime-manifest.zsh"
+    },
+    {
+      "scope": "两个打包脚本",
+      "before": "build-test-app.sh 手写 3 条 ditto；build-release-app.sh 手写 2 条（漏 Fonts），且不校验源文件。",
+      "after": "两个脚本都改为调用 Bruce_copy_bundle_resources + Bruce_validate_bundle_resources；build-release-app.sh 补 Bruce_validate_packaging_sources。投放目标路径与改动前一致（AppIcon.icns / Fonts / AgentIcons）。",
+      "impact": "scripts/build-test-app.sh、scripts/build-release-app.sh"
+    },
+    {
+      "scope": "本地门禁",
+      "before": "verify-local.sh 不检查打包脚本，资源清单漂移只能在打包后人工发现。",
+      "after": "新增 scripts/check-bundle-resources.zsh：断言两个脚本都经共享函数投放与校验、不得直接 ditto apps/macos/Assets/；按清单投放到临时 Bundle 后校验通过且字体 / 位图 / 图标齐全；删掉 Fonts 后校验必须失败。verify-local.sh 增两个打包脚本的 zsh -n 语法检查并运行该检查。",
+      "impact": "scripts/check-bundle-resources.zsh（新）、scripts/verify-local.sh"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "§3.3 发布产物规格未约束 App Bundle 静态资源来源；两个打包脚本各自维护资源清单。",
+      "after": "§3.3 新增「App Bundle 静态资源」：图标、Nothing 字体与 Agent 位图只登记在 BRUCE_BUNDLE_FILES，Preview 与 Release 经 Bruce_copy_bundle_resources 投放、Bruce_validate_bundle_resources 校验，verify-local 以 check-bundle-resources.zsh 拦截绕过清单的手写 ditto；§6 演进记录新增 C168。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261030-09",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "check-bundle-resources.zsh 通过且在旧脚本上失败，两个打包脚本语法检查通过，verify-local 退出码为 0",
+        "false_if": "检查失败、在旧脚本上也能通过或 verify-local 非 0",
+        "evidence": "2026-10-30：`zsh scripts/check-bundle-resources.zsh` → 「Bundle 静态资源清单检查通过 (3 项, Preview / Release 同源)」，临时 Bundle 内 AppIcon.icns、Fonts（Space Mono / Doto / Space Grotesk）、AgentIcons/agent-codex.png 齐全，删除 Fonts 后 Bruce_validate_bundle_resources 按预期报错；将三份打包脚本暂存回改动前重跑 → Exit 1（`build-test-app.sh 未调用 Bruce_copy_bundle_resources`），恢复后通过；`zsh -n` 两个打包脚本与 runtime-manifest.zsh 语法通过；`zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」，含新接入的两项语法检查与资源清单检查；Rust 49 组 486 项、18 项 Harness、Windows 前端 113/113、geometry 2/2、update 6/6、双端对拍 5 项）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Preview 构建产物 Contents/Resources 含 AppIcon.icns / Fonts / AgentIcons 且 Nothing 主题字体生效；Developer ID 正式版构建产物同样含 Fonts",
+        "false_if": "任一打包产物缺少清单内资源",
+        "evidence": "未执行真实打包。build-test-app.sh 会覆盖 dist/Bruce.app 与 dist/Bruce.zip（发版上传所用产物），未在功能分支上重建；build-release-app.sh 要求干净工作树、HEAD 带发布 tag 与 Developer ID 证书，本机不满足且打 tag 属发版动作。检查脚本调用的正是两个打包脚本使用的同一对函数；仍需在下一次 CI 打包（或授权本机 Preview 构建）后确认产物 Contents/Resources 内容，Developer ID 正式版需在首次启用时确认。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "投放目标路径与改动前一致，Bruce_validate_release_bundle 的数据 / 凭证 / 架构校验不受影响，CI 的 build-test-app.sh 调用方式不变",
+        "false_if": "资源落到错误路径或现有发版校验回归",
+        "evidence": "2026-10-30：投放目标沿用 ${relative_path:t}，即 Contents/Resources/AppIcon.icns、Fonts、AgentIcons，与改动前手写 ditto 的目标一致；build-test-app.sh 中投放位置不变（仍在 Rust Collector 之后、Info.plist 之前），Bruce_validate_release_bundle 未改且在 Preview 中仍于签名后对完整 Bundle 运行；.github/workflows/ci.yml 的调用参数未改；verify-local 全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C165",
+  "title": "时序趋势图缩放 / 平移 / 刻度缺陷修复：不劫持页面滚动、捏合不叠乘、Windows 拖拽连续且不卡死、刻度锚定整点、峰值两侧让位、费用维度按费用峰值（修正 C162 / C163，双端对拍）",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C165-timeline-gesture-ticks",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "设置中心「模型用量」工作台 TimelineChartCard / settings-workbench.js 时序趋势图",
+    "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "design_topic": "AgentAnalytics"
+  },
+  "why": "2026-10-30 复核 C160–C163 发现 C163 / C162 交付的时序图交互存在缺陷，且 C162 / C163 仅以交互 Demo 验收、未在真实 App 中核验：(1) Windows 拖拽平移每次重绘替换 plot，闭包内 isDragging 丢失，一次拖拽只移一格；(2) Windows mouseup 每次重绘以 { once: true } 注册，第二次点击后拖拽态不再清除，悬停探针失效；(3) mac MagnificationGesture 的累计倍率被叠乘到每帧已更新的 zoomLevel，轻捏即跳到 4.0x；(4) 双端悬停在 220pt 图表上时吞掉全部纵向滚轮（mac NSEvent 监听返回 nil、Windows 无条件 preventDefault），设置页无法滚动；(5) LOD 阈值与 design/06 不符，1.1x–1.2x（20–22 点）退化为 4 小时步长，刻度按视口起点重排，平移时标签在奇偶整点间跳变；(6) 峰值防撞只移除最近一个刻度，2 小时步长下胶囊与另一侧标签相邻 1 格（C163 自身用例 10:00–21:00 即复现）；(7) Windows 每次 dashboard-updated 都复位缩放；(8) 费用维度 🔥 胶囊标的是 token 峰值。维护者确认修复。",
+  "precheck": {
+    "description": "确认上述缺陷代码仍在，且临时 DOM 复现用例失败",
+    "command": "rg -n 'zoomLevel \\* scale|addLocalMonitorForEvents|addEventListener\\(\"mouseup\", onMouseUp, \\{ once: true \\}\\)|event\\.preventDefault\\(\\);|isHourly && count <= 14|baseIndices\\.min\\(by|workbench\\.zoomLevel = 1\\.0;' apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift apps/macos/Sources/BruceAppCore/WorkbenchAnalytics.swift apps/win/src/settings-workbench.js",
+    "expected": "命中 mac TimelineChartCard 捏合叠乘与滚轮监听、WorkbenchAnalytics 2h 分支与单邻居替换、Windows once 监听 / 无条件 preventDefault / 刷新复位",
+    "is_completed": true,
+    "evidence": "2026-10-30 在 C164 分支 09d0e71 上执行：命中 TimelineChartCard.swift:196 `zoomLevel * scale`、:616 `addLocalMonitorForEvents`；WorkbenchAnalytics.swift:425 `isHourly && count <= 14`、:446 `baseIndices.min(by:`；settings-workbench.js:174 刷新复位 `workbench.zoomLevel = 1.0;`、:453 `{ once: true }`、:478 `event.preventDefault();`。临时 DOM 复现（/tmp/bruce-review/c163-drag.test.mjs）2 项均失败：拖拽一次后视口不再移动、两次点击后悬停探针失效。运行 C163 已发布的刻度函数：1.1x 得 `00 04 08 12 🔥15 21`，2.0x 视口 10:00–21:00 得 `10 12 🔥15 16 18 20`。缺陷存在，未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C165-timeline-gesture-ticks"
+    ],
+    "after": [
+      "swift run --package-path apps/macos PanelViewModelHarness",
+      "SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build --package-path apps/macos --product BruceApp",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C165 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "刻度与峰值口径（mac BruceAppCore，Windows 同构）",
+      "before": "timelineAxisTicks(for:globalPeakLabel:) 对视口切片按切片下标抽稀：≤8 全显、小时且 ≤14 每 2 小时、24 点 3 小时、其余长跨度公式（20–22 点得 4 小时）；峰值只替换最近一个刻度；峰值恒按 totalTokens。",
+      "after": "timelineAxisTicks(for:visible:peakIndex:) 按可见点数 N 选步长（小时 ≤10 / ≤18 / 其余 → 1 / 2 / 3 小时；日月 ≤8 全显否则 max(2,⌈(N−1)/6⌉)），刻度取全局下标 % 步长 == 0，末点在视口内才收口；峰值不在刻度上时移除 minGap 内全部刻度；新增 timelinePeakIndex(in:metric:)（费用维度按 costUsd）、peakDominantColorHex(point:series:) 与费用维度 costSummaries(points:granularity:)。timelineAxisTicks(for:) / peakDominantColorHex(points:series:) 保留为 C162 全景入口，结果不变。",
+      "impact": "AnalyticsModels.swift、WorkbenchAnalytics.swift；Windows settings-workbench.js timelineAxisTicks / timelinePeakIndex / peakDominantColor / costSummaries"
+    },
+    {
+      "scope": "视口与手势（mac TimelineChartCard）",
+      "before": "zoomLevel / startIndex 散落计算；捏合 zoomLevel * scale 叠乘；拖拽以固定 500pt 估算点宽；NSEvent 滚轮监听吞掉全部纵向滚动，横向每事件固定移 1 点；仅 points.count 变化时复位。",
+      "after": "新增 AnalyticsTimelineViewport 纯值视口（倍率钳制 1–4x、至少 4 点、起点钳制、以中心为锚缩放、滚轮每格 ×1.2、pinched / dragged 均作用于手势起点视口）；MagnifyGesture 记录 pinchBase、DragGesture 记录 dragBase；点宽按实测图宽；滚轮监听仅处理 ⌘ + 滚轮缩放与放大后的水平滑动（累计位移按点宽换算），其余事件放行；时序标签序列变化才复位并重装监听；费用维度底部摘要换成费用口径；TimelineChartCard 新增 granularity 入参。",
+      "impact": "TimelineChartCard.swift、AgentUsageWorkbenchView.swift"
+    },
+    {
+      "scope": "视口与手势（Windows settings-workbench.js）",
+      "before": "拖拽状态在每次重绘的闭包里；window mouseup 每次重绘以 { once: true } 注册；wheel 无条件 preventDefault 并每事件 ±0.25；每次快照刷新复位缩放。",
+      "after": "timelineViewport / zoomViewport / panViewport / dragViewport 与 mac 同口径（远离零取整）；拖拽状态挂 workbench.drag，模块加载时注册一次 mouseup，mousemove 以 buttons === 0 兜底结束；仅 Ctrl + 滚轮缩放（含 WebView2 触控板捏合），放大后水平滚动平移，普通纵向滚轮放行；按时序标签序列判定复位；费用维度胶囊与底部摘要按费用；工具条提示文案更新。",
+      "impact": "apps/win/src/settings-workbench.js"
+    },
+    {
+      "scope": "双端对拍与测试",
+      "before": "C163 mac 用例只断言 12 点视口含 15:00；Windows 用例不检查任何轴标签。",
+      "after": "新增 tests/fixtures/timeline-axis-parity/cases.json（14 个刻度用例 + 11 个视口用例，期望值按 design/06 规则手算），mac PanelViewModelHarness 与 Windows frontend.test.mjs 共同消费；mac 新增费用峰值 / 摘要断言；Windows 新增拖拽连续、二次点击不卡死、后台刷新保留缩放、普通滚轮放行 / Ctrl + 滚轮缩放、费用维度胶囊与摘要 5 个 DOM 用例。",
+      "impact": "PanelViewModelHarness.swift（63 → 64 项）、apps/win/tests/frontend.test.mjs（106 → 111 项）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "topic": "AgentAnalytics",
+    "modified": true,
+    "rule_diff": {
+      "before": "C162：峰值按 token、只替换最近刻度；C163：滚轮缩放、LOD 按 span 阈值（>18 / 10–18 / ≤10）但实现按切片点数另行分支，刻度按视口起点重排，平移与悬停解耦。",
+      "after": "§4.2 实现参数修订：刻度按可见点数 N 选步长并锚定全局下标；峰值按当前维度口径（费用维度按费用）并移除 minGap 内全部刻度；费用维度底部摘要为费用口径；视口模型（1–4x、至少 4 点、中心锚定）；mac ⌘ + 滚轮 / 捏合、Windows Ctrl + 滚轮 / 捏合，普通纵向滚轮不拦截；换范围才复位；Windows 拖拽状态模块级、mouseup 注册一次；双端以 timeline-axis-parity fixture 对拍。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261030-06",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac PanelViewModelHarness 与 Windows 前端全绿，共享 fixture 双端通过，新增 Windows 用例在旧实现上失败、新实现上通过",
+        "false_if": "任一测试失败，或新增用例在旧实现上也能通过",
+        "evidence": "2026-10-30：`swift run --package-path apps/macos PanelViewModelHarness` → PanelViewModel tests passed: 64（新增 timelineAxisAndViewportMatchSharedParityFixture：14 个刻度 + 11 个视口共享用例；费用峰值 / 费用摘要断言；C162 全景用例原样通过）；`SDKROOT=…/MacOSX26.5.sdk swift build --product BruceApp` → Build complete，改动文件无告警；`node --test apps/win/tests/frontend.test.mjs` → 111/111（新增 5 个 DOM 用例 + 共享 fixture 用例）；将 settings-workbench.js 暂存回 C163 实现重跑 → 6 项新用例全部失败（拖拽连续、二次点击、后台刷新保留缩放、普通滚轮放行 / Ctrl 缩放、费用维度、共享 fixture），恢复后全部通过；`zsh scripts/verify-local.sh` → Exit 0（末行「Bruce 本地验证全部通过」：Rust 49 组 486 项 ok、18 项 Harness、Windows 前端 111/111、geometry 2/2、update 6/6、双端对拍 5 项）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "mac 真机：设置页悬停图表时可正常上下滚动；⌘ + 滚轮与双指捏合平滑缩放、不跳档；拖拽 / 水平滑动连续平移；刻度锚定整点、🔥 胶囊不与相邻标签重叠；费用维度胶囊标在费用峰值。Windows 同语义",
+        "false_if": "页面滚动被拦截、捏合跳到 4x、拖拽卡顿或停住、标签重叠或费用维度峰值错位",
+        "evidence": "未在真机执行（本轮未部署 /Applications/Bruce.app，未获部署授权）。逻辑层由共享 fixture 与 Windows DOM 用例覆盖；以下依赖真实输入设备与 Swift Charts 布局，只能真机确认：mac 设置页悬停图表时纵向滚动放行、⌘ + 滚轮与 MagnifyGesture 捏合手感（触控板每 60pt 计一格的灵敏度）、水平滑动平移速度、🔥 胶囊与相邻标签在实际图宽下不重叠；Windows WebView2 下 Ctrl + 滚轮 / 触控板捏合与拖拽。",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "C162 全景刻度结果不变（今日 3 小时网格、14:00 / 15:00 峰值、近 30 天 5 天步长收口）；悬停探针、维度切换、折线 / 面积切换、双端对拍 fixture 正常",
+        "false_if": "全景刻度变化或其他工作台卡片 / 对拍回归",
+        "evidence": "2026-10-30：C162 全景入口 timelineAxisTicks(for:) 结果不变（PanelViewModelHarness 今日 14:00 / 15:00 峰值用例与 Windows 今日 `🔥 19:00` 用例原样通过；fixture 中 thirty_days_full / ten_days_full 与 C162 口径逐例一致）；AnalyticsTimeline 结构与快照未改，双端 viewmodel / workbench 对拍零漂移；悬停探针、维度切换、折线 / 面积切换相关既有 DOM 用例全部通过；verify-local 全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

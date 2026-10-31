@@ -22,7 +22,8 @@
     pi: { tile: "", mark: "", mono: "π" },
   };
 
-  // 模型厂商: 按规范键/显示名子串匹配, 顺序与 mac AgentBrandPalette 一致。
+  // 模型厂商: 按规范键/显示名子串匹配, 顺序与 mac AgentBrandPalette 一致
+  // (tests/fixtures/agent-brand-parity 双端对拍, C166)。
   const MODEL_ASSETS = [
     { needles: ["claude", "sonnet", "opus"], asset: { glyph: "claude", tile: "#F2EEE6", mark: "#D97757", mono: "C" } },
     { needles: ["deepseek"], asset: { glyph: "deepseek", tile: "#FFFFFF", mark: "#4D6BFE", mono: "D" } },
@@ -30,6 +31,7 @@
     { needles: ["gpt", "openai", "codex"], asset: { glyph: "codex", tile: "#FFFFFF", mark: "#0B0B0B", mono: "G" } },
     { needles: ["kimi", "k3"], asset: { glyph: "kimi", tile: "#0B0B0B", mark: "#FFFFFF", mono: "K" } },
     { needles: ["grok", "xai"], asset: { glyph: "grok", tile: "#0B0B0B", mark: "#FFFFFF", mono: "G" } },
+    { needles: ["cline"], asset: { glyph: "cline", tile: "#0B0B0B", mark: "#FFFFFF", mono: "C" } },
   ];
 
   function make(tag, className) {
@@ -70,8 +72,14 @@
     return svg;
   }
 
+  function monogram(asset, options) {
+    const mono = make("span", "ab-mono");
+    mono.textContent =
+      (asset && asset.mono) || String(options.displayName || "?").trim().charAt(0).toUpperCase() || "?";
+    return mono;
+  }
+
   function buildImage(asset) {
-    // 位图缺失时在 <img> 层优雅降级为矢量 (onerror 移除自身, 保留 glyph)。
     const img = make("img", "ab-img");
     img.setAttribute("src", ICON_BASE + asset.image + ".png");
     img.setAttribute("alt", "");
@@ -108,7 +116,15 @@
     let painted = false;
     if (brandStyle && asset && asset.image) {
       badge.classList.add("ab-badge--img");
-      badge.append(buildImage(asset));
+      const img = buildImage(asset);
+      // 位图缺失或加载失败: 移除位图并露出同档矢量图形, 无图形时退字标 (C166; 与 mac
+      // AgentBrandIconStore 缺失静默降级一致, 此前 svg 被 .ab-badge--img 隐藏, 徽章留空)
+      img.addEventListener("error", () => {
+        img.remove();
+        badge.classList.remove("ab-badge--img");
+        if (!badge.querySelector("svg")) badge.append(monogram(asset, options));
+      });
+      badge.append(img);
       painted = true;
     }
     if (asset && asset.glyph) {
@@ -118,12 +134,7 @@
         painted = true;
       }
     }
-    if (!painted) {
-      const mono = make("span", "ab-mono");
-      mono.textContent =
-        (asset && asset.mono) || String(options.displayName || "?").trim().charAt(0).toUpperCase() || "?";
-      badge.append(mono);
-    }
+    if (!painted) badge.append(monogram(asset, options));
     badge.setAttribute("aria-hidden", "true");
     return badge;
   }

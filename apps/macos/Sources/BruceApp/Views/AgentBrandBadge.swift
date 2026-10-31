@@ -1,5 +1,6 @@
 import AppKit
 import BruceAppCore
+import BruceOnboardingCore
 import SwiftUI
 
 // MARK: - Agent 品牌身份徽章

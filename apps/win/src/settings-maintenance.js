@@ -139,7 +139,7 @@
       }),
       intervalCustomWrap,
     );
-    row(c1, "刷新间隔", intervalWrap, "已授权模块的自动采集周期，变更后立即重新计时");
+    row(c1, "刷新间隔", intervalWrap, "已授权模块的自动采集周期，变更后立即重新计时；订阅额度最短 3 分钟查询一次");
     // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
     // C160: 验证期「测试气泡」入口已移除, 行内只保留开关.
     const notifyWrap = node("div", null, { class: "toggle-with-state" });

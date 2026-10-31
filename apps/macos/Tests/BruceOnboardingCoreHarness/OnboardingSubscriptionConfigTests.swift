@@ -303,6 +303,19 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// 设置页「自定义」输入解析 (C167): 回车与焦点离开共用, 合法才写盘, 其余回到当前生效值.
+    static func customRefreshIntervalInputParsing() throws {
+        let cases: [(String, Int?)] = [
+            ("10", 10), ("1", 1), ("1440", 1440), (" 45 ", 45), ("0007", 7),
+            ("0", nil), ("1441", nil), ("", nil), ("   ", nil), ("-5", nil),
+            ("1.5", nil), ("10分钟", nil), ("３", nil), ("99999999999999999999", nil),
+        ]
+        for (text, expected) in cases {
+            let parsed = OnboardingConfiguration.customRefreshIntervalMinutes(from: text)
+            try coreExpect(parsed == expected, "自定义输入「\(text)」应解析为 \(String(describing: expected)), 实际 \(String(describing: parsed))")
+        }
+    }
+
     static func configSystemNotificationsDefaultsAndRoundTrips() throws {
         let legacy = try JSONDecoder().decode(
             OnboardingConfiguration.self,

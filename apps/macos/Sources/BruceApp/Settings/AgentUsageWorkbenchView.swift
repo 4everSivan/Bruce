@@ -26,6 +26,7 @@ struct AgentUsageWorkbenchView: View {
             // 时序趋势折线分析
             TimelineChartCard(
                 points: snapshot.timeline.points,
+                granularity: snapshot.timeline.granularity,
                 peakSummary: snapshot.timeline.peakSummary,
                 avgSummary: snapshot.timeline.avgSummary,
                 availableAgents: snapshot.agents,
