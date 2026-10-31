@@ -4,7 +4,7 @@
   "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C170-ci-tool-deps",
   "is_hotfix": false,
   "target": {
@@ -97,7 +97,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "845be5a",
     "tag": ""
   },
   "gate": {
@@ -106,6 +106,6 @@
     "ran_at": "2026-10-31",
     "exit_code": 0,
     "from_status": "verified",
-    "target_status": "verified"
+    "target_status": "closed"
   }
 }
