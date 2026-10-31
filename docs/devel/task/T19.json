@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T19",
+  "title": "价格表抽离至 config/pricing-catalog.json 与 Collector 动态价卡契约",
+  "version": "0.16.0",
+  "milestone": "M10-模型价格表远端同步",
+  "status": "pending",
+  "branch": "feat/T19-pricing-catalog-extract-contract",
+  "depends_on": [],
+  "target": {
+    "module": "config/pricing-catalog.json；core/collector（collector-domain / collector-application / collector-bridge）；scripts/gen-pricing-catalog.mjs",
+    "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
+    "design_topic": "PricingCatalogSync"
+  },
+  "goal": "将内置模型价格表从 core/collector/crates/collector-domain/pricing-catalog.json 抽离至仓库顶层 config/pricing-catalog.json，补充 schemaVersion=1 与 updatedAt 元数据字段；collector-domain 实现 CatalogFile::parse_and_validate 严格校验、防倒退版本比对与 PricingTable::with_catalog 动态价卡构造；collector-bridge 白名单与 collector-application 支持通过 context.pricingCatalog 注入动态价格表；同步更新 scripts/gen-pricing-catalog.mjs。",
+  "precheck": {
+    "description": "确认 config/pricing-catalog.json 尚未建立，collector-domain 仍使用旧路径且无动态价卡构造与 context.pricingCatalog 白名单",
+    "command": "test -f config/pricing-catalog.json; rg -n 'pricingCatalog|with_catalog|parse_and_validate' core/collector/crates/collector-domain/src/pricing.rs core/collector/crates/collector-bridge/src/lib.rs scripts/gen-pricing-catalog.mjs",
+    "expected": "config/pricing-catalog.json 不存在；pricing.rs 与 collector-bridge 无 pricingCatalog / with_catalog / parse_and_validate",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/T19-pricing-catalog-extract-contract"
+    ],
+    "after": [
+      "node scripts/gen-pricing-catalog.mjs --check",
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T19 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T19 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T19-1",
+      "title": "价格表文件迁移与元数据扩充",
+      "capability": "将 pricing-catalog.json 迁至 config/pricing-catalog.json，顶层补充 schemaVersion: 1 与 updatedAt: \"2026-10-31\"；同步更新 scripts/gen-pricing-catalog.mjs 的 sourcePath 并导出内置 updatedAt / schemaVersion 常量供 macOS 使用。",
+      "done": false
+    },
+    {
+      "id": "T19-2",
+      "title": "collector-domain 严格校验与动态 PricingTable",
+      "capability": "CatalogFile 扩充 schema_version 与 updated_at 字段；实现 parse_and_validate（校验 schemaVersion==1、updatedAt 格式、非空唯一模型键、有限非负单价、合法 peak/longContext/cacheWrite）与防倒退比较；PricingTable 新增 with_catalog(models, overrides) 构造器，保留 builtin_catalog() 作为默认基线。",
+      "done": false
+    },
+    {
+      "id": "T19-3",
+      "title": "collector-bridge 与 collector-application 动态价卡注入",
+      "capability": "collector-bridge ALLOWED_CONTEXT_FIELDS 新增 pricingCatalog，schemas/request-v1.schema.json 同步登记；collector-application 读取 context.pricingCatalog（校验通过且不早于内置基线时采用，否则回退内置基线）构造 PricingTable，补齐单元与集成测试。",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "单一事实源与脚本同源",
+        "true_if": "config/pricing-catalog.json 含合法 schemaVersion=1 与 updatedAt，旧路径已移除，gen-pricing-catalog.mjs --check 通过",
+        "false_if": "双份 JSON 并存或生成脚本校验失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "严格校验与动态计费生效",
+        "true_if": "parse_and_validate 拒绝非法 schema/单价/重复键/过期版本；context.pricingCatalog 注入新模型或新单价后 Collector 产出的 costUsd 按动态价卡核算，pricingOverrides 仍具最高优先级",
+        "false_if": "非法价卡被接受、动态价卡未生效或覆盖优先级倒置",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量验证",
+        "true_if": "Rust fmt / clippy / test 与 verify-local.sh 全部退出码 0",
+        "false_if": "任一检查失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

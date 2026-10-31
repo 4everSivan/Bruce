@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T20",
+  "title": "macOS 模型价格表远端同步服务与维护页卡片",
+  "version": "0.16.0",
+  "milestone": "M10-模型价格表远端同步",
+  "status": "pending",
+  "branch": "feat/T20-macos-pricing-catalog-sync",
+  "depends_on": [
+    "T19"
+  ],
+  "target": {
+    "module": "apps/macos（BruceOnboardingCore / BruceAppCore / BruceApp Settings）；tests/fixtures/pricing-sync-parity",
+    "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
+    "design_topic": "PricingCatalogSync"
+  },
+  "goal": "在 macOS 端实现模型价格表从 GitHub Raw 直链同步更新的完整链路：BuiltinModelPricingCatalog 支持加载本地已同步 config/pricing-catalog.json（含防倒退门禁与三层优先级）、PricingCatalogSyncService 负责定时/手动拉取校验与 POSIX 0600 原子落盘、采集请求自动注入生效的同步价卡、维护页新增「模型价格表」卡片（位于软件更新与数据之间），并建立双端共享对拍 fixture tests/fixtures/pricing-sync-parity/cases.json 与 PricingCatalogSyncHarness。",
+  "precheck": {
+    "description": "确认 macOS 尚未实现 PricingCatalogSyncService、维护页价格表卡片与 pricing-sync-parity fixture",
+    "command": "rg -n 'PricingCatalogSync|PricingCatalogCard' apps/macos/Sources; test -f tests/fixtures/pricing-sync-parity/cases.json",
+    "expected": "无 PricingCatalogSync / PricingCatalogCard 实现，无 pricing-sync-parity fixture",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/T20-macos-pricing-catalog-sync"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T20 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T20 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T20-1",
+      "title": "BuiltinModelPricingCatalog 动态目录与三层合并",
+      "capability": "BuiltinModelPricingCatalog 保留生成代码作为 builtinModels 基线，新增从 config/pricing-catalog.json 加载/校验/防倒退清理与运行时热切换；resolveAll 与 ModelNormalizer 读取当前生效目录。",
+      "done": false
+    },
+    {
+      "id": "T20-2",
+      "title": "PricingCatalogSyncService 与双端对拍表现层",
+      "capability": "BruceAppCore 新增 PricingCatalogSyncService（HTTPS 拉取方案 A 直链、10s 超时、512KB 上限、R3 校验、POSIX 0600 原子写盘、启动 30s + 24h 自动静默同步、恢复内置基线、同步后触发 agentUsage 刷新）与纯函数表现层 PricingCatalogSyncPresentation；建立 tests/fixtures/pricing-sync-parity/cases.json。",
+      "done": false
+    },
+    {
+      "id": "T20-3",
+      "title": "维护页「模型价格表」卡片与 Harness 测试",
+      "capability": "SettingsView 维护页在「软件更新」与「数据」之间挂载 PricingCatalogSyncCard（自动同步开关 / 当前价格表与恢复内置 / 同步更新 / 底部状态区）；新增 PricingCatalogSyncHarness 并接入 verify-local.sh。",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "同步、校验、防倒退与恢复内置",
+        "true_if": "PricingCatalogSyncHarness 覆盖拉取更新、已是最新、网络超时/离线/HTTP 错误、非法 JSON 拒绝、内置版本新于本地缓存时自动清理回退、恢复内置及 0600 权限，且全部通过",
+        "false_if": "任一状态转换、校验门禁或权限断言失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "零重启热生效与双端文案对拍",
+        "true_if": "同步或恢复内置后 BuiltinModelPricingCatalog、ModelNormalizer 与 Collector 请求上下文立即反映新价格表；表现层通过 tests/fixtures/pricing-sync-parity/cases.json 全部用例",
+        "false_if": "需重启才生效或与共享 fixture 不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "任一 Harness 或构建失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

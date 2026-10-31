@@ -225,6 +225,10 @@
         "C161",
         "C166"
       ]
+    },
+    "PricingCatalogSync": {
+      "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
+      "changes": []
     }
   },
   "cards": {

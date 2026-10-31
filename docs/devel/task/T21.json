@@ -1,0 +1,95 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T21",
+  "title": "Windows 模型价格表远端同步与维护页卡片",
+  "version": "0.16.0",
+  "milestone": "M10-模型价格表远端同步",
+  "status": "pending",
+  "branch": "feat/T21-windows-pricing-catalog-sync",
+  "depends_on": [
+    "T19"
+  ],
+  "target": {
+    "module": "apps/win（viewmodel / src-tauri / src settings-maintenance.js）",
+    "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
+    "design_topic": "PricingCatalogSync"
+  },
+  "goal": "在 Windows 端实现与 macOS 同构的模型价格表远端同步与维护页卡片：apps/win/viewmodel 的 model_catalog 支持运行时热替换活动目录；src-tauri 实现价格表拉取校验、%APPDATA%\\Bruce\\config\\pricing-catalog.json 原子落盘、防倒退清理、自动同步调度与采集请求注入；前端维护页在「软件更新」与「数据」之间渲染「模型价格表」卡片，并与 macOS 共用 tests/fixtures/pricing-sync-parity/cases.json 对拍。",
+  "precheck": {
+    "description": "确认 Windows model_catalog 仍为 OnceLock 静态切片且维护页无模型价格表同步卡",
+    "command": "rg -n 'pricing_catalog_sync|pricing-sync-stage' apps/win/src-tauri/src apps/win/src",
+    "expected": "无 pricing_catalog_sync 与 pricing-sync-stage 实现",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/T21-windows-pricing-catalog-sync"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --workspace",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T21 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T21 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T21-1",
+      "title": "viewmodel model_catalog 动态活动目录",
+      "capability": "apps/win/viewmodel/src/model_catalog.rs 改为维护可热替换的活动目录（默认初始化为 collector_domain::pricing::builtin_catalog()），提供更新与恢复内置接口，analytics 与 as_json() 实时读取当前活动目录。",
+      "done": false
+    },
+    {
+      "id": "T21-2",
+      "title": "src-tauri 价格表同步服务与命令",
+      "capability": "新增 pricing_sync 模块：管理 config/pricing-catalog.json 加载、防倒退清理、HTTPS 拉取（ureq 10s 超时 + 512KB 上限）、collector_domain::pricing 校验、原子写盘、自动同步调度与 pricing-catalog-state 事件广播；collector.rs 在存在生效同步目录时向 context.pricingCatalog 注入；settings.rs 增加 auto_sync_pricing_catalog 与 pricing_last_sync_at 持久化字段。",
+      "done": false
+    },
+    {
+      "id": "T21-3",
+      "title": "Windows 维护页卡片与双端对拍测试",
+      "capability": "settings-maintenance.js 在 buildMaintenance 的「软件更新」与「数据」之间渲染「模型价格表」卡片，同步/恢复后自动刷新 get_model_prices 与工作台；前端表现层与 Rust 单测消费 tests/fixtures/pricing-sync-parity/cases.json 对拍，frontend.test.mjs 覆盖卡片交互。",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "双端对拍与状态机一致性",
+        "true_if": "Rust 与前端表现层全部通过 tests/fixtures/pricing-sync-parity/cases.json，frontend.test.mjs 覆盖维护页价格表卡片渲染、同步、恢复内置与失败提示",
+        "false_if": "与共享 fixture 存在文案/状态偏差或前端用例失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "零重启热生效与防倒退",
+        "true_if": "同步新价格表或恢复内置后 get_model_prices、analytics 与 collector 采集折算即时生效，过期本地同步文件在启动时自动回退内置基线",
+        "false_if": "需重启才生效或旧同步文件遮蔽新版内置基线",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量验证",
+        "true_if": "apps/win cargo fmt / clippy / test、frontend.test.mjs、check-win-frontend.mjs 与 verify-local.sh 全部退出码 0",
+        "false_if": "任一检查失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

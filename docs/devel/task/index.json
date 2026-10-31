@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-28",
+  "updated_at": "2026-10-31",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -74,6 +74,15 @@
       "tasks": [
         "T18"
       ]
+    },
+    "M10-模型价格表远端同步": {
+      "title": "模型价格表抽离至 config/pricing-catalog.json、支持从 GitHub 在线同步热更新与设置中心维护页同步卡片",
+      "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
+      "tasks": [
+        "T19",
+        "T20",
+        "T21"
+      ]
     }
   },
   "topics": {
@@ -118,6 +127,14 @@
         "T15",
         "T16",
         "T17"
+      ]
+    },
+    "PricingCatalogSync": {
+      "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
+      "tasks": [
+        "T19",
+        "T20",
+        "T21"
       ]
     }
   },
@@ -327,6 +344,40 @@
       "depends_on": [],
       "file": "docs/archive/0.15.0/task/T18.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T18-account-custom-names"
+    },
+    "T19": {
+      "title": "价格表抽离至 config/pricing-catalog.json 与 Collector 动态价卡契约",
+      "status": "pending",
+      "branch": "feat/T19-pricing-catalog-extract-contract",
+      "topic": "PricingCatalogSync",
+      "milestone": "M10-模型价格表远端同步",
+      "depends_on": [],
+      "file": "docs/devel/task/T19.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T19-pricing-catalog-extract-contract"
+    },
+    "T20": {
+      "title": "macOS 模型价格表远端同步服务与维护页卡片",
+      "status": "pending",
+      "branch": "feat/T20-macos-pricing-catalog-sync",
+      "topic": "PricingCatalogSync",
+      "milestone": "M10-模型价格表远端同步",
+      "depends_on": [
+        "T19"
+      ],
+      "file": "docs/devel/task/T20.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T20-macos-pricing-catalog-sync"
+    },
+    "T21": {
+      "title": "Windows 模型价格表远端同步与维护页卡片",
+      "status": "pending",
+      "branch": "feat/T21-windows-pricing-catalog-sync",
+      "topic": "PricingCatalogSync",
+      "milestone": "M10-模型价格表远端同步",
+      "depends_on": [
+        "T19"
+      ],
+      "file": "docs/devel/task/T21.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T21-windows-pricing-catalog-sync"
     }
   }
 }

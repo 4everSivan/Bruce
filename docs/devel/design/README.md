@@ -1,6 +1,6 @@
 # 系统设计中心 (design/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-10-23 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-10-31 ｜ **status**: active
 
 ## 1. 简介
 
@@ -31,6 +31,7 @@
 | [06-Agent用量分析与Token统计工作台.md](06-Agent用量分析与Token统计工作台.md) | `AgentAnalytics` | `DESIGN-ANALYTICS` | 设置中心全景工作台、时序折线分析、多源模型自动归一化合并、多 Agent 横向对比与代码仓下钻 | 现行基线 | 2026-10-21 |
 | [07-软件更新.md](07-软件更新.md) | `SoftwareUpdate` | `DESIGN-UPDATE` | 应用内检查更新与自动升级：latest.json 清单契约、双端设置中心维护页更新卡（方案 B，demo 为规格基准）、macOS 自替换安装器与 Windows updater 插件 | 现行基线 | 2026-10-26 |
 | [08-跨端共享策略核心.md](08-跨端共享策略核心.md) | `SharedPolicyCore` | `DESIGN-POLICY-CORE` | 两端重复实现的额度门禁与回填收敛为一份 Rust 实现：第一期经 collector 子命令供 mac 调用，第二期 mac 链接 Rust 静态库 | 现行基线 | 2026-10-27 |
+| [09-模型价格表远端同步.md](09-模型价格表远端同步.md) | `PricingCatalogSync` | `DESIGN-PRICING-SYNC` | 模型基准价格表抽离至 `config/pricing-catalog.json`、支持从 GitHub 在线同步热更新及设置中心「维护」页管理卡片 | 现行基线 | 2026-10-31 |
 
 只登记已生成且有真实来源的设计，同时在 [研发索引](../index.json) 登记其路由；空项目保持清单为空。状态如实区分草稿与已批准基线，不把示例登记成项目能力。
 
