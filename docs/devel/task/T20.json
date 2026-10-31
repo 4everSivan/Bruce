@@ -4,7 +4,7 @@
   "title": "macOS 模型价格表远端同步服务与维护页卡片",
   "version": "0.16.0",
   "milestone": "M10-模型价格表远端同步",
-  "status": "pending",
+  "status": "completed",
   "branch": "feat/T20-macos-pricing-catalog-sync",
   "depends_on": [
     "T19"
@@ -20,7 +20,7 @@
     "command": "rg -n 'PricingCatalogSync|PricingCatalogCard' apps/macos/Sources; test -f tests/fixtures/pricing-sync-parity/cases.json",
     "expected": "无 PricingCatalogSync / PricingCatalogCard 实现，无 pricing-sync-parity fixture",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-10-31: rg 查找 PricingCatalogSync/PricingCatalogCard 返回 1 (未实现); test -f tests/fixtures/pricing-sync-parity/cases.json 返回 1 (fixture 尚未建立)"
   },
   "callback": {
     "before": [
@@ -37,55 +37,57 @@
       "id": "T20-1",
       "title": "BuiltinModelPricingCatalog 动态目录与三层合并",
       "capability": "BuiltinModelPricingCatalog 保留生成代码作为 builtinModels 基线，新增从 config/pricing-catalog.json 加载/校验/防倒退清理与运行时热切换；resolveAll 与 ModelNormalizer 读取当前生效目录。",
-      "done": false
+      "done": true
     },
     {
       "id": "T20-2",
       "title": "PricingCatalogSyncService 与双端对拍表现层",
       "capability": "BruceAppCore 新增 PricingCatalogSyncService（HTTPS 拉取方案 A 直链、10s 超时、512KB 上限、R3 校验、POSIX 0600 原子写盘、启动 30s + 24h 自动静默同步、恢复内置基线、同步后触发 agentUsage 刷新）与纯函数表现层 PricingCatalogSyncPresentation；建立 tests/fixtures/pricing-sync-parity/cases.json。",
-      "done": false
+      "done": true
     },
     {
       "id": "T20-3",
       "title": "维护页「模型价格表」卡片与 Harness 测试",
       "capability": "SettingsView 维护页在「软件更新」与「数据」之间挂载 PricingCatalogSyncCard（自动同步开关 / 当前价格表与恢复内置 / 同步更新 / 底部状态区）；新增 PricingCatalogSyncHarness 并接入 verify-local.sh。",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261031-20",
     "checks": [
       {
         "item": "同步、校验、防倒退与恢复内置",
         "true_if": "PricingCatalogSyncHarness 覆盖拉取更新、已是最新、网络超时/离线/HTTP 错误、非法 JSON 拒绝、内置版本新于本地缓存时自动清理回退、恢复内置及 0600 权限，且全部通过",
         "false_if": "任一状态转换、校验门禁或权限断言失败",
-        "evidence": "",
-        "result": null
+        "evidence": "PricingCatalogSyncHarness 通过 12 项测试，涵盖更新、最新、超时/离线/404/非法JSON、内置新于缓存自动回退清理、恢复内置及 POSIX 0600 权限校验",
+        "result": true
       },
       {
         "item": "零重启热生效与双端文案对拍",
         "true_if": "同步或恢复内置后 BuiltinModelPricingCatalog、ModelNormalizer 与 Collector 请求上下文立即反映新价格表；表现层通过 tests/fixtures/pricing-sync-parity/cases.json 全部用例",
         "false_if": "需重启才生效或与共享 fixture 不一致",
-        "evidence": "",
-        "result": null
+        "evidence": "BuiltinModelPricingCatalog 热生效；CollectorRunInput 在 synced 态注入 pricingCatalog，恢复内置重置；通过 cases.json 全部 51 项双端对拍断言",
+        "result": true
       },
       {
         "item": "全量验证",
         "true_if": "zsh scripts/verify-local.sh 退出码 0",
         "false_if": "任一 Harness 或构建失败",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh 退出码 0，全部 19 项 Harness 测试全绿通过",
+        "result": true
       }
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "5329e279a97130480ef7d12c29ddc1dd3e5aecbf"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-31",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

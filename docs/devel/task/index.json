@@ -357,7 +357,7 @@
     },
     "T20": {
       "title": "macOS 模型价格表远端同步服务与维护页卡片",
-      "status": "pending",
+      "status": "completed",
       "branch": "feat/T20-macos-pricing-catalog-sync",
       "topic": "PricingCatalogSync",
       "milestone": "M10-模型价格表远端同步",
