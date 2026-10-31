@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "id": "d_60d22960-cfaa-43ce-9088-123463dc90ff",
+  "title": "Windows 用量工作台的数据血缘",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "cache",
+      "label": "后台缓存 AgentUsageArtifact",
+      "role": "store",
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "query",
+      "label": "get_usage_analytics：范围与用量开关",
+      "role": "process",
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "derive",
+      "label": "Rust analytics：范围桶、模型与费用",
+      "role": "process",
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "snapshot",
+      "label": "分析快照：KPI、模型、趋势和 Agent",
+      "role": "process",
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "view",
+      "label": "设置页渲染 / 范围 CSV 导出",
+      "role": "sink",
+      "evidence_refs": [
+        "src",
+        "calc",
+        "frontend"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "cache",
+      "to": "query",
+      "kind": "derives",
+      "label": "缓存 artifact",
+      "properties": {
+        "data": "缓存 artifact"
+      },
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "r2",
+      "from": "query",
+      "to": "derive",
+      "kind": "derives",
+      "label": "可用工件与所选范围",
+      "properties": {
+        "data": "可用工件与所选范围"
+      },
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "r3",
+      "from": "derive",
+      "to": "snapshot",
+      "kind": "derives",
+      "label": "汇总与可用明细",
+      "properties": {
+        "data": "汇总与可用明细"
+      },
+      "evidence_refs": [
+        "src",
+        "calc"
+      ]
+    },
+    {
+      "id": "r4",
+      "from": "snapshot",
+      "to": "view",
+      "kind": "derives",
+      "label": "分析快照 / 规范模型行",
+      "properties": {
+        "data": "分析快照 / 规范模型行"
+      },
+      "evidence_refs": [
+        "src",
+        "calc",
+        "frontend"
+      ]
+    }
+  ],
+  "evidence": {
+    "src": {
+      "path": "apps/win/src-tauri/src/lib.rs",
+      "locator": "get_usage_analytics / export_workbench_csv",
+      "kind": "static_implementation",
+      "supports": "get_usage_analytics 读取设置和缓存 artifact，并调用 runtime_core::usage_analytics；CSV 使用所得模型快照。"
+    },
+    "calc": {
+      "path": "apps/win/viewmodel/src/analytics.rs",
+      "locator": "make / AnalyticsRange",
+      "kind": "static_implementation",
+      "supports": "按范围解码 artifact 并生成 KPI、模型、趋势和 Agent 分析快照。"
+    },
+    "frontend": {
+      "path": "apps/win/src/settings-workbench.js",
+      "locator": "renderAgentUsageWorkbench / workbenchToolbar",
+      "kind": "static_implementation",
+      "supports": "设置页请求所选范围的分析快照，绘制卡片并发起范围 CSV 导出。"
+    }
+  }
+}

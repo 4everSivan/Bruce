@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.0",
+  "id": "d_ef3a4739-f224-4a72-b833-2253075f4e26",
+  "title": "macOS 额度预警评估与气泡",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "工件发布成功",
+      "role": "entry",
+      "evidence_refs": [
+        "schedule"
+      ]
+    },
+    {
+      "id": "evaluate",
+      "label": "过滤陈旧服务和非 5 小时窗口，计算阶梯",
+      "role": "action",
+      "evidence_refs": [
+        "evaluator"
+      ]
+    },
+    {
+      "id": "dedup",
+      "label": "比较已见最高档并同步记录",
+      "role": "action",
+      "evidence_refs": [
+        "schedule"
+      ]
+    },
+    {
+      "id": "crossing",
+      "label": "非手动且有更高档位？",
+      "role": "decision",
+      "evidence_refs": [
+        "schedule"
+      ]
+    },
+    {
+      "id": "can-show",
+      "label": "预警开启且状态项可用？",
+      "role": "decision",
+      "evidence_refs": [
+        "controller"
+      ]
+    },
+    {
+      "id": "bubble",
+      "label": "显示非激活气泡",
+      "role": "action",
+      "evidence_refs": [
+        "bubble"
+      ]
+    },
+    {
+      "id": "end",
+      "label": "本轮结束",
+      "role": "exit",
+      "evidence_refs": [
+        "schedule",
+        "controller"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "to-eval",
+      "from": "start",
+      "to": "evaluate",
+      "kind": "flow",
+      "evidence_refs": [
+        "schedule"
+      ]
+    },
+    {
+      "id": "to-dedup",
+      "from": "evaluate",
+      "to": "dedup",
+      "kind": "flow",
+      "evidence_refs": [
+        "evaluator",
+        "schedule"
+      ]
+    },
+    {
+      "id": "to-crossing",
+      "from": "dedup",
+      "to": "crossing",
+      "kind": "flow",
+      "evidence_refs": [
+        "schedule"
+      ]
+    },
+    {
+      "id": "cross-no",
+      "from": "crossing",
+      "to": "end",
+      "kind": "flow",
+      "condition": "否：手动轮次或没有更高档位",
+      "evidence_refs": [
+        "schedule"
+      ]
+    },
+    {
+      "id": "cross-yes",
+      "from": "crossing",
+      "to": "can-show",
+      "kind": "flow",
+      "condition": "是：有新的更高档位",
+      "evidence_refs": [
+        "schedule",
+        "bootstrap"
+      ]
+    },
+    {
+      "id": "show-no",
+      "from": "can-show",
+      "to": "end",
+      "kind": "flow",
+      "condition": "否：开关关闭或状态项不可用",
+      "evidence_refs": [
+        "controller"
+      ]
+    },
+    {
+      "id": "show-yes",
+      "from": "can-show",
+      "to": "bubble",
+      "kind": "flow",
+      "condition": "是：开关开启且状态项可用",
+      "evidence_refs": [
+        "controller"
+      ]
+    },
+    {
+      "id": "finish",
+      "from": "bubble",
+      "to": "end",
+      "kind": "flow",
+      "evidence_refs": [
+        "bubble"
+      ]
+    }
+  ],
+  "evidence": {
+    "schedule": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "applyCompleted",
+      "kind": "static_implementation",
+      "supports": "发布成功后评估条目，手动不投递；非手动仅高于已记录最高档才回调；同步最高档并删除本轮缺席的键。"
+    },
+    "evaluator": {
+      "path": "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+      "locator": "overThresholdEntries; alertTier; isFiveHourWindow",
+      "kind": "static_implementation",
+      "supports": "跳过 stale 服务，仅处理 5 小时窗口，按 >50、>80、>=95 计算档位。"
+    },
+    "bootstrap": {
+      "path": "apps/macos/Sources/BruceApp/BruceApp.swift",
+      "locator": "bootstrap.onQuotaAlerts",
+      "kind": "static_implementation",
+      "supports": "预警回调连接到状态项控制器。"
+    },
+    "controller": {
+      "path": "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+      "locator": "showQuotaAlertBubble",
+      "kind": "static_implementation",
+      "supports": "非 force 调用受应用开关控制，状态项按钮缺失时返回；否则交给气泡控制器。"
+    },
+    "bubble": {
+      "path": "apps/macos/Sources/BruceApp/QuotaAlertBubblePanel.swift",
+      "locator": "QuotaAlertBubbleController.show",
+      "kind": "static_implementation",
+      "supports": "非空预警使用非激活面板，锚定状态项附近，显示后启动关闭计时。"
+    }
+  }
+}

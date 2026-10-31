@@ -1,0 +1,129 @@
+{
+  "scope": "Windows、刷新与双端 Agent 用量工作台；候选，不是完整交付",
+  "candidates": [
+    "Agent用量分析设计.md",
+    "Windows用量工作台设计.md",
+    "Windows应用设计.md",
+    "Windows快照与刷新状态.md"
+  ],
+  "source_evidence": {
+    "analytics": [
+      "apps/macos/Sources/BruceAppCore/WorkbenchAnalytics.swift",
+      "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "apps/macos/Sources/BruceAppCore/AppModel.swift",
+      "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+      "apps/win/viewmodel/src/analytics.rs",
+      "apps/win/src/settings-workbench.js",
+      "apps/win/src-tauri/src/lib.rs",
+      "apps/win/src-tauri/src/runtime_core.rs"
+    ],
+    "refresh": [
+      "apps/win/src-tauri/src/scheduler.rs",
+      "apps/win/src-tauri/src/quota_policy.rs",
+      "core/collector/crates/collector-policy/src/quota.rs",
+      "apps/win/src-tauri/src/reachability.rs",
+      "docs/devel/design/05-Windows平台适配.md"
+    ],
+    "window_alert": [
+      "apps/win/src-tauri/src/alerts.rs",
+      "apps/win/src-tauri/src/lib.rs",
+      "apps/win/src-tauri/tauri.conf.json",
+      "apps/win/src/settings-state.js"
+    ],
+    "brand": [
+      "apps/macos/Sources/BruceAppCore/AgentBrandPalette.swift",
+      "apps/macos/Sources/BruceApp/Views/AgentBrandBadge.swift",
+      "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+      "apps/win/src/agent-brand.js",
+      "apps/win/src/settings-workbench.js",
+      "apps/win/src/app.js",
+      "apps/win/src/index.html",
+      "apps/win/src/settings.html",
+      "scripts/gen-provider-glyphs.mjs"
+    ]
+  },
+  "candidate_figures": [
+    {
+      "id": "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+      "svg": "analytics-model-flow.svg",
+      "type": "data_flow"
+    },
+    {
+      "id": "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+      "svg": "analytics-timeline-flow.svg",
+      "type": "data_flow"
+    },
+    {
+      "id": "d_60d22960-cfaa-43ce-9088-123463dc90ff",
+      "svg": "windows-workbench-lineage.svg",
+      "type": "data_flow"
+    }
+  ],
+  "checks": {
+    "json_xml_mapping": "3 个语义 JSON 可解析、SVG 通过 xmllint，逐一检查节点/关系 data-* 存在；非完整结构或语义校验。",
+    "standalone": "rsvg-convert 960px 后观察三图，中文可辨、图元无明显裁切；最终 Windows 图案变更后重新输出并观察。",
+    "markdown": "not_run：未在实际 Markdown 预览环境查看嵌入；候选文章位于 staging，须按正式路径预览。",
+    "tests": "not_run：未运行软件测试与设备验收。",
+    "article_links": "四篇候选扫描 Markdown 显式链接，只剩页内目录和 SVG 图像；已把旧依据行保存在本 notes.preexisting_article_source_references。此扫描不代替自包含语义审阅。",
+    "brand": "已读双端未提交品牌代码：mac 位图失败回落图形或字标；Windows 代码将 img 与可用 glyph 并置，但未找到 img 的 onerror 处理，勿凭注释宣称缺图必回退。当前工作树变动中，交付前须重读。"
+  },
+  "pending": [
+    "Windows应用设计.md 与 Windows快照与刷新状态.md 仅针对已定位严重过期内容局部修订，尚未对其全部设置、凭据、预览、动效、更新及 shared policy 语义全面复核。",
+    "原 analytics-entities.svg 需判断实体关系仍适用与是否重新嵌入；原 windows-workbench-refresh-sequence.svg、windows-ipc-flow.svg、windows-build-dependencies.svg、windows-snapshot-state.svg 需逐项检查是否受新流程影响。",
+    "三张候选 SVG 已做基础可视检查，但尚未在 Markdown 嵌入预览中复核，需对每条语义来源、真实关系、组图一致性和界面宽度完成独立审查。",
+    "确认其他功能与跨模块文档、图和卡片的实际影响；本次不是完整功能点和图视图覆盖审核。",
+    "品牌徽章相关工作树在本轮审阅期间新增/变化，交付前重新核对当前内容和哈希；Windows img 资源缺失时未确认自动降级，不能只凭注释断言。"
+  ],
+  "preexisting_article_source_references": {
+    "Windows应用设计.md": [
+      "依据：[`main.rs`](../../apps/win/src-tauri/src/main.rs) 的 `main`；[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `desktop::run` 与 IPC 命令；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `SchedulerControl`、`cached_panel`；[`viewmodel/src/lib.rs`](../../apps/win/viewmodel/src/lib.rs)。",
+      "依据：[`paths.rs`](../../apps/win/src-tauri/src/paths.rs) 的 `data_root`、`collector_cache_root`；[`credentials.rs`](../../apps/win/src-tauri/src/credentials.rs) 的 `app_data_root_with`、`validate_credential_payload`；[`settings.rs`](../../apps/win/src-tauri/src/settings.rs) 的 `AppSettings`、`load_settings`、`validate_settings`；[`collector.rs`](../../apps/win/src-tauri/src/collector.rs) 的 `build_local_request`、`build_configured_request`；[`settings.js`](../../apps/win/src/settings.js) 的 `loadSettings`、`applyConsent`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `is_provider_temporarily_disabled`。",
+      "依据：[`Windows Cargo.toml`](../../apps/win/src-tauri/Cargo.toml)、[`viewmodel Cargo.toml`](../../apps/win/viewmodel/Cargo.toml)、[`Bridge Cargo.toml`](../../core/collector/crates/collector-bridge/Cargo.toml) 的 dependencies。",
+      "依据：[`credentials.rs`](../../apps/win/src-tauri/src/credentials.rs) 的 `credential_accounts`、`load_credentials`、`save_credentials_patch`、`write_path_with_permissions`、`import_codex_auth`；[`windows_security.rs`](../../apps/win/src-tauri/src/credentials/windows_security.rs) 的 `current_sid`、`restrict`、`replace`；[`lifecycle.rs`](../../apps/win/src-tauri/src/credentials/lifecycle.rs) 的 `collect_with_recovery_using`、`apply_updates`、`compare_and_replace`；[`collector.rs`](../../apps/win/src-tauri/src/collector.rs) 的 `build_configured_request`、`run_codex_retry`；[`settings.js`](../../apps/win/src/settings.js) 的 `buildSubscription`。",
+      "依据：[`models.rs`](../../apps/win/viewmodel/src/models.rs) 的 `PanelViewModel`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `PanelViewModelMapper::make`、`make_usage`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `make_subscription`、`last_success_text`；[`app.js`](../../apps/win/src/app.js) 的 `subscriptionCard`、`isMultiAccount`、`isBalanceBased`；[`alerts.rs`](../../apps/win/src-tauri/src/alerts.rs) 的 `over_threshold_entries`、`AlertDeliveryState`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `billing_csv`、`diagnostics_report`；[`settings.js`](../../apps/win/src/settings.js) 的 `runExport`、`showDiagnosticsPreview`；[C020](../archive/0.12.0/change/C020.json) 的 DeepSeek 月度统计移除声明。",
+      "依据：[`app.js`](../../apps/win/src/app.js) 的 `applySettings`、`usageCard`、`subscriptionCard`、`nothingProjectConsole`；[`styles.css`](../../apps/win/src/styles.css) 的 @font-face 与 theme-nothing；[`tauri.conf.json`](../../apps/win/src-tauri/tauri.conf.json)；[C066](../archive/0.12.2/change/C066.json) 的目标与变更记录。",
+      "依据：`apps/win/src/settings-workbench.js` 的 `renderAgentUsageWorkbench`；`apps/win/viewmodel/src/analytics.rs`；`apps/win/src-tauri/src/lib.rs` 的分析与导出命令。",
+      "依据：[`tauri.conf.json`](../../apps/win/src-tauri/tauri.conf.json) 的 `app.windows`；[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `toggle_dashboard`、`open_settings`、`on_window_event`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `window_action`、`compute_dashboard_geometry`；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `spawn`；[`app.js`](../../apps/win/src/app.js) 的 `init`、`renderWhenVisible` 与事件处理。",
+      "依据：[Windows 平台适配设计](../devel/design/05-Windows平台适配.md) 的目标、非目标、真机清单与对拍规则；[C009](../archive/0.10.0/change/C009.json) 的 `status`、`verification`；[C012](../archive/0.11.0/change/C012.json) 的历史色板验证；[`fixture_parity.rs`](../../apps/win/viewmodel/tests/fixture_parity.rs) 的 `mac_parity_golden_matches`；[`runtime_coverage.rs`](../../apps/win/src-tauri/tests/runtime_coverage.rs)；[`collector_configuration.rs`](../../apps/win/src-tauri/tests/collector_configuration.rs)；[`frontend.test.mjs`](../../apps/win/tests/frontend.test.mjs)。"
+    ],
+    "Windows快照与刷新状态.md": [
+      "依据：[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `desktop::run`、`refresh_now`、凭证与设置命令；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `SchedulerControl`、`spawn`、`run_refresh_with_kind`、`cached_panel`；[`app.js`](../../apps/win/src/app.js) 的刷新按钮与 `init`。",
+      "依据：[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `compute_backoff`、`classify_rate_limited`、`spawn`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `next_delay`、`manual_alert_reason`、`window_boundaries`、`boundary_wake`；[`scheduler_collector_coverage.rs`](../../apps/win/src-tauri/tests/scheduler_collector_coverage.rs) 的 `boundary_wake_never_crosses_future_window_reset` 规定 `600 + 20 = 620` 的预期。",
+      "依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `SnapshotState::panel_json`、`clear_snapshot`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `LIVE_LOOKBACK_SECS`、`DEFAULT_LIVE_THRESHOLD_SECS`、`make_usage`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `reset_text`；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `publish`；[`app.js`](../../apps/win/src/app.js) 的 `renderStatus`、`render`；[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `clear_snapshot_cache`。",
+      "依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `SnapshotState::default`、`load`、`begin_refresh`、`apply_response`、`fail`、`save`、`validate_artifact`；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `run_refresh_with_kind`。",
+      "依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `qualified`、`merge_snapshot`、`SnapshotState::prune_credentials`、`fail`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `last_success_text`、`make_subscription`；[`alerts.rs`](../../apps/win/src-tauri/src/alerts.rs) 的 `over_threshold_entries`。"
+    ]
+  },
+  "existing_figure_review": [
+    {
+      "id": "d_bf0858eb-e493-4a95-93a8-6ba35eb83c37",
+      "path": "docs/assets/km/analytics-entities.svg",
+      "result": "partial",
+      "evidence": "CanonicalModelSummary 和 ModelSourceContribution 关系仍需逐字段对照；原语义 evidence 指向 ModelNormalizer.aggregateCanonicalModels，而聚合现位于 WorkbenchAnalytics.canonicalModels，必须修正来源及判断图在新正文是否必需。"
+    },
+    {
+      "id": "d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4",
+      "path": "docs/assets/km/windows-workbench-refresh-sequence.svg",
+      "result": "partial",
+      "evidence": "重检和后台事件仍存在，但 session-rescan 回调已移至 settings-workbench.js，settings.js 负责监听；须更新语义证据并检查前端调用分析快照的时序。"
+    },
+    {
+      "id": "d_893a33bc-c2da-4cd9-bf95-868b28ceb426",
+      "path": "docs/assets/km/windows-build-dependencies.svg",
+      "result": "partial",
+      "evidence": "原图明确限定四包，已画的 Cargo 边仍存在；Windows 壳新增 collector-policy 依赖且文本需解释共享策略，是否扩展依赖图须按本文作用范围重审。"
+    },
+    {
+      "id": "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae",
+      "path": "docs/assets/km/windows-ipc-flow.svg",
+      "result": "partial",
+      "evidence": "原图的唯一后台采集循环标签未表现定向刷新另起线程并经 collection 锁串行，且预警等新输出不在图中；须重审范围并调整标签或补充视图。"
+    },
+    {
+      "id": "d_084f9330-301b-4613-bcd3-1cf561127e93",
+      "path": "docs/assets/km/windows-snapshot-state.svg",
+      "result": "partial",
+      "evidence": "仍须逐条对照当前 SnapshotState 及 policy 应用；定向刷新不改全局 phase 的行为需与图示范围明确区分。"
+    }
+  ]
+}

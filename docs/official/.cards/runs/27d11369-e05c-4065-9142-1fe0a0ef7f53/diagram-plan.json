@@ -1,0 +1,78 @@
+{
+  "figures": [],
+  "view_assessments": [
+    {
+      "type": "architecture",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "flowchart",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "sequence",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "state",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "data_flow",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "er",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "deployment",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    },
+    {
+      "type": "dependency",
+      "scope": "collection",
+      "question": "当前变更是否引入或改变此类必要视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "源码影响分析和逐篇视图语义审查尚未完成。",
+      "figure_ids": []
+    }
+  ],
+  "note": "保留既有图形，待完成来源分析后确定适用范围。"
+}

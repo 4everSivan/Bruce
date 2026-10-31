@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_1ae57d61-4db4-468c-b17b-5258dd915895" viewBox="0 0 1000 1032" role="img" aria-labelledby="d_1ae57d61-4db4-468c-b17b-5258dd915895-title d_1ae57d61-4db4-468c-b17b-5258dd915895-desc">
+  <title id="d_1ae57d61-4db4-468c-b17b-5258dd915895-title">Collector CLI 普通采集与响应关系</title>
+  <desc id="d_1ae57d61-4db4-468c-b17b-5258dd915895-desc">宿主经 stdin 发送请求。Bridge 校验后应用层并发启动本地采集与获准的额度查询。本地扫描受 localSessions 控制，额度线程受 externalQuotas 与 localUsageOnly 控制。结果汇合并经过发布检查后，Bridge 输出成功、部分成功或错误封套。协议错误直接返回错误，本地取消不发布 artifact。quotaRetryOnly 重试不在本图范围。</desc>
+  <defs>
+    <style>
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 text { fill: #243247; font-size: 20px; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 .node { fill: #ffffff; stroke: #768397; stroke-width: 1.5; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 .focus { fill: #fcf6f3; stroke: #a13b22; stroke-width: 1.5; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 .connector { fill: none; stroke: #516176; stroke-width: 1.5; stroke-linejoin: round; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 .minor { font-size: 17px; fill: #516176; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 .label { font-size: 17px; fill: #516176; }
+      #d_1ae57d61-4db4-468c-b17b-5258dd915895 .caption { font-size: 16px; fill: #516176; }
+    </style>
+    <marker id="d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#516176"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="1032" fill="#ffffff"/>
+  <text x="36" y="35" style="font-size:24px;font-weight:600">Collector CLI 普通采集与响应关系</text>
+  <text x="36" y="60" class="caption">CLI 静态实现 · 同一子进程内的并行分支 · 不含 quotaRetryOnly 重试</text>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-input" data-relation-id="input">
+    <path class="connector" d="M 500 128 V 164" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="518" y="131" width="146" height="25" fill="#ffffff"/><text x="524" y="150" class="label">BridgeRequest</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-accepted" data-relation-id="accepted">
+    <path class="connector" d="M 500 228 V 276" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="516" y="238" width="90" height="26" fill="#ffffff"/><text x="522" y="258" class="label">校验通过</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-invalid" data-relation-id="invalid">
+    <path class="connector" d="M 660 196 H 936 V 856 H 700" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="702" y="168" width="225" height="26" fill="#ffffff"/><text x="708" y="188" class="label">协议错误：artifact=null</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-start-local" data-relation-id="start-local">
+    <path class="connector" d="M 408 340 V 376 H 290 V 420" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="160" y="349" width="202" height="26" fill="#ffffff"/><text x="166" y="369" class="label">始终创建本地线程</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-start-quota" data-relation-id="start-quota">
+    <path class="connector" d="M 592 340 V 376 H 710 V 420" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="644" y="348" width="268" height="27" fill="#ffffff"/><text x="650" y="368" class="caption">externalQuotas 允许且非本地专用</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-local-result" data-relation-id="local-result">
+    <path class="connector" d="M 290 536 V 600 H 400 V 648" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="147" y="554" width="296" height="30" fill="#ffffff"/><text x="155" y="576" class="label">允许：贡献；未授权：占位</text>
+    <text x="155" y="598" class="caption">取消或超时：错误</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-quota-result" data-relation-id="quota-result">
+    <path class="connector" d="M 710 536 V 600 H 600 V 648" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="564" y="552" width="300" height="54" fill="#ffffff"/><text x="574" y="575" class="label">services + 诊断 + 凭据输出</text>
+    <text x="574" y="598" class="caption">单服务失败仍保留其他结果</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-quota-denied" data-relation-id="quota-denied">
+    <path class="connector" d="M 340 308 H 72 V 692 H 300" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="85" y="610" width="216" height="54" fill="#ffffff"/><text x="92" y="632" class="caption">localUsageOnly：空服务</text>
+    <text x="92" y="655" class="caption">未授权：空服务</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-assembled" data-relation-id="assembled">
+    <path class="connector" d="M 500 736 V 812" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="298" y="752" width="406" height="49" fill="#ffffff"/><text x="500" y="772" text-anchor="middle" class="label">正常：artifact + 诊断 + 凭据输出</text>
+    <text x="500" y="795" text-anchor="middle" class="caption">本地失败或取消：无 artifact</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-output" data-relation-id="output">
+    <path class="connector" d="M 500 900 V 948" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
+    <rect x="518" y="910" width="251" height="26" fill="#ffffff"/><text x="524" y="930" class="label">success / partial / error</text>
+  </g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-stdin" data-node-id="stdin"><rect x="340" y="84" width="320" height="44" rx="22" class="node"/><text x="500" y="113" text-anchor="middle">宿主 stdin</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-validate" data-node-id="validate"><rect x="340" y="164" width="320" height="64" rx="6" class="node"/><text x="500" y="191" text-anchor="middle">Bridge 请求校验</text><text x="500" y="214" text-anchor="middle" class="minor">版本、模块、UUID、白名单</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-dispatch" data-node-id="dispatch"><rect x="340" y="276" width="320" height="64" rx="6" class="node"/><text x="500" y="303" text-anchor="middle">应用层并发编排</text><text x="500" y="326" text-anchor="middle" class="minor">同一作用域启动并等待线程</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-local" data-node-id="local"><rect x="140" y="420" width="300" height="116" rx="6" class="focus"/><text x="290" y="451" text-anchor="middle">本地采集线程</text><text x="290" y="478" text-anchor="middle" class="minor">localSessions 允许才扫描</text><text x="290" y="503" text-anchor="middle" class="minor">多源并行扫描并按序收集</text><text x="290" y="524" text-anchor="middle" class="caption">未授权：生成不可用占位</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-quota" data-node-id="quota"><rect x="560" y="420" width="300" height="116" rx="6" class="focus"/><text x="710" y="451" text-anchor="middle">额度查询线程</text><text x="710" y="478" text-anchor="middle" class="minor">账号计划与并发出站查询</text><text x="710" y="503" text-anchor="middle" class="minor">服务商响应归一化</text><text x="710" y="524" text-anchor="middle" class="caption">最多 4 个账号工作线程</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-assemble" data-node-id="assemble"><rect x="300" y="648" width="400" height="88" rx="6" class="node"/><text x="500" y="679" text-anchor="middle">结果装配与发布前检查</text><text x="500" y="705" text-anchor="middle" class="minor">本地定价 + services → AgentUsageArtifact</text><text x="500" y="726" text-anchor="middle" class="caption">取消后拒绝发布新的部分本地工件</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-response" data-node-id="response"><rect x="300" y="812" width="400" height="88" rx="6" class="node"/><text x="500" y="843" text-anchor="middle">Bridge 响应封套</text><text x="500" y="869" text-anchor="middle" class="minor">凭据输出校验与响应状态选择</text><text x="500" y="890" text-anchor="middle" class="caption">无 artifact 为 error；有故障诊断为 partial</text></g>
+  <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-n-stdout" data-node-id="stdout"><rect x="340" y="948" width="320" height="44" rx="22" class="node"/><text x="500" y="977" text-anchor="middle">宿主 stdout</text></g>
+  <text x="36" y="1019" class="caption">普通路径关系；I/O 读取或写入失败仍可能使进程直接返回错误。</text>
+</svg>

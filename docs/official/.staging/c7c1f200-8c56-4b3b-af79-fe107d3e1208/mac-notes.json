@@ -1,0 +1,577 @@
+{
+  "status": "partial",
+  "candidate_dir": "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208",
+  "source_associations_retained_from_previous_prose": [
+    {
+      "article": "macOS原生应用设计.md",
+      "section": "### 2.1 对外契约与内部职责",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+        "apps/macos/Sources/BruceAppCore/UsageMapping.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "macOS原生应用设计.md",
+      "section": "### 3.1 呈现与设置的协作边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "macOS原生应用设计.md",
+      "section": "### 5.1 应用入口与对象装配",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceAppCore/AppRuntime.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "macOS原生应用设计.md",
+      "section": "### 6.1 退出与恢复",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 2.1 启动与触发",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 2.2 Bridge 子进程边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift"
+      ],
+      "source_availability": [
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 3.1 离线暂停与额度查询门禁",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 3.2 一次执行的交接顺序",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "source_availability": [
+        true,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 3.3 锁屏暂停与解锁补偿",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 4.1 调度状态与意图合并",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 4.2 快照与界面更新",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "section": "### 5.1 预警、后台与退出",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "section": "### 2.1 指标、额度环规与刷新呈现",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "section": "### 2.2 主题与原生材质",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "section": "### 2.3 原生卡片折叠",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "section": "### 3.1 面板开关与可见性",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift"
+      ],
+      "source_availability": [
+        true,
+        true
+      ]
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "section": "### 4.1 状态项与输入契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift"
+      ],
+      "source_availability": [
+        true,
+        true
+      ]
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "section": "### 5.1 隐藏、释放与异常边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 1.1 窗口入口与职责",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 2.1 刷新与展示配置的边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 3.1 分类、指标编辑与预览",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift"
+      ],
+      "source_availability": [
+        true,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 3.2 模型价格表与校准交互",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift"
+      ],
+      "source_availability": [
+        true,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 3.3 锁屏暂停订阅刷新配置",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 4.1 模型价格覆盖与生效路径",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/design/04-设置中心与价格校准交互.md"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "section": "### 5.1 Windows 设置接入",
+      "source_paths": [
+        "apps/win/src/settings.js",
+        "apps/win/src-tauri/src/settings.rs",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 2.1 配置、凭据与账号的边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 3.1 文件存储与兼容读取",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift"
+      ],
+      "source_availability": [
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 4.1 Claude 与 Grok 的外部读取",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 4.2 Codex 账号发现、登录与 token 决议",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 4.3 本地专用输入的凭据边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift"
+      ],
+      "source_availability": [
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 4.4 轮换合并与账号写回",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+        "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 5.1 统一同意与调度门控",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "section": "### 6.1 失败与安全边界",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift"
+      ],
+      "source_availability": [
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  ],
+  "new_claims": [
+    {
+      "articles": [
+        "macOS原生应用设计.md",
+        "刷新生命周期设计.md"
+      ],
+      "claims": "共享策略 FFI 和失败回退；门禁失败保留旧工件；窗口唤醒与退避降级",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaPolicyClient.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/SharedRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionBoundaryWakePolicy.swift",
+        "core/collector/crates/collector-policy/src/quota.rs"
+      ]
+    },
+    {
+      "articles": [
+        "刷新生命周期设计.md",
+        "菜单栏与看板设计.md"
+      ],
+      "claims": "预警阶梯、去重、气泡生命周期与门控",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertBubblePanel.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift"
+      ]
+    },
+    {
+      "articles": [
+        "设置中心与价格校准设计.md"
+      ],
+      "claims": "刷新周期预设、合法范围、持久化与动效/凭据面板；价卡共享生成",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "scripts/gen-pricing-catalog.mjs"
+      ]
+    },
+    {
+      "articles": [
+        "订阅配置与凭据管理设计.md"
+      ],
+      "claims": "账号显示名的前缀、默认编号和校验",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/ProviderAccountNaming.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenResolver.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderAccountStore.swift"
+      ]
+    },
+    {
+      "articles": [
+        "刷新生命周期设计.md"
+      ],
+      "claims": "快照发布验证、previous 与旧备份",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift"
+      ]
+    },
+    {
+      "articles": [
+        "macOS原生应用设计.md"
+      ],
+      "claims": "工作台复用工件和范围数据口径、缺失明细不估算",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/WorkbenchAnalytics.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift"
+      ]
+    },
+    {
+      "articles": [
+        "菜单栏与看板设计.md"
+      ],
+      "claims": "卡片自然高度、裁切、透明度及动效关闭行为",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceApp/Views/PanelCardContainer.swift"
+      ]
+    },
+    {
+      "articles": [
+        "订阅配置与凭据管理设计.md"
+      ],
+      "claims": "Grok 外部文件路径及访问许可",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift"
+      ]
+    }
+  ],
+  "pending": [
+    "五篇候选仅同步已定位重点变化；尚未对全部变更源和每个现存断言完成逐点核验，尤其软件更新、各平台设置/凭据变更、UI 展示与动画。",
+    "删去读者页面源码链接和文末关联之前的原有路径已留存在本记录；旧来源存在性与逐项适用性仍需复查并转移至 manifest/cards。",
+    "旧 SVG 与语义列表未结合新共享策略及各页面逐图核对；刷新序列已增加策略调用与预警两张候选图；边界唤醒、旧图及其它机制的必要视图仍待逐项核对。",
+    "未做 Markdown/SVG 视觉预览、完整章节深度/读者问题/自包含检查，未运行应用或设备测试。",
+    "锁屏图 d_93c87502-3b6a-4a18-9342-15e5ea7679e6 的 policy 证据 QuotaRefreshPolicy.swift 已删除；需用共享 Rust quota::plan 与流水线现行证据重审语义并更新语义清单。"
+  ]
+}

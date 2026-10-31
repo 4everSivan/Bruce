@@ -1,0 +1,242 @@
+{
+  "scope": "采集、计费、额度查询候选；仅对明确变化点进行了源码核对，未对全部源逐行审计",
+  "candidate_articles": [
+    {
+      "path": "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/本地会话解析与计费.md",
+      "sha256": "3569396726784d1d92d4fb6c44f531b54499f2cad80b17cf65886ec449257270"
+    },
+    {
+      "path": "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/采集引擎与本地用量设计.md",
+      "sha256": "d6c3bacf02fea947fc3b7dd87a4928945d811ec94a692f9ba88b855ec4291564"
+    },
+    {
+      "path": "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/订阅额度查询设计.md",
+      "sha256": "f1ef6f88d17acb38ba4b3ccda5e5351cd71ce5e9649cac91f78ded3030504397"
+    }
+  ],
+  "figure_candidates": [
+    {
+      "id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+      "type": "architecture",
+      "owner_article": "采集引擎与本地用量设计.md",
+      "article_uses": [
+        "采集引擎与本地用量设计.md"
+      ],
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
+      "semantic_sha256": "a0c13ef86fee641e755d3da44753a55f55fda96b8ff75313312ba6992eda3cf9",
+      "svg_path": "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/collector-flow.svg",
+      "svg_sha256": "627af0445cb8bba223d6ca2e8c8c073fddc7cf41d3ce63a7c3c4ff0916060cb4"
+    },
+    {
+      "id": "d_382e629e-29bd-42b3-acc8-7c33c123b340",
+      "type": "data_flow",
+      "owner_article": "订阅额度查询设计.md",
+      "article_uses": [
+        "订阅额度查询设计.md"
+      ],
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_382e629e-29bd-42b3-acc8-7c33c123b340.json",
+      "semantic_sha256": "70abdca6f66a25f238cd665f3faf2225ac6a8a3b393d88897e21cb63429caa46",
+      "svg_path": "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/quota-account-flow.svg",
+      "svg_sha256": "1f0a4ca940588283590c4bee643dab23fc9faca8649fd65351a3f68c9bef9f66"
+    },
+    {
+      "id": "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+      "type": "flowchart",
+      "owner_article": "本地会话解析与计费.md",
+      "article_uses": [
+        "本地会话解析与计费.md"
+      ],
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_2873df93-a3b4-4c39-afb2-e65f8aeee860.json",
+      "semantic_sha256": "6431e9828836d3e6a2bbeb36816a5fd7c81990e3388ab8fc7370c57eeec87012",
+      "svg_path": "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/source-contribution-flow.svg",
+      "svg_sha256": "65f399d1de105a1c760bfe7e7f2191226e7350700a32914cf74ad03c97bd9424"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "core/collector/crates/collector-bridge/src/lib.rs",
+      "symbols": [
+        "ALLOWED_CONTEXT_FIELDS",
+        "ALLOWED_CAPABILITIES"
+      ],
+      "findings": "能力仅 localSessions / externalQuotas；淘汰旧字段不在白名单"
+    },
+    {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "symbols": [
+        "collect_agent_usage_with_dependencies_inner",
+        "collect_local_usage",
+        "local_source_jobs",
+        "run_local_sources",
+        "collect_quota_retry_only"
+      ],
+      "findings": "并行来源池、九个 Agent、未授权与本地专用均空 services、通用额度重试"
+    },
+    {
+      "path": "core/collector/crates/collector-application/src/execution.rs",
+      "symbols": [
+        "execute_quota_accounts",
+        "execute_one"
+      ],
+      "findings": "并发账号计划按索引回收，未使用 single-flight"
+    },
+    {
+      "path": "core/collector/crates/collector-local/src/jsonl_cache.rs",
+      "symbols": [
+        "cache_identity_matches",
+        "append_is_safe"
+      ],
+      "findings": "JSONL 身份包含时区而非今日与窗口长度，复用观察值并重新聚合"
+    },
+    {
+      "path": "core/collector/crates/collector-local/src/sources/codex.rs",
+      "symbols": [
+        "scan_codex_cached_with_cancellation",
+        "CodexFileEntry"
+      ],
+      "findings": "按文件身份复用观察值；整数纳秒 mtime；冲突副本选择"
+    },
+    {
+      "path": "core/collector/crates/collector-local/src/sqlite_cache.rs",
+      "symbols": [
+        "cache_identity_matches",
+        "scan_sqlite_cached"
+      ],
+      "findings": "聚合版本及窗口日期参与身份，失配全量重建"
+    },
+    {
+      "path": "core/collector/crates/collector-domain/src/pricing.rs",
+      "symbols": [
+        "catalog",
+        "PricingTable::resolve",
+        "calculate_cost",
+        "rate_class_for"
+      ],
+      "findings": "内置目录、TTL 倍率、峰值与长上下文分档及覆盖优先级"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/QuotaPolicyClient.swift",
+      "symbols": [
+        "InProcessQuotaPolicyTransport",
+        "CollectorQuotaPolicy"
+      ],
+      "findings": "macOS 额度策略使用 Rust C ABI"
+    },
+    {
+      "path": "core/collector/crates/collector-policy/src/quota.rs",
+      "symbols": [
+        "quota policy"
+      ],
+      "findings": "共享额度门禁与回填规则"
+    }
+  ],
+  "checks": [
+    {
+      "name": "figure_structure",
+      "result": "passed",
+      "method": "xmllint 和节点/关系/端点/证据引用集合检查",
+      "scope": "three candidates only"
+    },
+    {
+      "name": "standalone_svg_visual",
+      "result": "passed",
+      "method": "rsvg-convert 1000px PNG，逐张观察中文与布局；完成后重画的本地图二次检查",
+      "scope": "three candidates only; renderer rsvg-convert, preview 1000px"
+    },
+    {
+      "name": "markdown_embedding_visual",
+      "result": "not_run",
+      "method": "未在实际 Markdown 预览中加载候选图；待宿主统一验收"
+    },
+    {
+      "name": "current_source_semantic_review",
+      "result": "not_run",
+      "method": "仅对列举变更点核对；旧文章其余段落、所有引用及所有视图仍待整体复审"
+    },
+    {
+      "name": "article_self_containment",
+      "result": "not_run",
+      "method": "现有文档仍含跨文档引用和本地资料参考文献，须按现行规则逐篇核查"
+    },
+    {
+      "name": "bibliography_usage",
+      "result": "passed",
+      "method": "三篇候选均未使用在线资料，已移除仅列本地资料的参考文献章及目录项"
+    },
+    {
+      "name": "forbidden_referral_scan",
+      "result": "passed",
+      "method": "扫描候选三篇 Markdown 内的普通外部链接、依据段和参考文献，保留页内导航与图片；不代表独立内容完整"
+    }
+  ],
+  "pending": [
+    "确认图中各路径和图语义列表已纳入全局文档/图计划并重新审阅对应的文章其他需求。",
+    "三个候选 Markdown 仍有未逐条核实的原文历史论述，必须逐篇进行完整来源复核、自洽和现行写作规则审查。",
+    "检查其他受本域变更影响的总设计、术语卡、图，及额外必要视图。",
+    "完成 Markdown 实际预览及源输入和受管输出交付前复核。",
+    "原参考文献和依据已移至候选注记，原证据指针尚需逐条按当前源码核实并纳入交付关联；不可仅据旧指针声称来源核验完成。",
+    "更新 JSONL 图的语义证据对 I/O 失败的描述，更新 Claude 续期图的语义证据源码路径；审阅计价分档是否需要独立详细视图。"
+  ],
+  "runtime_tests": "not_run",
+  "legacy_source_pointers_not_yet_reverified": [
+    {
+      "article": "本地会话解析与计费.md",
+      "source_lines": [
+        "依据：[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `CollectionWindow::from_context()`、`day_index_of_millis()`；[`collector-application/src/paths.rs`](../../core/collector/crates/collector-application/src/paths.rs) 的各 `resolve_*` 函数；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `session_root()`、`source_path()` 和 `collect_local_usage()`。",
+        "依据：`collector-application/src/lib.rs` 的 `local_source_jobs()`、`run_local_sources()` 和 `finalize_local_agent()`；`collector-domain/src/lib.rs` 的 `UsageContributionBuilder`；`collector-aggregate/src/lib.rs` 的 `finalize_with_pricing()`。",
+        "依据：[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `TokenBucket`；[`collector-local/src/lib.rs`](../../core/collector/crates/collector-local/src/lib.rs) 的 `scan_reader_with_cancellation()`；[`collector-local/src/sources.rs`](../../core/collector/crates/collector-local/src/sources.rs) 的 `KimiWorkJsonlAdapter`、`claude_observation()`、`aggregate_claude_payloads()`、`scan_selected_codex()`、`resolve_codex_files()`、`aggregate_codebuddy_payloads()`、`grok_observation()`、`pi_observation()`、`OpenCodeSqliteAdapter`、`ZCodeSqliteAdapter`。",
+        "依据：[`collector-domain/src/pricing.rs`](../../core/collector/crates/collector-domain/src/pricing.rs) 的 `PricingTable::resolve()`、`normalize_model_name()`、`model_matches()`、`calculate_cost()`；[`collector-aggregate/src/lib.rs`](../../core/collector/crates/collector-aggregate/src/lib.rs) 的 `finalize_with_pricing()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `total_cost`；[原采集引擎设计](../devel/design/01-数据采集与多模型计费引擎.md) 的费用规则。",
+        "依据：[`collector-local/src/lib.rs`](../../core/collector/crates/collector-local/src/lib.rs) 的 `default_cache_root()`、`process_cached_file()`、`append_is_safe()`、`make_cache_entry()`、`reconcile_deleted_cache()`；[`jsonl_cache.rs`](../../core/collector/crates/collector-local/src/jsonl_cache.rs) 的 `JsonlCacheEntry`、`append_is_safe()`；[`sqlite_cache.rs`](../../core/collector/crates/collector-local/src/sqlite_cache.rs) 的 `scan_sqlite_cached()`、`cache_identity_matches()`、`append_signature_is_safe()`；[`sources.rs`](../../core/collector/crates/collector-local/src/sources.rs) 的 `scan_codex_cached_with_cancellation()` 和 SQLite 适配器。",
+        "依据：[`jsonl_cache.rs`](../../core/collector/crates/collector-local/src/jsonl_cache.rs) 的 `process_file`、`append_is_safe`、`make_entry`；[`sqlite_cache.rs`](../../core/collector/crates/collector-local/src/sqlite_cache.rs) 的 `scan_sqlite_cached`；[`pricing.rs`](../../core/collector/crates/collector-domain/src/pricing.rs) 的 `resolve`、`calculate_cost`。",
+        "依据：[`collector-local/src/lib.rs`](../../core/collector/crates/collector-local/src/lib.rs) 的 `MAX_DIRECTORY_SCAN_DEPTH`、`MAX_JSONL_RECORD_BYTES`、`scan_reader_with_cancellation()`；[`collector-local/src/sources.rs`](../../core/collector/crates/collector-local/src/sources.rs) 的目录遍历与来源适配器；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_secondary_source()` 与发布前取消检查。"
+      ]
+    },
+    {
+      "article": "采集引擎与本地用量设计.md",
+      "source_lines": [
+        "依据：[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `BridgeRequest`、`BridgeTimeouts`、`BridgeResponse`、`AgentUsageArtifact`；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `read_request()`、`validate_request()`、`ALLOWED_CONTEXT_FIELDS`；[`collector-application/src/context.rs`](../../core/collector/crates/collector-application/src/context.rs) 的 `capability_allowed()`；[`request-v1.schema.json`](../../core/collector/schemas/request-v1.schema.json)。",
+        "依据：[`core/collector/bin/Bruce-collector/src/main.rs`](../../core/collector/bin/Bruce-collector/src/main.rs) 的 `main()`；[`apps/win/src-tauri/src/collector.rs`](../../apps/win/src-tauri/src/collector.rs) 的 `run_configured_collection()`；[`CollectorRunner.swift`](../../apps/macos/Sources/BruceAppCore/CollectorRunner.swift) 的 `SystemCollectorProcessLauncher.launch()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_agent_usage()`；[`collector-application/src/execution.rs`](../../core/collector/crates/collector-application/src/execution.rs) 的 `resolve_credential()`；[原采集引擎设计](../devel/design/01-数据采集与多模型计费引擎.md) 的目标与非目标。",
+        "依据：[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_local_usage()`、`placeholder_agent()`、`finalize_local_agent()`；[`collector-aggregate/src/lib.rs`](../../core/collector/crates/collector-aggregate/src/lib.rs) 的 `finalize_with_pricing()`；[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `UsageContribution`。",
+        "依据：[`collector-bridge/src/metrics.rs`](../../core/collector/crates/collector-bridge/src/metrics.rs) 的 `write_if_enabled()`、`build_metrics_payload()`、`apply_resource_usage()`；[`collector-application/src/context.rs`](../../core/collector/crates/collector-application/src/context.rs) 的 `RuntimeCounters`；[`collector-application/src/execution.rs`](../../core/collector/crates/collector-application/src/execution.rs) 的 `CountingHttpClient`。",
+        "依据：[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_agent_usage_with_dependencies_inner()`、`collect_local_usage()`、`collect_quota_retry_only()`、`local_source_jobs()`、`run_local_sources()`、`agent_specs`；[`main.rs`](../../core/collector/bin/Bruce-collector/src/main.rs)。",
+        "依据：[`collector-runtime/src/lib.rs`](../../core/collector/crates/collector-runtime/src/lib.rs) 的 `RuntimeLimits`、`CancellationToken`、`PermitPool`；[`collector-application/src/context.rs`](../../core/collector/crates/collector-application/src/context.rs) 的 `RunContext::new()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的发布前取消检查；[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `response_status()`；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `run_bytes_panic_safe()`。"
+      ]
+    },
+    {
+      "article": "订阅额度查询设计.md",
+      "source_lines": [
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `QuotaProvider`、`ProviderRequest`、`HttpClient`、`service_template()`、`finalize_service()`、`window()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_quota_usage()`。",
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `CATALOG_SPECS`、`resolve_service_catalog()`、`codex_service_id()`；[`collector-application/src/account.rs`](../../core/collector/crates/collector-application/src/account.rs) 的 `build_account_plan()`、`build_codex_account_plans()`、`credential_for_service()`；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `validate_codex_request()`。",
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `provider_for_app()`、各 Provider 的 `query()` 与 `parse_*` 函数；[原订阅设计](../devel/design/02-订阅额度与凭据安全存储.md) 的 Jev 展示范围。",
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `CLAUDE_TIERS`、`parse_claude_usage()`；[原订阅设计](../devel/design/02-订阅额度与凭据安全存储.md) 的 Claude 用量响应解析口径。",
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `ClineProvider::query()`、`cline_pass_entitled()`、`parse_cline_usage_limits()`；[原订阅设计](../devel/design/02-订阅额度与凭据安全存储.md) 的 Cline 三窗口规则。源码测试 `cline_provider_reads_server_usage_limits` 定义两次 GET、服务端百分比与时间转换的预期。",
+        "依据：[`QuotaPolicyClient.swift`](../../apps/macos/Sources/BruceAppCore/QuotaPolicyClient.swift) 与 [`collector-policy/src/quota.rs`](../../core/collector/crates/collector-policy/src/quota.rs)；[`collector-application/src/account.rs`](../../core/collector/crates/collector-application/src/account.rs) 的 `build_account_plan()`、`quota_skip_apps()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的本地专用分支。",
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `ClaudeProvider::query`、`is_claude_token_expired`、`refresh_claude_token`、`query_claude_usage`；其中 `claude_provider_proactively_refreshes_expired_token`、`claude_provider_refreshes_token_on_401_and_retries` 定义 Mock 预期。",
+        "依据：[`collector-application/src/execution.rs`](../../core/collector/crates/collector-application/src/execution.rs) 的 `execute_quota_accounts()`、`execute_one()`、`resolve_credential()`；[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `send_response()`、`bounded_http_body()` 与各 Provider 的 `query()`；[`collector-runtime/src/lib.rs`](../../core/collector/crates/collector-runtime/src/lib.rs) 的 `RuntimeLimits` 和网络许可。",
+        "依据：[`collector-provider/src/lib.rs`](../../core/collector/crates/collector-provider/src/lib.rs) 的 `StepFunProvider::query()`、`is_stepfun_token_expired()`、`refresh_stepfun_token()`；[`collector-application/src/execution.rs`](../../core/collector/crates/collector-application/src/execution.rs) 的 `credential_update` 提取、`codex_challenge()`、`finalize_codex_service()`；[`collector-credential/src/lib.rs`](../../core/collector/crates/collector-credential/src/lib.rs) 的 `validate_credential_updates()`、`validate_credential_challenges()`；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `validate_response_credentials()`。"
+      ]
+    }
+  ],
+  "other_figure_review": [
+    {
+      "id": "d_3c25534c-cebe-4094-a87e-2e0290e5ba21",
+      "file": "sqlite-cache-decision.svg",
+      "result": "static review of current source: main branches remain applicable; aggregation_version is part of identity and is explained in article. Visual not rerun."
+    },
+    {
+      "id": "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+      "file": "local-cache-decision.svg",
+      "result": "static review: reuse/append/rebuild branches remain applicable. Semantic evidence text says I/O errors propagate; current process_file counts read I/O error and returns no payload, and write I/O errors are counted. Correct semantic evidence before reuse; article caption corrected."
+    },
+    {
+      "id": "d_ae615f73-9d9d-408e-8112-f8ec47afffbc",
+      "file": "local-pricing-decision.svg",
+      "result": "static review: matching branches remain applicable. It abstracts four categories, not per-sample rate classes or TTL calculation; candidate caption and article explain those limitations. Need assess whether additional view of tier classification is required."
+    },
+    {
+      "id": "d_176bf773-8952-4814-b413-e5181bfe337b",
+      "file": "claude-oauth-refresh.svg",
+      "result": "static review: refresh/401/requery logic matches current providers.rs lines 418-505; semantic evidence locator must move from lib.rs to providers.rs. Visual not rerun."
+    }
+  ]
+}

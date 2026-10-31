@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7-title d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7-desc" viewBox="0 0 1120 400">
+<title id="d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7-title">macOS 更新下载与安装状态</title>
+<desc id="d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7-desc">从可用版本开始，下载和校验成功后就绪，安装进入重启过渡；取消、稍后、替换失败和等待器启动失败各自回到对应状态。</desc>
+<defs><marker id="d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#516176"/></marker></defs>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;fill:#243247;font-size:16px}.sub{font-size:14px;fill:#516176}.box{fill:#fff;stroke:#768397;stroke-width:1.5}.edge{fill:none;stroke:#516176;stroke-width:1.5;marker-end:url(#d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7-arrow)}</style>
+<rect width="1120" height="400" fill="#fff"/>
+<text x="32" y="32" font-size="19">macOS 更新：下载与安装子状态</text><text class="sub" x="32" y="55">范围从发现可用版本开始；成功重启由进程交接完成</text>
+<g data-relation-id="start"><path class="edge" d="M240 150 H300"/><text class="sub" x="251" y="134">下载</text><text class="sub" x="246" y="112">可自安装</text></g>
+<g data-relation-id="downloaded"><path class="edge" d="M500 150 H560"/><text class="sub" x="530" y="108" text-anchor="middle">校验成功</text></g>
+<g data-relation-id="install"><path class="edge" d="M760 150 H820"/><text class="sub" x="790" y="108" text-anchor="middle">安装重启</text></g>
+<g data-relation-id="cancel"><path class="edge" d="M400 120 V83 H140 V120"/><text class="sub" x="196" y="77">取消或下载失败：返回可用</text></g>
+<g data-relation-id="later"><path class="edge" d="M630 180 V240 H140 V180"/><text class="sub" x="270" y="232">稍后：保留已校验的暂存应用</text></g>
+<g data-relation-id="relaunch-failed"><path class="edge" d="M920 180 V235 H690 V180"/><text class="sub" x="700" y="258">等待器启动失败：提示手动重开</text></g>
+<g data-relation-id="replace-failed"><path class="edge" d="M970 180 V320 H180 V180"/><text class="sub" x="360" y="311">替换失败：报告结果；回滚失败时保留备份</text></g>
+<g data-node-id="available"><rect class="box" x="40" y="120" width="200" height="60" rx="8"/><text x="140" y="145" text-anchor="middle">可用版本</text><text class="sub" x="140" y="166" text-anchor="middle">available</text></g>
+<g data-node-id="downloading"><rect class="box" x="300" y="120" width="200" height="60" rx="8"/><text x="400" y="145" text-anchor="middle">下载中</text><text class="sub" x="400" y="166" text-anchor="middle">downloading</text></g>
+<g data-node-id="ready"><rect class="box" x="560" y="120" width="200" height="60" rx="8"/><text x="660" y="145" text-anchor="middle">已就绪</text><text class="sub" x="660" y="166" text-anchor="middle">ready</text></g>
+<g data-node-id="relaunching"><rect class="box" x="820" y="120" width="200" height="60" rx="8"/><text x="920" y="145" text-anchor="middle">安装与重启</text><text class="sub" x="920" y="166" text-anchor="middle">relaunching</text></g>
+</svg>

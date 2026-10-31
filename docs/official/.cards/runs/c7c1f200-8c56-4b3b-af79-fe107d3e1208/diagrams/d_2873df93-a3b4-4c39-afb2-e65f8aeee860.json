@@ -1,0 +1,184 @@
+{
+  "schema_version": "1.0",
+  "id": "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+  "title": "本地来源任务与结果处理",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "entry",
+      "label": "进入本地采集",
+      "role": "entry",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "allowed",
+      "label": "允许 localSessions？",
+      "role": "decision",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "home",
+      "label": "提供 home 字符串？",
+      "role": "decision",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "jobs",
+      "label": "构造九个来源任务",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "workers",
+      "label": "工作池并行扫描并按原序收集，单源异常保留诊断",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "cancelled",
+      "label": "取消或超时？",
+      "role": "decision",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "finish",
+      "label": "返回本地结果与诊断",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "skip",
+      "label": "跳过扫描并返回空集合",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "error",
+      "label": "返回本地诊断，不发布工件",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "entry",
+      "to": "allowed",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r2",
+      "from": "allowed",
+      "to": "home",
+      "kind": "flow",
+      "condition": "允许",
+      "label": "允许",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r3",
+      "from": "allowed",
+      "to": "skip",
+      "kind": "flow",
+      "condition": "不允许",
+      "label": "不允许",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r4",
+      "from": "home",
+      "to": "jobs",
+      "kind": "flow",
+      "condition": "提供",
+      "label": "提供",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r5",
+      "from": "home",
+      "to": "error",
+      "kind": "flow",
+      "condition": "缺失或非字符串",
+      "label": "缺失或非字符串",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r6",
+      "from": "jobs",
+      "to": "workers",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r7",
+      "from": "workers",
+      "to": "cancelled",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r8",
+      "from": "cancelled",
+      "to": "error",
+      "kind": "flow",
+      "condition": "是",
+      "label": "是",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "r9",
+      "from": "cancelled",
+      "to": "finish",
+      "kind": "flow",
+      "condition": "否",
+      "label": "否",
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "evidence": {
+    "source": {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "locator": "collect_local_usage; local_source_jobs; run_local_sources; collect_agent_usage_with_dependencies_inner",
+      "kind": "static_implementation",
+      "supports": "localSessions 禁止时返回空的本地集合；缺失 home 返回诊断；工作池并行扫描来源、按任务顺序收集结果；取消或超时中止本地处理并阻止发布。"
+    }
+  }
+}

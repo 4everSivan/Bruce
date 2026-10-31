@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "id": "d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7",
+  "title": "macOS 更新下载与安装状态",
+  "type": "state",
+  "view": "implementation",
+  "nodes": [
+    {"id":"available","label":"可用版本 available","role":"initial","evidence_refs":["phase"]},
+    {"id":"downloading","label":"下载中 downloading","role":"state","evidence_refs":["phase"]},
+    {"id":"ready","label":"就绪 ready","role":"state","evidence_refs":["phase"]},
+    {"id":"relaunching","label":"安装重启 relaunching","role":"state","evidence_refs":["phase"]}
+  ],
+  "relations": [
+    {"id":"start","from":"available","to":"downloading","kind":"transition","properties":{"event":"选择下载","action":"启动下载并校验"},"condition":"满足自安装条件","evidence_refs":["download"]},
+    {"id":"downloaded","from":"downloading","to":"ready","kind":"transition","properties":{"event":"下载和校验完成","action":"保存暂存应用"},"evidence_refs":["download"]},
+    {"id":"cancel","from":"downloading","to":"available","kind":"transition","properties":{"event":"取消或下载失败","action":"取消任务或清理产物"},"evidence_refs":["download"]},
+    {"id":"later","from":"ready","to":"available","kind":"transition","properties":{"event":"稍后","action":"保留暂存应用"},"evidence_refs":["install"]},
+    {"id":"install","from":"ready","to":"relaunching","kind":"transition","properties":{"event":"安装并重启","action":"替换应用并启动等待器"},"condition":"暂存版本匹配","evidence_refs":["install"]},
+    {"id":"replace-failed","from":"relaunching","to":"available","kind":"transition","properties":{"event":"替换失败","action":"报告并清理或保留备份"},"evidence_refs":["install"]},
+    {"id":"relaunch-failed","from":"relaunching","to":"ready","kind":"transition","properties":{"event":"启动等待器失败","action":"提示手动重开"},"evidence_refs":["install"]}
+  ],
+  "evidence": {
+    "phase":{"path":"apps/macos/Sources/BruceAppCore/SoftwareUpdateModels.swift","locator":"UpdatePhase","kind":"static_implementation","supports":"定义 available、downloading、ready 与 relaunching 状态。"},
+    "download":{"path":"apps/macos/Sources/BruceAppCore/SoftwareUpdateService.swift","locator":"startDownload, finishDownload, failDownload, cancelDownload","kind":"static_implementation","supports":"下载条件、开始、完成以及失败或取消时的状态和清理。"},
+    "install":{"path":"apps/macos/Sources/BruceAppCore/SoftwareUpdateService.swift","locator":"postponeInstall, installAndRelaunch","kind":"static_implementation","supports":"稍后保留暂存，替换失败返回 available，等待器启动失败返回 ready。"}
+  }
+}

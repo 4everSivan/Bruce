@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "id": "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+  "title": "分析模型与来源数据流",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "artifact",
+      "label": "AgentUsageArtifact 明细",
+      "role": "source",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "range",
+      "label": "范围选择：dailyModels / monthModels",
+      "role": "process",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "key",
+      "label": "规范键与原名、Agent 身份",
+      "role": "process",
+      "evidence_refs": [
+        "src",
+        "normalizer"
+      ]
+    },
+    {
+      "id": "aggregate",
+      "label": "按模型和来源累加 Token 与已有费用",
+      "role": "process",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "output",
+      "label": "模型份额与来源贡献列表",
+      "role": "sink",
+      "evidence_refs": [
+        "src"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "artifact",
+      "to": "range",
+      "kind": "derives",
+      "label": "所选范围与明细字段",
+      "properties": {
+        "data": "所选范围与明细字段"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "r2",
+      "from": "range",
+      "to": "key",
+      "kind": "derives",
+      "label": "原模型、Agent、Token 与可选费用",
+      "properties": {
+        "data": "原模型、Agent、Token 与可选费用"
+      },
+      "evidence_refs": [
+        "src",
+        "normalizer"
+      ]
+    },
+    {
+      "id": "r3",
+      "from": "key",
+      "to": "aggregate",
+      "kind": "derives",
+      "label": "规范键与来源身份",
+      "properties": {
+        "data": "规范键与来源身份"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "r4",
+      "from": "aggregate",
+      "to": "output",
+      "kind": "derives",
+      "label": "模型总量、来源和可选费用",
+      "properties": {
+        "data": "模型总量、来源和可选费用"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    }
+  ],
+  "evidence": {
+    "src": {
+      "path": "apps/macos/Sources/BruceAppCore/WorkbenchAnalytics.swift",
+      "locator": "make / canonicalModels",
+      "kind": "static_implementation",
+      "supports": "选取 dailyModels 或 monthModels，将明细按规范模型与原名和 Agent 汇总，并聚合已有费用。"
+    },
+    "normalizer": {
+      "path": "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "locator": "canonicalKey",
+      "kind": "static_implementation",
+      "supports": "按模型名称生成用于归并的规范键。"
+    }
+  }
+}

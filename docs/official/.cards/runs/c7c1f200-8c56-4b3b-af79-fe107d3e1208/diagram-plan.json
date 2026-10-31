@@ -1,0 +1,214 @@
+{
+  "figures": [
+    {
+      "id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+      "type": "architecture",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/collector-flow.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7",
+      "type": "state",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/software-update-macos-state.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+      "type": "flowchart",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_2873df93-a3b4-4c39-afb2-e65f8aeee860.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/source-contribution-flow.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_382e629e-29bd-42b3-acc8-7c33c123b340",
+      "type": "data_flow",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_382e629e-29bd-42b3-acc8-7c33c123b340.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/quota-account-flow.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_60d22960-cfaa-43ce-9088-123463dc90ff",
+      "type": "data_flow",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_60d22960-cfaa-43ce-9088-123463dc90ff.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/windows-workbench-lineage.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_a316352d-4834-406a-b2de-85a87dec47ce",
+      "type": "sequence",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_a316352d-4834-406a-b2de-85a87dec47ce.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macos-quota-policy-sequence.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+      "type": "data_flow",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/analytics-timeline-flow.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+      "type": "data_flow",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_cbbda8c9-188a-4f71-9dc7-152a77890a10.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/analytics-model-flow.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_d297e50d-170e-4fc9-99e1-e52f41fd8a16",
+      "type": "architecture",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_d297e50d-170e-4fc9-99e1-e52f41fd8a16.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/shared-policy-boundary.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    },
+    {
+      "id": "d_ef3a4739-f224-4a72-b833-2253075f4e26",
+      "type": "flowchart",
+      "view": "implementation",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_ef3a4739-f224-4a72-b833-2253075f4e26.json",
+      "svg_candidates": [
+        "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macos-quota-alert-flow.svg"
+      ],
+      "uses": [],
+      "pending": [
+        "图与文章的全部语义、关联及 Markdown 嵌入待复核"
+      ]
+    }
+  ],
+  "view_assessments": [
+    {
+      "type": "architecture",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "flowchart",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "sequence",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "state",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "data_flow",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "er",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "deployment",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    },
+    {
+      "type": "dependency",
+      "scope": "collection",
+      "question": "现行源码及各文章是否要求此类视图？",
+      "source_paths": [],
+      "decision": "pending",
+      "reason": "当前输入和旧图语义均未完成复核。",
+      "figure_ids": []
+    }
+  ],
+  "pending": [
+    "源码在本轮记录基线后继续变化，尤其品牌测试、Windows 前端测试及发布脚本；须重新固定输入，分析变更及新增路径，并复查受影响候选。",
+    "现有 17 篇和新增文章仍需逐项核对源码、完善整体设计与明细、功能点及总体到详细映射；README、Widget、术语与知识卡也需复核。",
+    "复核并修复现有共享图片及语义，补足必要的状态、交互、数据等视图；本轮候选不能代替全库视图覆盖检查。",
+    "完成逐页独立阅读、关联和参考文献检查及 Markdown 实际嵌入预览；按真实输入重新计算图、卡和清单关联。"
+  ]
+}

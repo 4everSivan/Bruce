@@ -1,0 +1,71 @@
+{
+  "run_id": "c7c1f200-8c56-4b3b-af79-fe107d3e1208",
+  "checked_at": "2026-10-30T09:04:48.844Z",
+  "document_baseline_conflicts": [],
+  "source_changes_since_baseline": [
+    {
+      "path": "apps/macos/Tests/Harnesses/SubscriptionBrandGlyphHarness/SubscriptionBrandGlyphHarness.swift",
+      "baseline_sha256": "71e753ec078d8bcb9cb12dab0f4ef4d41fe0d38719a1692eff7c3bb215abc152",
+      "current_sha256": "af08be506e79f749b811cfed87079d28eccacccd82e88df8616e931fa3612540"
+    },
+    {
+      "path": "apps/win/tests/frontend.test.mjs",
+      "baseline_sha256": "7ddf94b9d54aa00a99fd37d22d81be9fa3f9a51bd1cd31485f00ac419cdbe445",
+      "current_sha256": "716952e64a5a5faf17f5364ee8cfd490ead4a63b1968ae69a6850379f5aabbc5"
+    },
+    {
+      "path": "docs/devel/change/index.json",
+      "baseline_sha256": "22d6debb01f6069437250ed742b1f51ed7e5672a62c9409a114057abb7f20bf1",
+      "current_sha256": "067120feee9b73de06534221367725150962364ed84486cdc715cd90ab7a247b"
+    },
+    {
+      "path": "docs/devel/design/04-设置中心与价格校准交互.md",
+      "baseline_sha256": "9ef3427561377f7d1ecc9e58c2ca1e65ac59980ed94a1ef22464f6f61d29793f",
+      "current_sha256": "f513bb5ec04334ebc3424f9cd2f289987bf0532b252e6a5d2f2b37e5dec3de59"
+    },
+    {
+      "path": "scripts/build-release-app.sh",
+      "baseline_sha256": "df939af6c9852c7c09d1ed4f62ac5ee199ef8fe0fc8c81d21aa69df5e36e1492",
+      "current_sha256": "0be647ec9b6ef28f92c8462f830bc1026ddec9d974a9d166626fe9258b3bf89f"
+    }
+  ],
+  "source_inventory_note": "只比较本轮已记录路径；新增路径和全量语义尚未复核",
+  "candidates": {
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/Agent用量分析设计.md": "4fe8e811046dead65cb2ac9e4852da327743ade2516a7eddbcb6837a2c18e10f",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/Bruce设计文档.md": "35df84db9f4124428a09e536beb7b2239f31c9dd3399752863a5bd354707879c",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/Windows应用设计.md": "3b92e563a29accab8047a38717d1a541a1fd052b2b9936d835c996a23951083c",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/Windows快照与刷新状态.md": "41b888809427ee679ab71385398e0063a318820cfbead66ec9f5495ebda50d93",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/Windows用量工作台设计.md": "6428dd8766a5d13a96d311448022ae78f53d47d0ca8af46828d980b245471b5a",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macOS原生应用设计.md": "edc222df9d3084ff71b808647e44fc9185482522393ecc95f5617bfeba4a78a1",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/刷新生命周期设计.md": "a5b3dab294029653bc6a447c38116b36b34d8685563f7c784f9bbfc2010b5267",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/本地会话解析与计费.md": "3569396726784d1d92d4fb6c44f531b54499f2cad80b17cf65886ec449257270",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/构建验证与发布.md": "e5b656b635a03cfc8dd4cd63b58449289a6fe543ed9485c5922574d608032dcb",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/菜单栏与看板设计.md": "ec063f8dc5e637498299bbf31758c2c3d46feb419a58ba2079c9daee4e4764f3",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/订阅配置与凭据管理设计.md": "10a80bc78bcb6a9964e4187478c617bd735d5438a77e65d01c8003f27723d5fb",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/订阅额度查询设计.md": "f1ef6f88d17acb38ba4b3ccda5e5351cd71ce5e9649cac91f78ded3030504397",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/设置中心与价格校准设计.md": "2a31185e8a6596c26597779b66a75240ce939dd6312140b41e08e956860f2327",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/跨端共享策略设计.md": "48add1458969e271e6e73529cb3fea291dc39ad6d1489bda4b62ef31d3985050",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/软件更新设计.md": "0c5440dd9564aec0178f10165b2999dfeebd05865fe208f50d5b2e2da19e734d",
+    "docs/official/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/采集引擎与本地用量设计.md": "d6c3bacf02fea947fc3b7dd87a4928945d811ec94a692f9ba88b855ec4291564",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/analytics-model-flow.svg": "b2f789c94ca8b7200caf199fd02e7089d70045715bea8b690d9618dad4fee588",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/analytics-timeline-flow.svg": "bb3d9c65846792bc2c2dc890c54c316ef55f4dd7a052abd124da1e163bda36b2",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/collector-flow.svg": "627af0445cb8bba223d6ca2e8c8c073fddc7cf41d3ce63a7c3c4ff0916060cb4",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macos-quota-alert-flow.svg": "bee755a2364439ac19f0fa6576ba0dbd8ec6fdfae573aec94e7a82bcb9cc7aeb",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macos-quota-policy-sequence.svg": "a23e8f926a1f8bda7e611cfcb02d6fbdd92ecd5ac789b79f7ece626774a910cd",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/quota-account-flow.svg": "1f0a4ca940588283590c4bee643dab23fc9faca8649fd65351a3f68c9bef9f66",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/shared-policy-boundary.svg": "35db55ed8d113bda11343a11e98d88f919074a2122b1845a0cbf3ea3d3302276",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/software-update-macos-state.svg": "8d7be2e015b65fa610d182f36cceed41e59227d35ed06fedfc7ad1aea29dae86",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/source-contribution-flow.svg": "65f399d1de105a1c760bfe7e7f2191226e7350700a32914cf74ad03c97bd9424",
+    "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/windows-workbench-lineage.svg": "37e50eb2ece0ad4932077c04db9111d1ace6f6569898253603e26a5fe464fc6a",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json": "a0c13ef86fee641e755d3da44753a55f55fda96b8ff75313312ba6992eda3cf9",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7.json": "a4e86e8f3e3271e3736ccd881c8110a87ec57067928176555d0ef67d96a3fd47",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_2873df93-a3b4-4c39-afb2-e65f8aeee860.json": "6431e9828836d3e6a2bbeb36816a5fd7c81990e3388ab8fc7370c57eeec87012",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_382e629e-29bd-42b3-acc8-7c33c123b340.json": "70abdca6f66a25f238cd665f3faf2225ac6a8a3b393d88897e21cb63429caa46",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_60d22960-cfaa-43ce-9088-123463dc90ff.json": "5e016a07009de6c4ff4cc190893ade19f4401e309c4986929d74add51826dd46",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_a316352d-4834-406a-b2de-85a87dec47ce.json": "32c58a906fc64977c70d24837eb150b4a1c951def89cb309391fb24f77b0abb9",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3.json": "00ad228bce2725105780ed155b58a7bb3b71009c3ef4faaf75654365016aa9c8",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_cbbda8c9-188a-4f71-9dc7-152a77890a10.json": "6bd1465831175a57740adc41ec23245e1ac7a1f12880d8d0b227ea2fa3888054",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_d297e50d-170e-4fc9-99e1-e52f41fd8a16.json": "d77c77fa815f91defa8db788f40175ea659be29f0b2ecfc9c40a0b684b70d7b4",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_ef3a4739-f224-4a72-b833-2253075f4e26.json": "29ae6082ea2992da55b7903ee9d75c7716d672dfbc560fb0ed7ddf66c830136b"
+  }
+}

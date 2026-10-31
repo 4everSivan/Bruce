@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "id": "d_d297e50d-170e-4fc9-99e1-e52f41fd8a16",
+  "title": "双端共享策略调用边界",
+  "type": "architecture",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "mac",
+      "label": "macOS 策略调用方",
+      "role": "component",
+      "properties": {
+        "responsibility": "编码纯数据请求并处理响应"
+      },
+      "evidence_refs": [
+        "mac"
+      ]
+    },
+    {
+      "id": "ffi",
+      "label": "策略 C ABI",
+      "role": "component",
+      "properties": {
+        "responsibility": "传递 JSON 字节并管理响应缓冲区"
+      },
+      "evidence_refs": [
+        "ffi"
+      ]
+    },
+    {
+      "id": "policy",
+      "label": "collector-policy",
+      "role": "component",
+      "properties": {
+        "responsibility": "计算额度门禁、回填、边界与退避"
+      },
+      "evidence_refs": [
+        "policy"
+      ]
+    },
+    {
+      "id": "win",
+      "label": "Windows 刷新宿主",
+      "role": "component",
+      "properties": {
+        "responsibility": "组装上下文并在进程内调用共享策略"
+      },
+      "evidence_refs": [
+        "win"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "mac-ffi",
+      "from": "mac",
+      "to": "ffi",
+      "kind": "calls",
+      "label": "请求与响应 JSON 字节",
+      "evidence_refs": [
+        "mac",
+        "ffi"
+      ]
+    },
+    {
+      "id": "ffi-policy",
+      "from": "ffi",
+      "to": "policy",
+      "kind": "calls",
+      "label": "handle_request",
+      "evidence_refs": [
+        "ffi"
+      ]
+    },
+    {
+      "id": "win-policy",
+      "from": "win",
+      "to": "policy",
+      "kind": "calls",
+      "label": "Rust 进程内调用",
+      "evidence_refs": [
+        "policy",
+        "win"
+      ]
+    }
+  ],
+  "evidence": {
+    "mac": {
+      "path": "apps/macos/Sources/BruceAppCore/SharedRefreshPolicy.swift",
+      "locator": "SharedRefreshPolicy.call",
+      "kind": "static_implementation",
+      "supports": "调用方构造并解码策略 JSON 请求与响应。"
+    },
+    "ffi": {
+      "path": "core/collector/crates/collector-policy-ffi/src/lib.rs",
+      "locator": "bruce_policy_call / bruce_policy_free",
+      "kind": "static_implementation",
+      "supports": "C ABI 传递缓冲区，转交策略请求处理并负责返回内存释放契约。"
+    },
+    "policy": {
+      "path": "core/collector/crates/collector-policy/src/lib.rs",
+      "locator": "module documentation and exports",
+      "kind": "static_implementation",
+      "supports": "共享额度、边界与退避计算，Windows 直接调用，macOS 经 C ABI 调用。"
+    },
+    "win": {
+      "path": "apps/win/src-tauri/src/scheduler.rs",
+      "locator": "collector_policy::backoff_seconds",
+      "kind": "static_implementation",
+      "supports": "Windows 调度调用共享刷新策略计算。"
+    }
+  }
+}

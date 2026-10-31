@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "id": "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+  "title": "分析趋势的数据来源与时间桶",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "artifact",
+      "label": "AgentUsageArtifact 时间与模型明细",
+      "role": "source",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "range",
+      "label": "范围：今日 / 近 7、30 天 / 本月 / 全部",
+      "role": "process",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "bucket",
+      "label": "小时 / 日期 / 月份分桶",
+      "role": "process",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "series",
+      "label": "Agent、前五模型、Token 构成及费用",
+      "role": "process",
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "output",
+      "label": "趋势点、峰值与均值",
+      "role": "sink",
+      "evidence_refs": [
+        "src"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "artifact",
+      "to": "range",
+      "kind": "derives",
+      "label": "hours、daily 与所选范围",
+      "properties": {
+        "data": "hours、daily 与所选范围"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "r2",
+      "from": "range",
+      "to": "bucket",
+      "kind": "derives",
+      "label": "hourModels / dailyModels / monthModels",
+      "properties": {
+        "data": "hourModels / dailyModels / monthModels"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "r3",
+      "from": "bucket",
+      "to": "series",
+      "kind": "derives",
+      "label": "每桶汇总与可用细分",
+      "properties": {
+        "data": "每桶汇总与可用细分"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    },
+    {
+      "id": "r4",
+      "from": "series",
+      "to": "output",
+      "kind": "derives",
+      "label": "seriesValues、总量与费用",
+      "properties": {
+        "data": "seriesValues、总量与费用"
+      },
+      "evidence_refs": [
+        "src"
+      ]
+    }
+  ],
+  "evidence": {
+    "src": {
+      "path": "apps/macos/Sources/BruceAppCore/WorkbenchAnalytics.swift",
+      "locator": "make / makeTimeline / dayBucket",
+      "kind": "static_implementation",
+      "supports": "今日小时点、历史日点或月点由工件汇总与对应明细派生；模型最多前五，未定价费用按零参与趋势桶。"
+    }
+  }
+}

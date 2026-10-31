@@ -1,0 +1,230 @@
+{
+  "schema_version": "2.0",
+  "run_id": "27d11369-e05c-4065-9142-1fe0a0ef7f53",
+  "started_at": "2026-10-30T08:56:02Z",
+  "coverage_status": "partial",
+  "validation_status": "failed",
+  "published": false,
+  "reviewed_paths": [
+    "docs/official/.cards/manifest.json",
+    "docs/official/.cards/last_attempt.json",
+    "docs/official/.cards/runs/17d94bab-876e-492c-961f-11d4c1d345c0/wording-review.json",
+    "apps/macos/Sources/BruceAppCore/SharedRefreshPolicy.swift",
+    "docs/devel/design/05-Windows平台适配.md"
+  ],
+  "excluded": [
+    "docs/official/ 与 docs/assets/km/ 均不作为事实来源",
+    "VCS 内部、依赖、构建输出、缓存、备份、明显的密钥与项目外符号链接"
+  ],
+  "pending": [
+    "17 篇受管 Markdown 的当前内容与确认清单哈希不一致，需先解决正式集所有权与基线冲突。",
+    "依据现行源码完成变更及新增文件清点、设计主题/功能点和跨模块影响分析，覆盖关联源变更或缺失的文章。",
+    "补做当前规则要求的逐页独立阅读、参考文献、八类视图与文章图示覆盖、排版及预览检查。"
+  ],
+  "conflicts": [
+    {
+      "path": "docs/official/Agent用量分析设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/Bruce设计文档.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/README.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/Widget设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/Windows应用设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/Windows快照与刷新状态.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/macOS原生应用设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/刷新生命周期设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/本地会话解析与计费.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/术语表.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/构建验证与发布.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/菜单栏与看板设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/订阅配置与凭据管理设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/订阅额度查询设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/设置中心与价格校准设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/采集引擎与本地用量设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    },
+    {
+      "path": "docs/official/Windows用量工作台设计.md",
+      "reason": "当前内容 SHA-256 与确认 manifest 不同；历史记录和后续 Git 提交表明确认后曾修改。"
+    }
+  ],
+  "candidate_paths": [
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/impact-audit.json",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/document-plan.json",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/diagram-plan.json",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/previous-last-attempt.json"
+  ],
+  "written_paths": [
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/impact-audit.json",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/document-plan.json",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/diagram-plan.json",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53/previous-last-attempt.json",
+    "docs/official/.cards/last_attempt.json"
+  ],
+  "checks": [
+    {
+      "name": "managed_output_ownership",
+      "method": "SHA-256 与 manifest 比对",
+      "result": "failed",
+      "evidence": "17/17 篇 Markdown 不一致；73 个卡片及图形路径审计一致",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "source_hash_comparison",
+      "method": "重新计算 manifest 已记录源码 SHA-256",
+      "result": "passed",
+      "evidence": "175 条变化、44 条原路径缺失、231 条相同；不是新增文件清点或语义分析",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "design_topic_coverage",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_outline",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "functional_point_coverage",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "detailed_design_depth",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "article_figure_coverage",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "figure_view_coverage",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_naming",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_associations",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "article_self_containment",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "bibliography_usage",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "professional_presentation",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "standalone_svg_visual",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "markdown_embedding_visual",
+      "method": "当前轮尚未执行",
+      "result": "not_run",
+      "evidence": "受正式集冲突与待完成的源码分析影响",
+      "required": true,
+      "scope": "official_collection"
+    }
+  ],
+  "deferred_figures": []
+}

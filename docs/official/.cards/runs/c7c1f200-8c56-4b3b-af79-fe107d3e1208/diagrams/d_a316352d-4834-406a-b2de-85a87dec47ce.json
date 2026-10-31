@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "id": "d_a316352d-4834-406a-b2de-85a87dec47ce",
+  "title": "macOS 额度门禁进程内策略交接",
+  "type": "sequence",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "pipeline",
+      "label": "刷新流水线",
+      "role": "service",
+      "evidence_refs": [
+        "pipeline"
+      ]
+    },
+    {
+      "id": "policy",
+      "label": "额度策略客户端",
+      "role": "service",
+      "evidence_refs": [
+        "client"
+      ]
+    },
+    {
+      "id": "ffi",
+      "label": "共享策略 C ABI",
+      "role": "service",
+      "evidence_refs": [
+        "ffi"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "plan",
+      "from": "pipeline",
+      "to": "policy",
+      "kind": "sync_call",
+      "label": "请求额度门禁",
+      "condition": "非定向轮次，已读上一份工件",
+      "properties": {
+        "order": 1
+      },
+      "evidence_refs": [
+        "pipeline"
+      ]
+    },
+    {
+      "id": "request",
+      "from": "policy",
+      "to": "ffi",
+      "kind": "sync_call",
+      "label": "传入 quotaPlan JSON 字节",
+      "properties": {
+        "order": 2
+      },
+      "evidence_refs": [
+        "client",
+        "ffi"
+      ]
+    },
+    {
+      "id": "response",
+      "from": "ffi",
+      "to": "policy",
+      "kind": "return",
+      "label": "返回响应字节",
+      "properties": {
+        "order": 3
+      },
+      "evidence_refs": [
+        "ffi"
+      ]
+    },
+    {
+      "id": "result",
+      "from": "policy",
+      "to": "pipeline",
+      "kind": "return",
+      "label": "返回策略或错误",
+      "condition": "无效或失败信封返回错误",
+      "properties": {
+        "order": 4
+      },
+      "evidence_refs": [
+        "client",
+        "pipeline"
+      ]
+    }
+  ],
+  "evidence": {
+    "pipeline": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "locator": "run",
+      "kind": "static_implementation",
+      "supports": "读取历史后，非定向轮次等待 quotaPolicyEngine.plan；失败返回 collectorFailed 或 cancelled，不启动采集。"
+    },
+    "client": {
+      "path": "apps/macos/Sources/BruceAppCore/QuotaPolicyClient.swift",
+      "locator": "CollectorQuotaPolicy.plan; call",
+      "kind": "static_implementation",
+      "supports": "按 quotaPlan 编码服务、时间和意图，不含凭据；解析版本、状态和策略，非法或失败信封产生错误。"
+    },
+    "ffi": {
+      "path": "apps/macos/Sources/BruceAppCore/QuotaPolicyClient.swift",
+      "locator": "InProcessQuotaPolicyTransport.call",
+      "kind": "static_implementation",
+      "supports": "同步调用 bruce_policy_call，复制输出缓冲区后释放；生产 transport 通过闭包返回数据。"
+    }
+  }
+}

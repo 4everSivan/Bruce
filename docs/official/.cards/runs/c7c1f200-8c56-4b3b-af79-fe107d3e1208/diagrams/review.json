@@ -1,0 +1,39 @@
+{
+  "overview_figure_id": "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+  "overview_change": "旧交互图未画出共享策略，候选正文已说明其为主线概览；新时序图补足进程内策略交接。旧图语义、凭据错误分支和另外一个使用该图的总体设计仍需整体验证。",
+  "figures": [
+    {
+      "id": "d_a316352d-4834-406a-b2de-85a87dec47ce",
+      "type": "sequence",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_a316352d-4834-406a-b2de-85a87dec47ce.json",
+      "candidate_svg": "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macos-quota-policy-sequence.svg",
+      "intended_svg": "docs/assets/km/macos-quota-policy-sequence.svg",
+      "sha256": "a23e8f926a1f8bda7e611cfcb02d6fbdd92ecd5ac789b79f7ece626774a910cd",
+      "owner_article": "刷新生命周期设计.md",
+      "use": "刷新生命周期设计.md",
+      "required": true,
+      "structure": "JSON parsed; SVG parsed by xmllint; node/relation mapping, endpoint and source path existence checked",
+      "standalone_visual": "rsvg-convert 800 and 1200 px; PNG inspected via view_image; Chinese and connectors readable at inspected sizes",
+      "markdown_visual": "not_run"
+    },
+    {
+      "id": "d_ef3a4739-f224-4a72-b833-2253075f4e26",
+      "type": "flowchart",
+      "semantic_path": "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208/diagrams/d_ef3a4739-f224-4a72-b833-2253075f4e26.json",
+      "candidate_svg": "docs/assets/km/.staging/c7c1f200-8c56-4b3b-af79-fe107d3e1208/macos-quota-alert-flow.svg",
+      "intended_svg": "docs/assets/km/macos-quota-alert-flow.svg",
+      "sha256": "bee755a2364439ac19f0fa6576ba0dbd8ec6fdfae573aec94e7a82bcb9cc7aeb",
+      "owner_article": "刷新生命周期设计.md",
+      "use": "刷新生命周期设计.md",
+      "required": true,
+      "structure": "JSON parsed; SVG parsed by xmllint; node/relation mapping, endpoint and source path existence checked",
+      "standalone_visual": "rsvg-convert 800 and 1200 px; PNG inspected via view_image; Chinese and connectors readable at inspected sizes",
+      "markdown_visual": "not_run"
+    }
+  ],
+  "pending": [
+    "审阅总体设计对 refresh-sequence.svg 的使用和新策略交接是否需要本地嵌图",
+    "Markdown 实际渲染器与中文字体环境下的文章嵌入视觉检查未执行",
+    "全量图视图覆盖和涉及策略失败时凭据更新的必要独立视图尚未完成"
+  ]
+}

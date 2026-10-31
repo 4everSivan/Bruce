@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "id": "d_382e629e-29bd-42b3-acc8-7c33c123b340",
+  "title": "多账号额度执行数据流",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "plan",
+      "label": "账号计划与稳定顺序",
+      "role": "source",
+      "evidence_refs": [
+        "execution"
+      ]
+    },
+    {
+      "id": "workers",
+      "label": "最多 4 个账号工作线程",
+      "role": "process",
+      "evidence_refs": [
+        "execution"
+      ]
+    },
+    {
+      "id": "prepare",
+      "label": "检查取消并准备账号凭据",
+      "role": "process",
+      "evidence_refs": [
+        "execution"
+      ]
+    },
+    {
+      "id": "provider",
+      "label": "注入凭据与网络许可后查询",
+      "role": "process",
+      "evidence_refs": [
+        "execution"
+      ]
+    },
+    {
+      "id": "slots",
+      "label": "按计划索引保存结果槽位",
+      "role": "store",
+      "evidence_refs": [
+        "execution"
+      ]
+    },
+    {
+      "id": "output",
+      "label": "有序服务与诊断",
+      "role": "sink",
+      "evidence_refs": [
+        "execution"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "plan",
+      "to": "workers",
+      "kind": "derives",
+      "evidence_refs": [
+        "execution"
+      ],
+      "properties": {
+        "data": "AccountPlan"
+      },
+      "label": "AccountPlan"
+    },
+    {
+      "id": "r2",
+      "from": "workers",
+      "to": "prepare",
+      "kind": "derives",
+      "evidence_refs": [
+        "execution"
+      ],
+      "properties": {
+        "data": "账号任务"
+      },
+      "label": "账号任务"
+    },
+    {
+      "id": "r3",
+      "from": "prepare",
+      "to": "provider",
+      "kind": "derives",
+      "evidence_refs": [
+        "execution"
+      ],
+      "properties": {
+        "data": "账号凭据与请求"
+      },
+      "label": "已准备的账号请求"
+    },
+    {
+      "id": "r4",
+      "from": "provider",
+      "to": "slots",
+      "kind": "derives",
+      "evidence_refs": [
+        "execution"
+      ],
+      "properties": {
+        "data": "成功、空态或服务错误"
+      },
+      "label": "成功、空态或服务错误"
+    },
+    {
+      "id": "r5",
+      "from": "slots",
+      "to": "output",
+      "kind": "derives",
+      "evidence_refs": [
+        "execution"
+      ],
+      "properties": {
+        "data": "按计划顺序汇总"
+      },
+      "label": "按计划顺序汇总"
+    },
+    {
+      "id": "r6",
+      "from": "prepare",
+      "to": "slots",
+      "kind": "derives",
+      "label": "取消或凭据失败时的诊断",
+      "properties": {
+        "data": "失败服务与诊断"
+      },
+      "evidence_refs": [
+        "execution"
+      ]
+    }
+  ],
+  "evidence": {
+    "execution": {
+      "path": "core/collector/crates/collector-application/src/execution.rs",
+      "locator": "execute_quota_accounts; execute_one",
+      "kind": "static_implementation",
+      "supports": "账号工作线程按索引领取计划并写回对应槽位；执行检查取消及凭据并取得网络许可，再查询 Provider；结果按计划顺序汇总。"
+    }
+  }
+}
