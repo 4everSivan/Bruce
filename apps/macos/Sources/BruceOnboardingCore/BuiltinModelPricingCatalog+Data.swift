@@ -4,7 +4,7 @@
 
 extension BuiltinModelPricingCatalog {
     public static let builtinSchemaVersion: Int = 1
-    public static let builtinUpdatedAt: String = "2026-10-31"
+    public static let builtinUpdatedAt: String = "2026-10-31.1"
     public static let builtinModels: [BuiltinModelPricing] = [
         BuiltinModelPricing(
             modelName: "k3-agent",
@@ -64,10 +64,28 @@ extension BuiltinModelPricingCatalog {
             modelName: "gpt-6.1-sol",
             displayName: "GPT-6.1 Sol",
             vendor: "OpenAI / Codex",
-            inputPricePerMillion: 4.5,
-            outputPricePerMillion: 22.5,
-            cacheReadPricePerMillion: 0.45,
-            defaultNote: "旗舰高阶代码推理"
+            inputPricePerMillion: 2.0,
+            outputPricePerMillion: 10.0,
+            cacheReadPricePerMillion: 0.1,
+            defaultNote: "旗舰高阶推理模型"
+        ),
+        BuiltinModelPricing(
+            modelName: "gpt-6.1-terra",
+            displayName: "GPT-6.1 Terra",
+            vendor: "OpenAI / Codex",
+            inputPricePerMillion: 1.0,
+            outputPricePerMillion: 5.0,
+            cacheReadPricePerMillion: 0.05,
+            defaultNote: "主力视觉与编程模型"
+        ),
+        BuiltinModelPricing(
+            modelName: "gpt-6.1-luna",
+            displayName: "GPT-6.1 Luna",
+            vendor: "OpenAI / Codex",
+            inputPricePerMillion: 0.1,
+            outputPricePerMillion: 0.5,
+            cacheReadPricePerMillion: 0.01,
+            defaultNote: "高频极速轻量模型"
         ),
         BuiltinModelPricing(
             modelName: "gpt-6-sol",

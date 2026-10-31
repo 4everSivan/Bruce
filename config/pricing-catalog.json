@@ -1,7 +1,7 @@
 {
   "$comment": "Bruce 模型基准价格表唯一事实源: 支持编译期内置与运行期从 GitHub 在线同步更新。单位: 美元 / 百万 token。",
   "schemaVersion": 1,
-  "updatedAt": "2026-10-31",
+  "updatedAt": "2026-10-31.1",
   "models": [
     {
       "model": "k3-agent",
@@ -61,10 +61,28 @@
       "model": "gpt-6.1-sol",
       "displayName": "GPT-6.1 Sol",
       "vendor": "OpenAI / Codex",
-      "input": 4.5,
-      "output": 22.5,
-      "cacheRead": 0.45,
-      "note": "旗舰高阶代码推理"
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "note": "旗舰高阶推理模型"
+    },
+    {
+      "model": "gpt-6.1-terra",
+      "displayName": "GPT-6.1 Terra",
+      "vendor": "OpenAI / Codex",
+      "input": 1,
+      "output": 5,
+      "cacheRead": 0.05,
+      "note": "主力视觉与编程模型"
+    },
+    {
+      "model": "gpt-6.1-luna",
+      "displayName": "GPT-6.1 Luna",
+      "vendor": "OpenAI / Codex",
+      "input": 0.1,
+      "output": 0.5,
+      "cacheRead": 0.01,
+      "note": "高频极速轻量模型"
     },
     {
       "model": "gpt-6-sol",

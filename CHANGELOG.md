@@ -23,6 +23,9 @@
   - **S2 峰值胶囊徽章（双端同构）**：X 轴峰值刻度渲染为 `🔥 <时刻>`（如 `🔥 15:00`）圆角胶囊徽章，文字与半透明胶囊底/细边框自动跟随峰值处主导曲线系列色（Agent / 模型 / Token 构成 / 费用切换时实时同步）。
 
 ### Added
+- **更新 GPT-6.1 系列模型官方基准定价 (C169)**：
+  - 更新 OpenAI GPT-6.1 系列模型定价：`gpt-6.1-sol` 调整为 $2.00 输入 / $10.00 输出 / $0.10 缓存读取；补齐 `gpt-6.1-terra`（$1.00 输入 / $5.00 输出 / $0.05 缓存读取）与 `gpt-6.1-luna`（$0.10 输入 / $0.50 输出 / $0.01 缓存读取）；
+  - `config/pricing-catalog.json` 事实源、macOS `BuiltinModelPricingCatalog`、Windows `model_catalog` 与 Rust Collector 计费引擎全链路锁定与同步对齐。
 - **模型价格表远端同步与维护页卡片 (T19–T21)**：
   - **价格表抽离与动态价卡契约 (T19)**：内置模型价格表从代码深层解耦至顶层 `config/pricing-catalog.json`，补充 `schemaVersion` 与 `updatedAt` 元数据；Collector 核心实现 `parse_and_validate` 校验与 `PricingTable::with_catalog` 动态构造，支持通过 `context.pricingCatalog` 动态注入，并严格校验版本防倒退与格式完整性；
   - **macOS 远端同步服务与维护页卡片 (T20)**：`BruceAppCore` 实现 `PricingCatalogSyncService`，支持后台按计划自动拉取远端价格表、SHA256 哈希完整性校验、原子更新与故障回滚；设置中心维护页新增「模型价格表」状态卡片，展示当前版本、发布日期与「立即同步」操作入口；新增 `PricingCatalogSyncHarness` 自动化验收套件（12 项测试，51 条双端对齐断言全绿）；

@@ -1034,6 +1034,28 @@ mod tests {
                 entry.model
             );
         }
+
+        // C169: 锁定 GPT-6.1 系列模型官方基准单价与缓存读取
+        let sol = table
+            .resolve("gpt-6.1-sol")
+            .expect("gpt-6.1-sol 必须可解析");
+        assert_eq!(sol.input_price_per_million, 2.0);
+        assert_eq!(sol.output_price_per_million, 10.0);
+        assert_eq!(sol.cache_read_price_per_million, Some(0.1));
+
+        let terra = table
+            .resolve("gpt-6.1-terra")
+            .expect("gpt-6.1-terra 必须可解析");
+        assert_eq!(terra.input_price_per_million, 1.0);
+        assert_eq!(terra.output_price_per_million, 5.0);
+        assert_eq!(terra.cache_read_price_per_million, Some(0.05));
+
+        let luna = table
+            .resolve("gpt-6.1-luna")
+            .expect("gpt-6.1-luna 必须可解析");
+        assert_eq!(luna.input_price_per_million, 0.1);
+        assert_eq!(luna.output_price_per_million, 0.5);
+        assert_eq!(luna.cache_read_price_per_million, Some(0.01));
     }
 
     #[test]

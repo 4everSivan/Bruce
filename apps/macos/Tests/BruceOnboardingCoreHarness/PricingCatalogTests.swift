@@ -22,6 +22,26 @@ func pricingCatalogMatchesCollectorRows() throws {
     )
     try coreExpect(rows["claude-sonnet-5-5"] != nil, "现行 Claude 型号须在设置页列出")
     try coreExpect(rows["deepseek-flash"] == nil && rows["jev"] == nil, "listed=false 的别名不单列")
+
+    // C169: GPT-6.1 系列模型价格锁死断言
+    let sol = rows["gpt-6.1-sol"]
+    try coreExpect(
+        sol?.inputPricePerMillion == 2.0 && sol?.outputPricePerMillion == 10.0
+            && sol?.cacheReadPricePerMillion == 0.1,
+        "GPT-6.1 Sol 单价须为 ($2.0/$10.0/$0.1)"
+    )
+    let terra = rows["gpt-6.1-terra"]
+    try coreExpect(
+        terra?.inputPricePerMillion == 1.0 && terra?.outputPricePerMillion == 5.0
+            && terra?.cacheReadPricePerMillion == 0.05,
+        "GPT-6.1 Terra 单价须为 ($1.0/$5.0/$0.05)"
+    )
+    let luna = rows["gpt-6.1-luna"]
+    try coreExpect(
+        luna?.inputPricePerMillion == 0.1 && luna?.outputPricePerMillion == 0.5
+            && luna?.cacheReadPricePerMillion == 0.01,
+        "GPT-6.1 Luna 单价须为 ($0.1/$0.5/$0.01)"
+    )
 }
 
 /// C108: 覆盖项选择与采集端 PricingTable::resolve 同序 —— 精确键优先, 否则取最具体前缀,
