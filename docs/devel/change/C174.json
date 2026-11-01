@@ -4,7 +4,7 @@
   "title": "mac 软件更新未校验发布签名：只比对同源清单的 SHA256 后 xattr -cr 剥离隔离属性，清单与包可被一并替换",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C174-mac-update-signature",
   "is_hotfix": false,
   "target": {
@@ -87,7 +87,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "c8ffeb5",
     "tag": ""
   },
   "gate": {
@@ -95,7 +95,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
