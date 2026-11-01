@@ -4,7 +4,7 @@
   "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C178-win-csp",
   "is_hotfix": false,
   "target": {
@@ -81,7 +81,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "5128b21",
     "tag": ""
   },
   "gate": {
@@ -89,7 +89,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
