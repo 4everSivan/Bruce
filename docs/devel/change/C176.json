@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C176",
+  "title": "采集进程内存峰值与缓存体积随观测数线性膨胀：40 万条观测热扫描峰值 251 MB、缓存 102 MB",
+  "version": "0.16.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C176-collector-memory",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-local",
+    "component": "jsonl_cache / jsonl_adapters（Claude 聚合）",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-31 对抗审查实测。JSONL 缓存每条观测都存一份 project 字符串（同一文件恒定，由父目录推导）与 64 字符十六进制去重键；运行时所有文件 payload 先全部载入 Vec 再聚合，Claude 去重 BTreeMap 再复制一遍键与 model / project。本机最大条目 777 KB 中 project 占 18%、去重键占 21%；合成 2,000 文件 / 40 万观测：热扫描峰值 RSS 251 MB、缓存 102 MB（为源数据的 35%）。菜单栏应用每轮刷新都会拉起该子进程。",
+  "precheck": {
+    "description": "确认观测级 project 与全量 payload 聚合仍存在",
+    "command": "grep -n 'pub(crate) project: Option<String>\\|payloads: Vec<CachedFilePayload>' core/collector/crates/collector-local/src/jsonl_cache.rs",
+    "expected": "观测结构含 project 字段；TreeState 持有全部 payload",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C176 -b fix/C176-collector-memory docs/C171-C178-register"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/collector-release-smoke.sh",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C176 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "JSONL 缓存条目格式",
+      "before": "每条观测各存 project 与 64 位十六进制去重键。",
+      "after": "project 提升为文件级字段；去重键改为定长紧凑表示；JSONL_CACHE_SCHEMA_VERSION +1（一次性重建，重建成本依赖 C175 降低）。",
+      "impact": "缓存体积；发布冒烟对条目格式的依赖（design/01 规则「缓存条目与窗口无关」）。"
+    },
+    {
+      "scope": "聚合方式",
+      "before": "全部文件 payload 载入后统一聚合。",
+      "after": "逐文件流式并入聚合器，不再同时持有全部 payload；去重语义与结果不变。",
+      "impact": "采集进程峰值内存。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "JSONL 层条目载荷 payload.observations 为与窗口无关的用量观测（时间戳 + token 计数 + 模型 / 项目 / 去重键）。",
+      "after": "JSONL 层条目载荷：文件级 project + 观测（时间戳 + token 计数 + 模型 + 定长去重键）；运行时逐文件流式聚合。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "既有缓存与聚合测试全绿；新增回归：旧 schema 条目重建一次；跨文件同 message id 去重结果不变；verify-local.sh 与发布冒烟退出码 0",
+        "false_if": "任一测试失败或去重结果变化",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "资源实测",
+        "true_if": "同一合成数据集热扫描峰值 RSS ≤ 100 MB、缓存目录 ≤ 50 MB，artifact 与改动前逐字节一致",
+        "false_if": "资源指标未达标或 artifact 不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余 JSONL 源（Kimi / CodeBuddy / Grok / Pi）结果不变；热扫描耗时不劣化",
+        "false_if": "其他源结果变化或热扫描变慢",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

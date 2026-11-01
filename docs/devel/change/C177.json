@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C177",
+  "title": "Bridge 超时契约失真：localScanSeconds 只校验不执行，mac 与 Windows 预算各异且无记录",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C177-timeout-contract",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector（collector-domain / collector-bridge）+ apps/macos + apps/win",
+    "component": "BridgeTimeouts / CollectorTimeouts / build_request",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-31 对抗审查发现。bridge 校验 timeouts.localScanSeconds（mac 发 30 s、Windows 发 120 s），但 Collector 从不读取——全仓唯一引用是 collector-bridge validate_request，本机扫描实际只受 moduleSeconds 约束，违反 design/01 规则 3「请求契约只保留被消费的字段（C123）」。另 mac 发送 module / external = 90 / 10 s，Windows 发送 150 / 30 s，同一 Collector 两端预算不同且设计中无记录。按 C123 先例退役未消费字段，不在本卡引入局部扫描截断（与「未发布部分采集结果」的取消语义冲突）。",
+  "precheck": {
+    "description": "确认 localScanSeconds 仍只被校验",
+    "command": "grep -rn 'local_scan_seconds' core/collector/crates apps/win/src-tauri/src --include='*.rs'",
+    "expected": "仅 collector-domain 字段声明、collector-bridge 校验与 Windows 赋值，无任何读取用于控制扫描",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C177 -b fix/C177-timeout-contract docs/C171-C178-register"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C177 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "请求契约",
+      "before": "timeouts.localScanSeconds 必填并校验，但无消费方。",
+      "after": "Collector 解析时接受但不再要求该字段（旧宿主请求仍可解析）；mac / Windows 停发；request-v1 schema 与 fixture 同步。",
+      "impact": "BridgeTimeouts、两端请求装配、schemas 与 bridge fixture。"
+    },
+    {
+      "scope": "双端预算",
+      "before": "mac 90 / 10 s，Windows 150 / 30 s，无记录。",
+      "after": "在设计中登记两端预算及理由（mac 子进程可被外层终止、Windows 进程内执行），或按实测统一。",
+      "impact": "design/01 规则 3；design/05。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 3：请求契约只保留被消费的字段（C123）——timeouts.localScanSeconds 仍在契约中却无消费方。",
+      "after": "规则 3：timeouts 只保留 externalRequestSeconds 与 moduleSeconds；localScanSeconds 退役（兼容解析）；登记 mac / Windows 预算口径。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "不带 localScanSeconds 的请求可正常采集；带该字段的旧请求仍可解析；schema 与 fixture 校验通过；verify-local.sh 退出码 0",
+        "false_if": "新旧请求任一被拒绝，或校验失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "超时上限校验（externalRequestSeconds / moduleSeconds）不变；两端采集冒烟通过",
+        "false_if": "超时校验放宽或采集回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

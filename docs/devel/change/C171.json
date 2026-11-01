@@ -1,0 +1,112 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C171",
+  "title": "额度刷新换得的轮换令牌在失败路径被丢弃：刷新成功后查询失败、本轮采集失败或超时，新令牌均不回写",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C171-rotated-token-loss",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector（collector-provider / collector-application / collector-bridge）+ apps/macos BruceAppCore",
+    "component": "ClaudeProvider / StepFunProvider / collect_agent_usage 错误路径 / BridgeResponse::error / RefreshExecutionPipeline / CollectorRunner",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "2026-10-31 对抗审查发现。Claude OAuth 刷新会轮换 refresh token（providers.rs 取响应中的新 refresh_token；RefreshExecutionPipeline.policyFailed 注释亦按「一次性 refresh token」处理），新令牌唯一出口是本轮 envelope 的 credentialUpdates。下列四条路径都会在服务端已完成轮换后丢掉新令牌，本地仍存旧 refresh token，下一次刷新失败只能重新登录：(1) ClaudeProvider / StepFunProvider 刷新成功后 usage 查询失败（429 / 5xx / 传输错误 / 取消）时 `let mut usage = query_result?;` 提前返回，credential_update 未附着——scratch 副本单测复现：刷新请求已发出，429 返回 Err(PROVIDER_RATE_LIMIT)，新 refresh token 无任何出口；Claude usage 端点正是项目已为其设 429 冷却的端点。(2) collect_agent_usage 在本机扫描失败 / 取消或末尾 deadline 检查失败时返回 Err，bridge 产出不带 credentialUpdates 的 error envelope，额度线程已拿到的轮换结果全部丢弃。(3) mac 宿主仅在 status != error 时写回（finishPublishablePath、policyFailed）。(4) mac CollectorRunner 外层超时与 Rust deadline 同为 moduleSeconds=90 且先起算，SIGTERM 总在 Rust 自身 deadline 前到达，Collector 没有机会输出信封。",
+  "precheck": {
+    "description": "确认四条丢失路径在当前代码中仍存在",
+    "command": "grep -n 'let mut usage = query_result?;' core/collector/crates/collector-provider/src/providers.rs; grep -n 'let local = local_result?;' core/collector/crates/collector-application/src/lib.rs; grep -n 'response.status != .error, !response.credentialUpdates.isEmpty\\|if response.status == .error {' apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift; grep -n 'after: timeouts.moduleSeconds' apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+    "expected": "providers.rs 命中 2 处（Claude / StepFun）；lib.rs 命中 1 处；Pipeline 命中 status 门控；CollectorRunner 外层定时器直接取 moduleSeconds",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C171 -b fix/C171-rotated-token-loss docs/C171-C178-register"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C171 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Provider 刷新与查询结果解耦（collector-provider）",
+      "before": "Claude / StepFun 刷新成功后若 usage 查询返回 Err，`query_result?` 提前返回，新令牌只存在于局部变量并被丢弃。",
+      "after": "刷新成功即产生凭据更新，与查询成败无关：查询失败时 ProviderOutcome 仍携带 credential_update，service 仍按原失败语义落为 error。",
+      "impact": "QuotaProvider 契约与默认 finalize；ClaudeProvider、StepFunProvider；Codex 自定义 finalize 不受影响。"
+    },
+    {
+      "scope": "整轮失败的 error envelope（collector-application / collector-bridge）",
+      "before": "本机扫描失败 / 取消或 deadline 触发时整轮返回 Err，BridgeResponse::error 的 credentialUpdates 恒为空。",
+      "after": "error envelope 携带本轮已完成额度账号产生、经白名单校验的 credentialUpdates；artifact 仍为空、status 仍为 error，诊断不变。",
+      "impact": "mac 与 Windows 宿主收到的 BridgeResponse（Windows 写回 Claude 在 C172 处理）；response-v1 schema 语义说明。"
+    },
+    {
+      "scope": "mac 宿主写回门控（RefreshExecutionPipeline）",
+      "before": "status == error 或无 artifact 的 auth 失败路径不写回凭据。",
+      "after": "凭据写回与发布解耦：envelope 带有效 credentialUpdates 即先写回，再按原逻辑决定是否发布与退避。",
+      "impact": "RefreshExecutionPipeline 各返回路径；CredentialUpdateCoordinator 调用时机。"
+    },
+    {
+      "scope": "mac 外层超时次序（CollectorRunner）",
+      "before": "外层定时器 = moduleSeconds，先于 Rust deadline 触发 SIGTERM。",
+      "after": "外层定时器晚于 Rust deadline（moduleSeconds + externalRequestSeconds + 余量），Rust 到期后有时间收尾并输出带更新的信封；Rust deadline 本身不变。",
+      "impact": "mac 采集超时的判定时刻与 CollectorRunner Harness 超时用例。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 13：Collector 仅在刷新且 usage 查询成功时于 payload 附加 credential_update；宿主在可发布路径（status != error）写回。",
+      "after": "规则 13：刷新成功即产生 credential_update，与本轮查询及整轮采集成败解耦——查询失败、本机扫描失败或超时的 error envelope 同样携带已校验的 credentialUpdates，宿主先写回再决定是否发布；mac 外层超时晚于 Collector deadline。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "新增回归：Claude / StepFun 刷新成功 + 查询 429 / 5xx / 取消时 outcome 含 credential_update；本机扫描取消时 error envelope 含 credentialUpdates；mac Pipeline 在 status=error 时仍写回；CollectorRunner 外层超时晚于 moduleSeconds；verify-local.sh 退出码 0",
+        "false_if": "任一回归用例缺失或失败，或 verify-local.sh 非 0",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "以 fixture HTTP 驱动完整 bridge 请求（刷新成功 + usage 429；本机扫描超时）得到的 stdout envelope 中 credentialUpdates 含新 refresh_token；全程不连接真实 Claude / StepFun 端点、不使用真实凭据",
+        "false_if": "envelope 缺更新、更新未通过白名单，或测试触达真实外网 / 真实凭据",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "成功路径 envelope 与改动前一致；Codex 挑战与重试、quotaRetryOnly、定向刷新路径测试通过；Windows 壳编译与测试通过；凭据白名单校验仍生效",
+        "false_if": "成功路径输出变化、Codex 恢复回归、Windows 构建失败或白名单被绕过",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

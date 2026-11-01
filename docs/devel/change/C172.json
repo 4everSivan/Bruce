@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C172",
+  "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C172-win-claude-rotation",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "credentials/lifecycle.rs apply_updates",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-31 对抗审查发现。lifecycle.rs apply_updates 只接受 provider == stepfun 的更新，其余一律记 CREDENTIAL_UPDATE_UNSUPPORTED 后跳过。Windows 的 Claude 凭据携带 refreshToken（design/05：`{\"claudeAiOauth\":{\"accessToken\",\"refreshToken\",\"expiresAt\"}}`，claude_local 导入亦保留），Collector 在访问令牌临近过期或 401 时用它刷新；服务端轮换后 Windows 仍保存旧 refresh token，访问令牌一过期即只能重新导入登录态。mac 由 CredentialRotationMerge 写回（design/02 规则 13），Windows 缺此能力属双端偏离。C171 让 error envelope 也携带更新，本卡需一并在该路径写回，故基于 C171 分支。",
+  "precheck": {
+    "description": "确认 Windows 写回仍只支持 StepFun",
+    "command": "grep -n 'if update\\[\"provider\"\\] != \"stepfun\"' apps/win/src-tauri/src/credentials/lifecycle.rs",
+    "expected": "命中 1 处，非 stepfun 更新记 CREDENTIAL_UPDATE_UNSUPPORTED",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C172 -b fix/C172-win-claude-rotation fix/C171-rotated-token-loss"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C172 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Windows 凭据写回（apply_updates）",
+      "before": "仅 StepFun 更新写回；Claude 更新记 CREDENTIAL_UPDATE_UNSUPPORTED 并丢弃。",
+      "after": "Claude 更新按 mac CredentialRotationMerge 同口径合并 access_token / refresh_token / expiry（秒→ expiresAt 毫秒）到 claudeQuotaAccounts 对应账号的 claudeAiOauth，compare-and-replace 持久化；Kimi 等不轮换的 provider 维持 UNSUPPORTED。",
+      "impact": "Windows 凭据存储、刷新调度与诊断。"
+    },
+    {
+      "scope": "error envelope 写回（承接 C171）",
+      "before": "Windows 只在可发布路径处理 credential_updates。",
+      "after": "error envelope 中经校验的更新同样先写回再按原逻辑处理。",
+      "impact": "Windows 采集失败 / 超时路径。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "凭据生命周期（C009）：轮换结果先安全持久化再发布——实现仅覆盖 StepFun。",
+      "after": "凭据生命周期：Claude 与 StepFun 的轮换结果均先安全持久化再发布（含 error envelope），Claude 合并口径与 mac CredentialRotationMerge 一致。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "新增回归：Claude 更新写回 claudeAiOauth 三字段且 expiresAt 为毫秒；账号已被并发修改时 compare-and-replace 放弃；error envelope 更新写回；Windows 壳测试与 verify-local.sh 退出码 0",
+        "false_if": "任一回归缺失或失败，或 verify-local.sh 非 0",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "双端口径一致",
+        "true_if": "同一组 Claude 轮换输入经 mac CredentialRotationMerge 与 Windows apply_updates 合并后的 claudeAiOauth 字段一致（共享 fixture 对拍）",
+        "false_if": "两端合并结果字段名、单位或缺省处理不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "StepFun 写回与 Codex 恢复行为不变；非轮换 provider 仍报 UNSUPPORTED；Windows 真机行为由人工确认（本机无法运行 Windows GUI）",
+        "false_if": "StepFun / Codex 回归，或 UNSUPPORTED 语义被放宽到不轮换的 provider",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

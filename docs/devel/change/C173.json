@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C173",
+  "title": "删除订阅凭据后旧值仍残留在 credentials.json.bak：备份恒为上一版（含刚删除的密钥），损坏现场副本无清理",
+  "version": "0.16.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C173-credential-bak-residue",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos BruceOnboardingCore",
+    "component": "ProtectedFileCredentialStore（OnboardingConfiguration.swift）",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "2026-10-31 对抗审查发现。writePayloadLocked 每次写入（含 deleteCredential）都先把当前文件复制为 credentials.json.bak 再替换。删除凭据时 .bak 恰好是删除前的完整文件，被删密钥一直留在磁盘上直到下一次写入；若删的是最后一个账号或此后不再改配置，残留无限期存在。代码中 .bak 从不被读取（仅 Harness 断言其存在且可解码），恢复价值有限；preserveCorruptedFile 生成的 .corrupt-<时间戳> 副本同样含密钥且从不清理。凭据为 0600 明文文件，同用户进程均可读，残留即扩大暴露面。",
+  "precheck": {
+    "description": "确认删除路径仍复用「先备份上一版」的写入套件",
+    "command": "grep -n 'func deleteCredential' -A14 apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift | grep -n 'writePayloadLocked'; grep -n 'lastPathComponent).bak' apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+    "expected": "deleteCredential 调用 writePayloadLocked；writePayloadLocked 无条件复制上一版为 .bak",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C173 -b fix/C173-credential-bak-residue docs/C171-C178-register"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C173 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "删除凭据的落盘",
+      "before": "删除写入前把含被删账号的上一版复制为 .bak。",
+      "after": "删除成功后 credentials.json 与 credentials.json.bak 均不含被删账号；覆盖写路径保留上一版备份语义。",
+      "impact": "ProtectedFileCredentialStore 删除 / 批量移除路径。"
+    },
+    {
+      "scope": "损坏现场副本",
+      "before": ".corrupt-<时间戳> 每次损坏新增一份，从不清理。",
+      "after": "只保留最近一份损坏现场副本。",
+      "impact": "凭据读损坏处理（design/02 读路径三态）。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "写路径套件：createFile(0600) → write → fsync → 重读校验 → 复制上一版为 .bak → replaceItemAt → setAttributes 0600。",
+      "after": "写路径套件不变；删除写入后 .bak 不得保留被删凭据，损坏现场副本只保留最近一份。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "新增 Harness 回归：写入 A、B 后删除 A，credentials.json 与 .bak 均不含 A；连续两次损坏只剩一份 .corrupt-*；既有写路径套件用例（0600 / 0700 / .bak 可解码 / 无 .tmp 残留）通过；verify-local.sh 退出码 0",
+        "false_if": "任一回归缺失或失败，或 verify-local.sh 非 0",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "覆盖写仍产生可解码的上一版 .bak；损坏时仍抛 corrupted 且不转空 payload；外部 Keychain 回退删除不受影响",
+        "false_if": "覆盖写备份丢失、损坏语义改变或外部回退删除回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
