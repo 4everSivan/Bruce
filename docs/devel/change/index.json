@@ -1775,7 +1775,7 @@
     "C173": {
       "title": "删除订阅凭据后旧值仍残留在 credentials.json.bak：备份恒为上一版（含刚删除的密钥），损坏现场副本无清理",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C173-credential-bak-residue",
       "topic": "SubscriptionQuota",
       "version": "0.16.0",

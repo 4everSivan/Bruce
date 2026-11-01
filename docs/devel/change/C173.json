@@ -4,7 +4,7 @@
   "title": "删除订阅凭据后旧值仍残留在 credentials.json.bak：备份恒为上一版（含刚删除的密钥），损坏现场副本无清理",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C173-credential-bak-residue",
   "is_hotfix": false,
   "target": {
@@ -54,10 +54,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261101-09",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -85,7 +85,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }
