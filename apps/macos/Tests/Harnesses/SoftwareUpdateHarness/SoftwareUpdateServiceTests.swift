@@ -35,9 +35,18 @@ final class ServiceFixture {
         )
         let updatesRoot = root.appendingPathComponent("Application Support/Bruce/updates")
         if let moveItem {
-            installer = UpdateInstaller(updatesRoot: updatesRoot, commands: commands, moveItem: moveItem)
+            installer = UpdateInstaller(
+                updatesRoot: updatesRoot,
+                trustedPublicKey: TestSigningKey.shared.publicKey,
+                commands: commands,
+                moveItem: moveItem
+            )
         } else {
-            installer = UpdateInstaller(updatesRoot: updatesRoot, commands: commands)
+            installer = UpdateInstaller(
+                updatesRoot: updatesRoot,
+                trustedPublicKey: TestSigningKey.shared.publicKey,
+                commands: commands
+            )
         }
         let clock = self.clock
         service = SoftwareUpdateService(
@@ -68,7 +77,8 @@ final class ServiceFixture {
         transport.downloadSource = archive
         transport.manifest = .success(manifestData(
             version: version,
-            sha256: try UpdateInstaller.sha256Hex(of: archive)
+            sha256: try UpdateInstaller.sha256Hex(of: archive),
+            signature: try TestSigningKey.shared.sign(archive)
         ))
         transport.contentLength = 7_100_000
     }
@@ -399,6 +409,37 @@ enum SoftwareUpdateServiceTests {
             "校验失败清理下载残留"
         )
         try expectEqual(FixtureBundle.version(of: fixture.installedApp), "0.12.2", "未校验包绝不安装")
+    }
+
+    /// C174: SHA256 与清单一致但签名来自他人密钥 —— 拒绝安装、不解压、清理下载残留.
+    static func downloadRejectsForeignSignature() async throws {
+        let fixture = try ServiceFixture()
+        defer { fixture.tearDown() }
+        try fixture.serveInstallableRelease()
+        let archive = try fixture.transport.downloadSource.unwrap("夹具下载源")
+        fixture.transport.manifest = .success(manifestData(
+            version: "0.13.0",
+            sha256: try UpdateInstaller.sha256Hex(of: archive),
+            signature: try TestSigningKey().sign(archive)
+        ))
+        let service = fixture.service!
+        await service.checkNow()
+        service.startDownload()
+        try await waitUntil("签名不通过回到 available") {
+            if case .available = service.phase { return true }
+            return false
+        }
+        try expectEqual(
+            fixture.model.settingsErrorMessage,
+            "更新包校验失败：签名校验不通过, 已拒绝安装",
+            "签名校验失败告警"
+        )
+        try expect(fixture.commands.runs.isEmpty, "签名不通过不得解压或剥离 quarantine")
+        try expect(
+            !FileManager.default.fileExists(atPath: fixture.installer.updatesRoot.path),
+            "签名失败清理下载残留"
+        )
+        try expectEqual(FixtureBundle.version(of: fixture.installedApp), "0.12.2", "未通过签名的包绝不安装")
     }
 
     static func downloadFailureReturnsToAvailable() async throws {

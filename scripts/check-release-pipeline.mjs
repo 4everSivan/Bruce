@@ -150,6 +150,20 @@ if (tauriConf.bundle?.createUpdaterArtifacts !== true) {
 } else {
   ok("tauri.conf.json 开启 updater 产物并配置 minisign 公钥");
 }
+// C174: mac 安装器以内置公钥校验 Bruce.zip 的 darwin 签名, 必须与 Windows updater 同一把
+// (换钥后只改一端, 另一端的全部更新都会被拒绝或失去来源校验)。
+const macSignatureSource = read("apps/macos/Sources/BruceAppCore/UpdateSignature.swift");
+const macInstallerSource = read("apps/macos/Sources/BruceAppCore/SoftwareUpdateInstaller.swift");
+const macPubkey = macSignatureSource.match(/trustedPublicKey =\s*"([A-Za-z0-9+/=]+)"/)?.[1];
+if (!macPubkey) {
+  fail("mac UpdateSignature.trustedPublicKey 缺失 (C174)");
+} else if (macPubkey !== pubkey) {
+  fail("mac 内置更新公钥与 tauri.conf.json plugins.updater.pubkey 不一致 (C174)");
+} else if (!/UpdateSignature\.verify\(/.test(macInstallerSource)) {
+  fail("mac SoftwareUpdateInstaller 未调用 UpdateSignature.verify (C174: 安装前必须校验来源签名)");
+} else {
+  ok("mac 内置更新公钥与 Windows updater 公钥一致, 安装器校验来源签名");
+}
 // 构建 (产 <setup>.sig) 与上传 (签 Bruce.zip) 两步都要私钥
 const keyInjections = workflow.match(/TAURI_SIGNING_PRIVATE_KEY: \$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY \}\}/g) ?? [];
 if (keyInjections.length < 2) {

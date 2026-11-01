@@ -31,6 +31,10 @@ struct SoftwareUpdateHarness {
 
         // 安装器
         try await run("SHA256 标准向量") { try SoftwareUpdateInstallerTests.sha256MatchesKnownVector() }
+        try await run("BLAKE2b-512 标准向量") { try SoftwareUpdateSignatureTests.blake2bMatchesStandardVectors() }
+        try await run("已发布版本签名 + 内置公钥") { try SoftwareUpdateSignatureTests.publishedReleaseSignatureVerifiesWithEmbeddedKey(repoRoot: repoRoot) }
+        try await run("签名校验拒绝伪造") { try SoftwareUpdateSignatureTests.verifierAcceptsValidAndRejectsForgeries() }
+        try await run("签名不通过不解压") { try await SoftwareUpdateSignatureTests.prepareRejectsBadSignatureBeforeExtracting() }
         try await run("解压与 bundle 复核") { try await SoftwareUpdateInstallerTests.prepareExtractsAndValidatesBundle() }
         try await run("SHA256 不符拒绝") { try await SoftwareUpdateInstallerTests.prepareRejectsChecksumMismatch() }
         try await run("降级与错配拒绝") { try await SoftwareUpdateInstallerTests.prepareRejectsDowngradeAndMismatchedBundles() }
@@ -62,6 +66,7 @@ struct SoftwareUpdateHarness {
         try await run("启动追平跳过版本") { try await SoftwareUpdateServiceTests.startClearsSkippedVersionImmediatelyIfLocalCatchesUp() }
         try await run("下载校验就绪") { try await SoftwareUpdateServiceTests.downloadVerifiesAndBecomesReady() }
         try await run("下载包校验失败") { try await SoftwareUpdateServiceTests.downloadRejectsChecksumMismatch() }
+        try await run("下载包签名不通过") { try await SoftwareUpdateServiceTests.downloadRejectsForeignSignature() }
         try await run("下载失败") { try await SoftwareUpdateServiceTests.downloadFailureReturnsToAvailable() }
         try await run("取消下载") { try await SoftwareUpdateServiceTests.cancelDownloadReturnsImmediately() }
         try await run("稍后与再次就绪") { try await SoftwareUpdateServiceTests.postponeThenRecheckReturnsToReady() }

@@ -1,0 +1,9 @@
+{
+  "description": "C174：已公开发布的 v0.15.0 Bruce.zip 的真实 darwin 签名（取自该版 latest.json）与包体摘要（BLAKE2b-512 由 Node / OpenSSL 独立计算）。离线锁定 minisign 解析、预哈希口径与内置公钥；不含任何私钥材料。",
+  "version": "0.15.0",
+  "asset": "https://github.com/4everSivan/Bruce/releases/download/v0.15.0/Bruce.zip",
+  "sizeBytes": 14684145,
+  "sha256": "bbe8f742e1525b4faca5d530a0bdb9f242cd2ebfb4084d8b4dd6fb5f6ebb833e",
+  "blake2b512": "10d9f91feb07b906a2948b6ea886a71107e2230cb534e92727f1d8879a02cff6341877b224328544718c1f1c773c3814825c5ebbb7d931565ddfb1c27ebef718",
+  "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRemZDMW5ESWlKUEZacU9qakxLMXJ6Z0lLOFkyOW5VM2Fkb2l6c0pJL3hMSjNkZU9icWhoOHF1dGgzeDlFelZtQjUySmREYmR5ZGZvajc4amJBY3NhMXdYdEVheDlpQ0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjY0MjU1CWZpbGU6QnJ1Y2UuemlwCkRUL0pMQ0YyOGdtNFJkUHBIVmpvRnJjZFdRb1VVWTRheTRYZlVtUjdSMHZHOTljekNTU3JJY2xGMk5nV01yU2VJbE4zN1lKdVNKMExCL3VSZXRKRkJ3PT0K"
+}

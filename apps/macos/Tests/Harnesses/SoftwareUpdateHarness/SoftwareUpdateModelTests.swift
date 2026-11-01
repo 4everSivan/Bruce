@@ -38,6 +38,7 @@ enum SoftwareUpdateModelTests {
             "4a83e99bf13939d3d91485823ec8d049bc9febf2da9e55c79f5a0ebcf69183a6",
             "darwin sha256"
         )
+        try expectEqual(release.signature, "RkFLRS1NSU5JU0lHTi1EQVJXSU4tRklYVFVSRQ==", "darwin signature 原样携带")
         try expect(release.notes.hasPrefix("应用内软件更新; "), "notes 为「; 」连接的要点")
         try expectEqual(release.sizeBytes, nil, "清单不含尺寸")
         try expectEqual(
@@ -57,6 +58,8 @@ enum SoftwareUpdateModelTests {
             ("第三方主机", manifestData(version: "0.13.0", sha256: sha, url: "https://evil.example.com/Bruce.zip")),
             ("sha 过短", manifestData(version: "0.13.0", sha256: "abc")),
             ("sha 非十六进制", manifestData(version: "0.13.0", sha256: String(repeating: "z", count: 64))),
+            ("缺 darwin 签名", manifestData(version: "0.13.0", sha256: sha, signature: nil)),
+            ("darwin 签名为空", manifestData(version: "0.13.0", sha256: sha, signature: " \n")),
         ]
         for (label, data) in rejected {
             do {
@@ -264,6 +267,7 @@ enum SoftwareUpdateParityTests {
                 notes: source.notes,
                 downloadURL: URL(string: "https://github.com/4everSivan/Bruce/releases/download/\(version.tag)/Bruce.zip")!,
                 sha256: String(repeating: "a", count: 64),
+                signature: "c2ln",
                 sizeBytes: source.sizeBytes
             )
             let phase = try phase(item.phase, release: release)
@@ -286,7 +290,7 @@ enum SoftwareUpdateParityTests {
         }
         try expectEqual(
             fixture.installFailures.count,
-            9,
+            10,
             "安装失败用例应覆盖 UpdateInstallFailure 全部分支"
         )
         return checked
@@ -365,6 +369,7 @@ enum SoftwareUpdateParityTests {
         switch kind {
         case "downloadFailed": return .downloadFailed
         case "checksumMismatch": return .checksumMismatch
+        case "signatureInvalid": return .signatureInvalid
         case "extractFailed": return .extractFailed
         case "bundleMismatch": return .bundleMismatch
         case "versionMismatch": return .versionMismatch

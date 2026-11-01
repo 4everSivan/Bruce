@@ -181,8 +181,8 @@
   }
 
   // 安装链路失败 → 设置窗口顶部状态行 (settings-status warn)。
-  // downloadFailed 与 mac 共享 (fixture installFailures); Windows 经 tauri-plugin-updater
-  // (minisign 验签 + NSIS 静默安装), 其余为 Windows 特有文案。
+  // downloadFailed / signatureInvalid 与 mac 共享 (fixture installFailures); Windows 经
+  // tauri-plugin-updater (minisign 验签 + NSIS 静默安装), 其余为 Windows 特有文案。
   function installFailureStatusLine(kind) {
     switch (kind) {
       case "downloadFailed": return "下载更新失败：网络错误, 可稍后重试";
