@@ -4,7 +4,7 @@
   "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C178-win-csp",
   "is_hotfix": false,
   "target": {
@@ -56,10 +56,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261101-11",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -72,8 +72,8 @@
         "item": "行为实测",
         "true_if": "Windows 真机上四个窗口加载无 CSP 违规、全部功能可用（需人工在 Windows 上确认，本机无法运行 Windows GUI）",
         "false_if": "出现 CSP 拦截或命令被拒导致功能失效",
-        "evidence": "2026-11-01 真实浏览器内核替代实测（非 WebView2）：headless Chrome 经 CDP 打开本分支 apps/win/src 的四个窗口页面，HTTP 响应头携带与 tauri.conf.json 逐字相同的 CSP，Tauri 桩以 addScriptToEvaluateOnNewDocument 注入（真实面板 / 预览 fixture）。dashboard 推送 dashboard-updated 并切 Nothing 主题、settings 逐一点开 6 个分类、preview 渲染 fixture（ChatGPT / 30% / ≈ ¥2.702）、quota-alert 推送带 `<img src=x onerror=…>` 服务名与 `\"><b>` 重置文案的告警：四页 securitypolicyviolation 均为 0、无脚本异常（唯一错误为 Chrome 自动请求 /favicon.ico 的 404）；预警标题按纯文本显示、未生成 img / b 节点、注入脚本未执行；点 ✕ 只调用 hide_quota_alert_window，点卡片主体调用 show_dashboard_from_alert + hide_quota_alert_window（与改动前语义一致）。探针有效性：同一 CSP 下换回改动前的 quota-alert.html，探针记录 script-src-elem 内联拦截（第 258 行）且气泡不渲染。未做：Windows 真机（WebView2 + Tauri IPC）四个窗口在 CSP 与按窗口 ACL 下的全功能确认——本机无法运行 Windows GUI，需人工在 Windows 上确认。",
-        "result": null
+        "evidence": "2026-11-01 真实浏览器内核替代实测（非 WebView2）：headless Chrome 经 CDP 打开本分支 apps/win/src 的四个窗口页面，HTTP 响应头携带与 tauri.conf.json 逐字相同的 CSP，Tauri 桩以 addScriptToEvaluateOnNewDocument 注入（真实面板 / 预览 fixture）。dashboard 推送 dashboard-updated 并切 Nothing 主题、settings 逐一点开 6 个分类、preview 渲染 fixture（ChatGPT / 30% / ≈ ¥2.702）、quota-alert 推送带 `<img src=x onerror=…>` 服务名与 `\"><b>` 重置文案的告警：四页 securitypolicyviolation 均为 0、无脚本异常（唯一错误为 Chrome 自动请求 /favicon.ico 的 404）；预警标题按纯文本显示、未生成 img / b 节点、注入脚本未执行；点 ✕ 只调用 hide_quota_alert_window，点卡片主体调用 show_dashboard_from_alert + hide_quota_alert_window（与改动前语义一致）。探针有效性：同一 CSP 下换回改动前的 quota-alert.html，探针记录 script-src-elem 内联拦截（第 258 行）且气泡不渲染。未做：Windows 真机（WebView2 + Tauri IPC）四个窗口在 CSP 与按窗口 ACL 下的全功能确认——本机无法运行 Windows GUI，需人工在 Windows 上确认。；2026-11-01 人工知情签收：本项所需真机实测未做，维护者以「Confirm」确认全部卡片验收、按上述已知缺口接受，result 据此记为通过，缺口在案。",
+        "result": true
       }
     ]
   },
@@ -87,7 +87,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

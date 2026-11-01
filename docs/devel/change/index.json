@@ -1820,7 +1820,7 @@
     "C178": {
       "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C178-win-csp",
       "topic": "WindowsCompat",
       "version": "0.16.0",
