@@ -4,7 +4,7 @@
   "title": "Bridge 超时契约失真：localScanSeconds 只校验不执行，mac 与 Windows 预算各异且无记录",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C177-timeout-contract",
   "is_hotfix": false,
   "target": {
@@ -80,7 +80,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "abaf549",
     "tag": ""
   },
   "gate": {
@@ -88,7 +88,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
