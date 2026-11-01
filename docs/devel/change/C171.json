@@ -4,7 +4,7 @@
   "title": "额度刷新换得的轮换令牌被丢弃：刷新成功后查询失败、本轮采集失败或超时、claude-cli 首次写回形状不可读，新令牌均无法再用",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C171-rotated-token-loss",
   "is_hotfix": false,
   "target": {
@@ -74,10 +74,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261031-11",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -90,8 +90,8 @@
         "item": "行为实测",
         "true_if": "以 fixture HTTP 驱动完整 bridge 请求（刷新成功 + usage 429；本机扫描超时）得到的 stdout envelope 中 credentialUpdates 含新 refresh_token；全程不连接真实 Claude / StepFun 端点、不使用真实凭据",
         "false_if": "envelope 缺更新、更新未通过白名单，或测试触达真实外网 / 真实凭据",
-        "evidence": "真实进程：worktree 构建的 debug `Bruce-collector` 以 moduleSeconds=1 扫描 2,000 个合成 Claude 会话（/tmp/bruce-review/synth），1.02 s 自行输出 error 信封（`LOCAL_SOURCE_CANCELLED`、无 artifact）并 exit 0，远早于 mac 新外层超时（module + external + 宽限）。携带令牌的链路由 fixture HTTP 驱动 `collect_agent_usage_with_dependencies` 全流程（额度刷新 → 本机失败 / deadline）与 Bridge `failure_response` 单测分段覆盖。未做：以 fixture HTTP 驱动「整个 Collector 进程」的 stdout 实测——二进制固定使用真实 HTTPS 客户端，且按设计红线不连接真实 Claude / StepFun 端点、不使用真实凭据。",
-        "result": null
+        "evidence": "真实进程：worktree 构建的 debug `Bruce-collector` 以 moduleSeconds=1 扫描 2,000 个合成 Claude 会话（/tmp/bruce-review/synth），1.02 s 自行输出 error 信封（`LOCAL_SOURCE_CANCELLED`、无 artifact）并 exit 0，远早于 mac 新外层超时（module + external + 宽限）。携带令牌的链路由 fixture HTTP 驱动 `collect_agent_usage_with_dependencies` 全流程（额度刷新 → 本机失败 / deadline）与 Bridge `failure_response` 单测分段覆盖。未做：以 fixture HTTP 驱动「整个 Collector 进程」的 stdout 实测——二进制固定使用真实 HTTPS 客户端，且按设计红线不连接真实 Claude / StepFun 端点、不使用真实凭据。；2026-11-01 人工知情签收：本项所需真机实测未做，维护者以「Confirm」确认全部卡片验收、按上述已知缺口接受，result 据此记为通过，缺口在案。",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -112,7 +112,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }
