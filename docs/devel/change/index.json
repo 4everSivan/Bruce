@@ -1802,7 +1802,7 @@
     "C176": {
       "title": "采集进程内存峰值与缓存体积随观测数线性膨胀：40 万条观测热扫描峰值 251 MB、缓存 102 MB",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C176-collector-memory",
       "topic": "TokenUsage",
       "version": "0.16.0",
