@@ -4,7 +4,7 @@
   "title": "Bridge 超时契约失真：localScanSeconds 只校验不执行，mac 与 Windows 预算各异且无记录",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "verified",
   "branch": "fix/C177-timeout-contract",
   "is_hotfix": false,
   "target": {
@@ -18,8 +18,8 @@
     "description": "确认 localScanSeconds 仍只被校验",
     "command": "grep -rn 'local_scan_seconds' core/collector/crates apps/win/src-tauri/src --include='*.rs'",
     "expected": "仅 collector-domain 字段声明、collector-bridge 校验与 Windows 赋值，无任何读取用于控制扫描",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-01 在 worktree local/worktrees/C177（fix/C177-timeout-contract，基于 docs/C171-C178-register e227fa6）执行预检命令：命中 collector-bridge lib.rs:255 `validate_timeout(request.timeouts.local_scan_seconds, …)`（唯一读取点，只做范围校验）、collector-domain lib.rs:40 字段声明、Windows collector.rs:64 发送 120.0 与 :280 测试断言；本机扫描的实际约束来自 collector-application context.rs:80 的 moduleSeconds deadline 与 :99 的 externalRequestSeconds。mac 发送 30 / 10 / 90、Windows 发送 120 / 30 / 150，design/01 无记录。注：预检命令只覆盖 src/，Windows tests/scheduler_collector_coverage.rs:183 的另一处读取在第二轮门禁时才暴露（见自动化测试）。缺陷存在。"
   },
   "callback": {
     "before": [
@@ -55,38 +55,40 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261101-10",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "不带 localScanSeconds 的请求可正常采集；带该字段的旧请求仍可解析；schema 与 fixture 校验通过；verify-local.sh 退出码 0",
         "false_if": "新旧请求任一被拒绝，或校验失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 在 worktree local/worktrees/C177 执行 `zsh scripts/verify-local.sh` 共三轮：首轮 exit=1——cargo fmt --check 报 collector-bridge 新增测试两处 assert_eq! 未按 rustfmt 换行（漏跑 cargo fmt），格式化后重跑；第二轮 exit=101——Windows 集成测试 tests/scheduler_collector_coverage.rs:183 `timeout_values_stay_within_bridge_limits` 仍读取已删除的 `local_scan_seconds`（E0609，预检 grep 只覆盖 src/ 漏掉 tests/），删除该断言并全仓复查仅剩有意保留的引用后，先单独跑 Windows 壳 crate（fmt --check 通过、cargo test 全部通过），第三轮 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=34 secretFindings=[]，告警仅 cargo `unused config key` ×7 与 CLT `ld: warning: search path` ×43 环境噪音）。新增 collector-bridge `retired_local_scan_seconds_is_accepted_but_not_validated`：默认请求不含该字段且成功；旧请求带 30 / 120 / 99999 / 0 均成功出 artifact（不再校验取值）；timeouts 内其他未知字段 → BRIDGE_INVALID_JSON；缺 externalRequestSeconds 或 moduleSeconds → BRIDGE_INVALID_JSON；二者超上限 → BRIDGE_INVALID_REQUEST。mac CollectorRunner Harness 断言请求不再含 localScanSeconds（28 项通过）；Windows `local_request_serializes_and_round_trips_through_domain_type` 断言 timeouts 不含该字段、含现行两字段。application / account / bridge / bridge_process 测试请求与 tests/fixtures/bridge/agent-usage/request-valid.json、collector-release-smoke.sh 请求同步去掉该字段；request-v1 schema 中该字段改为非必填并标 deprecated。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "超时上限校验（externalRequestSeconds / moduleSeconds）不变；两端采集冒烟通过",
         "false_if": "超时校验放宽或采集回归",
-        "evidence": "",
-        "result": null
+        "evidence": "超时上限校验（externalRequestSeconds ≤ 300、moduleSeconds ≤ 600、必须为有限正数）不变，见新增回归。mac 冒烟：`zsh scripts/build-test-app.sh`（单架构 Preview，未安装）exit=0，内置 collector-release-smoke（initial / old-cache-rebuild / install / upgrade / rollback）全部「schema/runId/artifact/stdout/cache OK」；再以 dist/Bruce.app/Contents/Resources/Bruce-collector 进程实测：带 localScanSeconds 的旧格式请求 → status=success 有 artifact，新格式请求 → success，缺 moduleSeconds → error BRIDGE_INVALID_JSON。Windows：壳 crate 测试全绿（含 build_local_request 契约与上限断言）；Windows 真机未运行。超时取值两端均未改动（mac 90 / 10、Windows 150 / 30），只登记于 design/01。docs/official 知识库仍描述 localScanSeconds，由其独立流水线维护，未改。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

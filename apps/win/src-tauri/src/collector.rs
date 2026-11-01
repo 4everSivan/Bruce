@@ -60,8 +60,8 @@ pub fn build_local_request(
         schema_version: BRIDGE_SCHEMA_VERSION,
         run_id: uuid::Uuid::new_v4().to_string(),
         module: "agent-usage".to_owned(),
+        // 进程内执行, 只有 Rust deadline 一道约束 (mac 子进程另有外层定时器); 预算口径见 design/01 规则 3。
         timeouts: BridgeTimeouts {
-            local_scan_seconds: 120.0,
             external_request_seconds: 30.0,
             module_seconds: 150.0,
         },
@@ -277,7 +277,7 @@ mod tests {
         assert_eq!(request.schema_version, BRIDGE_SCHEMA_VERSION);
         assert_eq!(request.module, "agent-usage");
         assert!(uuid::Uuid::parse_str(&request.run_id).is_ok());
-        assert!(request.timeouts.local_scan_seconds <= 300.0);
+        assert!(request.timeouts.external_request_seconds <= 300.0);
         assert!(request.timeouts.module_seconds <= 600.0);
         assert!(request.credentials.is_empty(), "无凭证时不携带任何凭证");
         let capabilities = request.context["capabilities"].as_array().unwrap();

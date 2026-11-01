@@ -17,7 +17,6 @@ use std::time::Instant;
 use uuid::Uuid;
 
 const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
-const MAX_LOCAL_SCAN_SECONDS: f64 = 300.0;
 const MAX_EXTERNAL_REQUEST_SECONDS: f64 = 300.0;
 const MAX_MODULE_SECONDS: f64 = 600.0;
 
@@ -263,7 +262,6 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
             "runId 必须是有效 UUID",
         ));
     }
-    validate_timeout(request.timeouts.local_scan_seconds, MAX_LOCAL_SCAN_SECONDS)?;
     validate_timeout(
         request.timeouts.external_request_seconds,
         MAX_EXTERNAL_REQUEST_SECONDS,
@@ -475,7 +473,7 @@ mod tests {
     }
 
     fn request() -> String {
-        r#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"localScanSeconds":30,"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"/tmp","capabilities":["localSessions"]},"credentials":{}}"#.to_owned()
+        r#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"/tmp","capabilities":["localSessions"]},"credentials":{}}"#.to_owned()
     }
 
     /// C043: panic 兜底必须产出可解析的 envelope (含 runId 与诊断码),
@@ -641,6 +639,44 @@ mod tests {
         request["credentials"]["providerEnv"] = json!({"deepseek": "fixture"});
         let response = run_bytes(&serde_json::to_vec(&request).unwrap());
         assert_eq!(response.diagnostics[0].code, "BRIDGE_CREDENTIAL_SCOPE");
+    }
+
+    /// C177: `localScanSeconds` 从未被消费, 两端已停发; 旧宿主仍发送时兼容接受且不再校验取值。
+    /// 现行两个超时的必填与上限校验不变, timeouts 内其他未知字段照常拒绝。
+    #[test]
+    fn retired_local_scan_seconds_is_accepted_but_not_validated() {
+        let base: Value = serde_json::from_str(&request()).unwrap();
+        assert!(base["timeouts"].get("localScanSeconds").is_none());
+        for legacy in [json!(30), json!(120), json!(99_999), json!(0)] {
+            let mut request = base.clone();
+            request["timeouts"]["localScanSeconds"] = legacy.clone();
+            let response = run_bytes(&serde_json::to_vec(&request).unwrap());
+            assert_eq!(response.status, ResponseStatus::Success, "{legacy}");
+            assert!(response.artifact.is_some(), "{legacy}");
+        }
+
+        let mut request = base.clone();
+        request["timeouts"]["scanSeconds"] = json!(30);
+        let response = run_bytes(&serde_json::to_vec(&request).unwrap());
+        assert_eq!(response.diagnostics[0].code, "BRIDGE_INVALID_JSON");
+
+        for key in ["externalRequestSeconds", "moduleSeconds"] {
+            let mut missing = base.clone();
+            missing["timeouts"].as_object_mut().unwrap().remove(key);
+            let response = run_bytes(&serde_json::to_vec(&missing).unwrap());
+            assert_eq!(
+                response.diagnostics[0].code, "BRIDGE_INVALID_JSON",
+                "缺 {key}"
+            );
+
+            let mut oversized = base.clone();
+            oversized["timeouts"][key] = json!(10_000);
+            let response = run_bytes(&serde_json::to_vec(&oversized).unwrap());
+            assert_eq!(
+                response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST",
+                "{key} 超上限"
+            );
+        }
     }
 
     #[test]

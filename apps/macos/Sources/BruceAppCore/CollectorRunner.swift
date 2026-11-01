@@ -59,7 +59,6 @@ package enum JSONValue: Codable, Equatable, Sendable {
 }
 
 struct CollectorTimeouts: Encodable, Equatable, Sendable {
-    let localScanSeconds: Double
     let externalRequestSeconds: Double
     let moduleSeconds: Double
     /// Swift 侧取消子进程的宽限期, 不属于 Bridge 请求协议.
@@ -73,14 +72,12 @@ struct CollectorTimeouts: Encodable, Equatable, Sendable {
     }
 
     static let `default` = CollectorTimeouts(
-        localScanSeconds: 30,
         externalRequestSeconds: 10,
         moduleSeconds: 90,
         cancellationGraceSeconds: 2
     )
 
     enum CodingKeys: String, CodingKey {
-        case localScanSeconds
         case externalRequestSeconds
         case moduleSeconds
     }

@@ -89,12 +89,15 @@ fn local_request_serializes_and_round_trips_through_domain_type() {
     let parsed: BridgeRequest = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(parsed.schema_version, BRIDGE_SCHEMA_VERSION);
     assert_eq!(parsed.module, "agent-usage");
-    assert_eq!(parsed.timeouts.local_scan_seconds, 120.0);
+    assert_eq!(parsed.timeouts.external_request_seconds, 30.0);
     assert_eq!(parsed.timeouts.module_seconds, 150.0);
     // 字段命名契约 (mac Bridge 同一协议)。
     assert!(value.get("schemaVersion").is_some());
     assert!(value.get("runId").is_some());
-    assert!(value["timeouts"].get("localScanSeconds").is_some());
+    // C177: localScanSeconds 已退役, 宿主不再发送。
+    assert!(value["timeouts"].get("localScanSeconds").is_none());
+    assert!(value["timeouts"].get("externalRequestSeconds").is_some());
+    assert!(value["timeouts"].get("moduleSeconds").is_some());
     assert!(value.get("credentials").is_some());
 }
 
@@ -175,9 +178,6 @@ fn timeout_values_stay_within_bridge_limits() {
     let request = bruce_win_lib::collector::build_local_request(
         chrono::Local::now(),
         &bruce_win_lib::credentials::CredentialPayloads::new(),
-    );
-    assert!(
-        request.timeouts.local_scan_seconds > 0.0 && request.timeouts.local_scan_seconds <= 300.0
     );
     assert!(
         request.timeouts.external_request_seconds > 0.0
