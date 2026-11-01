@@ -4,7 +4,7 @@
   "title": "本机会话缓存逐条目强制落盘：冷扫描约四分之三耗时在 F_FULLFSYNC，版本升级后全量重建易逼近 90 s 预算",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C175-cache-fsync",
   "is_hotfix": false,
   "target": {
@@ -81,7 +81,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "ca3bd7b",
     "tag": ""
   },
   "gate": {
@@ -89,7 +89,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
