@@ -4,7 +4,7 @@
   "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C172-win-claude-rotation",
   "is_hotfix": false,
   "target": {
@@ -88,7 +88,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "6d10558",
     "tag": ""
   },
   "gate": {
@@ -96,7 +96,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
