@@ -1793,7 +1793,7 @@
     "C175": {
       "title": "本机会话缓存逐条目强制落盘：冷扫描约四分之三耗时在 F_FULLFSYNC，版本升级后全量重建易逼近 90 s 预算",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C175-cache-fsync",
       "topic": "TokenUsage",
       "version": "0.16.0",
