@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-expand-dashboard"
+description = "Enables the expand_dashboard command without any pre-configured scope."
+commands.allow = ["expand_dashboard"]
+
+[[permission]]
+identifier = "deny-expand-dashboard"
+description = "Denies the expand_dashboard command without any pre-configured scope."
+commands.deny = ["expand_dashboard"]

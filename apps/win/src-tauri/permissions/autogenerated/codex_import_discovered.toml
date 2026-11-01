@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-codex-import-discovered"
+description = "Enables the codex_import_discovered command without any pre-configured scope."
+commands.allow = ["codex_import_discovered"]
+
+[[permission]]
+identifier = "deny-codex-import-discovered"
+description = "Denies the codex_import_discovered command without any pre-configured scope."
+commands.deny = ["codex_import_discovered"]

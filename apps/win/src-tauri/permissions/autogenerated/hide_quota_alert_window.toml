@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hide-quota-alert-window"
+description = "Enables the hide_quota_alert_window command without any pre-configured scope."
+commands.allow = ["hide_quota_alert_window"]
+
+[[permission]]
+identifier = "deny-hide-quota-alert-window"
+description = "Denies the hide_quota_alert_window command without any pre-configured scope."
+commands.deny = ["hide_quota_alert_window"]

@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "commands-quota-alert",
+  "description": "Quota alert bubble: only the commands quota-alert.js invokes",
+  "windows": [
+    "quota-alert"
+  ],
+  "local": true,
+  "permissions": [
+    "allow-hide-quota-alert-window",
+    "allow-show-dashboard-from-alert"
+  ]
+}

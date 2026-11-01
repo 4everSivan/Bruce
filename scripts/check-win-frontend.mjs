@@ -26,7 +26,7 @@ const fail = (message) => {
   failed = true;
 };
 
-for (const file of ["app.js", "agent-brand.js", "update-presentation.js", "pricing-presentation.js", ...settingsScripts]) {
+for (const file of ["app.js", "agent-brand.js", "update-presentation.js", "pricing-presentation.js", "preview.js", "quota-alert.js", ...settingsScripts]) {
   try {
     new vm.Script(readFileSync(join(repoRoot, "apps/win/src", file), "utf8"), { filename: file });
     console.log(`ok: ${file} 语法合法`);
@@ -156,6 +156,93 @@ if (/\bPANEL\b/.test(appSource)) {
       console.log(`ok: 窗口 ${window.label} 的事件订阅已授权 (${page})`);
     }
   }
+}
+
+// 前端安全基线 (C178): 严格 CSP + 应用命令按窗口最小授权。
+//   1. tauri.conf.json 配置 CSP: default-src / script-src 只放行 'self', 不得出现 'unsafe-inline' /
+//      'unsafe-eval' 脚本放行或远程源 (ipc 协议除外);
+//   2. 窗口页面不得有内联脚本, 页面与脚本不得使用内联事件属性 (CSP 下会被拦截);
+//   3. build.rs 的 AppManifest 命令清单与 lib.rs generate_handler! 逐一相同 (漏列即该命令无权限可授);
+//   4. 每个窗口经 capabilities 授予的 allow-<command> 恰为其页面脚本实际调用的命令 ——
+//      漏授则调用被 ACL 拒绝, 多授即扩大该窗口可达的命令面; 不得配置 remote capability。
+{
+  const conf = JSON.parse(readFileSync(join(repoRoot, "apps/win/src-tauri/tauri.conf.json"), "utf8"));
+  const csp = conf.app?.security?.csp;
+  if (typeof csp !== "string" || !csp.trim()) {
+    fail("tauri.conf.json 未配置 app.security.csp (C178)");
+  } else {
+    const directives = Object.fromEntries(
+      csp.split(";").map((part) => part.trim().split(/\s+/)).filter((tokens) => tokens[0]).map(([name, ...values]) => [name, values]),
+    );
+    const scriptSources = directives["script-src"] || directives["default-src"] || [];
+    const problems = [];
+    if ((directives["default-src"] || []).join(" ") !== "'self'") problems.push("default-src 须为 'self'");
+    if (scriptSources.join(" ") !== "'self'") problems.push("script-src 须只放行 'self'");
+    for (const [name, values] of Object.entries(directives)) {
+      for (const value of values) {
+        if (/^https?:\/\//.test(value) && value !== "http://ipc.localhost") problems.push(`${name} 放行远程源 ${value}`);
+        if (value === "*" || value === "'unsafe-eval'") problems.push(`${name} 含 ${value}`);
+      }
+    }
+    if (problems.length) fail(`CSP 不满足严格基线 (C178): ${problems.join("; ")}`);
+    else console.log("ok: tauri.conf.json 配置严格 CSP");
+  }
+
+  const pages = (conf.app?.windows || []).map((window) => ({ label: window.label, page: window.url || "index.html" }));
+  const sourcesOf = (page) => {
+    const html = readFileSync(join(repoRoot, "apps/win/src", page), "utf8");
+    const scripts = [...html.matchAll(/<script src="([^"]+\.js)"/g)].map((match) => match[1]);
+    return { html, scripts, all: [html, ...scripts.map((file) => readFileSync(join(repoRoot, "apps/win/src", file), "utf8"))] };
+  };
+  for (const { page } of pages) {
+    const { html, all } = sourcesOf(page);
+    if (/<script(?![^>]*\bsrc=)[^>]*>/.test(html)) fail(`${page} 含内联脚本, 严格 CSP 下不执行 (C178)`);
+    const handlers = all.flatMap((source) => [...source.matchAll(/<[a-z][^>]*\son[a-z]+\s*=/g)].map((match) => match[0]));
+    if (handlers.length) fail(`${page} 使用内联事件属性 (CSP 拦截): ${handlers[0]}`);
+  }
+
+  const lib = readFileSync(join(repoRoot, "apps/win/src-tauri/src/lib.rs"), "utf8");
+  const buildRs = readFileSync(join(repoRoot, "apps/win/src-tauri/build.rs"), "utf8");
+  const handler = (lib.match(/generate_handler!\[([\s\S]*?)\]\)/)?.[1] || "")
+    .split(",").map((item) => item.trim().split("::").pop()).filter(Boolean);
+  const manifest = [...(buildRs.match(/\.commands\(&\[([\s\S]*?)\]\)/)?.[1] || "").matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+  const sameSet = (a, b) => a.length === b.length && a.every((value) => b.includes(value));
+  if (!handler.length || !sameSet(handler, manifest)) {
+    const missing = handler.filter((command) => !manifest.includes(command));
+    const stale = manifest.filter((command) => !handler.includes(command));
+    fail(`build.rs AppManifest 与 generate_handler! 不一致 (C178): 缺 [${missing}] 多 [${stale}]`);
+  } else {
+    console.log(`ok: AppManifest 覆盖全部 ${handler.length} 个应用命令`);
+  }
+
+  const capabilitiesDir = join(repoRoot, "apps/win/src-tauri/capabilities");
+  const granted = new Map(pages.map(({ label }) => [label, new Set()]));
+  for (const name of readdirSync(capabilitiesDir).filter((entry) => entry.endsWith(".json"))) {
+    const capability = JSON.parse(readFileSync(join(capabilitiesDir, name), "utf8"));
+    if (capability.remote) fail(`${name} 配置了 remote capability, 远程页面不得调用应用命令 (C178)`);
+    for (const permission of capability.permissions || []) {
+      const id = typeof permission === "string" ? permission : permission.identifier;
+      if (!/^allow-[a-z-]+$/.test(id)) continue;
+      for (const label of capability.windows || []) {
+        if (!granted.has(label)) fail(`${name} 向未声明的窗口 "${label}" 授权`);
+        else granted.get(label).add(id.slice("allow-".length).replaceAll("-", "_"));
+      }
+    }
+  }
+  const invokedPattern = /(?:invoke|invokeTauri|runExport)\(\s*"([a-z_]+)"/g;
+  const reachable = new Set();
+  for (const { label, page } of pages) {
+    const invoked = new Set(sourcesOf(page).all.flatMap((source) => [...source.matchAll(invokedPattern)].map((match) => match[1])));
+    const grants = granted.get(label);
+    grants.forEach((command) => reachable.add(command));
+    const missing = [...invoked].filter((command) => !grants.has(command)).sort();
+    const extra = [...grants].filter((command) => !invoked.has(command)).sort();
+    if (missing.length) fail(`窗口 "${label}" 调用了未授权的命令 (ACL 拒绝): ${missing.join(", ")}`);
+    if (extra.length) fail(`窗口 "${label}" 被授予未调用的命令 (超出最小授权): ${extra.join(", ")}`);
+    if (!missing.length && !extra.length) console.log(`ok: 窗口 ${label} 授权恰为其调用的 ${invoked.size} 个命令`);
+  }
+  const unreachable = handler.filter((command) => !reachable.has(command));
+  if (unreachable.length) console.log(`info: 未授予任何窗口的已注册命令 (IPC 不可达): ${unreachable.join(", ")}`);
 }
 
 // 交互回归 + 面板几何对拍 (demo 内联镜像 ↔ Rust runtime_core fixture, C035)

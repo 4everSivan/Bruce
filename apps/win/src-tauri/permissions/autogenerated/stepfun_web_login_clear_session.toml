@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stepfun-web-login-clear-session"
+description = "Enables the stepfun_web_login_clear_session command without any pre-configured scope."
+commands.allow = ["stepfun_web_login_clear_session"]
+
+[[permission]]
+identifier = "deny-stepfun-web-login-clear-session"
+description = "Denies the stepfun_web_login_clear_session command without any pre-configured scope."
+commands.deny = ["stepfun_web_login_clear_session"]

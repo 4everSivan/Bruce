@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Windows 前端安全加固 (C178)**：Windows 应用的看板、设置、悬停预览与额度预警窗口启用严格内容安全策略（只允许加载应用自带脚本，不允许内联脚本与远程资源）；每个窗口只能调用它实际用到的后端命令（例如预警气泡只能收起自己或唤出看板，不能触碰凭据或更新安装），两个没有界面入口的凭据写入命令不再对任何窗口开放。预警气泡显示服务名等字段前做转义。界面与功能不变。
 - **CI 验证作业补齐 ripgrep 依赖 (C170)**：push 级「本地验证套件」在 macOS runner 上因缺少 `ripgrep` 失败——`check-bundle-resources.zsh` 把「命令不存在」误判成「打包脚本未调用共享资源函数」，报错与事实相反；`check-collector-fixtures.sh` 则静默跳过 fixture 凭证扫描（rg 未执行也输出通过）。CI 验证作业显式安装 `ripgrep`，两个脚本改为先 `command -v rg` 预检并明确报错，新增 `check-ci-tool-deps.mjs` 契约检查守住 CI 安装与脚本预检的一致性。
 - **正式版打包补装 Nothing 主题字体 (C168)**：Developer ID 正式版脚本 `build-release-app.sh` 此前漏拷 `Assets/Fonts`，用它打出的包在 Nothing 主题下会静默回退为系统字体（当前 CI 发版走 `build-test-app.sh`，已发布版本不受影响）。两个打包脚本改为共用 `runtime-manifest.zsh` 的同一份资源清单投放并校验，本地验证新增 `check-bundle-resources.zsh` 防止再次漂移。
 - **mac 自定义刷新间隔点别处即保存 (C167，修正 C160)**：设置页「刷新间隔 · 自定义」输入后点击别处或切走窗口即生效（此前只认回车，点别处后数字仍显示在框里却没有保存）；非法输入回到当前生效值，未改动时不重启刷新计时。

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-dismiss-ready"
+description = "Enables the update_dismiss_ready command without any pre-configured scope."
+commands.allow = ["update_dismiss_ready"]
+
+[[permission]]
+identifier = "deny-update-dismiss-ready"
+description = "Denies the update_dismiss_ready command without any pre-configured scope."
+commands.deny = ["update_dismiss_ready"]

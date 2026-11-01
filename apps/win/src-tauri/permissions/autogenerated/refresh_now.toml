@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-refresh-now"
+description = "Enables the refresh_now command without any pre-configured scope."
+commands.allow = ["refresh_now"]
+
+[[permission]]
+identifier = "deny-refresh-now"
+description = "Denies the refresh_now command without any pre-configured scope."
+commands.deny = ["refresh_now"]

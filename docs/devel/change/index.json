@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-31",
+  "updated_at": "2026-11-01",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -1820,7 +1820,7 @@
     "C178": {
       "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
       "type": "Enhancement",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C178-win-csp",
       "topic": "WindowsCompat",
       "version": "0.16.0",
