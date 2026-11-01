@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-31",
+  "updated_at": "2026-11-01",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -1793,7 +1793,7 @@
     "C175": {
       "title": "本机会话缓存逐条目强制落盘：冷扫描约四分之三耗时在 F_FULLFSYNC，版本升级后全量重建易逼近 90 s 预算",
       "type": "Enhancement",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C175-cache-fsync",
       "topic": "TokenUsage",
       "version": "0.16.0",

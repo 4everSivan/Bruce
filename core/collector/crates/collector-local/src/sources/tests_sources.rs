@@ -1069,3 +1069,37 @@ fn codex_file_cache_reparses_only_changed_files_and_survives_rollover() {
     fs::remove_dir_all(root).ok();
     fs::remove_dir_all(cache_dir).ok();
 }
+
+/// C175 回归: Codex 按文件缓存 (自 C117 起即不 fsync) 为空或被截断时判 Corrupt 并全量重建。
+#[test]
+fn codex_file_cache_left_empty_or_truncated_is_rebuilt() {
+    let root = temp_root("codex-power-loss");
+    let cache_dir = temp_root("codex-power-loss-cache");
+    let w = window();
+    write_codex_lines(
+        &root,
+        "rollout-power-loss.jsonl",
+        &[codex_token_count("2026-07-28T04:00:00Z", 10, 2, 3)],
+    );
+    let expected = scan_codex(std::slice::from_ref(&root), &w);
+    let cold = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+    assert_eq!(cold.contribution, expected.contribution);
+
+    let cache_path = cache_dir.join("codex-files-v1.json");
+    let intact = fs::read(&cache_path).unwrap();
+    for damaged in [&intact[..0], &intact[..intact.len() / 2]] {
+        fs::write(&cache_path, damaged).unwrap();
+        let repaired = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        assert_eq!(repaired.contribution, expected.contribution);
+        assert_eq!(repaired.stats.cache_corruptions, 1);
+        assert_eq!(repaired.stats.cache_hits, 0);
+
+        let warm = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        assert_eq!(warm.contribution, expected.contribution);
+        assert_eq!(warm.stats.cache_hits, 1, "重建后的缓存下一轮应命中");
+    }
+    super::tests_cache::assert_cache_files_private_without_temporaries(&cache_dir);
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(cache_dir).ok();
+}

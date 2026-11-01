@@ -4,7 +4,7 @@
   "title": "本机会话缓存逐条目强制落盘：冷扫描约四分之三耗时在 F_FULLFSYNC，版本升级后全量重建易逼近 90 s 预算",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C175-cache-fsync",
   "is_hotfix": false,
   "target": {
@@ -18,8 +18,8 @@
     "description": "确认可再生缓存写入仍逐条目 sync_all",
     "command": "grep -n 'sync_all' core/collector/crates/collector-local/src/*.rs core/collector/crates/collector-local/src/sources/*.rs",
     "expected": "cache_util.rs write_json_atomic 命中",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-01 在 worktree local/worktrees/C175（fix/C175-cache-fsync，基于 docs/C171-C178-register e227fa6）执行预检命令：仅 cache_util.rs:85 `file.sync_all()` 命中（write_json_atomic，JSONL / SQLite 条目与 JSONL manifest 共用）。另核对：Codex 按文件缓存 write_codex_file_cache 自 C117 起即不 sync_all；collector-bridge metrics.rs 的 sync_all 属调试指标写盘，不是缓存，不在本卡范围。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -50,7 +50,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261101-09",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -58,29 +58,29 @@
         "item": "自动化测试",
         "true_if": "新增回归：空文件 / 截断条目被判 Corrupt 并重建且结果与全量解析一致；既有缓存测试与 verify-local.sh 退出码 0",
         "false_if": "任一回归缺失或失败，或 verify-local.sh 非 0",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 在 worktree local/worktrees/C175 执行 `zsh scripts/verify-local.sh`：首轮 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=34 secretFindings=[]，告警仅 cargo `unused config key` ×7 与 CLT `ld: warning: search path` ×43 环境噪音）。新增回归（collector-local 46 → 49 项全绿）：`jsonl_cache_entries_left_empty_or_truncated_are_rebuilt`（Kimi 两个会话：一条条目清空、一条截断一半、manifest 清空 → cache_corruptions=2、cache_rebuilds=2、结果与无缓存 scan_kimi_tree 一致；下一轮 cache_hits=2；随后删除一个源文件 cache_deletions=1，证明 manifest 已随修复轮重写）、`sqlite_cache_entry_left_empty_or_truncated_is_rebuilt`（OpenCode 条目清空 / 截断各一轮：cache_corruptions=1、回退全量读取且结果与 scan_opencode 一致，下一轮命中）、`codex_file_cache_left_empty_or_truncated_is_rebuilt`（codex-files-v1.json 清空 / 截断：判 Corrupt 并重建，结果与 scan_codex 一致，下一轮命中）。三例均断言缓存目录内文件 0600、无 `.tmp-` 残留。注：manifest 解析失败按「无上一版」处理（既有语义，不计 cache_corruptions），只影响该轮的删除回收。",
+        "result": true
       },
       {
         "item": "性能实测",
         "true_if": "同一合成数据集（2,000 文件 / 40 万观测）冷扫描 ≤ 5 s，artifact 与改动前逐字节一致",
         "false_if": "冷扫描未显著下降或 artifact 不一致",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 同一合成数据集（/tmp/bruce-review/synth：2,000 个窗口内 Claude 会话、289 MB）、同一请求（days=30、仅 localSessions），未改动构建（主干 6993c12 同源 release，core/ 与 e227fa6 无差异）与本分支 release 构建交替运行：冷扫描（每次全新 home）base 20.22 / 18.11 / 18.62 s → 本分支 4.48 / 4.13 / 3.87 s（≤ 5 s）；热扫描 base 1.07 / 0.64 / 0.76 s → 0.99 / 0.65 / 0.70 s（无差异）。12 次运行 status 均为 success，artifact（去掉 generatedAt）SHA-256 全部为 58203b0de16c…，逐字节一致。审查期（2026-10-31）同数据集测得 15.1 s → 3.6 s，本轮 base 偏慢属磁盘 / 负载波动，降幅一致。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "缓存文件权限仍为 0600、无临时文件残留；发布冒烟 collector-release-smoke.sh 通过",
         "false_if": "权限、残留或冒烟回归",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 `zsh scripts/build-test-app.sh`（本分支、单架构 Preview，未安装）exit=0，其内置 `collector-release-smoke.sh --local-preview` 通过：initial / old-cache-rebuild（rebuilds=1、invalidations=1）/ install / upgrade / rollback 均「schema/runId/artifact/stdout/cache OK」，末行「install/upgrade/rollback/cache rebuild passed」（Release 签名门禁按 local-preview 口径未执行）。性能实测的本分支冷扫描 home：缓存文件 2,001 个，非 0600 为 0、`.tmp-*` 残留为 0。collector workspace 其余测试（含既有缓存冷热对拍、追加 / 重写 / 删除 / 损坏、窗口翻日、v1 条目失效不计损坏）原样通过；凭据（mac ProtectedFileCredentialStore）与 metrics 写盘的 fsync 未改动。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
