@@ -1240,4 +1240,112 @@ extension BruceOnboardingCoreHarness {
             .filter { $0.hasSuffix(".tmp") }
         try coreExpect(leftovers.isEmpty, "写入完成后不应残留临时文件: \(leftovers)")
     }
+
+    /// C173: 删除凭据后被删的值不得留在 `.bak` 里; 覆盖写仍备份上一版.
+    ///
+    /// 缺陷形态 (修复前): 删除写入前把含被删账号的上一版复制为 `.bak`,
+    /// 被删密钥一直留在磁盘上直到下一次写入.
+    static func protectedFileCredentialStoreDeleteLeavesNoBackupResidue() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-file-cred-delete-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("credentials.json")
+        let backupURL = tempDir.appendingPathComponent("credentials.json.bak")
+        let store = ProtectedFileCredentialStore(
+            fileURL: fileURL,
+            accessController: KeychainAccessController(
+                policy: KeychainAccessPolicy(
+                    configuration: KeychainAccessConfiguration(bruceStoreConfigured: true)
+                )
+            )
+        )
+        func credentials(at url: URL) throws -> [String: String] {
+            let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
+            return ((object as? [String: Any])?["credentials"] as? [String: String]) ?? [:]
+        }
+
+        try store.saveCredential("secret-a", forAccount: "a:api-key")
+        try store.saveCredential("secret-b", forAccount: "b:api-key")
+        try store.deleteCredential(forAccount: "a:api-key")
+
+        for url in [fileURL, backupURL] {
+            let bytes = try String(contentsOf: url, encoding: .utf8)
+            let remaining = try credentials(at: url)
+            try coreExpect(!bytes.contains("secret-a"), "\(url.lastPathComponent) 不得残留被删凭据")
+            try coreExpect(remaining == ["b:api-key": "secret-b"], "\(url.lastPathComponent) 应只剩其余账号")
+        }
+        let backupAttrs = try FileManager.default.attributesOfItem(atPath: backupURL.path)
+        if let permissions = backupAttrs[.posixPermissions] as? NSNumber {
+            try coreExpect(permissions.intValue == 0o600, "删除后重建的备份权限必须为 0600")
+        }
+
+        // 覆盖写保留上一版备份语义
+        try store.saveCredential("secret-b2", forAccount: "b:api-key")
+        let previous = try credentials(at: backupURL)
+        let live = try store.loadCredential(forAccount: "b:api-key")
+        try coreExpect(previous == ["b:api-key": "secret-b"], "覆盖写后 .bak 应为上一版")
+        try coreExpect(live == "secret-b2", "读取应为最新值")
+
+        // 删除最后一个账号: 主文件与备份都只剩空凭据表
+        try store.deleteCredential(forAccount: "b:api-key")
+        for url in [fileURL, backupURL] {
+            let bytes = try String(contentsOf: url, encoding: .utf8)
+            let remaining = try credentials(at: url)
+            try coreExpect(!bytes.contains("secret-b"), "\(url.lastPathComponent) 不得残留最后一个被删账号的任何版本")
+            try coreExpect(remaining.isEmpty, "\(url.lastPathComponent) 应为空凭据表")
+        }
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.hasSuffix(".tmp") }
+        try coreExpect(leftovers.isEmpty, "删除完成后不应残留临时文件: \(leftovers)")
+    }
+
+    /// C173: 损坏现场副本只保留最近一份 (更早的副本同样含明文凭据).
+    static func protectedFileCredentialStoreKeepsOnlyLatestCorruptCopy() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-file-cred-corrupt-prune-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("credentials.json")
+        let store = ProtectedFileCredentialStore(
+            fileURL: fileURL,
+            accessController: KeychainAccessController(
+                policy: KeychainAccessPolicy(
+                    configuration: KeychainAccessConfiguration(bruceStoreConfigured: true)
+                )
+            )
+        )
+        // 更早一次损坏留下的副本 (时间戳不同, 不会与本次同名) 与无关文件
+        let staleCopy = tempDir.appendingPathComponent("credentials.json.corrupt-2026-01-01T00-00-00Z")
+        try "{ stale corrupt".write(to: staleCopy, atomically: true, encoding: .utf8)
+        let unrelated = tempDir.appendingPathComponent("other.json.corrupt-2026-01-01T00-00-00Z")
+        try "keep".write(to: unrelated, atomically: true, encoding: .utf8)
+
+        try store.saveCredential("key-a", forAccount: "a:api-key")
+        try store.saveCredential("key-b", forAccount: "b:api-key")
+        try "{ latest corrupt".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        var reported: String?
+        do {
+            _ = try store.loadCredential(forAccount: "a:api-key")
+        } catch ProtectedFileCredentialStoreError.corrupted(let backupPath) {
+            reported = backupPath
+        }
+        try coreExpect(reported != nil, "损坏时仍须抛 corrupted 并报告现场副本路径")
+
+        let copies = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.hasPrefix("credentials.json.corrupt-") }
+        try coreExpect(copies.count == 1, "只应保留 1 份损坏现场副本, 实际: \(copies)")
+        let kept = tempDir.appendingPathComponent(copies[0])
+        try coreExpect(kept.path == reported, "保留的应是本次报告的副本")
+        let keptBytes = try String(contentsOf: kept, encoding: .utf8)
+        try coreExpect(keptBytes == "{ latest corrupt", "保留的副本必须是最近一次的原始损坏字节")
+        try coreExpect(FileManager.default.fileExists(atPath: unrelated.path), "其他文件的副本不受影响")
+        try coreExpect(
+            FileManager.default.fileExists(atPath: tempDir.appendingPathComponent("credentials.json.bak").path),
+            "上一版备份不受损坏副本清理影响"
+        )
+    }
 }

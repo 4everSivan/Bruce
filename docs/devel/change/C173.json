@@ -4,7 +4,7 @@
   "title": "删除订阅凭据后旧值仍残留在 credentials.json.bak：备份恒为上一版（含刚删除的密钥），损坏现场副本无清理",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C173-credential-bak-residue",
   "is_hotfix": false,
   "target": {
@@ -18,8 +18,8 @@
     "description": "确认删除路径仍复用「先备份上一版」的写入套件",
     "command": "grep -n 'func deleteCredential' -A14 apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift | grep -n 'writePayloadLocked'; grep -n 'lastPathComponent).bak' apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
     "expected": "deleteCredential 调用 writePayloadLocked；writePayloadLocked 无条件复制上一版为 .bak",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-01 在 worktree local/worktrees/C173（fix/C173-credential-bak-residue，基于 docs/C171-C178-register e227fa6）执行预检命令：deleteCredential 块内命中 `try writePayloadLocked(payload)`（OnboardingConfiguration.swift:774）；writePayloadLocked 在 :875 无条件把当前文件复制为 `credentials.json.bak` 后 replaceItemAt。preserveCorruptedFile（:821）每次以新时间戳 move 出 `.corrupt-<时间戳>`，全文件无任何清理旧副本的代码。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -55,7 +55,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261101-09",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -63,22 +63,22 @@
         "item": "自动化测试",
         "true_if": "新增 Harness 回归：写入 A、B 后删除 A，credentials.json 与 .bak 均不含 A；连续两次损坏只剩一份 .corrupt-*；既有写路径套件用例（0600 / 0700 / .bak 可解码 / 无 .tmp 残留）通过；verify-local.sh 退出码 0",
         "false_if": "任一回归缺失或失败，或 verify-local.sh 非 0",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 在 worktree local/worktrees/C173 执行 `zsh scripts/verify-local.sh`：首轮 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=34 secretFindings=[]，告警仅 cargo `unused config key` ×7 与 CLT `ld: warning: search path` ×43 环境噪音；Onboarding Core 174 → 176 项通过）。新增 Harness 回归：`protectedFileCredentialStoreDeleteLeavesNoBackupResidue`（写入 A、B 后删除 A：credentials.json 与 .bak 字节均不含 A 的值、解码后都只剩 B，.bak 为 0600；随后覆盖写 B 时 .bak 为上一版 B；再删除最后一个账号 B：两份文件均不含 B 的任何版本、凭据表为空；无 .tmp 残留）、`protectedFileCredentialStoreKeepsOnlyLatestCorruptCopy`（预置一份更早时间戳的 `credentials.json.corrupt-*` 与无关的 `other.json.corrupt-*`，制造损坏后读取仍抛 corrupted 且报告路径；只剩本次一份副本、内容为本次原始损坏字节，无关副本与 .bak 不受影响）。变异核验：把 OnboardingConfiguration.swift 换回 HEAD 原文后，前一例以「credentials.json.bak 不得残留被删凭据」失败；跳过前一例再跑，后一例以「只应保留 1 份损坏现场副本」失败（列出两份副本）；恢复修复后 176 项通过。既有写路径套件 `protectedFileCredentialStoreWriteHardening`（0700 / 0600 / .bak 可解码 / 无 .tmp 残留）与 `protectedFileCredentialStoreRoundTripAndPermissions` 原样通过。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "覆盖写仍产生可解码的上一版 .bak；损坏时仍抛 corrupted 且不转空 payload；外部 Keychain 回退删除不受影响",
         "false_if": "覆盖写备份丢失、损坏语义改变或外部回退删除回归",
-        "evidence": "",
-        "result": null
+        "evidence": "覆盖写（saveCredential / Keychain 回退迁移写）仍走默认 `.previousVersion`，新回归断言覆盖写后 .bak 为可解码的上一版；损坏语义：`protectedFileCredentialStoreCorruptionIsNotSilentlyErased`（保存抛 corrupted、现场副本保真、主路径移出、自愈）原样通过，新回归再断言清理旧副本后仍抛 corrupted 并报告保留副本的路径。外部 Keychain 回退删除（`fallbackKeychainStore.deleteCredential`，try? 尽力而为）代码未改动；该路径需真实 Keychain，Harness 不覆盖（既有用例同样未覆盖）。删除写入时旧 .bak 删不掉则整次删除失败、主文件不动（交由调用方重试）；替换成功后重建 .bak 失败只少一份备份，不回报为删除失败。Windows 凭据存储无 .bak / 损坏副本机制（apps/win/src-tauri/src 无相关代码），无需对齐。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
