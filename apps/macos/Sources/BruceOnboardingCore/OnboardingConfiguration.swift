@@ -674,6 +674,7 @@ public enum ProtectedFileCredentialStoreError: Error, Equatable {
 ///
 /// 写盘规格与 `AtomicJSONStore` 对齐: 创建即 0600 -> 写 -> fsync -> 重读校验 -> 备份 -> 原子替换 -> 复位 0600;
 /// 任一步失败即抛错, 不做静默降级 (C042).
+/// 删除写入后 `.bak` 同步为删除后的内容, 被删凭据不留在备份里; 损坏现场副本只保留最近一份 (C173).
 public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @unchecked Sendable {
     public static let defaultDirectoryName = "Bruce"
     public static let defaultFileName = "credentials.json"
@@ -681,6 +682,14 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
     private struct Payload: Codable {
         var version: Int = 1
         var credentials: [String: String] = [:]
+    }
+
+    /// `.bak` 的内容口径.
+    private enum BackupContent {
+        /// 覆盖写: 备份为替换前的上一版, 供新文件损坏时人工恢复.
+        case previousVersion
+        /// 删除写: 备份与替换后的新文件一致 —— 上一版恰好含被删凭据, 留作备份等于没删 (C173).
+        case writtenVersion
     }
 
     public let fileURL: URL
@@ -771,7 +780,7 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
 
         var payload = try loadPayloadLocked()
         if payload.credentials.removeValue(forKey: account) != nil {
-            try writePayloadLocked(payload)
+            try writePayloadLocked(payload, backup: .writtenVersion)
         }
 
         if let fallbackKeychainStore {
@@ -818,25 +827,31 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
     }
 
     /// 损坏现场副本 (尽力而为): 保留原始字节便于人工恢复, 不阻断错误上抛.
+    /// 只保留最近一份 (C173): 副本同样含明文凭据, 更早的副本在新副本就位后清理.
     private func preserveCorruptedFile() -> URL? {
         let stamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
-        let backupURL = fileURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("\(fileURL.lastPathComponent).corrupt-\(stamp)")
+        let directory = fileURL.deletingLastPathComponent()
+        let prefix = "\(fileURL.lastPathComponent).corrupt-"
+        let backupURL = directory.appendingPathComponent("\(prefix)\(stamp)")
         do {
             if fileManager.fileExists(atPath: backupURL.path) {
                 try fileManager.removeItem(at: backupURL)
             }
             try fileManager.moveItem(at: fileURL, to: backupURL)
-            return backupURL
         } catch {
             return nil
         }
+        let siblings = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in siblings where name.hasPrefix(prefix) && name != backupURL.lastPathComponent {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+        }
+        return backupURL
     }
 
     /// 原子写盘: 创建即 0600 -> 写 -> fsync -> 重读校验 -> 备份 -> 替换 -> 复位 0600.
-    private func writePayloadLocked(_ payload: Payload) throws {
+    /// `backup` 决定 `.bak` 保存上一版还是本次写入的内容 (见 `BackupContent`).
+    private func writePayloadLocked(_ payload: Payload, backup: BackupContent = .previousVersion) throws {
         let parentDirectory = fileURL.deletingLastPathComponent()
         // 目录存在也校正权限 (原实现仅在不存在时创建, 已存在则放任漂移)
         if !fileManager.fileExists(atPath: parentDirectory.path) {
@@ -870,19 +885,31 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
             // 重读校验: 确认落盘内容可解码, 防止半写文件成为新的「损坏」
             let reread = try Data(contentsOf: tempURL)
             _ = try JSONDecoder().decode(Payload.self, from: reread)
-            // 覆盖前备份既有文件, 失败即回滚
+            let backupURL = parentDirectory.appendingPathComponent("\(fileURL.lastPathComponent).bak")
             if fileManager.fileExists(atPath: fileURL.path) {
-                let backupURL = parentDirectory.appendingPathComponent("\(fileURL.lastPathComponent).bak")
-                if fileManager.fileExists(atPath: backupURL.path) {
-                    try? fileManager.removeItem(at: backupURL)
+                switch backup {
+                case .previousVersion:
+                    // 覆盖前备份既有文件, 失败即回滚
+                    if fileManager.fileExists(atPath: backupURL.path) {
+                        try? fileManager.removeItem(at: backupURL)
+                    }
+                    try fileManager.copyItem(at: fileURL, to: backupURL)
+                case .writtenVersion:
+                    // 旧备份可能含被删凭据: 清不掉就不删, 整体失败交由调用方重试
+                    if fileManager.fileExists(atPath: backupURL.path) {
+                        try fileManager.removeItem(at: backupURL)
+                    }
                 }
-                try fileManager.copyItem(at: fileURL, to: backupURL)
                 _ = try fileManager.replaceItemAt(fileURL, withItemAt: tempURL)
             } else {
                 try fileManager.moveItem(at: tempURL, to: fileURL)
             }
             // 权限设置失败必须上抛 (原实现 try? 吞掉)
             try fileManager.setAttributes([Self.posixPermissionsKey: 0o600], ofItemAtPath: fileURL.path)
+            if backup == .writtenVersion {
+                // 主文件已替换, 删除已生效: 备份重建失败只是少一份备份, 不回报为删除失败
+                try? fileManager.copyItem(at: fileURL, to: backupURL)
+            }
         } catch let error as ProtectedFileCredentialStoreError {
             try? fileManager.removeItem(at: tempURL)
             throw error

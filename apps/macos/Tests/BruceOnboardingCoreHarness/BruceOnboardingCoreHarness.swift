@@ -89,6 +89,8 @@ struct BruceOnboardingCoreHarness {
         try protectedFileCredentialStoreRoundTripAndPermissions()
         try protectedFileCredentialStoreCorruptionIsNotSilentlyErased()
         try protectedFileCredentialStoreWriteHardening()
+        try protectedFileCredentialStoreDeleteLeavesNoBackupResidue()
+        try protectedFileCredentialStoreKeepsOnlyLatestCorruptCopy()
         try await verifierDeepSeekConnectedWithMockSession()
         try await verifierDeepSeekFailClosed()
         try verifierKimiAPIKeyMappings()
@@ -180,6 +182,6 @@ struct BruceOnboardingCoreHarness {
         try providerAccountNamingDefaultsAndValidation()
         try providerAccountStoreRenameAndUpsertPreservation()
         try codexCustomNameOverridesAndBackwardCompatibility()
-        print("BruceOnboardingCore tests passed: 176")
+        print("BruceOnboardingCore tests passed: 178")
     }
 }
