@@ -1784,7 +1784,7 @@
     "C174": {
       "title": "mac 软件更新未校验发布签名：只比对同源清单的 SHA256 后 xattr -cr 剥离隔离属性，清单与包可被一并替换",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C174-mac-update-signature",
       "topic": "SoftwareUpdate",
       "version": "0.16.0",
