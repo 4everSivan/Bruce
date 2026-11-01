@@ -87,7 +87,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "closed",
+    "from_status": "verified",
     "target_status": "closed"
   }
 }
