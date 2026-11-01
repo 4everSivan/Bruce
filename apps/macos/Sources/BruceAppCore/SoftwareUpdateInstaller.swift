@@ -50,6 +50,8 @@ package struct UpdateInstaller: Sendable {
 
     /// ~/Library/Application Support/Bruce/updates (项目既有数据目录).
     package let updatesRoot: URL
+    /// 校验更新包签名的 minisign 公钥; 生产恒为内置公钥, 测试注入临时密钥.
+    private let trustedPublicKey: String
     private let commands: any UpdateCommandRunning
     private let moveItem: MoveItem
 
@@ -57,10 +59,12 @@ package struct UpdateInstaller: Sendable {
 
     package init(
         updatesRoot: URL,
+        trustedPublicKey: String = UpdateSignature.trustedPublicKey,
         commands: any UpdateCommandRunning = SystemUpdateCommandRunner(),
         moveItem: @escaping MoveItem = { try FileManager.default.moveItem(at: $0, to: $1) }
     ) {
         self.updatesRoot = updatesRoot
+        self.trustedPublicKey = trustedPublicKey
         self.commands = commands
         self.moveItem = moveItem
     }
@@ -147,8 +151,9 @@ package struct UpdateInstaller: Sendable {
     }
 
     /// 校验下载包并解压到暂存目录, 返回可直接替换的 Bruce.app.
-    /// 顺序: SHA256 → ditto 解压 → xattr -cr 剥离 quarantine → Info.plist 复核
+    /// 顺序: SHA256 → minisign 来源签名 → ditto 解压 → xattr -cr 剥离 quarantine → Info.plist 复核
     /// (bundle 标识一致、版本等于清单且严格大于本地, 防清单污染导致的降级/回滚).
+    /// 签名不通过绝不解压、绝不剥离 quarantine (C174).
     package func prepare(
         archive: URL,
         release: UpdateRelease,
@@ -157,6 +162,15 @@ package struct UpdateInstaller: Sendable {
     ) async throws -> URL {
         guard (try? Self.sha256Hex(of: archive)) == release.sha256 else {
             throw UpdateInstallFailure.checksumMismatch
+        }
+        do {
+            try UpdateSignature.verify(
+                fileAt: archive,
+                signature: release.signature,
+                publicKey: trustedPublicKey
+            )
+        } catch {
+            throw UpdateInstallFailure.signatureInvalid
         }
         let staging = stagingDirectory(for: release.version)
         let fileManager = FileManager.default

@@ -273,6 +273,8 @@ extension UpdateInstallFailure {
             return "下载更新失败：网络错误, 可稍后重试"
         case .checksumMismatch:
             return "更新包校验失败：SHA256 不一致, 已拒绝安装"
+        case .signatureInvalid:
+            return "更新包校验失败：签名校验不通过, 已拒绝安装"
         case .extractFailed:
             return "更新包校验失败：无法解压, 已拒绝安装"
         case .bundleMismatch:

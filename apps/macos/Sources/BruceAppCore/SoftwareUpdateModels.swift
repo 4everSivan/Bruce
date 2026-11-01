@@ -85,6 +85,8 @@ package struct UpdateRelease: Equatable, Sendable {
     package let downloadURL: URL
     /// 小写 64 位十六进制, 与 Release SHA256SUMS 同源.
     package let sha256: String
+    /// base64 编码的 minisign `.sig` 全文 (与 Bruce.zip.sig 资产一致), 安装前以内置公钥校验 (C174).
+    package let signature: String
     /// 包体字节数; 清单不含尺寸, 由检查阶段 HEAD 请求补齐, 取不到为 nil.
     package var sizeBytes: Int64?
 
@@ -93,12 +95,14 @@ package struct UpdateRelease: Equatable, Sendable {
         notes: String,
         downloadURL: URL,
         sha256: String,
+        signature: String,
         sizeBytes: Int64? = nil
     ) {
         self.version = version
         self.notes = notes
         self.downloadURL = downloadURL
         self.sha256 = sha256
+        self.signature = signature
         self.sizeBytes = sizeBytes
     }
 
@@ -108,6 +112,7 @@ package struct UpdateRelease: Equatable, Sendable {
 
     /// 解码并校验 latest.json; 任何字段缺失或越界都按清单无效处理, 绝不带病进入下载.
     /// 下载地址限定 https://github.com, 防止被污染的清单把安装包指向第三方主机.
+    /// darwin 条目 signature 必填 (C174): 缺签名的清单不进入下载; 签名内容在安装前校验.
     package static func parse(manifestData: Data) throws -> UpdateRelease {
         guard let manifest = try? JSONDecoder().decode(
             UpdateManifest.self,
@@ -124,14 +129,17 @@ package struct UpdateRelease: Equatable, Sendable {
               sha.count == 64,
               sha.unicodeScalars.allSatisfy({
                   ("0"..."9").contains($0) || ("a"..."f").contains($0)
-              }) else {
+              }),
+              let signature = darwin.signature?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !signature.isEmpty else {
             throw UpdateCheckFailure.invalidManifest
         }
         return UpdateRelease(
             version: version,
             notes: (manifest.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             downloadURL: url,
-            sha256: sha
+            sha256: sha,
+            signature: signature
         )
     }
 }
@@ -152,6 +160,8 @@ package enum UpdateCheckFailure: Error, Equatable, Sendable {
 package enum UpdateInstallFailure: Error, Equatable, Sendable {
     case downloadFailed
     case checksumMismatch
+    /// 来源签名缺失 / 畸形 / 非内置公钥 / 校验不通过 (C174).
+    case signatureInvalid
     case extractFailed
     case bundleMismatch
     case versionMismatch

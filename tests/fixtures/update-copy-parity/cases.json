@@ -245,6 +245,7 @@
   "installFailures": [
     { "kind": "downloadFailed", "statusLine": "下载更新失败：网络错误, 可稍后重试" },
     { "kind": "checksumMismatch", "statusLine": "更新包校验失败：SHA256 不一致, 已拒绝安装" },
+    { "kind": "signatureInvalid", "statusLine": "更新包校验失败：签名校验不通过, 已拒绝安装" },
     { "kind": "extractFailed", "statusLine": "更新包校验失败：无法解压, 已拒绝安装" },
     { "kind": "bundleMismatch", "statusLine": "更新包校验失败：应用标识不符, 已拒绝安装" },
     { "kind": "versionMismatch", "statusLine": "更新包校验失败：版本与更新信息不符, 已拒绝安装" },

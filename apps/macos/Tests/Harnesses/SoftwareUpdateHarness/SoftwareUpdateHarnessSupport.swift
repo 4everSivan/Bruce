@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 @testable import BruceAppCore
 
@@ -33,6 +34,22 @@ func expectThrows<E: Error & Equatable>(
 ) async throws {
     do {
         try await body()
+    } catch let error as E {
+        try expectEqual(error, expected, message)
+        return
+    } catch {
+        throw UpdateHarnessFailure.expectation("\(message): 期望 \(expected), 实得 \(error)")
+    }
+    throw UpdateHarnessFailure.expectation("\(message): 期望抛出 \(expected), 实际未抛出")
+}
+
+func expectThrows<E: Error & Equatable>(
+    _ expected: E,
+    _ message: String,
+    _ body: () throws -> Void
+) throws {
+    do {
+        try body()
     } catch let error as E {
         try expectEqual(error, expected, message)
         return
@@ -135,23 +152,95 @@ enum FixtureBundle {
     }
 }
 
+/// `signature` 为 nil 时 darwin 条目不带 signature 键.
 func manifestData(
     version: String,
     sha256: String = String(repeating: "a", count: 64),
+    signature: String? = "c2ln",
     url: String? = nil,
     notes: String = "应用内软件更新; 修复托盘图标"
 ) -> Data {
     let assetURL = url ?? "https://github.com/4everSivan/Bruce/releases/download/v\(version)/Bruce.zip"
+    var darwin: [String: Any] = ["url": assetURL, "sha256": sha256]
+    darwin["signature"] = signature
     let json: [String: Any] = [
         "version": version,
         "pub_date": "2026-10-30T00:00:00Z",
         "notes": notes,
         "platforms": [
-            "darwin-universal": ["url": assetURL, "sha256": sha256, "signature": "c2ln"],
+            "darwin-universal": darwin,
             "windows-x86_64": ["url": "https://github.com/4everSivan/Bruce/releases/download/v\(version)/setup.exe", "signature": "c2ln"],
         ],
     ]
     return try! JSONSerialization.data(withJSONObject: json)
+}
+
+extension Optional {
+    func unwrap(_ label: String) throws -> Wrapped {
+        guard let value = self else {
+            throw UpdateHarnessFailure.expectation("\(label) 为空")
+        }
+        return value
+    }
+}
+
+// MARK: - 测试签名密钥 (C174)
+
+/// 测试专用 minisign 密钥: 每次运行临时生成, 不接触生产私钥.
+/// 产出与 `cargo tauri signer sign` 同格式的签名 (base64 编码的 .sig 全文).
+struct TestSigningKey: Sendable {
+    static let shared = TestSigningKey()
+
+    let privateKey: Curve25519.Signing.PrivateKey
+    let keyID: Data
+
+    init(keyID: Data = Data((0..<8).map { _ in UInt8.random(in: 0...255) })) {
+        privateKey = Curve25519.Signing.PrivateKey()
+        self.keyID = keyID
+    }
+
+    /// base64 编码的 minisign 公钥文件, 可直接注入 `UpdateInstaller(trustedPublicKey:)`.
+    var publicKey: String {
+        let raw = Data("Ed".utf8) + keyID + privateKey.publicKey.rawRepresentation
+        let text = "untrusted comment: minisign public key: TEST\n\(raw.base64EncodedString())\n"
+        return Data(text.utf8).base64EncodedString()
+    }
+
+    func sign(
+        _ fileURL: URL,
+        prehashed: Bool = true,
+        trustedComment: String = "timestamp:1793264255\tfile:Bruce.zip"
+    ) throws -> String {
+        let content = try Data(contentsOf: fileURL)
+        let message = prehashed ? Blake2b512.hash(content) : content
+        let signature = try privateKey.signature(for: message)
+        let global = try privateKey.signature(for: signature + Data(trustedComment.utf8))
+        return Self.encode(
+            algorithm: prehashed ? "ED" : "Ed",
+            keyID: keyID,
+            signature: signature,
+            trustedComment: trustedComment,
+            globalSignature: global
+        )
+    }
+
+    static func encode(
+        algorithm: String,
+        keyID: Data,
+        signature: Data,
+        trustedComment: String,
+        globalSignature: Data
+    ) -> String {
+        let raw = Data(algorithm.utf8) + keyID + signature
+        let text = """
+        untrusted comment: signature from test key
+        \(raw.base64EncodedString())
+        trusted comment: \(trustedComment)
+        \(globalSignature.base64EncodedString())
+
+        """
+        return Data(text.utf8).base64EncodedString()
+    }
 }
 
 // MARK: - 网络假实现
@@ -251,6 +340,7 @@ final class RecordingCommandRunner: UpdateCommandRunning, @unchecked Sendable {
     private let lock = NSLock()
     private let system = SystemUpdateCommandRunner()
     private var _detached: [(String, [String])] = []
+    private var _runs: [String] = []
     private var _failingExecutables: Set<String> = []
     private var _detachedFails = false
 
@@ -258,6 +348,19 @@ final class RecordingCommandRunner: UpdateCommandRunning, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return _detached
+    }
+
+    /// 已执行的同步命令 (可执行文件路径), 用于断言校验失败时未进入解压.
+    var runs: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _runs
+    }
+
+    private func recordRun(_ executablePath: String) {
+        lock.lock()
+        _runs.append(executablePath)
+        lock.unlock()
     }
 
     var failingExecutables: Set<String> {
@@ -271,6 +374,7 @@ final class RecordingCommandRunner: UpdateCommandRunning, @unchecked Sendable {
     }
 
     func run(_ executablePath: String, _ arguments: [String]) async -> Bool {
+        recordRun(executablePath)
         if failingExecutables.contains(executablePath) {
             return false
         }

@@ -28,7 +28,8 @@ enum SoftwareUpdateInstallerTests {
             version: releaseVersion,
             notes: "",
             downloadURL: URL(string: "https://github.com/4everSivan/Bruce/releases/download/\(releaseVersion.tag)/Bruce.zip")!,
-            sha256: try UpdateInstaller.sha256Hex(of: archive)
+            sha256: try UpdateInstaller.sha256Hex(of: archive),
+            signature: try TestSigningKey.shared.sign(archive)
         )
         return (archive, release)
     }
@@ -48,7 +49,7 @@ enum SoftwareUpdateInstallerTests {
     static func prepareExtractsAndValidatesBundle() async throws {
         let root = try TemporaryDirectories.make("prepare")
         defer { TemporaryDirectories.remove(root) }
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         try installer.prepareUpdatesRoot()
         let (archive, release) = try makeArchive(in: root, version: "0.13.0")
         let app = try await installer.prepare(
@@ -65,13 +66,14 @@ enum SoftwareUpdateInstallerTests {
     static func prepareRejectsChecksumMismatch() async throws {
         let root = try TemporaryDirectories.make("checksum")
         defer { TemporaryDirectories.remove(root) }
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         let (archive, release) = try makeArchive(in: root, version: "0.13.0")
         let tampered = UpdateRelease(
             version: release.version,
             notes: "",
             downloadURL: release.downloadURL,
-            sha256: String(repeating: "0", count: 64)
+            sha256: String(repeating: "0", count: 64),
+            signature: release.signature
         )
         try await expectThrows(UpdateInstallFailure.checksumMismatch, "SHA256 不符拒绝安装") {
             _ = try await installer.prepare(
@@ -90,7 +92,7 @@ enum SoftwareUpdateInstallerTests {
     static func prepareRejectsDowngradeAndMismatchedBundles() async throws {
         let root = try TemporaryDirectories.make("validate")
         defer { TemporaryDirectories.remove(root) }
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         try installer.prepareUpdatesRoot()
 
         // 清单声称 0.13.0, 包内却是本地同版本 0.12.2 (防降级/回滚).
@@ -120,14 +122,15 @@ enum SoftwareUpdateInstallerTests {
     static func prepareRejectsCorruptArchive() async throws {
         let root = try TemporaryDirectories.make("corrupt")
         defer { TemporaryDirectories.remove(root) }
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         let archive = root.appendingPathComponent("Bruce.zip")
         try Data("not a zip".utf8).write(to: archive)
         let release = UpdateRelease(
             version: remote,
             notes: "",
             downloadURL: URL(string: "https://github.com/4everSivan/Bruce/releases/download/v0.13.0/Bruce.zip")!,
-            sha256: try UpdateInstaller.sha256Hex(of: archive)
+            sha256: try UpdateInstaller.sha256Hex(of: archive),
+            signature: try TestSigningKey.shared.sign(archive)
         )
         try await expectThrows(UpdateInstallFailure.extractFailed, "非 zip 解压失败") {
             _ = try await installer.prepare(archive: archive, release: release, localVersion: local, bundleIdentifier: FixtureBundle.bundleIdentifier)
@@ -138,7 +141,7 @@ enum SoftwareUpdateInstallerTests {
         let root = try TemporaryDirectories.make("quarantine")
         defer { TemporaryDirectories.remove(root) }
         let commands = RecordingCommandRunner()
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), commands: commands)
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey, commands: commands)
         try installer.prepareUpdatesRoot()
         let (archive, release) = try makeArchive(in: root, version: "0.13.0")
         // 给 zip 打上 quarantine; ditto 解压会把它传染给 app, xattr -cr 必须剥离.
@@ -169,7 +172,7 @@ enum SoftwareUpdateInstallerTests {
         let applications = root.appendingPathComponent("Applications", isDirectory: true)
         let installed = try FixtureBundle.makeApp(in: applications, version: "0.12.2")
         let staged = try FixtureBundle.makeApp(in: root.appendingPathComponent("staged"), version: "0.13.0")
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         try installer.replace(installedApp: installed, with: staged)
         try expectEqual(FixtureBundle.version(of: installed), "0.13.0", "原位置已是新版本")
         try expectEqual(
@@ -187,7 +190,7 @@ enum SoftwareUpdateInstallerTests {
         let staged = try FixtureBundle.makeApp(in: root.appendingPathComponent("staged"), version: "0.13.0")
         let calls = Counter()
         // 第 2 次 move (新 app → 原位置) 失败, 第 3 次为回滚.
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates")) { from, to in
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey) { from, to in
             if calls.increment() == 2 {
                 throw CocoaError(.fileWriteNoPermission)
             }
@@ -209,7 +212,7 @@ enum SoftwareUpdateInstallerTests {
         let installed = try FixtureBundle.makeApp(in: root.appendingPathComponent("Applications"), version: "0.12.2")
         let staged = try FixtureBundle.makeApp(in: root.appendingPathComponent("staged"), version: "0.13.0")
         let calls = Counter()
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates")) { from, to in
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey) { from, to in
             if calls.increment() >= 2 {
                 throw CocoaError(.fileWriteNoPermission)
             }
@@ -233,7 +236,7 @@ enum SoftwareUpdateInstallerTests {
         defer { TemporaryDirectories.remove(root) }
         let installed = try FixtureBundle.makeApp(in: root.appendingPathComponent("Applications"), version: "0.12.2")
         let staged = try FixtureBundle.makeApp(in: root.appendingPathComponent("staged"), version: "0.13.0")
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates")) { _, _ in
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey) { _, _ in
             throw CocoaError(.fileWriteNoPermission)
         }
         do {
@@ -248,7 +251,7 @@ enum SoftwareUpdateInstallerTests {
     static func selfReplaceRequiresWritableSameVolumeLocation() throws {
         let root = try TemporaryDirectories.make("location")
         defer { TemporaryDirectories.remove(root) }
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         let writable = try FixtureBundle.makeApp(in: root.appendingPathComponent("Applications"), version: "0.12.2")
         try expect(installer.canSelfReplace(installedApp: writable), "用户可写同卷位置可自替换")
 
@@ -273,7 +276,7 @@ enum SoftwareUpdateInstallerTests {
         let root = try TemporaryDirectories.make("relaunch")
         defer { TemporaryDirectories.remove(root) }
         let commands = RecordingCommandRunner()
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), commands: commands)
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey, commands: commands)
         let app = root.appendingPathComponent("Applications/Bruce.app")
         try installer.relaunch(app: app, waitingFor: 4242)
         try expectEqual(commands.detached.count, 1, "启动一个等待器")
@@ -302,7 +305,7 @@ enum SoftwareUpdateInstallerTests {
         let sibling = root.appendingPathComponent("config/onboarding-v1.json")
         try FileManager.default.createDirectory(at: sibling.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("{}".utf8).write(to: sibling)
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         try FileManager.default.createDirectory(at: installer.backupDirectory, withIntermediateDirectories: true)
         installer.removeStaleArtifacts()
         try expect(!FileManager.default.fileExists(atPath: installer.updatesRoot.path), "updates 目录已清理")
@@ -312,7 +315,7 @@ enum SoftwareUpdateInstallerTests {
     static func removeWorkingArtifactsPreservesBackupWhenRequested() throws {
         let root = try TemporaryDirectories.make("cleanup-working")
         defer { TemporaryDirectories.remove(root) }
-        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"), trustedPublicKey: TestSigningKey.shared.publicKey)
         let fileManager = FileManager.default
         let version = SemanticVersion(major: 0, minor: 13, patch: 0)
         let staging = installer.stagingDirectory(for: version)

@@ -82,7 +82,10 @@ test("失败分类与状态行: 双端共享子集", () => {
   for (const c of cases.stages.filter(s => s.expected.statusLine)) {
     assert.equal(P.failureStatusLine(c.phase), c.expected.statusLine, `${c.name}.statusLine`);
   }
-  const sharedInstall = cases.installFailures.find(x => x.kind === "downloadFailed");
-  assert.ok(sharedInstall, "fixture 缺 downloadFailed");
-  assert.equal(P.installFailureStatusLine("downloadFailed"), sharedInstall.statusLine);
+  // C174 起 mac 同样校验来源签名, signatureInvalid 与 downloadFailed 一起双端共享.
+  for (const kind of ["downloadFailed", "signatureInvalid"]) {
+    const sharedInstall = cases.installFailures.find(x => x.kind === kind);
+    assert.ok(sharedInstall, `fixture 缺 ${kind}`);
+    assert.equal(P.installFailureStatusLine(kind), sharedInstall.statusLine, kind);
+  }
 });

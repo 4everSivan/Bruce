@@ -4,7 +4,7 @@
   "title": "mac 软件更新未校验发布签名：只比对同源清单的 SHA256 后 xattr -cr 剥离隔离属性，清单与包可被一并替换",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "verified",
   "branch": "fix/C174-mac-update-signature",
   "is_hotfix": false,
   "target": {
@@ -13,13 +13,13 @@
     "design_doc": "docs/devel/design/07-软件更新.md",
     "design_topic": "SoftwareUpdate"
   },
-  "why": "2026-10-31 对抗审查发现。SoftwareUpdateInstaller.prepare 只比对 latest.json 中的 sha256（与 Bruce.zip 出自同一发布），清单已携带的 darwin `signature`（CI 以与 Windows 相同的 minisign 私钥对 Bruce.zip 签名，design/07 §清单）被 SoftwareUpdateModels 解码后从未校验；随后 `xattr -cr` 剥离隔离属性，Gatekeeper 不再检查。能发布 Release 的任何一方（泄露的 GitHub token、被入侵的 CI）即可向全部 mac 安装推送任意代码并自动替换；Windows 由 tauri-plugin-updater 以内置公钥校验 minisign 签名，不受影响。发布管线已产出签名，修复无需新增密钥或 secret。",
+  "why": "2026-10-31 对抗审查发现。SoftwareUpdateInstaller.prepare 只比对 latest.json 中的 sha256（与 Bruce.zip 出自同一发布），清单已携带的 darwin `signature`（CI 以与 Windows 相同的 minisign 私钥对 Bruce.zip 签名，design/07 §清单）被 SoftwareUpdateModels 解码后从未校验；随后 `xattr -cr` 剥离隔离属性，Gatekeeper 不再检查。能修改 Release 资产的一方（例如具备 contents 写权限的泄露 token）即可同时替换 Bruce.zip 与 latest.json，向全部 mac 安装推送任意代码并自动替换；Windows 由 tauri-plugin-updater 以内置公钥校验 minisign 签名，不受影响。发布管线已产出签名，修复无需新增密钥或 secret。（2026-11-01 实施时校正：design/07 R8.1 记载 T10 评估「本期不启用」——能运行发版作业的一方仍可为伪造包签名，签名校验缩小而非消除供应链风险；本卡改为启用并修订该结论，需维护者确认。原登记稿把「被入侵的 CI」列入可防范对象，属夸大，已删除。）",
   "precheck": {
     "description": "确认 mac 侧从未使用清单中的签名",
     "command": "grep -rn 'signature' apps/macos/Sources/BruceAppCore/SoftwareUpdate*.swift",
     "expected": "仅 SoftwareUpdateModels 中的字段声明，无任何校验调用",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-01 在 worktree local/worktrees/C174（fix/C174-mac-update-signature，基于 docs/C171-C178-register e227fa6）改动前执行预检命令：仅命中 SoftwareUpdateModels.swift:54 `package let signature: String?`（字段声明），全部 SoftwareUpdate*.swift 无任何校验调用；SoftwareUpdateInstaller.prepare 顺序为 SHA256 → ditto → xattr -cr → Info.plist。另核对 design/07 R8.1：T10（2026-10-25）评估结论「本期不启用」且标注待维护者确认——本卡修订该结论（见设计回写与卡内 why 校正）。缺陷存在。"
   },
   "callback": {
     "before": [
@@ -55,45 +55,47 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261101-10",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "新增回归（测试内生成的临时密钥，不使用生产私钥）：有效签名通过；篡改包、缺签名、错误公钥、畸形签名均拒绝且不执行解压与 xattr；verify-local.sh 退出码 0",
         "false_if": "任一拒绝场景放行，或回归缺失 / 失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 在 worktree local/worktrees/C174 执行 `zsh scripts/verify-local.sh`：首轮 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=35 secretFindings=[]（新增 fixture 未触发凭据扫描），告警仅 cargo `unused config key` ×7 与 CLT `ld: warning: search path` ×43 环境噪音）。SoftwareUpdate Harness 46 → 51 项通过（共享文案对拍 42 项断言，installFailures 9 → 10 例）。新增：`blake2bMatchesStandardVectors`（RFC 7693 空串 / \"abc\"，1 / 127 / 128 / 129 / 255 / 256 / 257 字节跨块边界，1,000,003 字节按 1 / 127 / 128 / 129 / 4096 / 65536 分块喂入与一次性输入，期望值由 Node / OpenSSL blake2b512 独立计算）、`publishedReleaseSignatureVerifiesWithEmbeddedKey`（见行为实测）、`verifierAcceptsValidAndRejectsForgeries`（测试内临时生成 Ed25519 密钥，不使用生产私钥：ED 预哈希与 Ed 旧格式有效签名通过；篡改包体、篡改 trusted comment、预哈希签名改标旧格式、冒用 key id 的他人密钥 → invalidSignature；他人 key id → keyMismatch；空串 / 非 base64 / 非 minisign 文本 / 缺 trusted comment 与全局签名 / 未知算法 / 清单 fixture 占位签名 → malformedSignature；畸形公钥 → malformedPublicKey；包体不存在 → unreadableFile）、`prepareRejectsBadSignatureBeforeExtracting`（缺签名 / 畸形 / 他人密钥 / 签的是另一个包，以及生产内置公钥对测试密钥签名，一律 signatureInvalid，且 RecordingCommandRunner 记录的命令为空、未创建暂存目录；签名通过后命令序列恰为 ditto → xattr）、`downloadRejectsForeignSignature`（服务层：SHA256 一致但他人密钥签名 → 回到 available，状态行「更新包校验失败：签名校验不通过, 已拒绝安装」，未解压、清理下载残留、已装版本不变）；清单解析新增「缺 darwin 签名」「darwin 签名为空」→ invalidManifest；生成器 fixture 的 signature 原样携带。既有安装器 / 服务用例改用测试密钥签名夹具包后原样通过。变异核验：删掉 prepare 中的签名校验后 Harness 以「缺签名: 期望抛出 signatureInvalid, 实际未抛出」失败，恢复后通过。首轮单跑 Harness 曾失败一次：「签的是另一个包」用例两次生成的同版本夹具 zip 逐字节相同（同秒打包），改为翻转 1 字节构造确实不同的包后通过。Windows `node --test tests/update-presentation.test.mjs` 6 项通过（共享 installFailures 断言扩到 downloadFailed + signatureInvalid）。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "对一个已公开发布版本的 Bruce.zip 与其 latest.json darwin signature，用内置公钥校验通过（只读下载公开资产）",
         "false_if": "真实已发布签名校验失败（说明算法或公钥不一致）",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 只读下载公开资产 https://github.com/4everSivan/Bruce/releases/latest/download/latest.json（version 0.15.0）与 v0.15.0 Bruce.zip（14,684,145 字节，SHA-256 bbe8f742…833e 与清单一致）到 /tmp/bruce-review/c174-dl。签名解码：alg `ED`（预哈希），key id 3C89880C672D7C33 与 tauri.conf.json 公钥注释一致。独立实现核对（Node / OpenSSL）：key id 一致、文件签名 Ed25519(BLAKE2b-512(zip)) 通过、trusted comment 全局签名通过。本分支实现核对：以 `xcrun swiftc -O` 单独编译本分支 Blake2b.swift + UpdateSignature.swift 与探针 main.swift，用内置公钥校验真实 zip 与清单签名 → 通过；翻转包体 1 位 → invalidSignature；BLAKE2b-512 摘要与 Node 一致（10d9f91f…），14 MB 耗时 0.147 s。离线回归：真实签名与 Node 计算的包体摘要落 tests/fixtures/update-signature/release-v0.15.0.json，`publishedReleaseSignatureVerifiesWithEmbeddedKey` 以内置公钥校验通过，摘要改 1 位或换同 key id 的另一把公钥均拒绝。未做：真机端到端自更新（需要一个带本改动的已发布版本 + 更高版本的签名发布）。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "版本比较、防降级、回滚与 Windows 更新链路不变；发布管线门禁通过",
         "false_if": "更新检查 / 安装其余步骤回归或发布门禁失败",
-        "evidence": "",
-        "result": null
+        "evidence": "`node scripts/check-release-pipeline.mjs` exit=0（末行「发布流水线契约测试通过」），新增断言「mac 内置更新公钥与 Windows updater 公钥一致, 安装器校验来源签名」；变异核验：把 UpdateSignature.swift 内置公钥改 1 个字符后该脚本 exit=1（FAIL: mac 内置更新公钥与 tauri.conf.json plugins.updater.pubkey 不一致），恢复后通过。版本比较 / 防降级（降级与错配拒绝、版本未高于当前版本）、SHA256 不符、损坏压缩包、剥离 quarantine、原子替换 / 回滚 / 回滚失败、位置不可写降级、启动清理等既有 Harness 用例原样通过。stagedApp 只在 prepare（含签名校验）成功后赋值，「稍后后再次就绪」不绕过校验。Windows 更新链路代码未改（仅 update-presentation.js 注释与共享 fixture 断言）；生成器与上传脚本未改，CI 签名产物格式经 v0.15.0 实测兼容。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }
