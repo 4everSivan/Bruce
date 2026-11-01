@@ -119,6 +119,7 @@ struct BruceOnboardingCoreHarness {
         try rotationMergeFiltersKeysAndRejectsUnknown()
         try rotationMergeClaudeUpdatesNestedOAuthFields()
         try rotationMergeClaudeCreatesNestedOAuthForNewCLIRecord()
+        try rotationMergeClaudeMatchesSharedParityFixture()
         try CodexCredentialStoreTests.runAll()
         try await CodexOAuthClientTests.runAll()
         try CredentialStateReducerTests.runAll()
@@ -179,6 +180,6 @@ struct BruceOnboardingCoreHarness {
         try providerAccountNamingDefaultsAndValidation()
         try providerAccountStoreRenameAndUpsertPreservation()
         try codexCustomNameOverridesAndBackwardCompatibility()
-        print("BruceOnboardingCore tests passed: 175")
+        print("BruceOnboardingCore tests passed: 176")
     }
 }

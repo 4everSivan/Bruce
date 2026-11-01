@@ -220,28 +220,116 @@ fn apply_updates(
         collector_credential::validate_credential_updates(&json!(response.credential_updates))
             .map_err(|_| "CREDENTIAL_UPDATE_INVALID")?;
     response.credential_updates.clear();
+    // 不看 status: C171 起整轮失败的 error envelope 也会带回已轮换的令牌。
     for update in updates {
-        // Kimi API keys do not rotate (same rule as mac CredentialRotationMerge).
-        if update["provider"] != "stepfun" {
-            diagnostic(response, "CREDENTIAL_UPDATE_UNSUPPORTED", false);
-            continue;
+        match update["provider"].as_str() {
+            Some("stepfun") => apply_stepfun_update(root, expected, &update)?,
+            Some("claude") => apply_claude_update(root, expected, &update)?,
+            // Kimi API keys do not rotate (same rule as mac CredentialRotationMerge).
+            _ => diagnostic(response, "CREDENTIAL_UPDATE_UNSUPPORTED", false),
         }
-        let id = update["accountId"].as_str().unwrap();
-        let Some(old) = expected.get("stepfunQuotaAccounts").and_then(|v| v.get(id)) else {
-            continue;
-        };
-        let Some(token) = update["credentials"]
-            .get("access_token")
-            .or_else(|| update["credentials"].get("refresh_token"))
-            .filter(|v| nonempty_string(Some(v)))
-        else {
-            continue;
-        };
-        let mut updated = old.clone();
-        updated["token"] = token.clone();
-        compare_and_replace(root, "stepfunQuotaAccounts", id, old, &updated)?;
     }
     Ok(())
+}
+fn apply_stepfun_update(
+    root: &Path,
+    expected: &CredentialPayloads,
+    update: &Value,
+) -> Result<(), String> {
+    let id = update["accountId"].as_str().unwrap();
+    let Some(old) = expected.get("stepfunQuotaAccounts").and_then(|v| v.get(id)) else {
+        return Ok(());
+    };
+    let Some(token) = update["credentials"]
+        .get("access_token")
+        .or_else(|| update["credentials"].get("refresh_token"))
+        .filter(|v| nonempty_string(Some(v)))
+    else {
+        return Ok(());
+    };
+    let mut updated = old.clone();
+    updated["token"] = token.clone();
+    compare_and_replace(root, "stepfunQuotaAccounts", id, old, &updated)?;
+    Ok(())
+}
+/// 零配置跟随账号: 采集闭包内由 `with_local_claude` 注入, 不在 `expected` 里。
+const CLAUDE_FOLLOW_ACCOUNT: &str = "claude-cli";
+/// C172: Claude 轮换写回 (对齐 mac CredentialUpdateCoordinator): 用户账号仍须与本轮
+/// 发出时一致 (中途被删除 / 替换则放弃, 同 C009); 跟随账号合并进已存记录, 尚无记录时
+/// 自动建立。
+fn apply_claude_update(
+    root: &Path,
+    expected: &CredentialPayloads,
+    update: &Value,
+) -> Result<(), String> {
+    let id = update["accountId"].as_str().unwrap();
+    let _guard = STORE_LOCK
+        .lock()
+        .map_err(|_| "CREDENTIAL_STORE_LOCK_FAILED")?;
+    let mut latest = load_credentials(root);
+    let stored = latest.get("claudeQuotaAccounts").and_then(|v| v.get(id));
+    let base = if id == CLAUDE_FOLLOW_ACCOUNT {
+        stored
+            .cloned()
+            .unwrap_or_else(|| json!({"display_name": "Claude CLI", "oauth": {}}))
+    } else {
+        let Some(sent) = expected.get("claudeQuotaAccounts").and_then(|v| v.get(id)) else {
+            return Ok(());
+        };
+        if stored != Some(sent) {
+            return Ok(());
+        }
+        sent.clone()
+    };
+    let updated = merge_claude_tokens(base, &update["credentials"]);
+    // 新建的跟随账号必须带 accessToken 才能通过存储校验; 缺失时放弃, 不让整轮失败。
+    if validate_oauth_shape("claudeQuotaAccounts", &updated["oauth"]).is_err() {
+        return Ok(());
+    }
+    latest
+        .entry("claudeQuotaAccounts".to_owned())
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or("凭证账号映射损坏")?
+        .insert(id.to_owned(), updated);
+    save_unlocked(root, &latest)?;
+    Ok(())
+}
+/// 与 mac `CredentialRotationMerge` (Claude) 同口径: 令牌写入嵌套 `claudeAiOauth` (已有
+/// `claude.ai_oauth` 时沿用), `expiry` 秒 → `expiresAt` 毫秒, 其余字段 (如 scopes) 保留。
+/// Windows 账号只允许 display_name / oauth, 故不写 mac 那份顶层令牌键。
+fn merge_claude_tokens(mut account: Value, tokens: &Value) -> Value {
+    if !account.get("oauth").is_some_and(Value::is_object) {
+        account["oauth"] = json!({});
+    }
+    let oauth = account["oauth"].as_object_mut().unwrap();
+    let key = if !oauth.contains_key("claudeAiOauth")
+        && oauth.get("claude.ai_oauth").is_some_and(Value::is_object)
+    {
+        "claude.ai_oauth"
+    } else {
+        "claudeAiOauth"
+    };
+    let entry = oauth.entry(key).or_insert_with(|| json!({}));
+    if !entry.is_object() {
+        *entry = json!({});
+    }
+    let token = |name: &str| {
+        tokens
+            .get(name)
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+    };
+    if let Some(access) = token("access_token") {
+        entry["accessToken"] = json!(access);
+    }
+    if let Some(refresh) = token("refresh_token") {
+        entry["refreshToken"] = json!(refresh);
+    }
+    if let Some(secs) = token("expiry").and_then(|v| v.parse::<f64>().ok()) {
+        entry["expiresAt"] = json!((secs * 1000.0) as i64);
+    }
+    account
 }
 fn identity_matches(id: &str, tokens: &Value) -> bool {
     for key in ["access_token", "id_token"] {
@@ -550,6 +638,139 @@ mod tests {
                 }
             );
             assert_eq!(result.diagnostics.is_empty(), !other_failed);
+        }
+    }
+    fn claude_user_account() -> Value {
+        json!({"display_name":"Claude A","oauth":{"claudeAiOauth":{"accessToken":"old-access","refreshToken":"old-refresh","expiresAt":1_700_000_000_000_i64,"scopes":["user:inference"]}}})
+    }
+    fn claude_update(id: &str) -> Value {
+        json!({"provider":"claude","accountId":id,"kind":"oauthTokens","operation":"replace","credentials":{"access_token":"new-access","refresh_token":"new-refresh","expiry":"1700028800"}})
+    }
+    fn claude_entry(root: &Path, id: &str) -> Value {
+        load_credentials(root)["claudeQuotaAccounts"][id]["oauth"]["claudeAiOauth"].clone()
+    }
+    fn has_unsupported(response: &BridgeResponse) -> bool {
+        response
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "CREDENTIAL_UPDATE_UNSUPPORTED")
+    }
+    #[test]
+    fn claude_rotation_is_persisted_for_user_account() {
+        // C172: 此前 Claude 更新记 UNSUPPORTED 丢弃, 服务端已轮换的 refresh token 随之丢失
+        let root = root();
+        let creds: CredentialPayloads =
+            serde_json::from_value(json!({"claudeQuotaAccounts":{"acc":claude_user_account()}}))
+                .unwrap();
+        save_credentials(&root, &creds).unwrap();
+        let result = collect_with_recovery_using(
+            &root,
+            creds,
+            |_| {
+                let mut r = response();
+                r.credential_updates.push(claude_update("acc"));
+                Ok(r)
+            },
+            |_| panic!("no codex challenge"),
+        )
+        .unwrap();
+        assert!(!has_unsupported(&result));
+        let entry = claude_entry(&root, "acc");
+        assert_eq!(entry["accessToken"], "new-access");
+        assert_eq!(entry["refreshToken"], "new-refresh");
+        assert_eq!(entry["expiresAt"], 1_700_028_800_000_i64);
+        assert_eq!(entry["scopes"], json!(["user:inference"]));
+        assert_eq!(
+            load_credentials(&root)["claudeQuotaAccounts"]["acc"]["display_name"],
+            "Claude A"
+        );
+    }
+    #[test]
+    fn claude_follow_account_is_created_on_first_rotation_even_from_error_envelope() {
+        // 跟随账号在采集闭包内注入、不在 expected 里; error envelope (C171) 同样写回
+        let root = root();
+        let result = collect_with_recovery_using(
+            &root,
+            CredentialPayloads::new(),
+            |_| {
+                let mut r = response();
+                r.status = ResponseStatus::Error;
+                r.artifact = None;
+                r.credential_updates.push(claude_update("claude-cli"));
+                Ok(r)
+            },
+            |_| panic!("no codex challenge"),
+        )
+        .unwrap();
+        assert!(!has_unsupported(&result));
+        let stored = &load_credentials(&root)["claudeQuotaAccounts"]["claude-cli"];
+        assert_eq!(stored["display_name"], "Claude CLI");
+        assert_eq!(
+            stored["oauth"]["claudeAiOauth"]["refreshToken"],
+            "new-refresh"
+        );
+        assert_eq!(
+            stored["oauth"]["claudeAiOauth"]["expiresAt"],
+            1_700_028_800_000_i64
+        );
+    }
+    #[test]
+    fn claude_user_replacement_midrun_wins_over_inflight_rotation() {
+        let root = root();
+        let creds: CredentialPayloads =
+            serde_json::from_value(json!({"claudeQuotaAccounts":{"acc":claude_user_account()}}))
+                .unwrap();
+        save_credentials(&root, &creds).unwrap();
+        collect_with_recovery_using(
+            &root,
+            creds,
+            |_| {
+                save_credential_account(
+                    &root,
+                    "claudeQuotaAccounts",
+                    "acc",
+                    &json!({"display_name":"user","oauth":{"claudeAiOauth":{"accessToken":"user-access"}}}),
+                )
+                .unwrap();
+                let mut r = response();
+                r.credential_updates.push(claude_update("acc"));
+                Ok(r)
+            },
+            |_| panic!("no codex challenge"),
+        )
+        .unwrap();
+        assert_eq!(claude_entry(&root, "acc")["accessToken"], "user-access");
+    }
+    #[test]
+    fn non_rotating_provider_updates_remain_unsupported() {
+        let root = root();
+        let result = collect_with_recovery_using(
+            &root,
+            CredentialPayloads::new(),
+            |_| {
+                let mut r = response();
+                r.credential_updates.push(json!({"provider":"kimi","accountId":"k","kind":"oauthTokens","operation":"replace","credentials":{"access_token":"x"}}));
+                Ok(r)
+            },
+            |_| panic!("no codex challenge"),
+        )
+        .unwrap();
+        assert!(has_unsupported(&result));
+    }
+    #[test]
+    fn claude_merge_matches_shared_parity_fixture() {
+        // 与 mac CredentialRotationMerge 共享 tests/fixtures/credential-rotation-parity
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/credential-rotation-parity/claude.json");
+        let fixture: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let mut account = json!({"display_name": "fixture"});
+            if !case["oauth"].is_null() {
+                account["oauth"] = case["oauth"].clone();
+            }
+            let merged = merge_claude_tokens(account, &case["tokens"]);
+            let key = case["expectedKey"].as_str().unwrap();
+            assert_eq!(merged["oauth"][key], case["expected"], "{}", case["name"]);
         }
     }
 }

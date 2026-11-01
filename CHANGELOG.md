@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Windows 保存 Claude 刷新后的新令牌 (C172)**：Windows 版此前只回写 StepFun 的新令牌，Claude 订阅额度刷新换得的新令牌被直接丢弃，访问令牌一过期就只能重新导入登录态。现在与 mac 同口径写回（包括本轮采集失败时带回的新令牌），自动跟随本机 Claude 登录态的账号首次刷新后会自动保存；两端合并结果由共享对拍用例锁定。
 - **订阅额度刷新换得的新令牌不再随失败丢弃 (C171)**：Claude 与 StepFun 的刷新令牌是一次性的，刷新成功后服务端即作废旧令牌。此前若紧接着的额度查询失败（如 429 限流、5xx、网络错误或超时），或本轮本机扫描失败 / 超时，新令牌没有写回，下一次刷新只能失败并要求重新登录。现在刷新成功即保留新令牌：查询失败的结果与整轮失败的错误响应都会带回新令牌，mac 先写回凭据再决定是否发布本轮结果；mac 采集外层超时也改为晚于采集进程自身的截止时间（默认 90 → 102 秒），确保到期时的响应能送达。另修复 mac 首次为本机 Claude CLI 登录态保存新令牌时写成采集进程读不到的格式，导致下一轮仍用已作废的旧令牌。Windows 侧的 Claude 写回见 C172。
 - **CI 验证作业补齐 ripgrep 依赖 (C170)**：push 级「本地验证套件」在 macOS runner 上因缺少 `ripgrep` 失败——`check-bundle-resources.zsh` 把「命令不存在」误判成「打包脚本未调用共享资源函数」，报错与事实相反；`check-collector-fixtures.sh` 则静默跳过 fixture 凭证扫描（rg 未执行也输出通过）。CI 验证作业显式安装 `ripgrep`，两个脚本改为先 `command -v rg` 预检并明确报错，新增 `check-ci-tool-deps.mjs` 契约检查守住 CI 安装与脚本预检的一致性。
 - **正式版打包补装 Nothing 主题字体 (C168)**：Developer ID 正式版脚本 `build-release-app.sh` 此前漏拷 `Assets/Fonts`，用它打出的包在 Nothing 主题下会静默回退为系统字体（当前 CI 发版走 `build-test-app.sh`，已发布版本不受影响）。两个打包脚本改为共用 `runtime-manifest.zsh` 的同一份资源清单投放并校验，本地验证新增 `check-bundle-resources.zsh` 防止再次漂移。

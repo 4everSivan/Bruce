@@ -1766,7 +1766,7 @@
     "C172": {
       "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
       "type": "BugFix",
-      "status": "pending",
+      "status": "verified",
       "branch": "fix/C172-win-claude-rotation",
       "topic": "WindowsCompat",
       "version": "0.16.0",
