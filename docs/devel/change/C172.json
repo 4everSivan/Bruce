@@ -4,7 +4,7 @@
   "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C172-win-claude-rotation",
   "is_hotfix": false,
   "target": {
@@ -56,10 +56,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261031-11",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -79,8 +79,8 @@
         "item": "反向影响排查",
         "true_if": "StepFun 写回与 Codex 恢复行为不变；非轮换 provider 仍报 UNSUPPORTED；Windows 真机行为由人工确认（本机无法运行 Windows GUI）",
         "false_if": "StepFun / Codex 回归，或 UNSUPPORTED 语义被放宽到不轮换的 provider",
-        "evidence": "StepFun 写回逻辑原样抽为 apply_stepfun_update，既有 `rotation_is_persisted_without_deleting_other_accounts` 通过；Codex 恢复用例（`challenge_refreshes_once_persists_then_retries_once`、`concurrent_user_replacement_wins_over_inflight_refresh`、`refreshed_tokens_cannot_switch_account_identity`、`invalid_grant_requires_reauth_and_has_no_secret_diagnostic`）通过；kimi 仍 UNSUPPORTED。未做：Windows 真机实测（本机无法运行 Windows GUI / WebView2），需人工在 Windows 上确认 Claude 访问令牌过期后刷新仍可用且账号列表出现「Claude CLI」跟随项属预期。",
-        "result": null
+        "evidence": "StepFun 写回逻辑原样抽为 apply_stepfun_update，既有 `rotation_is_persisted_without_deleting_other_accounts` 通过；Codex 恢复用例（`challenge_refreshes_once_persists_then_retries_once`、`concurrent_user_replacement_wins_over_inflight_refresh`、`refreshed_tokens_cannot_switch_account_identity`、`invalid_grant_requires_reauth_and_has_no_secret_diagnostic`）通过；kimi 仍 UNSUPPORTED。未做：Windows 真机实测（本机无法运行 Windows GUI / WebView2），需人工在 Windows 上确认 Claude 访问令牌过期后刷新仍可用且账号列表出现「Claude CLI」跟随项属预期。；2026-11-01 人工知情签收：本项所需真机实测未做，维护者以「Confirm」确认全部卡片验收、按上述已知缺口接受，result 据此记为通过，缺口在案。",
+        "result": true
       }
     ]
   },
@@ -94,7 +94,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }
