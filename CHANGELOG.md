@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **本机采集内存与缓存体积大幅下降 (C176)**：Collector 扫描 JSONL 会话时改为逐文件聚合，不再把全部观测同时留在内存；缓存条目改为紧凑格式（项目名按文件存一次、模型名按文件去重、去重键缩短、字段名缩写）。2,000 个 Claude 会话（40 万条观测）的热扫描峰值内存由 251 MB 降到 57 MB，缓存目录由 102 MB 降到 39 MB，热扫描由约 0.6 s 降到约 0.36 s，统计结果逐字节不变。升级后首轮会重建一次缓存。
 - **本机冷扫描提速约 4 倍 (C175)**：Collector 写可再生缓存时不再逐条目强制落盘（macOS 上每条一次 F_FULLFSYNC）。2,000 个 Claude 会话（289 MB）的冷扫描由 18–20 s 降到约 4 s，产出逐字节一致；版本升级后全量重建缓存不再逼近 90 s 的整轮预算。掉电后若缓存条目为空或被截断，下一轮按损坏重建，统计结果不受影响。
 - **CI 验证作业补齐 ripgrep 依赖 (C170)**：push 级「本地验证套件」在 macOS runner 上因缺少 `ripgrep` 失败——`check-bundle-resources.zsh` 把「命令不存在」误判成「打包脚本未调用共享资源函数」，报错与事实相反；`check-collector-fixtures.sh` 则静默跳过 fixture 凭证扫描（rg 未执行也输出通过）。CI 验证作业显式安装 `ripgrep`，两个脚本改为先 `command -v rg` 预检并明确报错，新增 `check-ci-tool-deps.mjs` 契约检查守住 CI 安装与脚本预检的一致性。
 - **正式版打包补装 Nothing 主题字体 (C168)**：Developer ID 正式版脚本 `build-release-app.sh` 此前漏拷 `Assets/Fonts`，用它打出的包在 Nothing 主题下会静默回退为系统字体（当前 CI 发版走 `build-test-app.sh`，已发布版本不受影响）。两个打包脚本改为共用 `runtime-manifest.zsh` 的同一份资源清单投放并校验，本地验证新增 `check-bundle-resources.zsh` 防止再次漂移。

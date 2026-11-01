@@ -15,6 +15,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+/// 参照实现的去重用量 (C176 起缓存路径改用紧凑表示, 此类型只在测试构建中存在)。
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 pub(super) struct CodeBuddyUsage {
     pub(super) input: u64,
@@ -26,6 +28,7 @@ pub(super) struct CodeBuddyUsage {
     pub(super) project: Option<String>,
 }
 
+#[cfg(test)]
 impl CodeBuddyUsage {
     pub(super) fn total(&self) -> u64 {
         self.input

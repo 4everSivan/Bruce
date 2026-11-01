@@ -6,6 +6,9 @@
 //! C116: 条目只保存与采集窗口无关的观测值 (时间戳 + token 计数), 身份不含 `today` /
 //! 窗口天数 —— 每次运行再按当前窗口聚合。旧实现把按窗口天序号压缩的贡献写进条目并以
 //! `today` 为身份, 每天首轮刷新与改动窗口长度都会让全部条目失效、整树重新解析。
+//!
+//! C176: 扫描逐文件把载荷并入适配器的聚合器, 不再同时持有全部文件的观测; 条目载荷改为
+//! 紧凑形状 (文件级 project、按文件去重的模型表、128 位去重键、缩写字段名)。
 
 use super::sources::{SourceScan, SourceScanError};
 use super::{
@@ -17,15 +20,19 @@ use crate::cache_util::{
 };
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-/// v2 (C116): 条目去掉按窗口压缩的贡献与窗口身份, 只存观测值; v1 条目按版本不匹配重建一次。
-const JSONL_CACHE_SCHEMA_VERSION: u32 = 2;
+/// v2 (C116): 条目去掉按窗口压缩的贡献与窗口身份, 只存观测值。
+/// v3 (C176): 紧凑载荷 (见 `CachedFilePayload`); 旧版本条目仍可解析, 按版本不匹配重建一次,
+/// 不计为损坏。
+const JSONL_CACHE_SCHEMA_VERSION: u32 = 3;
 const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -68,6 +75,7 @@ fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
 }
 
 /// 一条与窗口无关的用量观测 (C116)。缺省值不落盘以控制条目体积。
+/// C176 起只剩 Codex 按文件缓存使用 (其格式不随 JSONL 层变化); JSONL 层见 `JsonlObservation`。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct CachedUsageObservation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,9 +117,183 @@ impl CachedUsageObservation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+/// JSONL 去重键 (C176): SHA-256(域分隔 + 命名空间 + 原始 id) 的前 128 位, 大端解释。
+/// 数值序与旧版 64 位十六进制键的字典序一致, 去重表的遍历 (即聚合与模型首见) 顺序不变。
+pub(crate) type DedupeKey = u128;
+
+/// 一条与窗口无关的 JSONL 用量观测 (C116 / C176)。project 由文件路径推导、同一文件恒定,
+/// 存于文件级载荷而不在每条观测上重复。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct JsonlObservation {
+    pub(crate) dedupe_key: Option<DedupeKey>,
+    pub(crate) timestamp_millis: i64,
+    pub(crate) model: Option<String>,
+    pub(crate) input: u64,
+    pub(crate) output: u64,
+    pub(crate) cache_read: u64,
+    pub(crate) cache_creation: u64,
+    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107)。
+    pub(crate) cache_creation_1h: u64,
+}
+
+impl JsonlObservation {
+    pub(crate) fn sample<'a>(
+        &'a self,
+        project: Option<&'a str>,
+    ) -> collector_domain::UsageSample<'a> {
+        collector_domain::UsageSample {
+            timestamp_millis: self.timestamp_millis,
+            model: self.model.as_deref(),
+            input: self.input,
+            output: self.output,
+            cache_read: self.cache_read,
+            cache_creation: self.cache_creation,
+            cache_creation_1h: self.cache_creation_1h,
+            project,
+        }
+    }
+}
+
+/// 一个 JSONL 文件的观测载荷。落盘形状 (v3) 由下方手写 serde 决定:
+/// `{"project", "models": [..], "observations": [{"k","t","m","i","o","r","w","h"}]}`,
+/// 其中 `m` 是 `models` 下标, `k` 是 32 位十六进制去重键, 零值与缺省不落盘。
+#[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct CachedFilePayload {
-    pub(crate) observations: Vec<CachedUsageObservation>,
+    pub(crate) project: Option<String>,
+    pub(crate) observations: Vec<JsonlObservation>,
+}
+
+#[derive(Serialize)]
+struct PayloadWireOut<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project: Option<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    models: Vec<&'a str>,
+    observations: Vec<ObservationWireOut>,
+}
+
+#[derive(Serialize)]
+struct ObservationWireOut {
+    #[serde(rename = "k", skip_serializing_if = "Option::is_none")]
+    dedupe_key: Option<String>,
+    #[serde(rename = "t")]
+    timestamp_millis: i64,
+    #[serde(rename = "m", skip_serializing_if = "Option::is_none")]
+    model: Option<u32>,
+    #[serde(rename = "i", skip_serializing_if = "is_zero")]
+    input: u64,
+    #[serde(rename = "o", skip_serializing_if = "is_zero")]
+    output: u64,
+    #[serde(rename = "r", skip_serializing_if = "is_zero")]
+    cache_read: u64,
+    #[serde(rename = "w", skip_serializing_if = "is_zero")]
+    cache_creation: u64,
+    #[serde(rename = "h", skip_serializing_if = "is_zero")]
+    cache_creation_1h: u64,
+}
+
+/// 读取侧全部字段可缺省、未知字段忽略: 旧版本条目 (字段名不同) 也能解析出来,
+/// 再由条目身份按版本不匹配判失效 —— 版本升级不计为损坏。
+#[derive(Deserialize)]
+struct PayloadWireIn {
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    models: Vec<String>,
+    #[serde(default)]
+    observations: Vec<ObservationWireIn>,
+}
+
+#[derive(Deserialize)]
+struct ObservationWireIn {
+    #[serde(rename = "k", default)]
+    dedupe_key: Option<String>,
+    #[serde(rename = "t", default)]
+    timestamp_millis: i64,
+    #[serde(rename = "m", default)]
+    model: Option<u32>,
+    #[serde(rename = "i", default)]
+    input: u64,
+    #[serde(rename = "o", default)]
+    output: u64,
+    #[serde(rename = "r", default)]
+    cache_read: u64,
+    #[serde(rename = "w", default)]
+    cache_creation: u64,
+    #[serde(rename = "h", default)]
+    cache_creation_1h: u64,
+}
+
+impl Serialize for CachedFilePayload {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut models = Vec::<&str>::new();
+        let mut model_index = HashMap::<&str, u32>::new();
+        let mut observations = Vec::with_capacity(self.observations.len());
+        for observation in &self.observations {
+            let model = observation.model.as_deref().map(|model| {
+                *model_index.entry(model).or_insert_with(|| {
+                    models.push(model);
+                    (models.len() - 1) as u32
+                })
+            });
+            observations.push(ObservationWireOut {
+                dedupe_key: observation.dedupe_key.map(|key| format!("{key:032x}")),
+                timestamp_millis: observation.timestamp_millis,
+                model,
+                input: observation.input,
+                output: observation.output,
+                cache_read: observation.cache_read,
+                cache_creation: observation.cache_creation,
+                cache_creation_1h: observation.cache_creation_1h,
+            });
+        }
+        PayloadWireOut {
+            project: self.project.as_deref(),
+            models,
+            observations,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CachedFilePayload {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = PayloadWireIn::deserialize(deserializer)?;
+        let mut observations = Vec::with_capacity(wire.observations.len());
+        for observation in wire.observations {
+            let dedupe_key = match observation.dedupe_key {
+                Some(raw) if raw.len() == 32 => Some(
+                    u128::from_str_radix(&raw, 16)
+                        .map_err(|_| D::Error::custom("invalid jsonl dedupe key"))?,
+                ),
+                Some(_) => return Err(D::Error::custom("invalid jsonl dedupe key")),
+                None => None,
+            };
+            let model = match observation.model {
+                Some(index) => Some(
+                    wire.models
+                        .get(index as usize)
+                        .cloned()
+                        .ok_or_else(|| D::Error::custom("jsonl model index out of range"))?,
+                ),
+                None => None,
+            };
+            observations.push(JsonlObservation {
+                dedupe_key,
+                timestamp_millis: observation.timestamp_millis,
+                model,
+                input: observation.input,
+                output: observation.output,
+                cache_read: observation.cache_read,
+                cache_creation: observation.cache_creation,
+                cache_creation_1h: observation.cache_creation_1h,
+            });
+        }
+        Ok(Self {
+            project: wire.project,
+            observations,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -123,7 +305,18 @@ pub(crate) struct JsonlCacheConfig {
     pub(crate) window: CollectionWindow,
 }
 
+/// 逐文件并入的聚合器 (C176): 按目录遍历顺序收到每个文件的载荷, 扫描结束后产出贡献。
+/// 并入顺序与旧实现「全部载入后统一聚合」的遍历顺序相同, 结果逐字节一致。
+pub(crate) trait JsonlAggregator {
+    fn absorb(&mut self, payload: &CachedFilePayload);
+
+    /// 返回 (贡献, 是否并入过任何文件, 诊断)。
+    fn finish(self) -> Result<(UsageContribution, bool, Option<String>), SourceScanError>;
+}
+
 pub(crate) trait JsonlCacheAdapter {
+    type Aggregator: JsonlAggregator;
+
     fn source_id(&self) -> &'static str;
 
     fn parse_file(
@@ -145,14 +338,13 @@ pub(crate) trait JsonlCacheAdapter {
     ) -> CachedFilePayload {
         let mut observations = previous.observations;
         observations.extend(appended.observations);
-        CachedFilePayload { observations }
+        CachedFilePayload {
+            project: appended.project,
+            observations,
+        }
     }
 
-    fn aggregate(
-        &self,
-        payloads: &[CachedFilePayload],
-        window: &CollectionWindow,
-    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError>;
+    fn aggregator(&self, window: &CollectionWindow) -> Self::Aggregator;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -213,15 +405,14 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         cancellation,
         stats: ScanStats::default(),
         seen: std::collections::BTreeSet::new(),
-        payloads: Vec::new(),
         visited_dirs: std::collections::BTreeSet::new(),
     };
-    visit_tree(root, &mut state, 0)?;
+    let mut aggregator = adapter.aggregator(&config.window);
+    visit_tree(root, &mut state, &mut aggregator, 0)?;
     cancellation.check()?;
     reconcile_deleted_cache(root, &mut state)?;
     cancellation.check()?;
-    let (contribution, adapter_found, diagnostic) =
-        adapter.aggregate(&state.payloads, &config.window)?;
+    let (contribution, adapter_found, diagnostic) = aggregator.finish()?;
     cancellation.check()?;
     if let Err(error) = write_manifest(root, &state) {
         record_cache_write_error(error, &mut state.stats)?;
@@ -243,7 +434,6 @@ struct TreeState<'a, A> {
     cancellation: &'a CancellationToken,
     stats: ScanStats,
     seen: std::collections::BTreeSet<String>,
-    payloads: Vec<CachedFilePayload>,
     /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
     visited_dirs: std::collections::BTreeSet<PathBuf>,
 }
@@ -256,6 +446,7 @@ struct TreeState<'a, A> {
 fn visit_tree<A: JsonlCacheAdapter>(
     root: &Path,
     state: &mut TreeState<'_, A>,
+    aggregator: &mut A::Aggregator,
     depth: usize,
 ) -> Result<(), SourceScanError> {
     state.cancellation.check()?;
@@ -285,7 +476,7 @@ fn visit_tree<A: JsonlCacheAdapter>(
         if metadata.is_dir() {
             let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
             if state.visited_dirs.insert(canonical) {
-                visit_tree(&path, state, depth + 1)?;
+                visit_tree(&path, state, aggregator, depth + 1)?;
             }
             continue;
         }
@@ -306,7 +497,7 @@ fn visit_tree<A: JsonlCacheAdapter>(
         }
         state.stats.files_scanned = state.stats.files_scanned.saturating_add(1);
         if let Some(payload) = process_file(&path, modified, state)? {
-            state.payloads.push(payload);
+            aggregator.absorb(&payload);
         }
     }
     Ok(())
