@@ -4,7 +4,7 @@
   "title": "额度刷新换得的轮换令牌被丢弃：刷新成功后查询失败、本轮采集失败或超时、claude-cli 首次写回形状不可读，新令牌均无法再用",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C171-rotated-token-loss",
   "is_hotfix": false,
   "target": {
@@ -106,7 +106,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "48737ad",
     "tag": ""
   },
   "gate": {
@@ -114,7 +114,7 @@
     "version": "1.5.0",
     "ran_at": "2026-11-01",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
