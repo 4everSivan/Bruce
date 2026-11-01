@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-billing"
+description = "Enables the export_billing command without any pre-configured scope."
+commands.allow = ["export_billing"]
+
+[[permission]]
+identifier = "deny-export-billing"
+description = "Denies the export_billing command without any pre-configured scope."
+commands.deny = ["export_billing"]

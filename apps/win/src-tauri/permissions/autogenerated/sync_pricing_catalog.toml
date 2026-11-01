@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sync-pricing-catalog"
+description = "Enables the sync_pricing_catalog command without any pre-configured scope."
+commands.allow = ["sync_pricing_catalog"]
+
+[[permission]]
+identifier = "deny-sync-pricing-catalog"
+description = "Denies the sync_pricing_catalog command without any pre-configured scope."
+commands.deny = ["sync_pricing_catalog"]

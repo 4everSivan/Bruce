@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-dashboard-from-alert"
+description = "Enables the show_dashboard_from_alert command without any pre-configured scope."
+commands.allow = ["show_dashboard_from_alert"]
+
+[[permission]]
+identifier = "deny-show-dashboard-from-alert"
+description = "Denies the show_dashboard_from_alert command without any pre-configured scope."
+commands.deny = ["show_dashboard_from_alert"]

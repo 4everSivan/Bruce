@@ -2217,10 +2217,14 @@ test("tray hover preview toggle persists in settings and preview.html has 420px 
   const previewHtmlPath = path.resolve("apps/win/src/preview.html");
   assert.ok(fs.existsSync(previewHtmlPath), "preview.html 必须存在");
   const htmlContent = fs.readFileSync(previewHtmlPath, "utf-8");
+  // C178: 脚本自内联块移入 preview.js (严格 CSP), 页面只留外链。
+  assert.match(htmlContent, /<script src="preview\.js"><\/script>/, "页面外链 preview.js");
+  assert.doesNotMatch(htmlContent, /<script>/, "不得再有内联脚本 (C178)");
+  const previewScript = fs.readFileSync(path.resolve("apps/win/src/preview.js"), "utf-8");
   assert.match(htmlContent, /class="micro-preview-card"/, "包含 420px 微缩卡容器");
   assert.match(htmlContent, /id="ringCircle"/, "包含 42px 环形仪表圆弧");
   assert.match(htmlContent, /id="expandBtn"/, "包含展开看板按钮");
-  assert.match(htmlContent, /expand_dashboard/, "绑定 expand_dashboard IPC 命令");
+  assert.match(previewScript, /expand_dashboard/, "绑定 expand_dashboard IPC 命令");
 
   // 2. 设置中心通用页托盘实时预览开关联动
   const app = await boot({
@@ -2564,7 +2568,13 @@ test("renderer stamps exactly the motion keys the tween layer computes (C158)", 
 // ---------- C159: 订阅额度预警气泡微卡 ----------
 
 test("quota-alert.html defines 280pt capsule micro-card with R3-A countdown and auto-dismiss (C159)", async () => {
-  const html = readFileSync(new URL("../src/quota-alert.html", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/quota-alert.html", import.meta.url), "utf8");
+  // C178: 脚本自内联块移入 quota-alert.js, 页面与脚本合并后断言结构; 不得再有内联脚本与内联事件属性。
+  assert.ok(page.includes('<script src="quota-alert.js"></script>'), "页面外链 quota-alert.js");
+  assert.ok(!page.includes("<script>"), "不得再有内联脚本 (C178)");
+  const script = readFileSync(new URL("../src/quota-alert.js", import.meta.url), "utf8");
+  assert.ok(!/\son[a-z]+=/.test(page + script), "不得使用内联事件属性 (C178)");
+  const html = page + script;
   assert.ok(html.includes("width: 280px"), "气泡微卡宽度固定 280px");
   assert.ok(html.includes("badge-icon"), "包含品牌瓷砖徽章容器");
   assert.ok(html.includes("progress-track"), "包含 4pt 进度条容器");

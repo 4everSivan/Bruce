@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-codex-device-start"
+description = "Enables the codex_device_start command without any pre-configured scope."
+commands.allow = ["codex_device_start"]
+
+[[permission]]
+identifier = "deny-codex-device-start"
+description = "Denies the codex_device_start command without any pre-configured scope."
+commands.deny = ["codex_device_start"]

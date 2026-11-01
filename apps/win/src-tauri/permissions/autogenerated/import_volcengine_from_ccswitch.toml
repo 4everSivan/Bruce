@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-volcengine-from-ccswitch"
+description = "Enables the import_volcengine_from_ccswitch command without any pre-configured scope."
+commands.allow = ["import_volcengine_from_ccswitch"]
+
+[[permission]]
+identifier = "deny-import-volcengine-from-ccswitch"
+description = "Denies the import_volcengine_from_ccswitch command without any pre-configured scope."
+commands.deny = ["import_volcengine_from_ccswitch"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-snapshot-cache"
+description = "Enables the clear_snapshot_cache command without any pre-configured scope."
+commands.allow = ["clear_snapshot_cache"]
+
+[[permission]]
+identifier = "deny-clear-snapshot-cache"
+description = "Denies the clear_snapshot_cache command without any pre-configured scope."
+commands.deny = ["clear_snapshot_cache"]

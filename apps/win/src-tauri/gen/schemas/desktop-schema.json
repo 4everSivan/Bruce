@@ -177,6 +177,726 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the ccswitch_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ccswitch-status",
+          "markdownDescription": "Enables the ccswitch_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the claude_local_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-claude-local-status",
+          "markdownDescription": "Enables the claude_local_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clear_snapshot_cache command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clear-snapshot-cache",
+          "markdownDescription": "Enables the clear_snapshot_cache command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the codex_device_poll command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-codex-device-poll",
+          "markdownDescription": "Enables the codex_device_poll command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the codex_device_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-codex-device-start",
+          "markdownDescription": "Enables the codex_device_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the codex_discovery_sources command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-codex-discovery-sources",
+          "markdownDescription": "Enables the codex_discovery_sources command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the codex_import_discovered command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-codex-import-discovered",
+          "markdownDescription": "Enables the codex_import_discovered command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the credential_allowlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-credential-allowlist",
+          "markdownDescription": "Enables the credential_allowlist command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the expand_dashboard command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-expand-dashboard",
+          "markdownDescription": "Enables the expand_dashboard command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_billing command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-billing",
+          "markdownDescription": "Enables the export_billing command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-diagnostics",
+          "markdownDescription": "Enables the export_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_workbench_csv command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-workbench-csv",
+          "markdownDescription": "Enables the export_workbench_csv command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_workbench_json command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-workbench-json",
+          "markdownDescription": "Enables the export_workbench_json command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_credential_accounts command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-credential-accounts",
+          "markdownDescription": "Enables the get_credential_accounts command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_credential_fields command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-credential-fields",
+          "markdownDescription": "Enables the get_credential_fields command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_credential_rejections command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-credential-rejections",
+          "markdownDescription": "Enables the get_credential_rejections command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_dashboard command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-dashboard",
+          "markdownDescription": "Enables the get_dashboard command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_model_prices command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-model-prices",
+          "markdownDescription": "Enables the get_model_prices command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_pricing_catalog_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-pricing-catalog-state",
+          "markdownDescription": "Enables the get_pricing_catalog_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_runtime_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-runtime-info",
+          "markdownDescription": "Enables the get_runtime_info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-settings",
+          "markdownDescription": "Enables the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_usage_analytics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-usage-analytics",
+          "markdownDescription": "Enables the get_usage_analytics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the grok_local_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-grok-local-status",
+          "markdownDescription": "Enables the grok_local_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the hide_dashboard command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-hide-dashboard",
+          "markdownDescription": "Enables the hide_dashboard command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the hide_preview_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-hide-preview-window",
+          "markdownDescription": "Enables the hide_preview_window command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the hide_quota_alert_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-hide-quota-alert-window",
+          "markdownDescription": "Enables the hide_quota_alert_window command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_claude_from_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-claude-from-local",
+          "markdownDescription": "Enables the import_claude_from_local command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_codex_auth command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-codex-auth",
+          "markdownDescription": "Enables the import_codex_auth command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_grok_from_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-grok-from-local",
+          "markdownDescription": "Enables the import_grok_from_local command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_volcengine_from_ccswitch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-volcengine-from-ccswitch",
+          "markdownDescription": "Enables the import_volcengine_from_ccswitch command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_release_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-release-page",
+          "markdownDescription": "Enables the open_release_page command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-settings",
+          "markdownDescription": "Enables the open_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_verification_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-verification-page",
+          "markdownDescription": "Enables the open_verification_page command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the quit_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-quit-app",
+          "markdownDescription": "Enables the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the refresh_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-refresh-now",
+          "markdownDescription": "Enables the refresh_now command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the refresh_subscription command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-refresh-subscription",
+          "markdownDescription": "Enables the refresh_subscription command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_credential_account command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-credential-account",
+          "markdownDescription": "Enables the remove_credential_account command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_provider_credentials command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-provider-credentials",
+          "markdownDescription": "Enables the remove_provider_credentials command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the rename_credential_account command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-rename-credential-account",
+          "markdownDescription": "Enables the rename_credential_account command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the restore_builtin_pricing_catalog command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restore-builtin-pricing-catalog",
+          "markdownDescription": "Enables the restore_builtin_pricing_catalog command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_credential_account command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-credential-account",
+          "markdownDescription": "Enables the save_credential_account command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_credentials_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-credentials-command",
+          "markdownDescription": "Enables the save_credentials_command command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_settings_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-settings-command",
+          "markdownDescription": "Enables the save_settings_command command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_hotkey_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-hotkey-recording",
+          "markdownDescription": "Enables the set_hotkey_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the show_dashboard_from_alert command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-show-dashboard-from-alert",
+          "markdownDescription": "Enables the show_dashboard_from_alert command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stepfun_web_login_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stepfun-web-login-action",
+          "markdownDescription": "Enables the stepfun_web_login_action command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stepfun_web_login_clear_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stepfun-web-login-clear-session",
+          "markdownDescription": "Enables the stepfun_web_login_clear_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stepfun_web_login_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stepfun-web-login-close",
+          "markdownDescription": "Enables the stepfun_web_login_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stepfun_web_login_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stepfun-web-login-open",
+          "markdownDescription": "Enables the stepfun_web_login_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stepfun_web_login_poll command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stepfun-web-login-poll",
+          "markdownDescription": "Enables the stepfun_web_login_poll command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the sync_pricing_catalog command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sync-pricing-catalog",
+          "markdownDescription": "Enables the sync_pricing_catalog command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-cancel",
+          "markdownDescription": "Enables the update_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_check command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-check",
+          "markdownDescription": "Enables the update_check command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_dismiss_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-dismiss-ready",
+          "markdownDescription": "Enables the update_dismiss_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-download",
+          "markdownDescription": "Enables the update_download command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-install",
+          "markdownDescription": "Enables the update_install command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_skip command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-skip",
+          "markdownDescription": "Enables the update_skip command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-state",
+          "markdownDescription": "Enables the update_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_unskip command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-unskip",
+          "markdownDescription": "Enables the update_unskip command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the verify_subscription command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-verify-subscription",
+          "markdownDescription": "Enables the verify_subscription command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ccswitch_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ccswitch-status",
+          "markdownDescription": "Denies the ccswitch_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the claude_local_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-claude-local-status",
+          "markdownDescription": "Denies the claude_local_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clear_snapshot_cache command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clear-snapshot-cache",
+          "markdownDescription": "Denies the clear_snapshot_cache command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the codex_device_poll command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-codex-device-poll",
+          "markdownDescription": "Denies the codex_device_poll command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the codex_device_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-codex-device-start",
+          "markdownDescription": "Denies the codex_device_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the codex_discovery_sources command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-codex-discovery-sources",
+          "markdownDescription": "Denies the codex_discovery_sources command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the codex_import_discovered command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-codex-import-discovered",
+          "markdownDescription": "Denies the codex_import_discovered command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the credential_allowlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-credential-allowlist",
+          "markdownDescription": "Denies the credential_allowlist command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the expand_dashboard command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-expand-dashboard",
+          "markdownDescription": "Denies the expand_dashboard command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_billing command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-billing",
+          "markdownDescription": "Denies the export_billing command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-diagnostics",
+          "markdownDescription": "Denies the export_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_workbench_csv command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-workbench-csv",
+          "markdownDescription": "Denies the export_workbench_csv command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_workbench_json command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-workbench-json",
+          "markdownDescription": "Denies the export_workbench_json command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_credential_accounts command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-credential-accounts",
+          "markdownDescription": "Denies the get_credential_accounts command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_credential_fields command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-credential-fields",
+          "markdownDescription": "Denies the get_credential_fields command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_credential_rejections command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-credential-rejections",
+          "markdownDescription": "Denies the get_credential_rejections command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_dashboard command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-dashboard",
+          "markdownDescription": "Denies the get_dashboard command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_model_prices command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-model-prices",
+          "markdownDescription": "Denies the get_model_prices command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_pricing_catalog_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-pricing-catalog-state",
+          "markdownDescription": "Denies the get_pricing_catalog_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_runtime_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-runtime-info",
+          "markdownDescription": "Denies the get_runtime_info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-settings",
+          "markdownDescription": "Denies the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_usage_analytics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-usage-analytics",
+          "markdownDescription": "Denies the get_usage_analytics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the grok_local_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-grok-local-status",
+          "markdownDescription": "Denies the grok_local_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the hide_dashboard command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-hide-dashboard",
+          "markdownDescription": "Denies the hide_dashboard command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the hide_preview_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-hide-preview-window",
+          "markdownDescription": "Denies the hide_preview_window command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the hide_quota_alert_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-hide-quota-alert-window",
+          "markdownDescription": "Denies the hide_quota_alert_window command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_claude_from_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-claude-from-local",
+          "markdownDescription": "Denies the import_claude_from_local command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_codex_auth command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-codex-auth",
+          "markdownDescription": "Denies the import_codex_auth command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_grok_from_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-grok-from-local",
+          "markdownDescription": "Denies the import_grok_from_local command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_volcengine_from_ccswitch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-volcengine-from-ccswitch",
+          "markdownDescription": "Denies the import_volcengine_from_ccswitch command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_release_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-release-page",
+          "markdownDescription": "Denies the open_release_page command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-settings",
+          "markdownDescription": "Denies the open_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_verification_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-verification-page",
+          "markdownDescription": "Denies the open_verification_page command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the quit_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-quit-app",
+          "markdownDescription": "Denies the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the refresh_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-refresh-now",
+          "markdownDescription": "Denies the refresh_now command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the refresh_subscription command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-refresh-subscription",
+          "markdownDescription": "Denies the refresh_subscription command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_credential_account command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-credential-account",
+          "markdownDescription": "Denies the remove_credential_account command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_provider_credentials command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-provider-credentials",
+          "markdownDescription": "Denies the remove_provider_credentials command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the rename_credential_account command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-rename-credential-account",
+          "markdownDescription": "Denies the rename_credential_account command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restore_builtin_pricing_catalog command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restore-builtin-pricing-catalog",
+          "markdownDescription": "Denies the restore_builtin_pricing_catalog command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_credential_account command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-credential-account",
+          "markdownDescription": "Denies the save_credential_account command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_credentials_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-credentials-command",
+          "markdownDescription": "Denies the save_credentials_command command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_settings_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-settings-command",
+          "markdownDescription": "Denies the save_settings_command command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_hotkey_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-hotkey-recording",
+          "markdownDescription": "Denies the set_hotkey_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the show_dashboard_from_alert command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-show-dashboard-from-alert",
+          "markdownDescription": "Denies the show_dashboard_from_alert command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stepfun_web_login_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stepfun-web-login-action",
+          "markdownDescription": "Denies the stepfun_web_login_action command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stepfun_web_login_clear_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stepfun-web-login-clear-session",
+          "markdownDescription": "Denies the stepfun_web_login_clear_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stepfun_web_login_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stepfun-web-login-close",
+          "markdownDescription": "Denies the stepfun_web_login_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stepfun_web_login_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stepfun-web-login-open",
+          "markdownDescription": "Denies the stepfun_web_login_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stepfun_web_login_poll command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stepfun-web-login-poll",
+          "markdownDescription": "Denies the stepfun_web_login_poll command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sync_pricing_catalog command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sync-pricing-catalog",
+          "markdownDescription": "Denies the sync_pricing_catalog command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-cancel",
+          "markdownDescription": "Denies the update_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_check command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-check",
+          "markdownDescription": "Denies the update_check command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_dismiss_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-dismiss-ready",
+          "markdownDescription": "Denies the update_dismiss_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-download",
+          "markdownDescription": "Denies the update_download command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-install",
+          "markdownDescription": "Denies the update_install command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_skip command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-skip",
+          "markdownDescription": "Denies the update_skip command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-state",
+          "markdownDescription": "Denies the update_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_unskip command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-unskip",
+          "markdownDescription": "Denies the update_unskip command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the verify_subscription command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-verify-subscription",
+          "markdownDescription": "Denies the verify_subscription command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

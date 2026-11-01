@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-usage-analytics"
+description = "Enables the get_usage_analytics command without any pre-configured scope."
+commands.allow = ["get_usage_analytics"]
+
+[[permission]]
+identifier = "deny-get-usage-analytics"
+description = "Denies the get_usage_analytics command without any pre-configured scope."
+commands.deny = ["get_usage_analytics"]

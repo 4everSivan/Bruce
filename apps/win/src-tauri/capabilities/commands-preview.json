@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "commands-preview",
+  "description": "Tray hover preview card: only the commands preview.js invokes",
+  "windows": [
+    "preview"
+  ],
+  "local": true,
+  "permissions": [
+    "allow-expand-dashboard",
+    "allow-get-dashboard",
+    "allow-hide-preview-window",
+    "allow-open-settings",
+    "allow-refresh-now"
+  ]
+}

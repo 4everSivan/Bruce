@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-31 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-11-01 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -270,6 +270,7 @@ Windows Tauri 后端 (Rust)
 | C159 | 架构升级 | 订阅额度预警改用托盘图标锚定气泡（双端支持）：三档阶梯 `[50%, 80%, 95%]` 去重判定，废弃 Windows Toast 弹窗 | 新增规则 35：Windows 托盘预警气泡与 Toast 替代（无焦点微卡、四边贴靠、6s 静默淡出与悬停常亮） |
 | C160 | 界面对齐 | 刷新间隔收敛为 3 / 6 分钟预设 + 自定义 1–1440 分钟（与 mac 同口径），移除验证期「测试气泡」入口 | 通用页刷新间隔改为预设分段 + 只读「X 分钟 / 编辑」，点击后才展开 `setting-interval-custom` 数字输入；历史值回显自定义、越界不写盘；`test_quota_alert` 命令与行内测试按钮退役（见 design/04 规则 10） |
 | C172 | 缺陷修复 | Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 `CREDENTIAL_UPDATE_UNSUPPORTED` 未写回 | 规则 6 补充 Collector 轮换更新写回：Claude 与 mac 同口径写嵌套 `claudeAiOauth`、零配置 `claude-cli` 自动建立、error envelope 同样写回；新增 `credential-rotation-parity` 双端对拍 |
+| C178 | 安全加固 | 前端 webview 无 CSP、全部应用命令对所有窗口开放 | 新增规则 36「前端安全基线」：严格 CSP；AppManifest 声明全部应用命令，capabilities 按窗口只授予其页面脚本实际调用的命令；预览 / 预警窗口内联脚本移入外链文件、内联事件属性改为委托；`check-win-frontend.mjs` 反查 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -420,6 +421,11 @@ Windows Tauri 后端 (Rust)
       - 鼠标移入浮层（`mouseenter`）立即挂起淡出定时器保持常亮，鼠标移出（`mouseleave`）后重新开始 3 秒淡出；
       - 点击卡片主体：立即隐藏气泡，并联动呼出主看板面板（`show_dashboard`）；点击右侧关闭 `✕`：立即注销每秒定时器并收起气泡；
       - 气泡关闭后彻底注销每秒 1 次的读秒定时器，满足 0% CPU 空转要求。
+36. **前端安全基线：严格 CSP + 应用命令按窗口最小授权**（C178）：
+    - **CSP**：`tauri.conf.json` 的 `app.security.csp` 为 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'`。脚本只能来自应用自身文件 —— 窗口页面不得写内联 `<script>`，页面与 innerHTML 模板不得使用 `onclick=` 等内联事件属性（`preview.html` / `quota-alert.html` 的脚本已移入 `preview.js` / `quota-alert.js`，关闭按钮改为事件委托）；样式保留 `'unsafe-inline'`（页面与模板大量使用 style 属性，样式注入只能改外观）；不放行任何远程源，`data:` 只用于图片（内联 SVG 背景）。
+    - **命令授权**：`build.rs` 以 `tauri_build::AppManifest::commands` 声明 `generate_handler!` 的全部应用命令，声明后每个命令只对 `capabilities/commands-<窗口>.json` 中显式授予 `allow-<command>` 的窗口开放、未授予即被 ACL 拒绝；各窗口只授予其页面及外链脚本实际调用的命令（dashboard 8、settings 51、preview 5、quota-alert 2）。未被任何窗口调用的已注册命令（`import_codex_auth`、`save_credentials_command`）不授予任何窗口，IPC 不可达。远程页面（StepFun 网页登录窗）本就无法调用应用命令（Tauri 2.11 对非本地源一律校验 ACL），不得为其配置 `remote` capability。
+    - **转义**：预警气泡把服务名 / 窗口标签 / 重置文案写入 innerHTML 前一律转义（CSP 之外的第二道防线）。
+    - **门禁**：`scripts/check-win-frontend.mjs` 断言 CSP 满足上述基线、页面无内联脚本与事件属性、AppManifest 与 `generate_handler!` 逐一相同、每个窗口的授权恰为其调用集合（漏授 / 多授 / remote 均红灯）；构建期 tauri-build 校验 capability 引用的权限必须存在。CSP 下真实 WebView2 的表现仍须 Windows 实机确认。
 
 ### 6.1 Rust 端改动清单（收敛后）
 
@@ -454,7 +460,7 @@ Windows Tauri 后端 (Rust)
 - **托盘**：Tauri tray icon + 左键弹面板/右键菜单（刷新/设置/退出），图标态（就绪/刷新中/告警）与 mac 圆环语义对齐；
 - **启动可达性（C149）**：托盘常驻不等于只有托盘入口。①`setup` 末尾必须经统一入口 `reveal_dashboard` 呈现看板 —— 用户双击启动即一次显式唤出，不得要求用户先找到托盘图标（Win11 新装应用的图标默认收进溢出区，而默认热键为空时托盘是唯一入口）；②单实例由 `tauri-plugin-single-instance` 保证（必须首个注册），第二次启动唤出既有面板后退出，禁止再起一个无声无窗口的进程；③所有唤出路径（托盘左键/托盘菜单/热键/预览卡展开/启动呈现/第二次启动）都必须经 `reveal_dashboard` 先 `record_shown` 再 `show`，漏记会让面板在 180ms 瞬态失焦保护外被立刻收起；
 - **启动故障可见性（C150）**：初始化失败或看板显示失败时必须向用户提供不依赖 WebView 的可见提示，使用固定阶段码说明失败位置；运行期焦点获取失败不等同于窗口显示失败。诊断不得包含凭据、账号、完整路径或原始异常文本；GUI 提示或日志失败不得触发递归报错。自动化测试检验失败分类与提示契约，不能代替 Windows 实机对话框、托盘和 WebView2 验证。
-- **窗口事件授权（C149）**：Tauri v2 的 ACL 按窗口授权，凡页面订阅事件的窗口都必须在 `capabilities/` 内有 `core:event:allow-listen` 覆盖，否则订阅被静默拒绝。`preview` 窗口由 `preview-panel` capability 单独授权（最小权限：仅 listen/unlisten）；该覆盖面由 `scripts/check-win-frontend.mjs` 反查断言，漏配即 CI 红灯；
+- **窗口事件授权（C149）**：Tauri v2 的 ACL 按窗口授权，凡页面订阅事件的窗口都必须在 `capabilities/` 内有 `core:event:allow-listen` 覆盖，否则订阅被静默拒绝。`preview` 窗口由 `preview-panel` capability 单独授权（最小权限：仅 listen/unlisten）；应用命令同样按窗口授权，见规则 36（C178）；该覆盖面由 `scripts/check-win-frontend.mjs` 反查断言，漏配即 CI 红灯；
 - **面板**：置顶、无任务栏项、失焦隐藏的 WebviewWindow；位置记忆对齐 mac `DashboardPanelPlacement`；
 - **热键/通知**：Tauri 官方插件（global-shortcut / notification）；自启仍为可选后续项；
 - **凭证壳**：`credentials.json` 的 ACL 写入器与 Onboarding 引导流程（Tauri 深链/本地页）。

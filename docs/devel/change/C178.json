@@ -4,7 +4,7 @@
   "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "verified",
   "branch": "fix/C178-win-csp",
   "is_hotfix": false,
   "target": {
@@ -13,13 +13,13 @@
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-  "why": "2026-10-31 对抗审查发现。tauri.conf.json 未配置 app.security.csp，withGlobalTauri: true，build.rs 未以 AppManifest 限定应用命令，60 余个 #[tauri::command]（含凭据保存 / 删除、导入、更新下载与安装）对 dashboard / settings / preview / quota-alert 全部窗口可调。当前前端以 DOM API 构建、IPC 不回传密钥值，未发现可利用路径；但缺少纵深防护，任一处内容注入即可直达凭据写入与更新安装命令。",
+  "why": "2026-10-31 对抗审查发现。tauri.conf.json 未配置 app.security.csp，withGlobalTauri: true，build.rs 未以 AppManifest 限定应用命令，60 余个 #[tauri::command]（含凭据保存 / 删除、导入、更新下载与安装）对 dashboard / settings / preview / quota-alert 全部窗口可调。当前前端以 DOM API 构建、IPC 不回传密钥值，未发现可利用路径；但缺少纵深防护，任一处内容注入即可直达凭据写入与更新安装命令。（2026-11-01 实施时校正：「以 DOM API 构建」不完全成立——预警气泡 quota-alert.html 的内联脚本以 innerHTML 拼接服务名、窗口标签与重置文案且未转义，并在模板里写内联 onclick；预览卡同为内联脚本。本卡一并移出内联脚本、改委托并转义。远程页面（StepFun 网页登录窗）经核对 Tauri 2.11.6 源码 webview/mod.rs，非本地源一律校验 ACL、无 remote capability 时调用不到应用命令。）",
   "precheck": {
     "description": "确认 CSP 缺失且命令未按窗口限定",
     "command": "grep -c '\"csp\"' apps/win/src-tauri/tauri.conf.json; cat apps/win/src-tauri/build.rs",
     "expected": "csp 计数为 0；build.rs 仅 tauri_build::build()",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-01 在 worktree local/worktrees/C178（fix/C178-win-csp，基于 docs/C171-C178-register e227fa6）执行预检命令：`grep -c '\"csp\"' tauri.conf.json` → 0；build.rs 仅 `tauri_build::build()`（无 AppManifest）。lib.rs generate_handler! 注册 60 个应用命令；capabilities 只有 local-panels（dashboard / settings：event listen/unlisten + dialog:allow-save）与 preview-panel（preview / quota-alert：event listen/unlisten），应用命令未受 ACL 约束、对四个窗口全部开放。另发现 preview.html / quota-alert.html 为内联脚本，quota-alert 以 innerHTML 拼接未转义的服务名 / 重置文案并含内联 onclick。缺陷存在。"
   },
   "callback": {
     "before": [
@@ -56,38 +56,40 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261101-11",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "check-win-frontend.mjs 断言 CSP 存在且各窗口实际调用的命令均已授权、未调用的未授权；Windows 壳测试与 verify-local.sh 退出码 0",
         "false_if": "断言缺失、授权与调用不一致或测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 在 worktree local/worktrees/C178 执行 `zsh scripts/verify-local.sh`：首轮 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=34 secretFindings=[]，告警仅 cargo `unused config key` ×7 与 CLT `ld: warning: search path` ×43 环境噪音；Windows 壳 crate fmt / test / clippy 通过，build.rs 的 AppManifest 在本机 desktop 特性构建中经 tauri-build 生成并校验 60 条 allow / deny 权限）。`node scripts/check-win-frontend.mjs` 新增 C178 段全部通过：「tauri.conf.json 配置严格 CSP」「AppManifest 覆盖全部 60 个应用命令」「窗口 dashboard / settings / preview / quota-alert 授权恰为其调用的 8 / 51 / 5 / 2 个命令」，并提示 import_codex_auth、save_credentials_command 未授予任何窗口。变异核验（每次改后复跑、随即恢复）：preview.js 追加 invokeTauri(\"quit_app\") → FAIL 调用未授权命令；quota-alert capability 追加 allow-update-install → FAIL 超出最小授权；script-src 加 'unsafe-inline' → FAIL CSP 不满足严格基线；quota-alert.html 换回内联脚本 → FAIL 含内联脚本。构建期校验：在 capability 中写入不存在的 allow-not-a-command 后 `cargo build` 失败（tauri-build: Permission allow-not-a-command not found），恢复后通过。Windows 前端测试 114 项通过（preview / quota-alert 结构断言改为读取页面 + 外链脚本，并断言无内联脚本、无内联事件属性）。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "Windows 真机上四个窗口加载无 CSP 违规、全部功能可用（需人工在 Windows 上确认，本机无法运行 Windows GUI）",
         "false_if": "出现 CSP 拦截或命令被拒导致功能失效",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 真实浏览器内核替代实测（非 WebView2）：headless Chrome 经 CDP 打开本分支 apps/win/src 的四个窗口页面，HTTP 响应头携带与 tauri.conf.json 逐字相同的 CSP，Tauri 桩以 addScriptToEvaluateOnNewDocument 注入（真实面板 / 预览 fixture）。dashboard 推送 dashboard-updated 并切 Nothing 主题、settings 逐一点开 6 个分类、preview 渲染 fixture（ChatGPT / 30% / ≈ ¥2.702）、quota-alert 推送带 `<img src=x onerror=…>` 服务名与 `\"><b>` 重置文案的告警：四页 securitypolicyviolation 均为 0、无脚本异常（唯一错误为 Chrome 自动请求 /favicon.ico 的 404）；预警标题按纯文本显示、未生成 img / b 节点、注入脚本未执行；点 ✕ 只调用 hide_quota_alert_window，点卡片主体调用 show_dashboard_from_alert + hide_quota_alert_window（与改动前语义一致）。探针有效性：同一 CSP 下换回改动前的 quota-alert.html，探针记录 script-src-elem 内联拦截（第 258 行）且气泡不渲染。未做：Windows 真机（WebView2 + Tauri IPC）四个窗口在 CSP 与按窗口 ACL 下的全功能确认——本机无法运行 Windows GUI，需人工在 Windows 上确认。；2026-11-01 人工知情签收：本项所需真机实测未做，维护者以「Confirm」确认全部卡片验收、按上述已知缺口接受，result 据此记为通过，缺口在案。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

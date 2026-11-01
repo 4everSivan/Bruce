@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "commands-dashboard",
+  "description": "Dashboard panel: only the commands app.js and its helpers invoke",
+  "windows": [
+    "dashboard"
+  ],
+  "local": true,
+  "permissions": [
+    "allow-get-dashboard",
+    "allow-get-settings",
+    "allow-hide-dashboard",
+    "allow-open-settings",
+    "allow-quit-app",
+    "allow-refresh-now",
+    "allow-refresh-subscription",
+    "allow-save-settings-command"
+  ]
+}

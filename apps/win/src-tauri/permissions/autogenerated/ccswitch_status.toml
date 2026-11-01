@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ccswitch-status"
+description = "Enables the ccswitch_status command without any pre-configured scope."
+commands.allow = ["ccswitch_status"]
+
+[[permission]]
+identifier = "deny-ccswitch-status"
+description = "Denies the ccswitch_status command without any pre-configured scope."
+commands.deny = ["ccswitch_status"]
