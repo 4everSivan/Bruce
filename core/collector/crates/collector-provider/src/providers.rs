@@ -12,12 +12,12 @@ use crate::signing::{
     volc_credential_field, volc_headers, volc_secret_candidates,
 };
 use crate::{
-    captured_epoch, credential_string, finalize_codex_outcome, invalid_credential, json_credential,
-    optional_credential_string, provider_headers, send_body, send_json, HttpClient, ProviderError,
-    ProviderOutcome, ProviderRequest, QuotaProvider, CLAUDE_BETA_HEADER, CLAUDE_CLIENT_ID,
-    CLAUDE_OAUTH_TOKEN_URL, CLAUDE_USAGE_URL, CLAUDE_USER_AGENT, CLINE_API_BASE, CODEX_USAGE_URL,
-    DEEPSEEK_BALANCE_URL, GROK_BILLING_URL, JEV_MODELS_URL, KIMI_USAGE_URL, OPENCODE_SERVER_ID,
-    OPENCODE_SERVER_URL, ZHIPU_QUOTA_PATH,
+    captured_epoch, credential_string, finalize_codex_outcome, invalid_credential, invalid_payload,
+    json_credential, optional_credential_string, provider_headers, send_body, send_json,
+    HttpClient, ProviderError, ProviderOutcome, ProviderRequest, QuotaProvider, CLAUDE_BETA_HEADER,
+    CLAUDE_CLIENT_ID, CLAUDE_OAUTH_TOKEN_URL, CLAUDE_USAGE_URL, CLAUDE_USER_AGENT, CLINE_API_BASE,
+    CODEX_USAGE_URL, DEEPSEEK_BALANCE_URL, GROK_BILLING_URL, JEV_MODELS_URL, KIMI_USAGE_URL,
+    OPENCODE_SERVER_ID, OPENCODE_SERVER_URL, ZHIPU_QUOTA_PATH,
 };
 use collector_runtime::CancellationToken;
 use serde_json::{json, Value};
@@ -493,21 +493,39 @@ impl QuotaProvider for ClaudeProvider {
             }
         }
 
-        let mut usage = query_result?;
-        if refreshed {
-            if let Some(obj) = usage.as_mut().and_then(Value::as_object_mut) {
-                let mut update = serde_json::Map::new();
-                update.insert("access_token".to_owned(), Value::String(active_token));
-                if let Some(rt) = active_refresh_token {
-                    update.insert("refresh_token".to_owned(), Value::String(rt));
-                }
-                if let Some(exp) = active_expiry_secs {
-                    update.insert("expiry".to_owned(), Value::String(exp.to_string()));
-                }
-                obj.insert("credential_update".to_owned(), Value::Object(update));
+        let update = refreshed.then(|| {
+            let mut update = serde_json::Map::new();
+            update.insert("access_token".to_owned(), Value::String(active_token));
+            if let Some(rt) = active_refresh_token {
+                update.insert("refresh_token".to_owned(), Value::String(rt));
             }
+            if let Some(exp) = active_expiry_secs {
+                update.insert("expiry".to_owned(), Value::String(exp.to_string()));
+            }
+            Value::Object(update)
+        });
+        attach_credential_update(query_result, update)
+    }
+}
+
+/// C171: 刷新成功即产生凭据更新, 与 usage 查询成败解耦 —— 成功时写入结果的
+/// `credential_update` 键, 失败时挂在错误上; 两者都由 finalize 转成 credential update。
+/// 无结果对象可挂 (`Ok(None)` / 非对象) 时按无效响应报错并保留更新: 轮换令牌
+/// 一旦丢失只能重新登录, 宁可把这一轮记为失败也不能丢。
+fn attach_credential_update(
+    result: Result<Option<Value>, ProviderError>,
+    update: Option<Value>,
+) -> Result<Option<Value>, ProviderError> {
+    let Some(update) = update else {
+        return result;
+    };
+    match result {
+        Ok(Some(Value::Object(mut usage))) => {
+            usage.insert("credential_update".to_owned(), update);
+            Ok(Some(Value::Object(usage)))
         }
-        Ok(usage)
+        Ok(_) => Err(invalid_payload().with_credential_update(Some(update))),
+        Err(error) => Err(error.with_credential_update(Some(update))),
     }
 }
 
@@ -777,18 +795,8 @@ impl QuotaProvider for StepFunProvider {
             }
         }
 
-        let mut usage = query_result?;
-        if refreshed {
-            if let Some(obj) = usage.as_mut().and_then(Value::as_object_mut) {
-                obj.insert(
-                    "credential_update".to_owned(),
-                    json!({
-                        "access_token": active_token,
-                    }),
-                );
-            }
-        }
-        Ok(usage)
+        let update = refreshed.then(|| json!({ "access_token": active_token }));
+        attach_credential_update(query_result, update)
     }
 }
 

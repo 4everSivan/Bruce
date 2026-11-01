@@ -209,6 +209,8 @@ struct RefreshSchedulerHarness {
         try await quotaPolicyPlanFailureSkipsCollection(repository: repository)
         print("Refresh scheduler: quota policy merge rejection keeps previous artifact (T15)")
         try await quotaPolicyMergeRejectionKeepsPreviousArtifact()
+        print("Refresh scheduler: error envelope still writes back rotated tokens (C171)")
+        try await errorEnvelopeStillWritesBackRotatedTokens()
         print("Refresh scheduler: quota policy invalid response fails round (T15)")
         try await quotaPolicyInvalidResponseFailsRound(repository: repository)
         print("Refresh scheduler: quota policy scoped annotate failure fails round (T15)")
@@ -247,6 +249,6 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 115")
+        print("Refresh scheduler tests passed: 116")
     }
 }

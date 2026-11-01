@@ -405,6 +405,12 @@ struct CollectorRunnerHarness {
             try await timeoutRunner.run(module: .agentUsage)
         }
         await waitForLaunches(timeoutLauncher, count: 1)
+        // C171: 外层超时晚于 Collector 自身 deadline (module + external + 宽限),
+        // 让 Collector 到期后仍能输出带轮换令牌的信封.
+        try runnerExpect(
+            abs((timeoutTimers.delays.first ?? 0) - (1 + 10 + 0.1)) < 1e-9,
+            "host timeout must trail the collector deadline, got \(timeoutTimers.delays)"
+        )
         timeoutTimers.tokens[0].fire()
         try runnerExpect(
             timeoutLauncher.launches[0].handle.cancellationCount == 1,

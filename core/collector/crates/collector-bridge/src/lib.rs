@@ -6,8 +6,8 @@ mod metrics;
 
 use chrono::{SecondsFormat, Utc};
 use collector_application::{
-    collect_agent_usage, validate_credential_outputs, CollectionMetrics, CollectionOutput,
-    CollectionScanStats, SourcePerformanceMetric,
+    collect_agent_usage, validate_credential_outputs, CollectionFailure, CollectionMetrics,
+    CollectionOutput, CollectionScanStats, SourcePerformanceMetric,
 };
 use collector_domain::{
     response_status, BridgeRequest, BridgeResponse, Diagnostic, BRIDGE_SCHEMA_VERSION,
@@ -161,8 +161,8 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                         ),
                     }
                 }
-                Err(diagnostic) => (
-                    BridgeResponse::error(request.run_id, generated_at(), diagnostic),
+                Err(failure) => (
+                    failure_response(request.run_id, failure),
                     CollectionScanStats::default(),
                     CollectionMetrics::default(),
                     Vec::new(),
@@ -211,6 +211,17 @@ fn finish_metrics(
 
 pub fn physical_disk_read_bytes() -> Option<u64> {
     metrics::physical_disk_read_bytes()
+}
+
+/// C171: 整轮失败的 error envelope 也带出已校验的轮换令牌 (artifact 仍为空、status 仍为
+/// error)。更新未通过白名单时丢弃更新, 原始失败诊断保持首位, 校验诊断追加其后。
+fn failure_response(run_id: String, failure: CollectionFailure) -> BridgeResponse {
+    let mut response = BridgeResponse::error(run_id, generated_at(), failure.diagnostic);
+    match validate_credential_outputs(&failure.credential_updates, &[]) {
+        Ok((updates, _)) => response.credential_updates = updates,
+        Err(diagnostic) => response.diagnostics.push(diagnostic),
+    }
+    response
 }
 
 fn validate_response_credentials(
@@ -398,12 +409,70 @@ fn new_run_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        generated_at, max_request_bytes, read_request, run_bytes, run_bytes_panic_safe, run_id_of,
-        validate_response_credentials,
+        failure_response, generated_at, max_request_bytes, read_request, run_bytes,
+        run_bytes_panic_safe, run_id_of, validate_response_credentials,
     };
+    use collector_application::CollectionFailure;
+    use collector_domain::Diagnostic;
     use collector_domain::{BridgeResponse, ResponseStatus, BRIDGE_SCHEMA_VERSION};
     use serde_json::{json, Value};
     use std::io::Cursor;
+
+    fn local_cancelled() -> Diagnostic {
+        Diagnostic::new(
+            "LOCAL_SOURCE_CANCELLED",
+            "local",
+            "cancel",
+            "fixture cancelled",
+            true,
+        )
+    }
+
+    #[test]
+    fn failure_envelope_carries_validated_rotated_tokens() {
+        // C171: 整轮失败的 error envelope 仍带出轮换令牌, artifact 为空、status 为 error
+        let response = failure_response(
+            "12345678-1234-4234-9234-123456789abc".to_owned(),
+            CollectionFailure {
+                diagnostic: local_cancelled(),
+                credential_updates: vec![json!({
+                    "provider": "claude",
+                    "accountId": "acc",
+                    "kind": "oauthTokens",
+                    "operation": "replace",
+                    "credentials": {
+                        "access_token": "sk-ant-oat01-fresh_token",
+                        "refresh_token": "sk-ant-ort01-new_refresh",
+                        "expiry": "1792485144"
+                    }
+                })]
+                .into(),
+            },
+        );
+        assert_eq!(response.status, ResponseStatus::Error);
+        assert!(response.artifact.is_none());
+        assert_eq!(response.diagnostics.len(), 1);
+        assert_eq!(response.diagnostics[0].code, "LOCAL_SOURCE_CANCELLED");
+        assert_eq!(response.credential_updates.len(), 1);
+        assert_eq!(
+            response.credential_updates[0]["credentials"]["refresh_token"],
+            "sk-ant-ort01-new_refresh"
+        );
+    }
+
+    #[test]
+    fn failure_envelope_drops_invalid_updates_but_keeps_original_failure_first() {
+        let response = failure_response(
+            "12345678-1234-4234-9234-123456789abc".to_owned(),
+            CollectionFailure {
+                diagnostic: local_cancelled(),
+                credential_updates: vec![json!({"provider": "unknown", "credentials": {}})].into(),
+            },
+        );
+        assert!(response.credential_updates.is_empty());
+        assert_eq!(response.diagnostics[0].code, "LOCAL_SOURCE_CANCELLED");
+        assert_eq!(response.diagnostics.len(), 2);
+    }
 
     fn request() -> String {
         r#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"localScanSeconds":30,"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"/tmp","capabilities":["localSessions"]},"credentials":{}}"#.to_owned()

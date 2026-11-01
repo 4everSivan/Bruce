@@ -184,6 +184,72 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    /// C171: Collector 本机扫描超时返回 error 信封 (无 artifact), 额度线程已轮换的令牌
+    /// 随信封带回 —— 不发布、按采集失败处理, 但令牌必须先写回.
+    static func errorEnvelopeStillWritesBackRotatedTokens() async throws {
+        let (store, root) = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-3600), usedPercent: 10)
+        try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
+
+        let credentials = InMemoryCredentialStore()
+        let accounts = ProviderAccountStore(provider: .claude, credentialStore: credentials)
+        _ = try accounts.addAccount(
+            accountID: "acc-claude-1",
+            displayName: "Claude · fixture",
+            credentialJSON: #"{"claudeAiOauth":{"accessToken":"old","refreshToken":"old-refresh"}}"#
+        )
+        let executor = CredentialUpdateExecutor(
+            artifact: nil,
+            updates: [
+                .object([
+                    "provider": .string("claude"),
+                    "accountId": .string("acc-claude-1"),
+                    "kind": .string("oauthTokens"),
+                    "operation": .string("replace"),
+                    "credentials": .object([
+                        "access_token": .string("rotated-access"),
+                        "refresh_token": .string("rotated-refresh"),
+                    ]),
+                ])
+            ],
+            status: .error,
+            diagnostics: [
+                BridgeDiagnostic(
+                    code: "LOCAL_SOURCE_CANCELLED",
+                    category: "local",
+                    stage: "cancel",
+                    message: "本机会话扫描因取消或超时提前停止, 未发布部分采集结果",
+                    retryable: true
+                )
+            ]
+        )
+
+        let result = await failurePipeline(
+            executor: executor,
+            transport: ScriptedQuotaPolicyTransport(),
+            store: store,
+            credentialUpdates: CredentialUpdateCoordinator(credentialStore: credentials)
+        ).run(failureRequest())
+
+        guard case .completed(let run) = result else {
+            throw RefreshTestFailure.expectation("error 信封应走 completed 路径, got \(result)")
+        }
+        try refreshExpect(run.publishedArtifact == nil, "error 信封不得发布")
+        try refreshExpect(run.output.response.status == .error, "状态保持 error 以进入退避")
+        let stored = try store.load(.agentUsage, now: failureBase, staleAfter: 3600)
+        try refreshExpect(stored.artifact == previous, "上一份 artifact 保持不变")
+        let record = try accounts.loadRecord(for: "acc-claude-1")
+        try refreshExpect(
+            record?.credentialJSON.contains("rotated-refresh") == true,
+            "error 信封中的轮换令牌必须写回"
+        )
+        try refreshExpect(
+            record?.credentialJSON.contains("old-refresh") == false,
+            "旧 refresh token 不得残留在账号记录"
+        )
+    }
+
     /// 输出不是合法信封 (如被截断): 同样不发布, 错误为 invalidResponse.
     static func quotaPolicyInvalidResponseFailsRound(repository: URL) async throws {
         let (store, root) = try temporaryStore()

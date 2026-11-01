@@ -74,21 +74,19 @@ public enum CredentialRotationMerge {
                 root = dict
             }
             for (key, value) in tokens { root[key] = value }
-            if var oauth = (root["claudeAiOauth"] as? [String: Any]) {
-                if let access = tokens["access_token"] { oauth["accessToken"] = access }
-                if let refresh = tokens["refresh_token"] { oauth["refreshToken"] = refresh }
-                if let expiry = tokens["expiry"], let secs = Double(expiry) {
-                    oauth["expiresAt"] = Int64(secs * 1000)
-                }
-                root["claudeAiOauth"] = oauth
-            } else if var oauth = (root["claude.ai_oauth"] as? [String: Any]) {
-                if let access = tokens["access_token"] { oauth["accessToken"] = access }
-                if let refresh = tokens["refresh_token"] { oauth["refreshToken"] = refresh }
-                if let expiry = tokens["expiry"], let secs = Double(expiry) {
-                    oauth["expiresAt"] = Int64(secs * 1000)
-                }
-                root["claude.ai_oauth"] = oauth
+            // C171: 首次写回零配置 claude-cli 账号时尚无已存记录, 也必须落成嵌套
+            // claudeAiOauth —— Collector 只从嵌套条目读取令牌, 只写顶层键等于把轮换后的
+            // refresh token 存在读不到的位置.
+            let nestedKey = root["claudeAiOauth"] == nil && root["claude.ai_oauth"] is [String: Any]
+                ? "claude.ai_oauth"
+                : "claudeAiOauth"
+            var oauth = (root[nestedKey] as? [String: Any]) ?? [:]
+            if let access = tokens["access_token"] { oauth["accessToken"] = access }
+            if let refresh = tokens["refresh_token"] { oauth["refreshToken"] = refresh }
+            if let expiry = tokens["expiry"], let secs = Double(expiry) {
+                oauth["expiresAt"] = Int64(secs * 1000)
             }
+            root[nestedKey] = oauth
             return Self.jsonString(from: root)
 
         case .grok, .opencodeGo:
