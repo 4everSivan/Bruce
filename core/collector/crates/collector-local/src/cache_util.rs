@@ -3,6 +3,10 @@
 //! JSONL 与 SQLite 缓存共用同一套条目读取 / 原子写入与指纹语义; 集中在这里是为了让
 //! 失败路径 (NotFound → Missing, 其余 IO 或解析错误 → Corrupt, 写盘时临时文件 + rename)
 //! 只有一处实现, 避免两个缓存引擎各自演化出不同的持久化纪律。
+//!
+//! C175: 缓存条目不强制落盘 (不 fsync)。掉电后可能留下空 / 截断条目, 读取时按 Corrupt
+//! 计入 `cache_corruptions` 并全量重建, 结果与无缓存解析一致; 凭据等不可再生数据不走
+//! 这里, 其落盘纪律不受影响。
 
 use super::sources::SourceScanError;
 use collector_runtime::CancellationToken;
@@ -39,8 +43,11 @@ pub(crate) fn load_json_cache<T: DeserializeOwned>(path: &Path) -> CacheLoad<T> 
 /// 原子写入一个 JSON 缓存条目。
 ///
 /// 临时文件以 `create_new` 创建并显式收紧到 0600, 写入后用 `rename` 原子替换目标,
-/// 失败时清理临时文件 —— 读取方要么看到旧的完整条目, 要么看到新的完整条目, 不会
-/// 读到半截 JSON。缓存可再生, 调用方按自身策略处理返回的错误。
+/// 失败时清理临时文件 —— 进程正常运行时读取方要么看到旧的完整条目, 要么看到新的完整
+/// 条目, 不会读到半截 JSON。缓存可再生, 调用方按自身策略处理返回的错误。
+///
+/// C175: rename 前不 `sync_all`。macOS 上它是 F_FULLFSYNC, 冷扫描逐条目落盘约占四分之三
+/// 耗时 (2,000 个会话 15.1 s → 3.6 s); 掉电留下的空 / 截断条目由读取方按 Corrupt 重建。
 pub(crate) fn write_json_atomic<T: Serialize>(
     path: &Path,
     value: &T,
@@ -81,8 +88,6 @@ pub(crate) fn write_json_atomic<T: Serialize>(
         })?;
         bytes.push(b'\n');
         file.write_all(&bytes).map_err(SourceScanError::Io)?;
-        // 落盘后再 rename: 避免掉电/崩溃后留下已替换但内容未持久化的条目。
-        file.sync_all().map_err(SourceScanError::Io)?;
         drop(file);
         cancellation.check()?;
         fs::rename(&temporary, path).map_err(SourceScanError::Io)

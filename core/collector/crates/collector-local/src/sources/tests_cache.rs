@@ -1191,3 +1191,155 @@ fn v1_jsonl_cache_entries_are_invalidated_not_counted_as_corrupt() {
     );
     fs::remove_dir_all(root).ok();
 }
+
+/// 缓存目录内以 `prefix` 开头的文件, 按文件名排序。
+fn cache_files_with_prefix(cache_root: &Path, prefix: &str) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = fs::read_dir(cache_root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(prefix))
+        })
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// C175: 缓存写盘不 fsync 之后, 重建出的条目仍须是 0600 且不残留临时文件。
+pub(super) fn assert_cache_files_private_without_temporaries(cache_root: &Path) {
+    for entry in fs::read_dir(cache_root).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(!name.contains(".tmp-"), "临时文件残留: {name}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "缓存文件权限应为 0600: {name}");
+        }
+    }
+}
+
+/// C175 回归: 缓存写盘不再强制落盘, 掉电后条目可能为空或被截断, manifest 同理。
+/// 读取方必须把空 / 截断条目判为 Corrupt 并全量重建, 结果与无缓存解析一致;
+/// 下一轮恢复命中。
+#[test]
+fn jsonl_cache_entries_left_empty_or_truncated_are_rebuilt() {
+    let root = temp_root("jsonl-power-loss");
+    let source_root = root.join("kimi");
+    let cache_root = root.join("cache");
+    fs::create_dir_all(&source_root).unwrap();
+    let base = 1_785_211_200_000_i64;
+    for (name, input) in [("a.jsonl", 3_u64), ("b.jsonl", 5)] {
+        let line = json!({
+            "type": "usage.record",
+            "time": base,
+            "model": "kimi-k2",
+            "usage": {"inputOther": input, "output": 1}
+        });
+        fs::write(source_root.join(name), format!("{line}\n")).unwrap();
+    }
+    let expected = scan_kimi_tree(&source_root, &window());
+    let scan = || {
+        scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap()
+    };
+    let cold = scan();
+    assert_eq!(cold.contribution, expected.contribution);
+    assert_eq!(cold.stats.cache_rebuilds, 2);
+
+    let entries = cache_files_with_prefix(&cache_root, "jsonl-");
+    assert_eq!(entries.len(), 2);
+    let manifests = cache_files_with_prefix(&cache_root, "manifest-jsonl-");
+    assert_eq!(manifests.len(), 1);
+    let intact = fs::read(&entries[1]).unwrap();
+    fs::write(&entries[0], b"").unwrap();
+    fs::write(&entries[1], &intact[..intact.len() / 2]).unwrap();
+    fs::write(&manifests[0], b"").unwrap();
+
+    let repaired = scan();
+    assert_eq!(repaired.contribution, expected.contribution);
+    assert_eq!(repaired.stats.cache_corruptions, 2);
+    assert_eq!(repaired.stats.cache_rebuilds, 2);
+    assert_eq!(repaired.stats.cache_hits, 0);
+
+    let warm = scan();
+    assert_eq!(warm.contribution, expected.contribution);
+    assert_eq!(warm.stats.cache_hits, 2, "重建后的条目下一轮应命中");
+    assert_eq!(warm.stats.cache_corruptions, 0);
+
+    // manifest 已随修复轮重写: 删除源文件后仍能回收对应条目。
+    fs::remove_file(source_root.join("a.jsonl")).unwrap();
+    let deleted = scan();
+    assert_eq!(deleted.stats.cache_deletions, 1);
+    assert_eq!(
+        deleted.contribution,
+        scan_kimi_tree(&source_root, &window()).contribution
+    );
+    assert_cache_files_private_without_temporaries(&cache_root);
+    fs::remove_dir_all(root).ok();
+}
+
+/// C175 回归: SQLite 缓存条目为空或被截断时同样判 Corrupt 并全量重建。
+#[test]
+fn sqlite_cache_entry_left_empty_or_truncated_is_rebuilt() {
+    use rusqlite::Connection;
+
+    let root = temp_root("sqlite-power-loss");
+    let db_path = root.join("opencode.db");
+    let cache_root = root.join("cache");
+    let base = 1_785_211_200_000_i64;
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute("CREATE TABLE message (data text not null)", [])
+        .unwrap();
+    for (offset, input) in [(3_600_000_i64, 7_u64), (1_800_000, 11)] {
+        let message = json!({
+            "role": "assistant",
+            "time": { "created": base - offset },
+            "tokens": { "input": input, "output": 2 },
+            "modelID": "qwen3-coder",
+        });
+        connection
+            .execute(
+                "INSERT INTO message (data) VALUES (?1)",
+                [&message.to_string()],
+            )
+            .unwrap();
+    }
+    drop(connection);
+    let expected = scan_opencode(&db_path, &window());
+    let scan = || {
+        scan_opencode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap()
+    };
+    let cold = scan();
+    assert_eq!(cold.contribution, expected.contribution);
+
+    let entries = cache_files_with_prefix(&cache_root, "sqlite-");
+    assert_eq!(entries.len(), 1);
+    let intact = fs::read(&entries[0]).unwrap();
+    for damaged in [&intact[..0], &intact[..intact.len() / 2]] {
+        fs::write(&entries[0], damaged).unwrap();
+        let repaired = scan();
+        assert_eq!(repaired.contribution, expected.contribution);
+        assert_eq!(repaired.stats.cache_corruptions, 1);
+        assert_eq!(repaired.stats.cache_hits, 0);
+        assert!(
+            repaired.stats.sqlite_rows_read > 0,
+            "损坏条目必须回退全量读取"
+        );
+
+        let warm = scan();
+        assert_eq!(warm.contribution, expected.contribution);
+        assert_eq!(warm.stats.cache_hits, 1, "重建后的条目下一轮应命中");
+    }
+    assert_cache_files_private_without_temporaries(&cache_root);
+    fs::remove_dir_all(root).ok();
+}
