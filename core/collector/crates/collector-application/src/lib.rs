@@ -955,7 +955,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1125,7 +1124,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1573,7 +1571,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1610,7 +1607,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1658,7 +1654,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1708,7 +1703,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1749,7 +1743,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },
@@ -1809,7 +1802,6 @@ mod tests {
             "runId": "12345678-1234-4234-9234-123456789abc",
             "module": "agent-usage",
             "timeouts": {
-                "localScanSeconds": 30,
                 "externalRequestSeconds": 10,
                 "moduleSeconds": 90
             },

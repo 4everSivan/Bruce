@@ -96,7 +96,7 @@ make_request() {
     local home_path="$1"
     local request_path="$2"
     cat > "$request_path" <<'JSON'
-{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"localScanSeconds":30,"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"","now":"2026-07-28T12:00:00+08:00","timezone":"Asia/Shanghai","days":14,"capabilities":["localSessions"]},"credentials":{}}
+{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"","now":"2026-07-28T12:00:00+08:00","timezone":"Asia/Shanghai","days":14,"capabilities":["localSessions"]},"credentials":{}}
 JSON
     plutil -replace context.home -string "$home_path" "$request_path"
 }

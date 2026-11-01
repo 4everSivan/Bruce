@@ -280,8 +280,8 @@ struct CollectorRunnerHarness {
             "credential leaked to process arguments"
         )
         try runnerExpect(
-            timeouts?["localScanSeconds"] as? Double == 30,
-            "local scan timeout changed"
+            timeouts?["localScanSeconds"] == nil,
+            "retired localScanSeconds must not be sent (C177)"
         )
         try runnerExpect(
             timeouts?["externalRequestSeconds"] as? Double == 10,
@@ -395,7 +395,6 @@ struct CollectorRunnerHarness {
             launcher: timeoutLauncher,
             timerScheduler: timeoutTimers,
             timeouts: CollectorTimeouts(
-                localScanSeconds: 30,
                 externalRequestSeconds: 10,
                 moduleSeconds: 1,
                 cancellationGraceSeconds: 0.1

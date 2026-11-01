@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **采集请求退役 `localScanSeconds` (C177)**：该超时字段只被校验、从未生效（本机扫描一直只受整轮 `moduleSeconds` 约束），mac 与 Windows 不再发送；Collector 仍兼容接受旧请求中的该字段。设计文档登记两端各自的超时预算（mac 90 / 10 s，Windows 150 / 30 s）。
+
 ### Fixed
 - **CI 验证作业补齐 ripgrep 依赖 (C170)**：push 级「本地验证套件」在 macOS runner 上因缺少 `ripgrep` 失败——`check-bundle-resources.zsh` 把「命令不存在」误判成「打包脚本未调用共享资源函数」，报错与事实相反；`check-collector-fixtures.sh` 则静默跳过 fixture 凭证扫描（rg 未执行也输出通过）。CI 验证作业显式安装 `ripgrep`，两个脚本改为先 `command -v rg` 预检并明确报错，新增 `check-ci-tool-deps.mjs` 契约检查守住 CI 安装与脚本预检的一致性。
 - **正式版打包补装 Nothing 主题字体 (C168)**：Developer ID 正式版脚本 `build-release-app.sh` 此前漏拷 `Assets/Fonts`，用它打出的包在 Nothing 主题下会静默回退为系统字体（当前 CI 发版走 `build-test-app.sh`，已发布版本不受影响）。两个打包脚本改为共用 `runtime-manifest.zsh` 的同一份资源清单投放并校验，本地验证新增 `check-bundle-resources.zsh` 防止再次漂移。

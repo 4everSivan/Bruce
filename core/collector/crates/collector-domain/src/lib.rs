@@ -33,15 +33,38 @@ pub struct BridgeRequest {
     pub credentials: Map<String, Value>,
 }
 
+/// 请求超时预算。本机扫描只受 `moduleSeconds` 整轮 deadline 约束, 出站请求另受
+/// `externalRequestSeconds` 单次上限约束。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "BridgeTimeoutsWire")]
 pub struct BridgeTimeouts {
-    #[serde(rename = "localScanSeconds")]
-    pub local_scan_seconds: f64,
     #[serde(rename = "externalRequestSeconds")]
     pub external_request_seconds: f64,
     #[serde(rename = "moduleSeconds")]
     pub module_seconds: f64,
+}
+
+/// 线上形状: 除现行两个字段外兼容接受已退役的 `localScanSeconds` (C177) ——
+/// 它从未被消费, 旧宿主 (升级替换与重启之间的旧进程) 仍会发送, 解析时丢弃、不校验;
+/// 其余未知字段照常拒绝。
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BridgeTimeoutsWire {
+    #[serde(rename = "localScanSeconds", default)]
+    _local_scan_seconds: Option<serde::de::IgnoredAny>,
+    #[serde(rename = "externalRequestSeconds")]
+    external_request_seconds: f64,
+    #[serde(rename = "moduleSeconds")]
+    module_seconds: f64,
+}
+
+impl From<BridgeTimeoutsWire> for BridgeTimeouts {
+    fn from(wire: BridgeTimeoutsWire) -> Self {
+        Self {
+            external_request_seconds: wire.external_request_seconds,
+            module_seconds: wire.module_seconds,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

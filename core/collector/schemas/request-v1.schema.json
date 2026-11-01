@@ -83,15 +83,13 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "localScanSeconds",
         "externalRequestSeconds",
         "moduleSeconds"
       ],
       "properties": {
         "localScanSeconds": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "maximum": 300
+          "deprecated": true,
+          "description": "C177 退役：从未被 Collector 消费，宿主不再发送；为兼容旧宿主仍接受，解析时丢弃且不校验取值。本机扫描只受 moduleSeconds 约束。"
         },
         "externalRequestSeconds": {
           "type": "number",

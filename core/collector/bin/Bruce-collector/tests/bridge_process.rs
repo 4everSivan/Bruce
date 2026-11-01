@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-const REQUEST: &[u8] = br#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"localScanSeconds":30,"externalRequestSeconds":10,"moduleSeconds":90},"context":{"capabilities":["localSessions"]},"credentials":{}}"#;
+const REQUEST: &[u8] = br#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"externalRequestSeconds":10,"moduleSeconds":90},"context":{"capabilities":["localSessions"]},"credentials":{}}"#;
 
 #[test]
 fn process_emits_one_json_envelope_without_stderr_logs() {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-31",
+  "updated_at": "2026-11-01",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -1811,7 +1811,7 @@
     "C177": {
       "title": "Bridge 超时契约失真：localScanSeconds 只校验不执行，mac 与 Windows 预算各异且无记录",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C177-timeout-contract",
       "topic": "TokenUsage",
       "version": "0.16.0",
