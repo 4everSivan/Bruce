@@ -4,7 +4,7 @@
   "title": "采集进程内存峰值与缓存体积随观测数线性膨胀：40 万条观测热扫描峰值 251 MB、缓存 102 MB",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "verified",
   "branch": "fix/C176-collector-memory",
   "is_hotfix": false,
   "target": {
@@ -18,12 +18,13 @@
     "description": "确认观测级 project 与全量 payload 聚合仍存在",
     "command": "grep -n 'pub(crate) project: Option<String>\\|payloads: Vec<CachedFilePayload>' core/collector/crates/collector-local/src/jsonl_cache.rs",
     "expected": "观测结构含 project 字段；TreeState 持有全部 payload",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-01 在 worktree local/worktrees/C176 执行预检命令：jsonl_cache.rs:90 `pub(crate) project: Option<String>,`（逐条观测存 project）与 :246 `payloads: Vec<CachedFilePayload>,`（全部文件载荷载入后再聚合）均命中；Claude / CodeBuddy 聚合以 BTreeMap<String 64 位十六进制, …> 复制键与 model / project。改动前同数据集实测（C175 构建，聚合与主干相同）热扫描峰值 RSS 251.4 MB、缓存目录 102 MB（每条观测约 248 字节）。缺陷存在。分支说明：按卡内命令自 docs/C171-C178-register 建立，实现中改为叠在 fix/C175-cache-fsync 之上（git rebase --onto），因为本卡升 schema 令全部用户缓存全量重建一次，重建成本依赖 C175，且两卡同改 tests_cache.rs；合入顺序须为 C175 → C176。"
   },
   "callback": {
     "before": [
-      "git worktree add local/worktrees/C176 -b fix/C176-collector-memory docs/C171-C178-register"
+      "git worktree add local/worktrees/C176 -b fix/C176-collector-memory docs/C171-C178-register",
+      "git rebase --onto fix/C175-cache-fsync docs/C171-C178-register fix/C176-collector-memory"
     ],
     "after": [
       "cargo test --manifest-path core/collector/Cargo.toml --workspace",
@@ -56,45 +57,47 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261101-10",
+    "user_quote": "“Confirm” 签收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "既有缓存与聚合测试全绿；新增回归：旧 schema 条目重建一次；跨文件同 message id 去重结果不变；verify-local.sh 与发布冒烟退出码 0",
         "false_if": "任一测试失败或去重结果变化",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 在 worktree local/worktrees/C176 执行 `zsh scripts/verify-local.sh`：首轮 exit=101——clippy --all-targets 报新增测试夹具 `(message + file_index + project_index as u64) % 3 != 0` 触发 manual_is_multiple_of（此前单独跑 clippy 时尚未加测试），改为 `!(…).is_multiple_of(3)` 并对整个 workspace 复跑 clippy 通过后，第二轮 exit=0（末行「Bruce 本地验证全部通过」，fixture 扫描 files=34 secretFindings=[]，告警仅 cargo `unused config key` ×7 与 CLT `ld: warning: search path` ×43 环境噪音）。首轮中 `zsh scripts/build-test-app.sh`（单架构 Preview，未安装）已 exit=0，内置 collector-release-smoke 的 initial / old-cache-rebuild（rebuilds=1、invalidations=1）/ install / upgrade / rollback 均「schema/runId/artifact/stdout/cache OK」。collector-local 49 → 52 项全绿（含 C175 的空 / 截断条目回归在 v3 格式下通过）。新增：`compact_dedupe_keys_and_streaming_keep_claude_aggregation_order`（3 个项目 × 3 个会话、40 个 message id 跨文件重复且模型 / 用量各异，另含无 id 观测；冷热两轮贡献与参照实现（完整 64 位十六进制键、全部载入后聚合）相等，序列化后逐字节一致）、`jsonl_cache_entries_use_compact_payload`（条目 schema_version=3、文件级 project、models 表、观测字段名均为单字母且无 project、k 为 32 位十六进制、m 在表内；把一条观测的 m 改为越界下标 → cache_corruptions=1 并重建，结果与参照一致）、`v2_jsonl_cache_entries_rebuild_once_without_counting_corruption`（把条目改写为 v2 形状（长字段名、64 位键、逐条 project）→ cache_corruptions=0、invalidations=9、rebuilds=9、结果与参照一致；下一轮 9 次命中）。既有跨文件去重用例 `cached_claude_and_codebuddy_preserve_cross_file_deduplication`（Claude 字段取最大 + 追加、CodeBuddy 取总量最大且缓存只存哈希键）与 v1 失效不计损坏用例原样通过。变异核验：把聚合产出顺序改为「无 id 观测在前」后顺序用例失败（models_today / projects_today 顺序不同），恢复后通过。",
+        "result": true
       },
       {
         "item": "资源实测",
         "true_if": "同一合成数据集热扫描峰值 RSS ≤ 100 MB、缓存目录 ≤ 50 MB，artifact 与改动前逐字节一致",
         "false_if": "资源指标未达标或 artifact 不一致",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-01 同一合成数据集（/tmp/bruce-review/synth：2,000 个 Claude 会话、40 万观测、289 MB），release 构建，/usr/bin/time -l 取最大 RSS。改动前（C175 构建）→ 本分支：冷扫描 4.25 s / 251.1 MB → 3.05 s / 57.0 MB；热扫描三轮 0.61 / 0.57 / 0.58 s、251.4 MB → 0.37 / 0.35 / 0.36 s、57.1 MB（≤ 100 MB）；缓存目录 102 MB（104,132 KB）→ 39 MB（40,132 KB）（≤ 50 MB）。8 次运行 status 均为 success，artifact（去掉 generatedAt）SHA-256 全部为 58203b0de16c…，逐字节一致。升级实测：复制改动前生成的 v2 缓存目录后用本分支运行，首轮 3.91 s / 57.5 MB 重建、2,000 个条目全部变为 schema 3，次轮 0.36 s；缓存文件全部 0600、无 .tmp- 残留。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "其余 JSONL 源（Kimi / CodeBuddy / Grok / Pi）结果不变；热扫描耗时不劣化",
         "false_if": "其他源结果变化或热扫描变慢",
-        "evidence": "",
-        "result": null
+        "evidence": "其余 JSONL 源：Kimi / Kimi Code CLI / CodeBuddy / Grok / Pi 的缓存冷热对拍与追加 / 重写 / 删除 / 损坏 / 翻日 / 窗口长度变更用例（cached_additive_jsonl_sources_match_cold_and_warm_results、jsonl_caches_survive_day_rollover_and_window_length_changes 等）原样通过；Grok 追加后整文件重打时间戳的 merge_append 语义不变。Codex 按文件缓存沿用原 CachedUsageObservation 与 codex-files-v1 格式，不随本卡变化（不触发 Codex 全量重建）。热扫描耗时下降而非劣化（见资源实测）。发布冒烟：`zsh scripts/build-test-app.sh`（单架构 Preview，未安装）内置 collector-release-smoke 依赖的条目顶层字段（source_id / parser_version）未变，冒烟 exit=0（见自动化测试）。参照实现专用的 ClaudeUsage / CodeBuddyUsage / record_claude_usage 改为 #[cfg(test)]（C126 口径），生产构建无死代码告警。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-01",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

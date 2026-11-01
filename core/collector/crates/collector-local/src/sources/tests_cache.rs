@@ -1343,3 +1343,187 @@ fn sqlite_cache_entry_left_empty_or_truncated_is_rebuilt() {
     assert_cache_files_private_without_temporaries(&cache_root);
     fs::remove_dir_all(root).ok();
 }
+
+/// C176 夹具: 3 个项目目录 × 若干会话文件, 40 个 message id 跨文件重复且模型 / 用量各异,
+/// 另含无 id 的直接观测 —— 聚合顺序 (去重表键序 + 模型首见序) 不同就会让贡献不相等。
+fn write_claude_dedupe_order_fixture(claude_root: &Path) {
+    let models = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+    for (project_index, project) in ["alpha", "beta", "gamma"].iter().enumerate() {
+        let directory = claude_root.join(project);
+        fs::create_dir_all(&directory).unwrap();
+        for file_index in 0..3 {
+            let mut lines = Vec::new();
+            for message in 0..40_u64 {
+                if !(message + file_index + project_index as u64).is_multiple_of(3) {
+                    continue;
+                }
+                let model = models[((message + file_index) % 3) as usize];
+                lines.push(
+                    json!({
+                        "type": "assistant",
+                        "timestamp": format!("2026-07-28T0{}:{:02}:00Z", file_index, message),
+                        "message": {
+                            "id": format!("msg-{message}"),
+                            "model": model,
+                            "usage": {
+                                "input_tokens": message * 3 + file_index,
+                                "output_tokens": 40 - message,
+                                "cache_read_input_tokens": (message % 5) * 100,
+                                "cache_creation_input_tokens": file_index * 7,
+                            }
+                        }
+                    })
+                    .to_string(),
+                );
+            }
+            lines.push(
+                json!({
+                    "type": "assistant",
+                    "timestamp": "2026-07-28T03:00:00Z",
+                    "message": {
+                        "model": models[file_index as usize],
+                        "usage": {"input_tokens": 5, "output_tokens": 1}
+                    }
+                })
+                .to_string(),
+            );
+            fs::write(
+                directory.join(format!("session-{file_index}.jsonl")),
+                lines.join("\n") + "\n",
+            )
+            .unwrap();
+        }
+    }
+}
+
+/// C176 回归: 去重键改为 128 位、逐文件流式聚合后, 跨文件去重与模型 / 项目首见顺序
+/// 与参照实现 (完整 64 位十六进制键、全部载入后聚合) 逐字段一致, 冷热两轮皆然。
+#[test]
+fn compact_dedupe_keys_and_streaming_keep_claude_aggregation_order() {
+    let root = temp_root("jsonl-dedupe-order");
+    let claude_root = root.join("claude");
+    let cache_root = root.join("cache");
+    write_claude_dedupe_order_fixture(&claude_root);
+    let expected = scan_claude(&claude_root, &window());
+    assert!(
+        expected.contribution.models_today.len() >= 3,
+        "夹具应覆盖多个模型, 才能检出顺序差异"
+    );
+    let token = CancellationToken::new();
+    let cold = scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+    let warm = scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+    assert_eq!(cold.contribution, expected.contribution);
+    assert_eq!(warm.contribution, expected.contribution);
+    assert_eq!(warm.stats.cache_hits, 9);
+    assert_eq!(
+        serde_json::to_string(&warm.contribution).unwrap(),
+        serde_json::to_string(&expected.contribution).unwrap(),
+        "序列化后逐字节一致"
+    );
+    fs::remove_dir_all(root).ok();
+}
+
+/// C176 回归: 条目载荷为紧凑形状 —— 文件级 project、按文件去重的模型表、32 位十六进制
+/// 去重键、缩写字段名, 观测上不再重复 project; 模型下标越界的条目判损坏并重建。
+#[test]
+fn jsonl_cache_entries_use_compact_payload() {
+    let root = temp_root("jsonl-compact-payload");
+    let claude_root = root.join("claude");
+    let cache_root = root.join("cache");
+    write_claude_dedupe_order_fixture(&claude_root);
+    let token = CancellationToken::new();
+    scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+
+    let entries = cache_files_with_prefix(&cache_root, "jsonl-");
+    assert_eq!(entries.len(), 9);
+    for path in &entries {
+        let entry: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(entry["schema_version"], json!(3));
+        let payload = &entry["payload"];
+        let project = payload["project"].as_str().unwrap();
+        assert!(["alpha", "beta", "gamma"].contains(&project), "{project}");
+        let models = payload["models"].as_array().unwrap();
+        assert!(!models.is_empty() && models.len() <= 3);
+        let observations = payload["observations"].as_array().unwrap();
+        assert!(!observations.is_empty());
+        for observation in observations {
+            let object = observation.as_object().unwrap();
+            assert!(
+                object.keys().all(|key| key.len() == 1),
+                "观测字段名应为缩写: {object:?}"
+            );
+            assert!(object.get("project").is_none());
+            if let Some(key) = object.get("k") {
+                assert_eq!(key.as_str().unwrap().len(), 32);
+            }
+            let model = object["m"].as_u64().unwrap() as usize;
+            assert!(model < models.len());
+        }
+    }
+    let text = fs::read_to_string(&entries[0]).unwrap();
+    assert!(!text.contains("timestamp_millis") && !text.contains("dedupe_key"));
+
+    let mut broken: Value = serde_json::from_slice(&fs::read(&entries[0]).unwrap()).unwrap();
+    broken["payload"]["observations"][0]["m"] = json!(99);
+    fs::write(&entries[0], serde_json::to_vec(&broken).unwrap()).unwrap();
+    let repaired = scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+    assert_eq!(repaired.stats.cache_corruptions, 1, "模型下标越界视为损坏");
+    assert_eq!(repaired.stats.cache_rebuilds, 1);
+    assert_eq!(
+        repaired.contribution,
+        scan_claude(&claude_root, &window()).contribution
+    );
+    fs::remove_dir_all(root).ok();
+}
+
+/// C176 回归: 升级前写下的 v2 条目 (观测带长字段名、64 位键与逐条 project) 按版本不匹配
+/// 重建一次, 不计为损坏; 下一轮全部命中。
+#[test]
+fn v2_jsonl_cache_entries_rebuild_once_without_counting_corruption() {
+    let root = temp_root("jsonl-v2-upgrade");
+    let claude_root = root.join("claude");
+    let cache_root = root.join("cache");
+    write_claude_dedupe_order_fixture(&claude_root);
+    let token = CancellationToken::new();
+    scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+
+    for path in cache_files_with_prefix(&cache_root, "jsonl-") {
+        let mut entry: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let project = entry["payload"]["project"].clone();
+        let models = entry["payload"]["models"].clone();
+        let observations: Vec<Value> = entry["payload"]["observations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|observation| {
+                let mut v2 = json!({
+                    "timestamp_millis": observation["t"],
+                    "model": models[observation["m"].as_u64().unwrap() as usize],
+                    "input": observation.get("i").cloned().unwrap_or(json!(0)),
+                    "output": observation.get("o").cloned().unwrap_or(json!(0)),
+                    "project": project,
+                });
+                if let Some(key) = observation.get("k").and_then(Value::as_str) {
+                    v2["dedupe_key"] = json!(format!("{key}{key}"));
+                }
+                v2
+            })
+            .collect();
+        entry["schema_version"] = json!(2);
+        entry["payload"] = json!({ "observations": observations });
+        fs::write(&path, serde_json::to_vec(&entry).unwrap()).unwrap();
+    }
+
+    let upgraded = scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+    assert_eq!(upgraded.stats.cache_corruptions, 0, "旧版本条目不是损坏");
+    assert_eq!(upgraded.stats.cache_invalidations, 9);
+    assert_eq!(upgraded.stats.cache_rebuilds, 9);
+    assert_eq!(
+        upgraded.contribution,
+        scan_claude(&claude_root, &window()).contribution
+    );
+    let warm = scan_claude_cached(&claude_root, &window(), &cache_root, &token).unwrap();
+    assert_eq!(warm.stats.cache_hits, 9);
+    assert_eq!(warm.stats.cache_rebuilds, 0);
+    fs::remove_dir_all(root).ok();
+}

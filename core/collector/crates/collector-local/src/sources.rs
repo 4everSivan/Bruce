@@ -199,6 +199,7 @@ pub(super) fn claude_cache_creation_1h(usage: &Value) -> u64 {
     )
 }
 
+#[cfg(test)]
 pub(super) fn record_claude_usage(builder: &mut UsageContributionBuilder, usage: &ClaudeUsage) {
     let _ = builder.record(UsageSample {
         timestamp_millis: usage.timestamp_millis,
@@ -497,6 +498,8 @@ pub(crate) fn scan_kimi_tree_with_cancellation(
     ))
 }
 
+/// 参照实现的去重用量 (C176 起缓存路径改用紧凑表示, 此类型只在测试构建中存在)。
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 pub(super) struct ClaudeUsage {
     pub(super) input: u64,
