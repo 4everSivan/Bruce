@@ -98,18 +98,7 @@ struct SubscriptionCard: View {
                 onToggle: onToggleCollapse,
                 cardID: .subscription
             ) {
-                if let updatedText = viewModel.updatedText {
-                    // Nothing 下与卡片其余 mono 标注一致: mono 9 + disabled.
-                    if theme.interfaceStyle == .nothing {
-                        Text(updatedText)
-                            .font(NothingFont.mono(9))
-                            .foregroundStyle(NothingTokens.disabled(colorScheme))
-                    } else {
-                        Text(updatedText)
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                EmptyView()
             } mini: {
                 collapsedMini
             }
@@ -158,11 +147,12 @@ struct SubscriptionCard: View {
                 )
             }
 
-            // Nothing 主题专属: 卡底部三档阈值图例 (定稿 .thresh),
-            // 其余主题不渲染, 不影响 classic / liquidGlass.
-            if theme.interfaceStyle == .nothing {
-                NothingThresholdLegend(colorScheme: colorScheme)
-            }
+            // 订阅卡底栏: 左侧为 Nothing 三档阈值图例, 右侧与图例平齐展示最后刷新时间 (updatedText).
+            SubscriptionFooterView(
+                updatedText: viewModel.updatedText,
+                isNothing: theme.interfaceStyle == .nothing,
+                colorScheme: colorScheme
+            )
         }
     }
 
@@ -1106,26 +1096,55 @@ private struct AccountTagChip: View {
     }
 }
 
-// MARK: - Nothing 阈值图例
+// MARK: - 订阅卡底栏 (三档阈值图例 + 最后刷新时间)
 
-/// Nothing 主题卡底部三档阈值图例 (定稿 .thresh): 1pt 边框分隔线上方留 11pt,
-/// 下方留 10pt; 每项 8pt 方角色块 + mono 9pt disabled 文字, 项间距 12pt,
-/// 色块与文字间距 5pt. 仅 theme.interfaceStyle == .nothing 时渲染.
-private struct NothingThresholdLegend: View {
+/// 订阅卡底部栏: 1pt 边框分隔线, 左侧为 Nothing 三档阈值图例 (<50/50–79/≥80),
+/// 右侧与图例平齐展示最后刷新时间 (updatedText).
+/// 当既非 Nothing 主题且无 updatedText 时隐藏.
+private struct SubscriptionFooterView: View {
+    let updatedText: String?
+    let isNothing: Bool
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Rectangle()
-                .fill(NothingTokens.border(colorScheme))
-                .frame(height: 1)
-                .padding(.top, 11)
-            HStack(spacing: 12) {
-                legendItem(color: NothingTokens.success, text: "<50")
-                legendItem(color: NothingTokens.warning, text: "50–79")
-                legendItem(color: NothingTokens.accent, text: "≥80")
+        if isNothing || updatedText != nil {
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(
+                        isNothing
+                            ? NothingTokens.border(colorScheme)
+                            : Color.adaptive(
+                                light: Color.black.opacity(0.05),
+                                dark: Color.white.opacity(0.10)
+                            )
+                    )
+                    .frame(height: 1)
+                    .padding(.top, isNothing ? 11 : 8)
+
+                HStack(alignment: .center, spacing: 0) {
+                    if isNothing {
+                        HStack(spacing: 12) {
+                            legendItem(color: NothingTokens.success, text: "<50")
+                            legendItem(color: NothingTokens.warning, text: "50–79")
+                            legendItem(color: NothingTokens.accent, text: "≥80")
+                        }
+                    }
+
+                    if let updatedText {
+                        Spacer(minLength: 8)
+                        if isNothing {
+                            Text(updatedText)
+                                .font(NothingFont.mono(9))
+                                .foregroundStyle(NothingTokens.disabled(colorScheme))
+                        } else {
+                            Text(updatedText)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.top, isNothing ? 10 : 8)
             }
-            .padding(.top, 10)
         }
     }
 

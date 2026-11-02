@@ -1,0 +1,95 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C182",
+  "title": "调整仪表盘：订阅用量最后刷新时间由标题右侧移至卡片底部右侧与三档用量标注平齐",
+  "version": "0.16.1",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C182-subscription-updated-time-layout",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos / apps/win",
+    "component": "SubscriptionCard / app.js / styles.css",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户提出仪表盘视觉布局调整诉求：订阅用量卡片标题右侧原本展示的最后刷新时间文案（updatedText），在视觉层次上与卡片标题争夺重心，且收起/展开交替时对齐略显突兀。现将其移至订阅用量卡片底部右侧，与左侧三档用量标注（<50 / 50–79 / ≥80）在同一水平线上平齐对齐展示；无三档标注或非 Nothing 主题时同样在底部分隔线下右对齐展示，使卡片标题行更加纯粹，底栏信息呈现更具秩序感与紧凑性。",
+  "precheck": {
+    "description": "确认当前 SubscriptionCard 仍在 CollapsibleCardHeader 的尾部闭包中渲染 updatedText，且底部图例仅包含三档方块",
+    "command": "grep -n 'CollapsibleCardHeader' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift -A 10; grep -n 'NothingThresholdLegend' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift -A 15",
+    "expected": "CollapsibleCardHeader 闭包中包含 updatedText 文本视图，NothingThresholdLegend 仅有 3 个 legendItem",
+    "is_completed": true,
+    "evidence": "实测匹配到 SubscriptionCard.swift 第 95-105 行 CollapsibleCardHeader 闭包包含 updatedText 渲染，第 1114-1129 行 NothingThresholdLegend 仅渲染 3 个 legendItem"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C182-subscription-updated-time-layout || git checkout fix/C182-subscription-updated-time-layout"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C182 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 订阅用量卡片 (SubscriptionCard.swift)",
+      "before": "CollapsibleCardHeader 尾部状态件渲染 updatedText（最后刷新时间）；展开态底部渲染 NothingThresholdLegend（仅含 3 个三档阈值色块）",
+      "after": "CollapsibleCardHeader 尾部状态件设为 EmptyView()；展开态底部升级为 SubscriptionFooterView，左侧渲染三档用量图例，右侧经 Spacer 撑开平齐渲染 updatedText（非 Nothing 主题下底部分隔线下方右对齐渲染 updatedText）",
+      "impact": "订阅卡标题行聚焦卡片名称，最后刷新时间与底部三档标注平齐，提升视觉平衡度"
+    },
+    {
+      "scope": "Windows 订阅用量卡片 (app.js / styles.css)",
+      "before": "cardHead 传入 sub.updatedText；底部 .nothing-threshold-legend 仅包含 3 个 .thresh-item",
+      "after": "cardHead 传入 null；底部渲染由底栏容器承载，包含居左的 .thresh-items 与居右平齐对齐的 .thresh-updated（非 Nothing 主题使用 .subscription-footer 并在右侧渲染 .updated）",
+      "impact": "Windows 端与 macOS 原生实现保持 1:1 视觉契约与布局对齐"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "订阅用量卡片标题行右侧渲染最后刷新时间（updatedText），底部渲染三档阈值图例",
+      "after": "订阅用量卡片标题行不再承载最后刷新时间，移至卡片展开态底部右侧，与左侧三档用量图例同一水平线平齐对齐"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261102-03",
+    "user_quote": "重新打包部署",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试与本地全量门禁",
+        "true_if": "verify-local.sh 全量测试全绿通过，包括 Rust 单元测试、41 项 fixture 扫描、前端无头断言、18 项 Native Harness 及 Panel 双端对拍测试，退出码 0",
+        "false_if": "测试失败或退出码非 0",
+        "evidence": "verify-local.sh 全量通过，退出码 0，包含 Rust 测试、46 项 fixture 扫描、Windows 前端无头断言 (132 项)、18 项 Native Harness 及 Panel 双端对拍",
+        "result": true
+      },
+      {
+        "item": "订阅卡标题行与底部刷新时间布局",
+        "true_if": "订阅用量卡片标题右侧不再出现最后刷新时间，展开态卡片底部右侧出现最后刷新时间并与左侧三档标注（<50 / 50–79 / ≥80）平齐",
+        "false_if": "刷新时间依然留在标题行，或在底部未能与三档标注平齐",
+        "evidence": "macOS SubscriptionCard.swift 将标题行 CollapsibleCardHeader 状态件置为 EmptyView()，底部升级为 SubscriptionFooterView 居左三档标注、居右 Spacer 撑开平齐渲染 updatedText；Windows 端 app.js 与 styles.css 同步对齐，前端测试覆盖断言通过",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "a052c34",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "closed",
+    "target_status": "closed",
+    "signed_quote": "重新打包部署",
+    "signed_rejection_count": 0
+  }
+}

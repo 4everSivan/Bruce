@@ -48,7 +48,8 @@
         "C159",
         "C179",
         "C180",
-        "C181"
+        "C181",
+        "C182"
       ]
     },
     "PricingEngine": {
@@ -1859,6 +1860,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.16.1",
       "file": "docs/devel/change/C181.json"
+    },
+    "C182": {
+      "title": "调整仪表盘：订阅用量最后刷新时间由标题右侧移至卡片底部右侧与三档用量标注平齐",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C182-subscription-updated-time-layout",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C182.json"
     }
   }
 }
