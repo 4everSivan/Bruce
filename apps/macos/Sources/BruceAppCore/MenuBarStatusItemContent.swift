@@ -10,17 +10,26 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
     package let metricText: String
     package let accessibilityLabel: String
     package let remainingQuotaRatio: Double?
+    package let outerQuotaRatio: Double?
+    package let innerQuotaRatio: Double?
+    package let isNothingTheme: Bool
 
     package init(
         iconName: String,
         metricText: String,
         accessibilityLabel: String,
-        remainingQuotaRatio: Double? = nil
+        remainingQuotaRatio: Double? = nil,
+        outerQuotaRatio: Double? = nil,
+        innerQuotaRatio: Double? = nil,
+        isNothingTheme: Bool = false
     ) {
         self.iconName = iconName
         self.metricText = metricText
         self.accessibilityLabel = accessibilityLabel
-        self.remainingQuotaRatio = remainingQuotaRatio
+        self.remainingQuotaRatio = remainingQuotaRatio ?? innerQuotaRatio ?? outerQuotaRatio
+        self.outerQuotaRatio = outerQuotaRatio ?? remainingQuotaRatio
+        self.innerQuotaRatio = innerQuotaRatio ?? remainingQuotaRatio
+        self.isNothingTheme = isNothingTheme
     }
 }
 
@@ -35,26 +44,25 @@ package struct MenuBarStatusItemContentBuilder {
         metrics: [MenuBarMetric],
         summary: MenuBarSummary,
         isRefreshing: Bool,
-        iconOnly: Bool = false
+        iconOnly: Bool = false,
+        isNothingTheme: Bool = false
     ) -> MenuBarStatusItemContent {
-        // 环规配额取数逻辑:
-        // 1. 若配置中显式包含“最低剩余额度”, 遵从用户偏好取最低额度;
-        // 2. 其余情况 (包含未选额度、仅图标模式、或选了平均额度), 取“总订阅配额”平均值,
-        //    避免单一耗尽子窗口将整个菜单栏环规置空.
-        let quotaPercentage: Double?
-        if metrics.contains(.minimumRemainingQuota) {
-            quotaPercentage = summary.minimumRemainingQuota ?? summary.averageRemainingQuota
-        } else {
-            quotaPercentage = summary.averageRemainingQuota ?? summary.minimumRemainingQuota
-        }
-        let quotaRatio = quotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
+        // 双同心环规配额计算:
+        // - 外环 (母环): 映射全局平均配额比例 summary.averageRemainingQuota ?? summary.minimumRemainingQuota
+        // - 内环 (子环): 映射最低短板配额比例 summary.minimumRemainingQuota ?? summary.averageRemainingQuota
+        let avgQuotaPercentage = summary.averageRemainingQuota ?? summary.minimumRemainingQuota
+        let minQuotaPercentage = summary.minimumRemainingQuota ?? summary.averageRemainingQuota
+
+        let outerRatio = avgQuotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
+        let innerRatio = minQuotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
 
         let formattedMetrics = iconOnly ? [] : metrics.map { metric in
-            (metric, formatter.string(for: metric, summary: summary))
+            (metric, formatter.string(for: metric, summary: summary, uppercaseUnit: isNothingTheme))
         }
+        let separator = isNothingTheme ? " / " : "  "
         let metricText = formattedMetrics
             .map { "\($0.1)" }
-            .joined(separator: "  ")
+            .joined(separator: separator)
         let accessibilityMetrics = formattedMetrics
             .map { "\($0.0.title) \($0.1)" }
 
@@ -68,9 +76,12 @@ package struct MenuBarStatusItemContentBuilder {
                 for: summary,
                 metrics: accessibilityMetrics,
                 isRefreshing: isRefreshing,
-                quotaPercentage: quotaPercentage
+                quotaPercentage: minQuotaPercentage ?? avgQuotaPercentage
             ),
-            remainingQuotaRatio: quotaRatio
+            remainingQuotaRatio: innerRatio ?? outerRatio,
+            outerQuotaRatio: outerRatio,
+            innerQuotaRatio: innerRatio,
+            isNothingTheme: isNothingTheme
         )
     }
 
@@ -107,7 +118,7 @@ package struct MenuBarStatusItemContentBuilder {
             : summary.overallStatus.title
         var parts = ["Bruce", statusTitle]
         if let quota = quotaPercentage {
-            parts.append("总配额 \(Int(quota.rounded()))%")
+            parts.append("剩余额度 \(Int(quota.rounded()))%")
         }
         parts.append(contentsOf: metrics)
         return parts.joined(separator: ", ")

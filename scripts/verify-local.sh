@@ -27,6 +27,7 @@ BRUCE_LEGACY_SOURCE=$(find . \
   -path '*/.build' -prune -o \
   -path './dist' -prune -o \
   -path './local' -prune -o \
+  -path './_adflow_backup' -prune -o \
   -path '*/target' -prune -o \
   -path '*/node_modules' -prune -o \
   -path './scripts/adflow_verify.py' -prune -o \

@@ -678,6 +678,19 @@ struct SettingsView: View {
         return max(0.0, min(100.0, percentage)) / 100.0
     }
 
+    var isNothingTheme: Bool {
+        coordinator.resolvedTheme.interfaceStyle == .nothing
+    }
+
+    var liveQuotaRatios: (outer: Double, inner: Double) {
+        let summary = model.makeMenuBarSummary()
+        let avgVal = summary.averageRemainingQuota ?? summary.minimumRemainingQuota ?? 68.0
+        let minVal = summary.minimumRemainingQuota ?? summary.averageRemainingQuota ?? 68.0
+        let outer = max(0.0, min(100.0, avgVal)) / 100.0
+        let inner = max(0.0, min(100.0, minVal)) / 100.0
+        return (outer, inner)
+    }
+
     func metricValue(_ metric: MenuBarMetric) -> String {
         let summary = model.makeMenuBarSummary()
         let formatter = MenuBarMetricFormatter()
@@ -687,30 +700,53 @@ struct SettingsView: View {
     var menuBarPreviewText: String {
         let summary = model.makeMenuBarSummary()
         let formatter = MenuBarMetricFormatter()
-        return model.menuBarMetrics.map { formatter.string(for: $0, summary: summary) }
-            .joined(separator: "  ")
+        let isNothing = isNothingTheme
+        let separator = isNothing ? " / " : "  "
+        return model.menuBarMetrics.map { formatter.string(for: $0, summary: summary, uppercaseUnit: isNothing) }
+            .joined(separator: separator)
     }
 
     var menuBarPreviewIcon: some View {
-        let ratio = liveQuotaRatio
-        let isWarning = ratio < 0.15
-        let greenColor = isPreviewLight
-            ? Color(red: 0.11, green: 0.55, blue: 0.24)
-            : Color(red: 0.19, green: 0.82, blue: 0.35)
-        let activeColor = isWarning ? Color(red: 1.0, green: 0.27, blue: 0.23) : greenColor
+        let ratios = liveQuotaRatios
+
+        func colorForRatio(_ ratio: Double) -> Color {
+            if ratio < 0.15 {
+                return isPreviewLight ? Color(red: 0.86, green: 0.15, blue: 0.15) : Color(red: 1.0, green: 0.27, blue: 0.23)
+            } else if ratio < 0.30 {
+                return isPreviewLight ? Color(red: 0.85, green: 0.47, blue: 0.02) : Color(red: 1.0, green: 0.72, blue: 0.0)
+            } else {
+                return isPreviewLight ? Color(red: 0.08, green: 0.50, blue: 0.24) : Color(red: 0.19, green: 0.82, blue: 0.35)
+            }
+        }
+
+        let outerColor = colorForRatio(ratios.outer)
+        let innerColor = colorForRatio(ratios.inner)
         let trackColor = isPreviewLight
             ? Color.black.opacity(0.18)
-            : Color.white.opacity(0.25)
+            : Color.white.opacity(0.24)
 
         return ZStack {
+            // 外母环 (全局平均剩余配额)
             Circle()
                 .stroke(trackColor, lineWidth: 1.6)
+                .frame(width: 14, height: 14)
             Circle()
-                .trim(from: 0, to: CGFloat(ratio))
-                .stroke(activeColor, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .trim(from: 0, to: CGFloat(ratios.outer))
+                .stroke(outerColor, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                .frame(width: 14, height: 14)
+
+            // 内子环 (最低短板剩余配额)
+            Circle()
+                .stroke(trackColor, lineWidth: 1.3)
+                .frame(width: 8.5, height: 8.5)
+            Circle()
+                .trim(from: 0, to: CGFloat(ratios.inner))
+                .stroke(innerColor, style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: 8.5, height: 8.5)
         }
-        .frame(width: 14, height: 14)
+        .frame(width: 16, height: 16)
     }
 
     /// 模拟 macOS 菜单栏条带预览.
@@ -752,8 +788,13 @@ struct SettingsView: View {
                     HStack(spacing: 6) {
                         menuBarPreviewIcon
                         if !coordinator.menuBarIconOnly {
-                            Text(menuBarPreviewText)
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            if isNothingTheme {
+                                Text(menuBarPreviewText)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            } else {
+                                Text(menuBarPreviewText)
+                                    .font(.system(size: 12, weight: .regular, design: .default).monospacedDigit())
+                            }
                         }
                     }
                     .foregroundStyle(isPreviewLight ? Color.black.opacity(0.9) : Color.white.opacity(0.95))

@@ -634,6 +634,27 @@ struct NativeLifecycleHarness {
                 && content.accessibilityLabel.contains("今日费用 $1.28"),
             "menu bar accessibility content must describe visible metrics"
         )
+        try expect(
+            abs((content.outerQuotaRatio ?? 0) - 0.50) < 0.001
+                && abs((content.innerQuotaRatio ?? 0) - 0.676) < 0.001,
+            "dual concentric quota ratios must map average and minimum quotas respectively"
+        )
+
+        // C180: Nothing 极客点阵主题自动切 T-4 极客等宽与斜杠弱化分隔符
+        let nothingContent = MenuBarStatusItemContentBuilder().build(
+            metrics: [.minimumRemainingQuota, .todayTokens, .todayCost],
+            summary: summary,
+            isRefreshing: false,
+            isNothingTheme: true
+        )
+        try expect(
+            nothingContent.metricText == "68% / 124K / $1.28",
+            "nothing theme must format metrics with uppercase units and slash separators"
+        )
+        try expect(
+            nothingContent.isNothingTheme == true,
+            "nothing theme content must flag isNothingTheme"
+        )
     }
 
     private static func menuBarContentUsesRefreshAndFailureIcons() throws {

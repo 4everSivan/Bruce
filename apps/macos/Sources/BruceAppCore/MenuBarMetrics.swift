@@ -196,13 +196,21 @@ package struct MenuBarMetricFormatter {
         for metric: MenuBarMetric,
         summary: MenuBarSummary
     ) -> String {
+        string(for: metric, summary: summary, uppercaseUnit: false)
+    }
+
+    package func string(
+        for metric: MenuBarMetric,
+        summary: MenuBarSummary,
+        uppercaseUnit: Bool
+    ) -> String {
         switch metric {
         case .minimumRemainingQuota:
             return percentage(summary.minimumRemainingQuota)
         case .averageRemainingQuota:
             return percentage(summary.averageRemainingQuota)
         case .todayTokens:
-            return compactCount(summary.todayTokens)
+            return compactCount(summary.todayTokens, uppercase: uppercaseUnit)
         case .todayCost:
             return currency(summary.todayCostUsd)
         case .overallStatus:
@@ -215,15 +223,17 @@ package struct MenuBarMetricFormatter {
         return "\(Int(value.rounded()))%"
     }
 
-    private func compactCount(_ value: Int?) -> String {
+    private func compactCount(_ value: Int?, uppercase: Bool = false) -> String {
         guard let value else { return "--" }
         if value < 1_000 {
             return "\(value)"
         }
+        let kUnit = uppercase ? "K" : "k"
+        let mUnit = uppercase ? "M" : "M"
         if value < 1_000_000 {
-            return compact(Double(value) / 1_000) + "k"
+            return compact(Double(value) / 1_000) + kUnit
         }
-        return compact(Double(value) / 1_000_000) + "M"
+        return compact(Double(value) / 1_000_000) + mUnit
     }
 
     private func currency(_ value: Double?) -> String {

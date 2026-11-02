@@ -115,9 +115,9 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
 
         // 先把按钮内容和点击行为挂好, 再让系统把状态项置为可见.
         configureStatusItemButton(button, forceRender: false)
-        // 模型任何 @Published 变化都重绘标签; objectWillChange 在值应用前
-        // 发出, 调度到下一轮 main-actor 取到新值再渲染.
-        labelSubscription = model.objectWillChange
+        // 模型与协调器任何 @Published / 偏好变化都重绘标签 (包含主题切换联动);
+        // objectWillChange 在值应用前发出, 调度到下一轮 main-actor 取到新值再渲染.
+        labelSubscription = Publishers.Merge(model.objectWillChange, coordinator.objectWillChange)
             .sink { [weak self] _ in
                 Task { @MainActor in
                     self?.refreshLabelImage()
@@ -182,6 +182,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 // 面板级属性 (hasShadow/backgroundColor) 不在 updateSurface
                 // 职责范围内, 由本控制器在主题变化后一并刷新.
                 self?.refreshPanelWindowAttributes()
+                self?.refreshLabelImage()
             }
         )
         .environmentObject(model)
@@ -278,11 +279,13 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         force: Bool = false
     ) {
         let summary = model.makeMenuBarSummary()
+        let isNothing = coordinator.resolvedTheme.interfaceStyle == .nothing
         let content = MenuBarStatusItemContentBuilder().build(
             metrics: model.menuBarMetrics,
             summary: summary,
             isRefreshing: isRefreshing,
-            iconOnly: model.menuBarIconOnly
+            iconOnly: model.menuBarIconOnly,
+            isNothingTheme: isNothing
         )
 
         if isRefreshing {
@@ -343,27 +346,32 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     /// 根据当前指标文本动态测量状态项所需总宽度,
-    /// 确保 1 至 3 项指标与配额环规完整展示, 不发生右侧截断.
+    /// 确保 1 至 3 项指标与双同心环规完整展示, 不发生右侧截断.
+    /// 引入 4pt 步进量化防抖, 消除邻居图标在微小数值变化时左右颤动.
     private func targetStatusItemLength(for content: MenuBarStatusItemContent) -> CGFloat {
         guard !content.metricText.isEmpty else {
             return Self.iconOnlyLength
         }
+        let font: NSFont = content.isNothingTheme
+            ? NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+            : NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(
-                ofSize: 12,
-                weight: .regular
-            ),
+            .font: font,
         ]
         let textSize = (content.metricText as NSString).size(withAttributes: attributes)
-        // 25 为左侧配额环规与留白, 右侧保留 8pt 舒适内边距; 下限 64pt
-        return max(64, ceil(25 + textSize.width + 8))
+        // 25 为左侧同心环规与留白, 右侧保留 8pt 舒适内边距; 下限 64pt; 采用 4pt 步进量化防抖
+        let rawWidth = 25 + textSize.width + 8
+        let steppedWidth = ceil(rawWidth / 4.0) * 4.0
+        return max(64, steppedWidth)
     }
 
-    /// 方案 04 (超细精密数字环规) 绘制:
-    /// - 深度适配 macOS 菜单栏浅色与深色场景 (深色高透亮绿 #30D158, 浅色高对比翡翠深绿 #1C8C3D)
-    /// - 平时: 1.5pt 底环 + 绿色订阅总配额比例圆弧 (配额 <15% 时告警变红), 中心通透无微点
-    /// - 刷新中: 样式 01 (顺时针雷达扫掠自旋 · 绿色)
-    /// - 仅图标模式时自适应收缩至 28pt
+    /// 方案 I-2 (双同心子母环规) 与主题联动排版 (T-0 / T-4) 绘制:
+    /// - 外环母环: r=6.8pt / w=1.7pt, 映射全局平均剩余额度 (outerQuotaRatio)
+    /// - 内环子环: r=4.0pt / w=1.4pt, 映射最低短板剩余额度 (innerQuotaRatio)
+    /// - 绿 (>=30%) / 琥珀橙 (15%~30%) / 霓虹红 (<15% 或异常) 三色阶动力学
+    /// - 刷新态: 外环顺时针、内环逆时针双向差速自旋
+    /// - 排版联动: 经典/液态玻璃为 T-0 (12pt monospacedDigit + 双空格),
+    ///   Nothing 主题自动切换为 T-4 (11pt SF Mono Semibold + 弱化斜杠分隔)
     private func makeStatusItemImage(
         for content: MenuBarStatusItemContent,
         width: CGFloat
@@ -372,7 +380,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         let isIconOnly = content.metricText.isEmpty
         let iconCenterX: CGFloat = isIconOnly ? (size.width / 2) : 13
         let center = NSPoint(x: iconCenterX, y: size.height / 2)
-        let radius: CGFloat = 6.2
+        let radiusOuter: CGFloat = 6.8
+        let lineWidthOuter: CGFloat = 1.7
+        let radiusInner: CGFloat = 4.0
+        let lineWidthInner: CGFloat = 1.4
 
         let image = NSImage(size: size, flipped: false) { [weak self] _ in
             guard let self else { return false }
@@ -385,90 +396,172 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             }
 
-            // 2. 配色系统 (深色模式与浅色模式双向高保真、高对比度适配):
-            // - 深色菜单栏: 高发光度亮绿 (Apple Health Green #30D158), 底环 28% 白 + 纯白文字
-            // - 浅色菜单栏: 高对比度翡翠深绿 (#1C8C3D, WCAG 对比度 > 4.8:1), 底环 25% 黑 + 纯黑文字
+            // 2. 配色系统 (三色阶动力学 + 深浅双向高对比):
+            // - 翡翠绿 (>=30%): 深色 #30D158 / 浅色 #15803D (WCAG 对比度 > 4.8:1)
+            // - 警示琥珀 (15%~30%): 深色 #FFB800 / 浅色 #D97706
+            // - 科技红 (<15% 或 failed): 深色 #FF453A / 浅色 #DC2626
             let trackColor: NSColor
             let greenColor: NSColor
-            let warningRedColor: NSColor
+            let amberColor: NSColor
+            let redColor: NSColor
             let labelTextColor: NSColor
+            let separatorColor: NSColor
 
             if isDark {
-                trackColor = NSColor(white: 1.0, alpha: 0.28)
+                trackColor = NSColor(white: 1.0, alpha: 0.26)
                 greenColor = NSColor(srgbRed: 0.19, green: 0.82, blue: 0.35, alpha: 1.0)
-                warningRedColor = NSColor(srgbRed: 1.0, green: 0.27, blue: 0.23, alpha: 1.0)
+                amberColor = NSColor(srgbRed: 1.0, green: 0.72, blue: 0.0, alpha: 1.0)
+                redColor = NSColor(srgbRed: 1.0, green: 0.27, blue: 0.23, alpha: 1.0)
                 labelTextColor = NSColor(white: 1.0, alpha: 0.95)
+                separatorColor = NSColor(white: 1.0, alpha: 0.36)
             } else {
-                trackColor = NSColor(white: 0.0, alpha: 0.25)
-                greenColor = NSColor(srgbRed: 0.11, green: 0.55, blue: 0.24, alpha: 1.0)
-                warningRedColor = NSColor(srgbRed: 0.85, green: 0.15, blue: 0.12, alpha: 1.0)
+                trackColor = NSColor(white: 0.0, alpha: 0.22)
+                greenColor = NSColor(srgbRed: 0.08, green: 0.50, blue: 0.24, alpha: 1.0)
+                amberColor = NSColor(srgbRed: 0.85, green: 0.47, blue: 0.02, alpha: 1.0)
+                redColor = NSColor(srgbRed: 0.86, green: 0.15, blue: 0.15, alpha: 1.0)
                 labelTextColor = NSColor(white: 0.0, alpha: 0.90)
+                separatorColor = NSColor(white: 0.0, alpha: 0.34)
             }
 
-            // 3. 底环 (Track): 极细 1.5pt 圆环
-            let trackPath = NSBezierPath()
-            trackPath.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
-            trackPath.lineWidth = 1.5
+            let isWarningIcon = content.iconName == "exclamationmark.triangle"
+            let isFailedIcon = content.iconName == "xmark.circle"
+            let isUnconfigured = content.iconName == "circle.dashed"
+
+            func tierColor(for ratio: Double?) -> NSColor {
+                if isFailedIcon { return redColor }
+                if isWarningIcon { return amberColor }
+                guard let ratio else { return greenColor }
+                if ratio < 0.15 { return redColor }
+                if ratio < 0.30 { return amberColor }
+                return greenColor
+            }
+
+            let outerColor = tierColor(for: content.outerQuotaRatio)
+            let innerColor = tierColor(for: content.innerQuotaRatio)
+
+            // 3. 底环 (Track): 外母环 (1.7pt) + 内存环 (1.4pt)
+            let outerTrack = NSBezierPath()
+            outerTrack.appendArc(withCenter: center, radius: radiusOuter, startAngle: 0, endAngle: 360)
+            outerTrack.lineWidth = lineWidthOuter
+            if isUnconfigured {
+                let dash: [CGFloat] = [2.2, 2.2]
+                outerTrack.setLineDash(dash, count: 2, phase: 0)
+            }
             trackColor.setStroke()
-            trackPath.stroke()
+            outerTrack.stroke()
+
+            let innerTrack = NSBezierPath()
+            innerTrack.appendArc(withCenter: center, radius: radiusInner, startAngle: 0, endAngle: 360)
+            innerTrack.lineWidth = lineWidthInner
+            if isUnconfigured {
+                let dash: [CGFloat] = [1.8, 1.8]
+                innerTrack.setLineDash(dash, count: 2, phase: 0)
+            }
+            trackColor.setStroke()
+            innerTrack.stroke()
 
             if self.isRefreshing {
-                // 4. 刷新中: 样式 01 (雷达扫掠自旋 · 绿色, 中心通透)
-                let sweepPath = NSBezierPath()
-                let start = self.refreshPhase
-                let end = (self.refreshPhase - 100).truncatingRemainder(dividingBy: 360)
-                sweepPath.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: end, clockwise: true)
-                sweepPath.lineWidth = 1.8
-                sweepPath.lineCapStyle = .round
+                // 4. 刷新中: 外环顺时针、内环逆时针双向差速自旋
+                let sweepOuter = NSBezierPath()
+                let startOuter = self.refreshPhase
+                let endOuter = (self.refreshPhase - 100).truncatingRemainder(dividingBy: 360)
+                sweepOuter.appendArc(withCenter: center, radius: radiusOuter, startAngle: startOuter, endAngle: endOuter, clockwise: true)
+                sweepOuter.lineWidth = lineWidthOuter + 0.15
+                sweepOuter.lineCapStyle = .round
                 greenColor.setStroke()
-                sweepPath.stroke()
-            } else if let ratio = content.remainingQuotaRatio {
-                // 5. 就绪态: 配额比例填充 (绿色, <15% 时变红, 中心通透)
-                let fillRatio = max(0.0, min(1.0, ratio))
-                let isWarning = fillRatio < 0.15 || content.iconName == "exclamationmark.triangle"
-                let activeColor = isWarning ? warningRedColor : greenColor
+                sweepOuter.stroke()
 
-                if fillRatio > 0.005 {
-                    let progressPath = NSBezierPath()
-                    let startAngle: CGFloat = 90
-                    let endAngle = startAngle - CGFloat(fillRatio * 360)
-                    progressPath.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
-                    progressPath.lineWidth = 1.8
-                    progressPath.lineCapStyle = .round
-                    activeColor.setStroke()
-                    progressPath.stroke()
-                } else {
-                    // 额度为 0: 在 12 点钟顶端绘制醒目的警告红点
-                    let zeroDotRect = NSRect(x: center.x - 1.0, y: center.y + radius - 1.0, width: 2.0, height: 2.0)
-                    let zeroDotPath = NSBezierPath(ovalIn: zeroDotRect)
-                    activeColor.setFill()
-                    zeroDotPath.fill()
+                let sweepInner = NSBezierPath()
+                let startInner = (360 - self.refreshPhase).truncatingRemainder(dividingBy: 360)
+                let endInner = (startInner + 90).truncatingRemainder(dividingBy: 360)
+                sweepInner.appendArc(withCenter: center, radius: radiusInner, startAngle: startInner, endAngle: endInner, clockwise: false)
+                sweepInner.lineWidth = lineWidthInner + 0.1
+                sweepInner.lineCapStyle = .round
+                greenColor.setStroke()
+                sweepInner.stroke()
+            } else if !isUnconfigured {
+                // 5. 就绪态: 双同心环规配额填充
+                // - 母环 (外环 · 平均配额)
+                if let outerRatio = content.outerQuotaRatio {
+                    let fillRatio = max(0.0, min(1.0, outerRatio))
+                    if fillRatio > 0.005 {
+                        let outerArc = NSBezierPath()
+                        let startAngle: CGFloat = 90
+                        let endAngle = startAngle - CGFloat(fillRatio * 360)
+                        outerArc.appendArc(withCenter: center, radius: radiusOuter, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+                        outerArc.lineWidth = lineWidthOuter + 0.15
+                        outerArc.lineCapStyle = .round
+                        outerColor.setStroke()
+                        outerArc.stroke()
+                    } else {
+                        let dotRect = NSRect(x: center.x - 0.9, y: center.y + radiusOuter - 0.9, width: 1.8, height: 1.8)
+                        let dotPath = NSBezierPath(ovalIn: dotRect)
+                        outerColor.setFill()
+                        dotPath.fill()
+                    }
                 }
-            } else {
-                // 6. 无量条配额 (纯余额或未配置服务): 仅保留底环, 中心通透
+
+                // - 子环 (内环 · 最低短板配额)
+                if let innerRatio = content.innerQuotaRatio {
+                    let fillRatio = max(0.0, min(1.0, innerRatio))
+                    if fillRatio > 0.005 {
+                        let innerArc = NSBezierPath()
+                        let startAngle: CGFloat = 90
+                        let endAngle = startAngle - CGFloat(fillRatio * 360)
+                        innerArc.appendArc(withCenter: center, radius: radiusInner, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+                        innerArc.lineWidth = lineWidthInner + 0.1
+                        innerArc.lineCapStyle = .round
+                        innerColor.setStroke()
+                        innerArc.stroke()
+                    } else {
+                        let dotRect = NSRect(x: center.x - 0.8, y: center.y + radiusInner - 0.8, width: 1.6, height: 1.6)
+                        let dotPath = NSBezierPath(ovalIn: dotRect)
+                        innerColor.setFill()
+                        dotPath.fill()
+                    }
+                }
             }
 
-            // 7. 指标文本绘制 (非仅图标模式时)
+            // 6. 指标文本绘制 (非仅图标模式时)
             if !content.metricText.isEmpty {
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.monospacedDigitSystemFont(
-                        ofSize: 12,
-                        weight: .regular
-                    ),
-                    .foregroundColor: labelTextColor,
-                ]
-                let text = NSAttributedString(
+                let font: NSFont = content.isNothingTheme
+                    ? NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+                    : NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+
+                let attrString = NSMutableAttributedString(
                     string: content.metricText,
-                    attributes: attributes
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: labelTextColor,
+                    ]
                 )
-                let textSize = text.size()
+
+                // Nothing T-4 模式下弱化 " / " 斜杠分隔符
+                if content.isNothingTheme {
+                    let fullString = content.metricText as NSString
+                    var searchRange = NSRange(location: 0, length: fullString.length)
+                    while searchRange.location < fullString.length {
+                        let foundRange = fullString.range(of: " / ", options: [], range: searchRange)
+                        if foundRange.location != NSNotFound {
+                            attrString.addAttribute(.foregroundColor, value: separatorColor, range: foundRange)
+                            let nextLoc = foundRange.location + foundRange.length
+                            searchRange = NSRange(location: nextLoc, length: fullString.length - nextLoc)
+                        } else {
+                            break
+                        }
+                    }
+                }
+
+                let textSize = attrString.size()
+                // Cap-Height 光学垂直居中: 使文字大写字形中心与画布中心严格重合
+                let baselineY = round((size.height - font.capHeight) / 2.0 + font.descender)
                 let textRect = NSRect(
                     x: 25,
-                    y: (size.height - textSize.height) / 2,
+                    y: max(0, baselineY),
                     width: max(0, size.width - 25),
                     height: textSize.height
                 )
-                text.draw(in: textRect)
+                attrString.draw(in: textRect)
             }
 
             return true

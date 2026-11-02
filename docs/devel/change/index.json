@@ -46,7 +46,8 @@
         "C157",
         "C158",
         "C159",
-        "C179"
+        "C179",
+        "C180"
       ]
     },
     "PricingEngine": {
@@ -1835,6 +1836,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.16.1",
       "file": "docs/devel/change/C179.json"
+    },
+    "C180": {
+      "title": "菜单栏图标与字体升级：I-2 双同心子母环 + Nothing 主题自动切 T-4 极客等宽",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C180-menubar-dual-ring-typo",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C180.json"
     }
   }
 }

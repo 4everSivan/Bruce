@@ -42,7 +42,7 @@
       "index": null
     }
   ],
-  "adflow_version": "1.5.0",
+  "adflow_version": "1.6.0",
   "standards": {
     "coding": "docs/standards/coding.json",
     "task_template": "docs/standards/task-template.json",

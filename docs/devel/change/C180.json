@@ -1,0 +1,117 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C180",
+  "title": "菜单栏图标与字体升级：I-2 双同心子母环 + Nothing 主题自动切 T-4 极客等宽",
+  "version": "0.16.1",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C180-menubar-dual-ring-typo",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarStatusItemController / MenuBarStatusItemContent / SettingsView",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "菜单栏是 macOS 常驻工具的核心高频入口。当前状态项图标仅绘制单一外径 6.2pt 的单圆环，只能展示平均或最低单一维度的配额水位，无法兼顾整体余量与单一耗尽子窗口的局部短板风险；且仅有 <15% 红档而缺失 15%~30% 琥珀黄色阶。在字体排版方面，当前采用 12pt Regular 单一字重平铺与双空格分隔，文字偏纤弱且数字与单位同权；当用户切换至 Nothing 极客点阵主题时，菜单栏未能与面板的 NDot/Space Mono 风格形成统一联动。因此升级为 I-2 双同心子母环，并在 Nothing 主题下自动切为 T-4 极客等宽读数，设置页实时预览条同步对齐。",
+  "precheck": {
+    "description": "确认当前菜单栏仍为单一圆环绘制且未实现主题联动字体",
+    "command": "grep -n \"let radius: CGFloat = 6.2\" apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift && grep -n \"package let remainingQuotaRatio: Double?\" apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+    "expected": "命中单一半径 6.2 与单一 remainingQuotaRatio 字段",
+    "is_completed": true,
+    "evidence": "2026-11-02 预检确认 MenuBarStatusItemController.swift:375 使用单一 radius 6.2，MenuBarStatusItemContent.swift:12 仅声明单一 remainingQuotaRatio，尚未升级 I-2 双同心子母环与 T-4 主题自适应字体"
+  },
+  "callback": {
+    "before": [
+      "git checkout feat/C180-menubar-dual-ring-typo"
+    ],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "apps/macos/.build/debug/NativeLifecycleHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C180 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "MenuBarStatusItemContent 契约扩充",
+      "before": "仅提供单一 remainingQuotaRatio: Double? 与固定双空格拼接 metricText",
+      "after": "提供 outerQuotaRatio: Double?（平均剩余配额）与 innerQuotaRatio: Double?（最低剩余配额），以及 isNothingTheme: Bool 参数驱动的 metricText 语义生成",
+      "impact": "BruceAppCore 与 BruceApp 菜单栏数据流解耦，支持双维度配额传递与主题感知"
+    },
+    {
+      "scope": "MenuBarStatusItemController 图标与字体渲染管线",
+      "before": "绘制单一 6.2pt 圆环（二元绿/红色阶）；文本使用固定 12pt Regular + 垂直全高居中",
+      "after": "绘制 I-2 双同心子母环（外环 r=6.8pt/w=1.7pt，内环 r=4.0pt/w=1.4pt；绿 >=30% / 琥珀 15%~30% / 红 <15% 三档；刷新双环差速自旋）；根据当前主题自适应字体（经典/玻璃为 T-0 12pt MonospacedDigit，Nothing 主题为 T-4 11pt SF Mono Semibold + 斜杠弱化分隔）；优化 capHeight 光学垂直居中与 4pt 步进防抖",
+      "impact": "菜单栏同时呈现全局配额与短板警示，Nothing 主题视觉风格 100% 连贯统一"
+    },
+    {
+      "scope": "SettingsView 菜单栏实时预览条",
+      "before": "使用单一圆环与 11pt monospaced 模拟，与真实状态栏绘制存在漂移",
+      "after": "同步呈现 I-2 双同心子母环，并根据当前外观模式与主题动态联动 T-0 / T-4 文本与分隔符，实现真实所见即所得",
+      "impact": "设置中心通用面板的实时预览条与真实菜单栏完全一致"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "菜单栏状态项使用外径 18pt 的单环规（半径 6.2pt，线宽 1.5pt），配额低于 15% 变红；文本使用单一 12pt regular + 双空格平铺",
+      "after": "菜单栏状态项升级为 I-2 双同心子母环（外环 r=6.8pt 映射平均配额、内环 r=4.0pt 映射最低短板，独立按绿/琥珀/红三档着色并在刷新时差速自旋）；字体与排版随主题自适应联动（经典/液态玻璃为 T-0 12pt monospacedDigit 结合 capHeight 光学对齐，Nothing 主题自动切换为 T-4 11pt SF Mono Semibold + 弱化斜杠分隔符），设置页预览条同步 100% 对齐"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261102-01",
+    "user_quote": "合并到主分支，重新打包部署让我测试",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试与本地全量门禁",
+        "true_if": "verify-local.sh 退出码为 0，Swift build 与全量 Harness 全部通过",
+        "false_if": "存在编译报错或测试未通过",
+        "evidence": "verify-local.sh 全量测试全绿通过，包含 Rust 全部单元/集成测试、41 项 fixture 扫描、前端无头断言、Swift 构建以及全部 18 项 Native Harness 测试，退出码 0",
+        "result": true
+      },
+      {
+        "item": "双同心子母环与三色阶渲染",
+        "true_if": "外环正常映射平均配额、内环正常映射最低配额，三档色阶（绿/琥珀/红）与刷新差速自旋正常生效",
+        "false_if": "圆环错位、内外环倒置或色阶不符合阈值",
+        "evidence": "MenuBarStatusItemContent 成功生成 outerQuotaRatio (0.50) 与 innerQuotaRatio (0.676)，NativeLifecycleHarness 断言通过；makeStatusItemImage 按外母环 (r=6.8/w=1.7) 与内子环 (r=4.0/w=1.4) 独立判定三色阶与差速双向自旋绘制",
+        "result": true
+      },
+      {
+        "item": "Nothing 主题字体与分隔符自动联动",
+        "true_if": "在 Nothing 主题下自动切换为 11pt SF Mono Semibold 与斜杠分隔，其他主题保持 T-0",
+        "false_if": "主题切换后菜单栏未刷新或字体未跟随切换",
+        "evidence": "MenuBarStatusItemContentBuilder(isNothingTheme: true) 输出 \"68% / 124K / $1.28\"，NativeLifecycleHarness 覆盖通过；MenuBarStatusItemController 在 resolvedTheme.interfaceStyle == .nothing 时自动切换 11pt SF Mono Semibold 并对斜杠弱化绘制",
+        "result": true
+      },
+      {
+        "item": "设置页实时预览条所见即所得对齐",
+        "true_if": "SettingsView 中的菜单栏实时预览条呈现双同心环并联动当前主题字体与格式",
+        "false_if": "预览条与真实状态栏存在视觉割裂",
+        "evidence": "SettingsView 同步升级 menuBarPreviewIcon 为双同心圆环并适配三色阶，menuBarPreviewText 在 isNothingTheme 时联动 11pt monospaced 字体与 \" / \" 分隔符，Swift 编译通过",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified",
+    "signed_quote": "合并到主分支，重新打包部署让我测试",
+    "signed_rejection_count": 0
+  }
+}
