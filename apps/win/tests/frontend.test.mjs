@@ -2909,3 +2909,77 @@ test("maintenance pane renders pricing catalog sync card between software update
   assert.match(app.node("pricing-sync-stage").textContent, /无法访问 GitHub \(超时 10 秒\);当前继续使用本地价格表/);
   assert.match(app.node("settings-status").textContent, /同步价格表失败：网络超时/);
 });
+
+// ---------- T22: 首次启动欢迎与引导向导 (10-首次启动欢迎与引导向导 §4.2 · 方案 A 780 × 540) ----------
+
+test("first-launch welcome wizard auto-presents on fresh install, walks 3 steps and expands dashboard (T22)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    settings: {
+      ...defaults,
+      consentVersion: 0,
+      welcomeCompletedVersion: 0,
+    },
+  });
+
+  const overlay = app.node("welcome-wizard-overlay");
+  assert.ok(overlay, "settings.html 挂载 #welcome-wizard-overlay");
+  assert.equal(overlay.classList.contains("hidden"), false, "首次安装 (consentVersion=0) 自动弹出欢迎向导");
+
+  // 左侧栏真实 App 图标与 3 步轨断言
+  const appIcon = overlay.querySelector(".welcome-app-icon");
+  assert.ok(appIcon, "左侧品牌栏包含真实应用图标节点");
+  assert.equal(appIcon.getAttribute("src"), "icons/icon.png");
+  const railItems = overlay.querySelectorAll(".welcome-rail-item");
+  assert.equal(railItems.length, 3, "左侧进度轨包含 3 步");
+  assert.match(overlay.textContent, /100% 本地只读闭环/);
+
+  // Step 1: 一键启用本机统计并推进至 Step 2
+  const step1Btn = app.node("welcome-step1-cta");
+  assert.ok(step1Btn, "Step 1 主按钮存在");
+  await step1Btn.click();
+  await settle();
+  assert.equal(app.state.settings.consentVersion, 1, "Step 1 合并激活授权");
+  assert.equal(app.state.settings.usageEnabled, true, "Step 1 开启本机统计");
+
+  // Step 2: 呈现本机发现与 10 家服务商网格, 可直接跳过至 Step 3
+  assert.match(overlay.textContent, /STEP 02 · SUBSCRIPTION QUOTA/);
+  assert.equal(overlay.querySelectorAll(".welcome-provider-card").length, 10, "Step 2 展示 10 家订阅服务");
+  await app.node("welcome-step2-skip").click();
+  await settle();
+
+  // Step 3: 双同心环规图例、快捷偏好设置与「完成并打开看板」
+  assert.match(overlay.textContent, /STEP 03 · APPEARANCE & SHORTCUT/);
+  assert.match(overlay.textContent, /外母环 · 全局平均剩余额度/);
+  await app.node("welcome-default-hotkey-btn").click();
+  await settle();
+  assert.equal(app.state.settings.hotkey, "Control+Shift+B");
+
+  await app.node("welcome-finish-cta").click();
+  await settle();
+  assert.equal(app.state.settings.welcomeCompletedVersion, 1, "完成向导写入 welcomeCompletedVersion = 1");
+  assert.equal(overlay.classList.contains("hidden"), true, "完成后关闭欢迎向导遮罩");
+  assert.ok(app.calls.some(call => call.command === "expand_dashboard"), "完成后调用 expand_dashboard 展开主看板");
+});
+
+test("upgraded existing user skips welcome wizard on startup and can reopen from General settings (T22)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    settings: {
+      ...defaults,
+      consentVersion: 1,
+      welcomeCompletedVersion: 0,
+    },
+  });
+
+  const overlay = app.node("welcome-wizard-overlay");
+  assert.equal(overlay.classList.contains("hidden"), true, "存量老用户 (consentVersion=1) 启动不弹欢迎向导");
+
+  // 通用设置页「重新打开欢迎向导」按钮随时可重进
+  const reopenBtn = app.node("btn-reopen-welcome");
+  assert.ok(reopenBtn, "设置 → 通用 提供重新打开欢迎向导按钮");
+  assert.equal(reopenBtn.textContent, "重新打开欢迎向导");
+  await reopenBtn.click();
+  await settle();
+  assert.equal(overlay.classList.contains("hidden"), false, "点击重新打开欢迎向导后展示向导遮罩");
+});

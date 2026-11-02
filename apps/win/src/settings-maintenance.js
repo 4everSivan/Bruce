@@ -3,7 +3,7 @@
   const core = window.BruceSettingsCore;
   const S = window.BruceSettingsSections;
   const coreState = core.state;
-  const { invoke, listen, providers, CATEGORIES, node, byId, UP, PP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory } = core;
+  const { invoke, listen, providers, CATEGORIES, node, byId, UP, PP, WP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory } = core;
   // 跨分节调用经共享命名空间在调用时解析 (脚本按顺序加载, 调用发生在全部加载完成之后)。
   const providerDescriptor = (...args) => S.providerDescriptor(...args);
   const providerConfigured = (...args) => S.providerConfigured(...args);
@@ -161,6 +161,18 @@
       });
     });
     row(c1, "托盘实时预览", previewWrap, "鼠标悬停任务栏托盘图标时，弹出 420px 亚克力微缩实时预览卡");
+
+    // T22: 欢迎与使用引导重进门 (10-首次启动欢迎与引导向导 §4.2 R6, 对齐 mac SettingsView 通用页)
+    const reopenWrap = node("div", null, { class: "welcome-reopen-wrap" });
+    button(reopenWrap, "btn-reopen-welcome", WP?.copy?.settingsReopenButton || "重新打开欢迎向导", () => {
+      if (S.openWelcomeWizard) S.openWelcomeWizard();
+    });
+    row(
+      c1,
+      WP?.copy?.settingsRowTitle || "欢迎与使用引导",
+      reopenWrap,
+      WP?.copy?.settingsRowSubtitle || "重新查看首次启动的环境扫描、额度连接与菜单栏指示说明"
+    );
 
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
@@ -837,6 +849,7 @@
         ].join("\n");
       }
       renderSessionProbes();
+      if (S.renderWelcomeWizard) S.renderWelcomeWizard();
     } catch { message(byId("runtime-info"), "无法读取运行状态"); }
   }
 
@@ -882,6 +895,8 @@
     renderSubscriptionViews();
     for (const render of segmentRenderers) render();
     applyTheme();
+    if (S.maybeAutoPresentWelcome) S.maybeAutoPresentWelcome();
+    if (S.renderWelcomeWizard) S.renderWelcomeWizard();
   }
 
   // C081: 三家 OAuth Provider 的 oauth 原生形状 —— 与采集端解析器契约一致

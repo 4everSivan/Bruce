@@ -15,6 +15,8 @@ final class OnboardingCoordinator: ObservableObject {
     @Published var selectedModules: Set<CollectorModule>
     /// 当前是否处于授权版本有效状态.
     @Published private(set) var consentConfirmed: Bool
+    /// 首次启动欢迎向导完成版本 (T22).
+    @Published private(set) var welcomeCompletedVersion: Int?
     /// 自动刷新间隔 (分钟), 与配置持久化同步.
     @Published private(set) var refreshIntervalMinutes: Int
     /// 外观偏好, 与配置持久化同步; 面板和设置窗口据此覆盖 colorScheme.
@@ -148,6 +150,7 @@ final class OnboardingCoordinator: ObservableObject {
             }
         )
         self.consentConfirmed = confirmedVersion == consentVersion
+        self.welcomeCompletedVersion = config?.welcomeCompletedVersion
         let resolvedInterval = config?.resolvedRefreshIntervalMinutes
             ?? OnboardingConfiguration.defaultRefreshIntervalMinutes
         self.refreshIntervalMinutes = resolvedInterval
@@ -225,6 +228,17 @@ final class OnboardingCoordinator: ObservableObject {
 
     var collectorRuntimeStatus: CollectorRuntimeStatus {
         collectorRuntime
+    }
+
+    /// 启动时是否应自动呈现首次启动欢迎向导 (T22, 10-首次启动欢迎与引导向导 §4.2 R1).
+    /// 存量老用户 (welcomeCompletedVersion == nil 但已同时完成 consentConfirmed 与 keychainAccessConfigured)
+    /// 平滑免打扰, 返回 false.
+    var shouldPresentWelcomeOnStartup: Bool {
+        WelcomeOnboardingPresentation.shouldPresentWelcome(
+            welcomeCompletedVersion: welcomeCompletedVersion,
+            consentConfirmed: consentConfirmed,
+            keychainAccessConfigured: keychainAccessConfigured
+        )
     }
 
     // MARK: - 订阅额度 (SubscriptionService façade)
@@ -750,6 +764,74 @@ final class OnboardingCoordinator: ObservableObject {
             confirmedConsentVersion: Self.currentConsentVersion
         )
         reconcileScheduler()
+    }
+
+    /// 欢迎向导 Step 1 一键合并激活 (T22, 10-首次启动欢迎与引导向导 §4.2 R3):
+    /// 原子化完成本地会话采集授权 (consentVersion = 1, selectedModules 包含 .agentUsage)
+    /// 与本机 0600 凭据存储配置 (keychainAccessConfigured = true), 并立即触发首轮采集.
+    @discardableResult
+    func completeWelcomeStep1() -> Bool {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存欢迎向导激活状态")
+            return false
+        }
+        do {
+            _ = try subscriptions.configureKeychainAccess()
+            var config = configStore.load() ?? OnboardingConfiguration()
+            var modules = Set(
+                config.selectedModules.compactMap { CollectorModule(rawValue: $0) }
+            )
+            modules.insert(.agentUsage)
+            config.consentVersion = Self.currentConsentVersion
+            config.selectedModules = Set(modules.map(\.rawValue))
+            config.keychainAccessConfigured = true
+            try configStore.save(config)
+
+            keychainAccessController.update(
+                policy: KeychainAccessPolicy(configuration: config.keychainAccess)
+            )
+            selectedModules = modules
+            consentConfirmed = true
+            keychainAccessConfigured = true
+            keychainAccessState = keychainAccessController.policy.state
+            externalKeychainSources = config.keychainAccess.externalSources
+            subscriptions.setKeychainAccessConfigured(true)
+            gate = CollectorActivationGate(
+                consentVersion: Self.currentConsentVersion,
+                confirmedConsentVersion: Self.currentConsentVersion
+            )
+            model.setSettingsError(nil)
+            reconcileScheduler()
+            scheduler.refresh(.agentUsage)
+            return true
+        } catch {
+            model.setSettingsError("欢迎向导本地统计激活失败")
+            return false
+        }
+    }
+
+    /// 欢迎向导 Step 3 完成收口 (T22, 10-首次启动欢迎与引导向导 §4.2 R6):
+    /// 若尚未完成 Step 1 激活则自动补齐, 随后写入 welcomeCompletedVersion = 1.
+    @discardableResult
+    func completeWelcomeWizard() -> Bool {
+        if !consentConfirmed || !keychainAccessConfigured {
+            guard completeWelcomeStep1() else { return false }
+        }
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存向导完成状态")
+            return false
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.welcomeCompletedVersion = OnboardingConfiguration.currentWelcomeVersion
+        do {
+            try configStore.save(config)
+            welcomeCompletedVersion = OnboardingConfiguration.currentWelcomeVersion
+            model.setSettingsError(nil)
+            return true
+        } catch {
+            model.setSettingsError("向导完成状态保存失败")
+            return false
+        }
     }
 
     /// 撤销全部授权: 清除已确认版本, 所有模块停止调度.

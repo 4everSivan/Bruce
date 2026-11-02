@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-31",
+  "updated_at": "2026-11-02",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -83,6 +83,13 @@
         "T20",
         "T21"
       ]
+    },
+    "M11-首次启动欢迎与引导向导": {
+      "title": "首次启动双栏沉浸式三步欢迎向导（方案 A · 780×540）：本机 Agent 只读扫描与双门禁合并一键激活、订阅快速导入、双环实时预览定制与自动展开看板",
+      "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
+      "tasks": [
+        "T22"
+      ]
     }
   },
   "topics": {
@@ -135,6 +142,12 @@
         "T19",
         "T20",
         "T21"
+      ]
+    },
+    "FirstLaunchWelcome": {
+      "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
+      "tasks": [
+        "T22"
       ]
     }
   },
@@ -378,6 +391,16 @@
       ],
       "file": "docs/archive/0.16.0/task/T21.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T21-windows-pricing-catalog-sync"
+    },
+    "T22": {
+      "title": "首次启动欢迎与三步引导向导（方案 A · macOS / Windows 双端同构）",
+      "status": "in_progress",
+      "branch": "feat/T22-first-launch-welcome-wizard",
+      "topic": "FirstLaunchWelcome",
+      "milestone": "M11-首次启动欢迎与引导向导",
+      "depends_on": [],
+      "file": "docs/devel/task/T22.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T22-first-launch-welcome-wizard"
     }
   }
 }

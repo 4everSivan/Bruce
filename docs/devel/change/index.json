@@ -242,6 +242,10 @@
     "PricingCatalogSync": {
       "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
       "changes": []
+    },
+    "FirstLaunchWelcome": {
+      "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
+      "changes": []
     }
   },
   "cards": {

@@ -16,6 +16,7 @@ struct BruceApp: App {
     private let runner: CollectorExecutable & CollectorRuntimeControlling
     private let bootstrap: ApplicationBootstrap
     private let settingsWindowController: SettingsWindowController
+    private let welcomeWindowController: WelcomeWindowController
     private let statusItemController: MenuBarStatusItemController
     private let hotkeyMonitor: GlobalHotkeyMonitor
 
@@ -159,6 +160,23 @@ struct BruceApp: App {
             }
         )
         self.statusItemController = statusController
+        let welcomeController = WelcomeWindowController(
+            model: model,
+            coordinator: coordinator,
+            onCompleteOpenDashboard: { [weak statusController] in
+                statusController?.openDashboardIfNeeded()
+            },
+            onOpenSubscriptionSettings: { [weak settingsController] _ in
+                settingsController?.present(category: .subscription)
+            },
+            isSettingsWindowVisible: { [weak settingsController] in
+                settingsController?.managedWindow?.isVisible == true
+            }
+        )
+        self.welcomeWindowController = welcomeController
+        settingsController.onReopenWelcome = { [weak welcomeController] in
+            welcomeController?.present()
+        }
         bootstrap.onQuotaAlerts = { [weak statusController] alerts in
             statusController?.showQuotaAlertBubble(alerts: alerts)
         }
@@ -197,6 +215,7 @@ struct BruceApp: App {
         appDelegate.configure(
             runtime: runtime,
             settingsWindowController: settingsWindowController,
+            welcomeWindowController: welcomeWindowController,
             statusItemController: statusItemController,
             hotkeyMonitor: hotkeyMonitor,
             startApplication: {
@@ -206,11 +225,9 @@ struct BruceApp: App {
                         updates.start()
                         pricingSync.start()
                     }
-                    if didStart,
-                       (!coordinator.consentConfirmed
-                        || !coordinator.keychainAccessConfigured) {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            settingsWindowController.present()
+                    if didStart, coordinator.shouldPresentWelcomeOnStartup {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            welcomeWindowController.present()
                         }
                     }
                 }

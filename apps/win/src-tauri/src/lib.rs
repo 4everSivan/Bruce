@@ -401,7 +401,8 @@ mod desktop {
             "usage": panel["usage"],
             "totalCostUsd": total_cost,
             "modelUsage": model_usage,
-            "generatedAt": generated_at
+            "generatedAt": generated_at,
+            "localProbes": paths::probe_local_agents(&paths::home_root())
         }))
     }
 
@@ -1205,6 +1206,9 @@ mod desktop {
     fn expand_dashboard(app: tauri::AppHandle) -> Result<(), String> {
         hide_preview(&app);
         hide_quota_alert(&app);
+        if let Some(window) = app.get_webview_window("settings") {
+            let _ = window.hide();
+        }
         reveal_dashboard(&app, DashboardOpenSource::Tray, true);
         Ok(())
     }
@@ -1397,11 +1401,14 @@ mod desktop {
                     })
                     .build(app)?;
                 scheduler::spawn(app.handle().clone());
-                // C149: 用户双击启动本身就是一次显式唤出 —— 启动后直接呈现面板,
-                // 不再要求用户先找到托盘图标 (Win11 新装应用的图标默认收进溢出区,
-                // 且默认热键为空时托盘是唯一入口)。配置窗口由 Tauri 在本 setup 之前建好;
-                // refresh=false: 调度器首轮采集紧随其后, 不再重复排一次手动唤醒。
-                reveal_dashboard(app.handle(), DashboardOpenSource::Tray, false);
+                // C149 / T22: 首次安装或尚未完成向导时直接打开设置窗承载欢迎向导遮罩;
+                // 已完成向导或存量老用户升级则保持双击启动直接呈现看板面板。
+                let initial_settings = settings::load_settings(&paths::data_root());
+                if settings::should_present_welcome(&initial_settings) {
+                    open_settings(app.handle().clone());
+                } else {
+                    reveal_dashboard(app.handle(), DashboardOpenSource::Tray, false);
+                }
                 Ok(())
             })
             .on_window_event(move |window, event| {

@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lifecycle: ApplicationLifecycleCoordinator?
     /// 配置窗口控制器: 用于 Dock 点击时重新打开设置.
     private weak var settingsWindowController: SettingsWindowController?
+    private weak var welcomeWindowController: WelcomeWindowController?
     private var statusItemController: MenuBarStatusItemController?
     private var hotkeyMonitor: GlobalHotkeyMonitor?
     private var startApplication: (@MainActor () -> Void)?
@@ -14,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func configure(
         runtime: ApplicationRuntimeControlling,
         settingsWindowController: SettingsWindowController? = nil,
+        welcomeWindowController: WelcomeWindowController? = nil,
         statusItemController: MenuBarStatusItemController? = nil,
         hotkeyMonitor: GlobalHotkeyMonitor? = nil,
         startApplication: (@MainActor () -> Void)? = nil
@@ -25,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let settingsWindowController {
             self.settingsWindowController = settingsWindowController
+        }
+        if let welcomeWindowController {
+            self.welcomeWindowController = welcomeWindowController
         }
         if let statusItemController {
             self.statusItemController = statusItemController
@@ -60,12 +65,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Dock 图标点击 (配置窗口打开期间): 前置设置窗口, 不另外新建窗口.
+    /// Dock 图标点击 (配置窗口或欢迎向导打开期间): 前置对应窗口, 不另外新建窗口.
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        settingsWindowController?.handleDockReopen()
+        if welcomeWindowController?.managedWindow?.isVisible == true {
+            welcomeWindowController?.handleDockReopen()
+        } else {
+            settingsWindowController?.handleDockReopen()
+        }
         return true
     }
 

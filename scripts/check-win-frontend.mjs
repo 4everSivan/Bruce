@@ -26,7 +26,7 @@ const fail = (message) => {
   failed = true;
 };
 
-for (const file of ["app.js", "agent-brand.js", "update-presentation.js", "pricing-presentation.js", "preview.js", "quota-alert.js", ...settingsScripts]) {
+for (const file of ["app.js", "agent-brand.js", "update-presentation.js", "pricing-presentation.js", "welcome-presentation.js", "preview.js", "quota-alert.js", ...settingsScripts]) {
   try {
     new vm.Script(readFileSync(join(repoRoot, "apps/win/src", file), "utf8"), { filename: file });
     console.log(`ok: ${file} 语法合法`);
@@ -246,7 +246,7 @@ if (/\bPANEL\b/.test(appSource)) {
 }
 
 // 交互回归 + 面板几何对拍 (demo 内联镜像 ↔ Rust runtime_core fixture, C035)
-for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs", "apps/win/tests/update-presentation.test.mjs", "apps/win/tests/pricing-presentation.test.mjs"]) {
+for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs", "apps/win/tests/update-presentation.test.mjs", "apps/win/tests/pricing-presentation.test.mjs", "apps/win/tests/welcome-presentation.test.mjs"]) {
   const behavior = spawnSync(process.execPath, ["--test", suite], {
     cwd: repoRoot, stdio: "inherit",
   });

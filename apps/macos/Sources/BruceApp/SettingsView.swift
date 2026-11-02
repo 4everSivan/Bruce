@@ -17,6 +17,8 @@ struct SettingsView: View {
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.motionSuppressed) var motionSuppressed
 
+    var onReopenWelcome: () -> Void = {}
+
     /// 侧边栏选中分类.
     @State var category = SettingsCategory.general
     @State var diagnosticsPreview = ""
@@ -511,6 +513,16 @@ struct SettingsView: View {
                     }
                     .fluentButton()
                 }
+                FluentRow(
+                    WelcomeCopy.settingsRowTitle,
+                    sub: WelcomeCopy.settingsRowSubtitle,
+                    divided: true
+                ) {
+                    Button(WelcomeCopy.settingsReopenButton) {
+                        onReopenWelcome()
+                    }
+                    .fluentButton()
+                }
                 // 原「版本」行已迁入维护页「软件更新」卡 (07 §4.2 R3 方案 B), 避免同窗三处版本.
             }
             .sheet(isPresented: $showsExternalKeychainSourceManager) {
@@ -572,7 +584,8 @@ struct SettingsView: View {
     func presentKeychainAccessGuideIfNeeded() {
         guard !didEvaluateKeychainAccessGuide else { return }
         didEvaluateKeychainAccessGuide = true
-        guard !coordinator.keychainAccessConfigured else {
+        guard !coordinator.keychainAccessConfigured,
+              !coordinator.shouldPresentWelcomeOnStartup else {
             return
         }
         DispatchQueue.main.async {

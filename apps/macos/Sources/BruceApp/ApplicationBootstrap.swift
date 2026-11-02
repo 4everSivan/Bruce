@@ -196,6 +196,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let diagnostics: DiagnosticService
     private let updates: SoftwareUpdateService
     private let pricingSync: PricingCatalogSyncService
+    var onReopenWelcome: @MainActor () -> Void = {}
     private var window: NSWindow?
     private var isDockPresentationActive = false
 
@@ -240,8 +241,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
-        // 关闭配置窗口后恢复菜单栏-only, 去掉 Dock 图标.
-        setDockIconVisible(false)
+        // 关闭配置窗口后, 若欢迎向导窗口未处于可见态则恢复菜单栏-only, 去掉 Dock 图标.
+        let welcomeVisible = NSApp.windows.contains {
+            $0.identifier?.rawValue == "Bruce.WelcomeWindow" && $0.isVisible
+        }
+        if !welcomeVisible {
+            setDockIconVisible(false)
+        }
     }
 
     // MARK: - Private
@@ -301,7 +307,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let rootView = SettingsView()
+        let rootView = SettingsView(onReopenWelcome: { [weak self] in
+            self?.onReopenWelcome()
+        })
             .environmentObject(model)
             .environmentObject(coordinator)
             .environmentObject(diagnostics)

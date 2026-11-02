@@ -32,6 +32,7 @@
 | [07-软件更新.md](07-软件更新.md) | `SoftwareUpdate` | `DESIGN-UPDATE` | 应用内检查更新与自动升级：latest.json 清单契约、双端设置中心维护页更新卡（方案 B，demo 为规格基准）、macOS 自替换安装器与 Windows updater 插件 | 现行基线 | 2026-10-26 |
 | [08-跨端共享策略核心.md](08-跨端共享策略核心.md) | `SharedPolicyCore` | `DESIGN-POLICY-CORE` | 两端重复实现的额度门禁与回填收敛为一份 Rust 实现：第一期经 collector 子命令供 mac 调用，第二期 mac 链接 Rust 静态库 | 现行基线 | 2026-10-27 |
 | [09-模型价格表远端同步.md](09-模型价格表远端同步.md) | `PricingCatalogSync` | `DESIGN-PRICING-SYNC` | 模型基准价格表抽离至 `config/pricing-catalog.json`、支持从 GitHub 在线同步热更新及设置中心「维护」页管理卡片 | 现行基线 | 2026-10-31 |
+| [10-首次启动欢迎与引导向导.md](10-首次启动欢迎与引导向导.md) | `FirstLaunchWelcome` | `DESIGN-WELCOME` | 首次启动双栏沉浸式三步欢迎向导（方案 A · `780 × 540`）：本机 Agent 只读探测与双门禁合并一键激活、订阅额度快速导入、双同心环实时预览定制与自动展开看板 | 现行基线 | 2026-11-02 |
 
 只登记已生成且有真实来源的设计，同时在 [研发索引](../index.json) 登记其路由；空项目保持清单为空。状态如实区分草稿与已批准基线，不把示例登记成项目能力。
 

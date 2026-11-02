@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_REFRESH_INTERVAL_SECS: u64 = 1800;
+/// 首次启动欢迎向导契约版本 (T22, 对齐 mac `OnboardingConfiguration.currentWelcomeVersion`)。
+pub const CURRENT_WELCOME_VERSION: u32 = 1;
 /// 界面可见的 Provider 清单 (对齐 mac 设置页可见范围: SubscriptionProviderID.allCases
 /// 的 11 家中 Jev 官方未开放查额 API 双端界面隐藏, 其余 10 家含 Cline 全部可配)。
 pub const PROVIDERS: &[&str] = &[
@@ -107,6 +109,9 @@ pub struct AppSettings {
     /// 上次成功同步价格表 (RFC3339 本地时区; None = 从未)。
     #[serde(default)]
     pub pricing_last_sync_at: Option<String>,
+    /// 首次启动欢迎向导完成版本 (T22, 10-首次启动欢迎与引导向导 §4.2 R1; 0 表示尚未完成)。
+    #[serde(default)]
+    pub welcome_completed_version: u32,
 }
 
 fn default_auto_sync_pricing_catalog() -> bool {
@@ -164,8 +169,23 @@ impl Default for AppSettings {
             update_skipped_version: None,
             auto_sync_pricing_catalog: true,
             pricing_last_sync_at: None,
+            welcome_completed_version: 0,
         }
     }
+}
+
+/// 首次启动欢迎向导呈现判据 (T22, 10-首次启动欢迎与引导向导 §4.2 R1):
+/// - 已完成当前或更高版本向导 (`welcome_completed_version >= 1`) 时不弹出;
+/// - 存量老用户平滑升级 (`consent_version >= 1`) 时不重复弹出;
+/// - 其余首次安装或未完成 Step 1 启用时弹出。
+pub fn should_present_welcome(settings: &AppSettings) -> bool {
+    if settings.welcome_completed_version >= CURRENT_WELCOME_VERSION {
+        return false;
+    }
+    if settings.consent_version >= 1 {
+        return false;
+    }
+    true
 }
 
 /// 已添加的订阅 Provider 集合 (C082): 未迁移时按启用集合播种 (升级保留既有可见集合)。
@@ -310,6 +330,9 @@ pub fn save_settings(root: &Path, settings: &AppSettings) -> Result<(), String> 
 pub fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if settings.consent_version > 1 {
         return Err("不支持此授权版本".to_owned());
+    }
+    if settings.welcome_completed_version > CURRENT_WELCOME_VERSION {
+        return Err("不支持此欢迎向导版本".to_owned());
     }
     for values in [&settings.enabled_providers, &settings.provider_order] {
         let mut seen = BTreeSet::new();
@@ -642,5 +665,44 @@ mod tests {
             ..AppSettings::default()
         };
         assert!(!requires_collection(&previous, &next));
+    }
+
+    // MARK: - 首次启动欢迎向导 (T22, 10-首次启动欢迎与引导向导 §4.2 R1)
+
+    #[test]
+    fn welcome_presentation_matches_first_launch_and_upgrade_rules() {
+        // 全新安装 (consent_version = 0, welcome_completed_version = 0): 应弹出欢迎向导
+        let fresh = AppSettings::default();
+        assert_eq!(fresh.welcome_completed_version, 0);
+        assert!(should_present_welcome(&fresh));
+
+        // 存量老用户平滑升级 (consent_version = 1, welcome_completed_version = 0): 不重复弹出
+        let upgraded = AppSettings {
+            consent_version: 1,
+            welcome_completed_version: 0,
+            ..AppSettings::default()
+        };
+        assert!(!should_present_welcome(&upgraded));
+
+        // 已完成向导 (welcome_completed_version = 1): 不弹出, 且持久化可往返
+        let completed = AppSettings {
+            consent_version: 1,
+            welcome_completed_version: CURRENT_WELCOME_VERSION,
+            ..AppSettings::default()
+        };
+        assert!(!should_present_welcome(&completed));
+
+        let root = temp_root();
+        save_settings(&root, &completed).unwrap();
+        let loaded = load_settings(&root);
+        assert_eq!(loaded.welcome_completed_version, CURRENT_WELCOME_VERSION);
+        assert!(!should_present_welcome(&loaded));
+
+        // 超出当前版本的 welcome_completed_version 在校验侧被拒绝
+        assert!(validate_settings(&AppSettings {
+            welcome_completed_version: CURRENT_WELCOME_VERSION + 1,
+            ..AppSettings::default()
+        })
+        .is_err());
     }
 }

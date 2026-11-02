@@ -88,16 +88,20 @@
 
     </main>
   </div>
+  <!-- T22: 首次启动欢迎与引导向导全窗口遮罩 (方案 A · 780 × 540 双栏沉浸式向导) -->
+  <div id="welcome-wizard-overlay" class="welcome-backdrop hidden"></div>
   <script src="provider-brand.js"></script>
   <script src="agent-brand.js"></script>
   <script src="update-presentation.js"></script>
   <script src="pricing-presentation.js"></script>
+  <script src="welcome-presentation.js"></script>
   <!-- TD-011: 共享状态与分节脚本按依赖顺序加载, settings.js 仅保留引导与接线。 -->
   <script src="settings-state.js"></script>
   <script src="settings-subscription.js"></script>
   <script src="settings-workbench.js"></script>
   <script src="settings-pricing.js"></script>
   <script src="settings-maintenance.js"></script>
+  <script src="settings-welcome.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

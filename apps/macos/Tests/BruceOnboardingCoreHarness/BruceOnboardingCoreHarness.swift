@@ -182,6 +182,56 @@ struct BruceOnboardingCoreHarness {
         try providerAccountNamingDefaultsAndValidation()
         try providerAccountStoreRenameAndUpsertPreservation()
         try codexCustomNameOverridesAndBackwardCompatibility()
-        print("BruceOnboardingCore tests passed: 178")
+        try welcomeOnboardingConfigPersistenceAndUpgradeRules()
+        print("BruceOnboardingCore tests passed: 179")
+    }
+
+    static func welcomeOnboardingConfigPersistenceAndUpgradeRules() throws {
+        // 1. 全新安装: welcomeCompletedVersion == nil, 两个门禁均未完成 -> true
+        let fresh = OnboardingConfiguration()
+        guard fresh.welcomeCompletedVersion == nil,
+              fresh.shouldPresentWelcomeOnStartup() else {
+            throw NSError(domain: "WelcomeTest", code: 1)
+        }
+
+        // 2. 仅完成其一的半配置态 -> true
+        var onlyConsent = OnboardingConfiguration()
+        onlyConsent.consentVersion = 1
+        onlyConsent.keychainAccessConfigured = false
+        guard onlyConsent.shouldPresentWelcomeOnStartup() else {
+            throw NSError(domain: "WelcomeTest", code: 2)
+        }
+
+        var onlyKeychain = OnboardingConfiguration()
+        onlyKeychain.consentVersion = nil
+        onlyKeychain.keychainAccessConfigured = true
+        guard onlyKeychain.shouldPresentWelcomeOnStartup() else {
+            throw NSError(domain: "WelcomeTest", code: 3)
+        }
+
+        // 3. 存量老用户平滑升级 (welcomeCompletedVersion == nil, 但 consentVersion == 1 && keychainAccessConfigured == true) -> false
+        var upgraded = OnboardingConfiguration()
+        upgraded.consentVersion = 1
+        upgraded.keychainAccessConfigured = true
+        guard !upgraded.shouldPresentWelcomeOnStartup() else {
+            throw NSError(domain: "WelcomeTest", code: 4)
+        }
+
+        // 4. 完成向导 (welcomeCompletedVersion = 1) -> false, 且经 OnboardingConfigurationStore 往返持久化
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-welcome-cfg-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        var completed = OnboardingConfiguration()
+        completed.consentVersion = 1
+        completed.keychainAccessConfigured = true
+        completed.welcomeCompletedVersion = OnboardingConfiguration.currentWelcomeVersion
+        try store.save(completed)
+
+        guard let loaded = store.load(),
+              loaded.welcomeCompletedVersion == OnboardingConfiguration.currentWelcomeVersion,
+              !loaded.shouldPresentWelcomeOnStartup() else {
+            throw NSError(domain: "WelcomeTest", code: 5)
+        }
     }
 }

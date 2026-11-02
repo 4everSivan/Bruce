@@ -39,6 +39,8 @@
   const UP = window.BruceUpdatePresentation;
   // 模型价格表共享表现层 (T21): 文案与状态区语义和 mac 同源
   const PP = window.BrucePricingPresentation;
+  // 首次启动欢迎与引导向导共享表现层 (T22): 文案、步骤状态机与准入判据和 mac 同源
+  const WP = window.BruceWelcomePresentation;
   // mac 预设的自动采集周期 (OnboardingConfiguration.presetRefreshIntervalMinutes);
   // 其余 1–1440 分钟经设置页「自定义」输入 (C160)。
   const REFRESH_PRESETS = [3, 6];
@@ -272,6 +274,6 @@
   window.BruceSettingsSections = window.BruceSettingsSections || {};
   window.BruceSettingsCore = {
     state,
-    invoke, listen, providers, CATEGORIES, node, byId, UP, PP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory,
+    invoke, listen, providers, CATEGORIES, node, byId, UP, PP, WP, REFRESH_PRESETS, REFRESH_CUSTOM_RANGE, TIME_RANGES, SESSION_PROBES, svgEl, catmullRomToBezier, applyTheme, message, persist, input, row, card, segmented, button, actions, segmentRenderers, objectJSON, validateOverrides, orderedAll, move, switchCategory,
   };
 })();

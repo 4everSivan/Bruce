@@ -15,6 +15,7 @@
     "allow-codex-discovery-sources",
     "allow-codex-import-discovered",
     "allow-credential-allowlist",
+    "allow-expand-dashboard",
     "allow-export-billing",
     "allow-export-diagnostics",
     "allow-export-workbench-csv",

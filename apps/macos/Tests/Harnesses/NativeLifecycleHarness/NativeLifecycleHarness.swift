@@ -79,7 +79,8 @@ struct NativeLifecycleHarness {
         try panelSizingKeepsTopAnchoredWithinScreen()
         try swapHeightNeverClampsUnmeasuredContent()
         try heatmapBreathingKeepsLegacyCurveOnLayers()
-        print("Native lifecycle tests passed: 17")
+        try welcomeOnboardingPresentationMatchesParityFixture()
+        print("Native lifecycle tests passed: 18")
     }
 
     /// C179: 热力图呼吸改由每格 CALayer 上的 Core Animation 驱动, 动画参数须与旧逐格
@@ -789,5 +790,89 @@ struct NativeLifecycleHarness {
             "services": .array([activeService, failedService]),
             "totalCostUsd": .double(1.28),
         ])
+    }
+
+    // MARK: - T22 欢迎向导双端对拍
+
+    private struct WelcomeParityFixture: Decodable {
+        struct PresentCase: Decodable {
+            let name: String
+            let welcomeCompletedVersion: Int?
+            let consentConfirmed: Bool
+            let keychainAccessConfigured: Bool
+            let expected: Bool
+        }
+        struct ReadyCase: Decodable {
+            let readyCount: Int
+            let expected: String
+        }
+        struct MetricsCase: Decodable {
+            let isNothingTheme: Bool
+            let iconOnly: Bool
+            let expected: String
+        }
+        let copy: [String: String]
+        let shouldPresentWelcomeCases: [PresentCase]
+        let readySourcesSummaryCases: [ReadyCase]
+        let menuBarPreviewMetricsCases: [MetricsCase]
+    }
+
+    private static func welcomeOnboardingPresentationMatchesParityFixture() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // NativeLifecycleHarness.swift -> NativeLifecycleHarness/
+            .deletingLastPathComponent() // -> Harnesses/
+            .deletingLastPathComponent() // -> Tests/
+            .deletingLastPathComponent() // -> macos/
+            .deletingLastPathComponent() // -> apps/
+            .deletingLastPathComponent() // -> repoRoot
+        let fixtureURL = repoRoot.appendingPathComponent("tests/fixtures/welcome-onboarding-parity/cases.json")
+        let data = try Data(contentsOf: fixtureURL)
+        let fixture = try JSONDecoder().decode(WelcomeParityFixture.self, from: data)
+
+        try expect(fixture.copy["windowTitle"] == WelcomeCopy.windowTitle, "windowTitle mismatch")
+        try expect(fixture.copy["privacyTitle"] == WelcomeCopy.privacyTitle, "privacyTitle mismatch")
+        try expect(fixture.copy["step1NavTitle"] == WelcomeCopy.step1NavTitle, "step1NavTitle mismatch")
+        try expect(fixture.copy["step2NavTitle"] == WelcomeCopy.step2NavTitle, "step2NavTitle mismatch")
+        try expect(fixture.copy["step3NavTitle"] == WelcomeCopy.step3NavTitle, "step3NavTitle mismatch")
+        try expect(fixture.copy["step1PrimaryButton"] == WelcomeCopy.step1PrimaryButton, "step1PrimaryButton mismatch")
+        try expect(fixture.copy["step3FinishButton"] == WelcomeCopy.step3FinishButton, "step3FinishButton mismatch")
+        try expect(fixture.copy["settingsRowTitle"] == WelcomeCopy.settingsRowTitle, "settingsRowTitle mismatch")
+        try expect(fixture.copy["settingsRowSubtitle"] == WelcomeCopy.settingsRowSubtitle, "settingsRowSubtitle mismatch")
+        try expect(fixture.copy["settingsReopenButton"] == WelcomeCopy.settingsReopenButton, "settingsReopenButton mismatch")
+
+        for item in fixture.shouldPresentWelcomeCases {
+            let actual = WelcomeOnboardingPresentation.shouldPresentWelcome(
+                welcomeCompletedVersion: item.welcomeCompletedVersion,
+                consentConfirmed: item.consentConfirmed,
+                keychainAccessConfigured: item.keychainAccessConfigured
+            )
+            try expect(actual == item.expected, "shouldPresentWelcome mismatch for \(item.name)")
+
+            var config = OnboardingConfiguration()
+            config.welcomeCompletedVersion = item.welcomeCompletedVersion
+            config.consentVersion = item.consentConfirmed ? 1 : nil
+            config.keychainAccessConfigured = item.keychainAccessConfigured
+            try expect(
+                config.shouldPresentWelcomeOnStartup() == item.expected,
+                "OnboardingConfiguration.shouldPresentWelcomeOnStartup mismatch for \(item.name)"
+            )
+        }
+
+        for item in fixture.readySourcesSummaryCases {
+            try expect(
+                WelcomeOnboardingPresentation.readySourcesSummary(readyCount: item.readyCount) == item.expected,
+                "readySourcesSummary mismatch for \(item.readyCount)"
+            )
+        }
+
+        for item in fixture.menuBarPreviewMetricsCases {
+            try expect(
+                WelcomeOnboardingPresentation.menuBarPreviewMetricsText(
+                    isNothingTheme: item.isNothingTheme,
+                    iconOnly: item.iconOnly
+                ) == item.expected,
+                "menuBarPreviewMetricsText mismatch"
+            )
+        }
     }
 }

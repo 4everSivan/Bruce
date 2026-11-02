@@ -145,10 +145,14 @@ public enum MotionPreference: String, Codable, Equatable, Sendable, CaseIterable
 /// 非敏感配置. 持久化到 Application Support/Bruce/config/onboarding-v1.json.
 public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 2
+    public static let currentWelcomeVersion = 1
 
     public let schemaVersion: Int
     public var selectedModules: Set<String>
     public var consentVersion: Int?
+    /// 首次启动欢迎向导完成版本 (T22, 10-首次启动欢迎与引导向导 §4.2 R1).
+    /// nil 表示未记录; 旧版本已同时完成 consentVersion 与 keychainAccessConfigured 的存量用户平滑免打扰.
+    public var welcomeCompletedVersion: Int?
     /// 菜单栏指标 rawValue 有序列表. nil 使用应用默认值.
     public var menuBarMetrics: [String]?
     /// 菜单栏是否仅显示图标 (隐藏文字指标). nil/false 表示显示指标.
@@ -240,6 +244,37 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         dashboardHotkey
     }
 
+    /// 判定当前配置在启动时是否应自动弹出首次启动欢迎向导 (T22, 10-首次启动欢迎与引导向导 §4.2 R1).
+    /// - 已记录 `welcomeCompletedVersion >= currentWelcomeVersion` 时返回 false;
+    /// - 存量老用户平滑免打扰: `welcomeCompletedVersion == nil` 但已同时满足
+    ///   `consentVersion == requiredConsentVersion` 与 `keychainAccessConfigured == true` 时返回 false;
+    /// - 其余情况 (全新首次启动或尚未完成基础授权) 返回 true.
+    public func shouldPresentWelcomeOnStartup(
+        requiredConsentVersion: Int = 1
+    ) -> Bool {
+        if let completed = welcomeCompletedVersion,
+           completed >= Self.currentWelcomeVersion {
+            return false
+        }
+        if welcomeCompletedVersion == nil,
+           consentVersion == requiredConsentVersion,
+           keychainAccessConfigured {
+            return false
+        }
+        return true
+    }
+
+    /// 静态入口: 当配置文件尚不存在 (`configuration == nil`) 时为全新安装, 返回 true.
+    public static func shouldPresentWelcomeOnStartup(
+        configuration: OnboardingConfiguration?,
+        requiredConsentVersion: Int = 1
+    ) -> Bool {
+        guard let configuration else { return true }
+        return configuration.shouldPresentWelcomeOnStartup(
+            requiredConsentVersion: requiredConsentVersion
+        )
+    }
+
     /// 按当前进程能力解析完整主题 (界面风格 + 模糊 + 是否用玻璃 API).
     public func resolvedTheme(
         isLiquidGlassSupported: Bool = LiquidGlassCapability.isSupported
@@ -258,6 +293,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
         selectedModules: Set<String> = [],
         consentVersion: Int? = nil,
+        welcomeCompletedVersion: Int? = nil,
         menuBarMetrics: [String]? = nil,
         menuBarIconOnly: Bool? = nil,
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
@@ -277,6 +313,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
         self.consentVersion = consentVersion
+        self.welcomeCompletedVersion = welcomeCompletedVersion
         self.menuBarMetrics = menuBarMetrics
         self.menuBarIconOnly = menuBarIconOnly
         self.subscriptionProviders = subscriptionProviders
@@ -301,6 +338,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         selectedModules = try container.decodeIfPresent(Set<String>.self, forKey: .selectedModules) ?? []
         consentVersion = try container.decodeIfPresent(Int.self, forKey: .consentVersion)
+        welcomeCompletedVersion = try container.decodeIfPresent(Int.self, forKey: .welcomeCompletedVersion)
         menuBarMetrics = try container.decodeIfPresent([String].self, forKey: .menuBarMetrics)
         menuBarIconOnly = try container.decodeIfPresent(Bool.self, forKey: .menuBarIconOnly)
         subscriptionProviders = try container.decodeIfPresent(
@@ -369,6 +407,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case schemaVersion
         case selectedModules
         case consentVersion
+        case welcomeCompletedVersion
         case menuBarMetrics
         case menuBarIconOnly
         case subscriptionProviders
@@ -391,6 +430,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(selectedModules, forKey: .selectedModules)
         try container.encodeIfPresent(consentVersion, forKey: .consentVersion)
+        try container.encodeIfPresent(welcomeCompletedVersion, forKey: .welcomeCompletedVersion)
         try container.encodeIfPresent(menuBarMetrics, forKey: .menuBarMetrics)
         try container.encodeIfPresent(menuBarIconOnly, forKey: .menuBarIconOnly)
         try container.encode(subscriptionProviders, forKey: .subscriptionProviders)
