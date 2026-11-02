@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C181",
+  "title": "菜单栏 Nothing 主题字体微调：字号由 11pt 放大至 12.5pt 消除视觉偏小",
+  "version": "0.16.1",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "fix/C181-menubar-nothing-font-size",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarStatusItemController / SettingsView",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+
+  "why": "用户实测反馈在 Nothing 极客点阵主题下，菜单栏文本字体（原 11pt SF Mono Semibold）在实际 22pt 菜单栏高度中视觉显得明显过小、矮窄，辨识度不足。需要将 Nothing 主题菜单栏文本字号放大至 12.5pt，平衡 SF Mono 等宽字体字高与视觉面积，与经典主题 12pt 达成平衡且上下呼吸感舒适。",
+
+  "precheck": {
+    "description": "检查当前 MenuBarStatusItemController 与 SettingsView 中 Nothing 主题字号是否仍为 11pt",
+    "command": "rg 'monospacedSystemFont\\(ofSize: 11' apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+    "expected": "匹配到 11pt 字号定义",
+    "is_completed": false,
+    "evidence": "匹配到第 356 行与第 528 行均为 NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C181-menubar-nothing-font-size || git checkout fix/C181-menubar-nothing-font-size"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C181 --to closed --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "菜单栏状态项渲染 (MenuBarStatusItemController)",
+      "before": "Nothing 主题下状态项测量与绘制使用 NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)",
+      "after": "Nothing 主题下状态项测量与绘制升级为 NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)，自动触发 4pt 步进防抖与 capHeight 光学垂直居中",
+      "impact": "Nothing 主题下菜单栏文本更饱满清晰，消除偏小痛点"
+    },
+    {
+      "scope": "设置中心实时预览条 (SettingsView)",
+      "before": "menuBarPreviewText 在 isNothingTheme 时为 .system(size: 11, weight: .semibold, design: .monospaced)",
+      "after": "menuBarPreviewText 在 isNothingTheme 时升级为 .system(size: 12.5, weight: .semibold, design: .monospaced)",
+      "impact": "设置面板中菜单栏预览条与真实菜单栏严格保持 1:1 所见即所得"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "Nothing 主题自动切换为 T-4 极客排版规范（11pt SF Mono Semibold + 弱化斜杠分隔符...）",
+      "after": "Nothing 主题自动切换为 T-4 极客排版规范（12.5pt SF Mono Semibold + 弱化斜杠分隔符...）"
+    }
+  },
+
+  "verification": {
+    "result": true,
+    "run_id": "local-20261102-02",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试与本地全量门禁",
+        "true_if": "verify-local.sh 全量测试全绿通过，包含 Rust 全部单元/集成测试、41 项 fixture 扫描、前端无头断言、Swift 构建以及全部 Native Harness 测试，退出码 0",
+        "false_if": "测试失败或退出码非 0",
+        "evidence": "verify-local.sh 全量测试全绿通过，包含 Rust 单元测试、41 项 fixture 扫描、前端无头断言、18 项 Native Harness 及 Panel 双端对拍测试，退出码 0",
+        "result": true
+      },
+      {
+        "item": "Nothing 菜单栏字号升级与排版自适应",
+        "true_if": "MenuBarStatusItemController 与 SettingsView 统一升级为 12.5pt SF Mono Semibold，动态测宽与 capHeight 光学垂直居中正常运作，文本饱满清晰",
+        "false_if": "字号未更新或文本发生截断、贴边",
+        "evidence": "MenuBarStatusItemController 将 Nothing 主题测宽与绘制字号统一提升至 12.5pt (NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold))，SettingsView 同步升级为 12.5pt，Swift 编译及全量门禁通过",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

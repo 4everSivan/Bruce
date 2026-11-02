@@ -353,7 +353,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             return Self.iconOnlyLength
         }
         let font: NSFont = content.isNothingTheme
-            ? NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+            ? NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
             : NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -371,7 +371,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// - 绿 (>=30%) / 琥珀橙 (15%~30%) / 霓虹红 (<15% 或异常) 三色阶动力学
     /// - 刷新态: 外环顺时针、内环逆时针双向差速自旋
     /// - 排版联动: 经典/液态玻璃为 T-0 (12pt monospacedDigit + 双空格),
-    ///   Nothing 主题自动切换为 T-4 (11pt SF Mono Semibold + 弱化斜杠分隔)
+    ///   Nothing 主题自动切换为 T-4 (12.5pt SF Mono Semibold + 弱化斜杠分隔)
     private func makeStatusItemImage(
         for content: MenuBarStatusItemContent,
         width: CGFloat
@@ -525,7 +525,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             // 6. 指标文本绘制 (非仅图标模式时)
             if !content.metricText.isEmpty {
                 let font: NSFont = content.isNothingTheme
-                    ? NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+                    ? NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
                     : NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
 
                 let attrString = NSMutableAttributedString(

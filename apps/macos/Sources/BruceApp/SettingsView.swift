@@ -790,7 +790,7 @@ struct SettingsView: View {
                         if !coordinator.menuBarIconOnly {
                             if isNothingTheme {
                                 Text(menuBarPreviewText)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
                             } else {
                                 Text(menuBarPreviewText)
                                     .font(.system(size: 12, weight: .regular, design: .default).monospacedDigit())
