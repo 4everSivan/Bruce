@@ -1840,7 +1840,7 @@
     "C180": {
       "title": "菜单栏图标与字体升级：I-2 双同心子母环 + Nothing 主题自动切 T-4 极客等宽",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C180-menubar-dual-ring-typo",
       "topic": "MenuBarIndicator",
       "version": "0.16.1",

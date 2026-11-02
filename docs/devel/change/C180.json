@@ -4,7 +4,7 @@
   "title": "菜单栏图标与字体升级：I-2 双同心子母环 + Nothing 主题自动切 T-4 极客等宽",
   "version": "0.16.1",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "feat/C180-menubar-dual-ring-typo",
   "is_hotfix": false,
   "target": {
@@ -100,8 +100,8 @@
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
-    "commit": "",
+    "changelog": true,
+    "commit": "dc4c0ca",
     "tag": ""
   },
   "gate": {
@@ -109,8 +109,8 @@
     "version": "1.6.0",
     "ran_at": "2026-11-02",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified",
+    "from_status": "closed",
+    "target_status": "closed",
     "signed_quote": "合并到主分支，重新打包部署让我测试",
     "signed_rejection_count": 0
   }
