@@ -50,3 +50,7 @@ target/
 
 # macOS 杂项 (用户本机文件, 不入库)
 *.textClipping
+
+# test-anything managed zones
+/_test_anything_backup/
+/tests/tmp/

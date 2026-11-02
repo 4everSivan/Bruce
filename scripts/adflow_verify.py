@@ -34,7 +34,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 # ---- 常量 ----
 TOPIC_RE = re.compile(r"<!--\s*@topic:\s*([A-Za-z0-9_]+)\s*-->")
@@ -46,7 +46,7 @@ RUNID_RE = re.compile(r"^(\d+|local-[\d\-]+)$")              # 纯数字或 loca
 # Cxxx / Txx；用 ASCII 边界而非 \b，中文紧邻卡号（如“修复C001问题”）也能识别。
 CARD_ID_RE = re.compile(r"(?<![A-Za-z0-9_])([CT]\d{2,3})(?![A-Za-z0-9_])")
 SRC_PATH_RE = re.compile(r"(?:^|/)(src|app|lib|cmd|internal)/[\w/.\-]+\.\w+")
-# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.5.0 内容) ──────────────
+# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.6.0 内容) ──────────────
 # 上游: CANNED_QUOTES 含中文确认词 (已确认/确认/已通过/同意), 且 user_quote 长度门槛为 6。
 # 本项目维护者的确认天然简短 —— 会话存档实测原话为「确认」「确认，推送」「签收」,
 # 逐字记录也一律被误报为套话, 且该门槛无法在不伪造原话的前提下满足。
@@ -711,6 +711,16 @@ def check_advisories(ctx, cards):
                              "验收项为空或未全部为 true；结构门禁不能替代业务验收")
         if "/devel/task/" in rel:
             task_cards[cid] = (rel, card)
+            if card.get("status") in TERMINAL:
+                # T 卡同样遵守“人工核验代签”；旧卡没有代签字段，只旁路提示，不追溯提高门槛。
+                acc = card.get("acceptance") or {}
+                if not str(acc.get("user_quote") or "").strip() or not str(acc.get("signoff") or "").strip():
+                    ctx.advisory("TASK_SIGNOFF_MISSING", cid, rel,
+                                 "completed 任务卡缺少 acceptance.user_quote 或 signoff"
+                                 "（须在会话中取得人类明确确认后代签）")
+                if any(t.get("done") is not True for t in card.get("tasks") or []):
+                    ctx.advisory("TASKS_NOT_ALL_DONE", cid, rel,
+                                 "completed 任务卡仍有 tasks[].done 不为 true 的能力单元")
             # 开工条件：前置任务均已 completed；缺失前置已由 DEP_DANGLING 硬阻断。
             if card.get("status") == "in_progress":
                 for dep in card.get("depends_on", []) or []:
@@ -719,6 +729,19 @@ def check_advisories(ctx, cards):
                         ctx.advisory("DEP_NOT_READY", cid, rel,
                                      "前置任务 %s 状态为 %r，本卡已 in_progress（应先完成前置再开工）"
                                      % (dep, dc.get("status")))
+        else:
+            # 驳回作废此前的确认：驳回卡不应保留原话，返工后的终态也不能沿用 gate 记录过的驳回前原话。
+            quote = str((card.get("verification") or {}).get("user_quote") or "").strip()
+            gate = card.get("gate") or {}
+            signed = gate.get("signed_rejection_count")
+            if quote and card.get("status") == "rejected":
+                ctx.advisory("SIGNOFF_STALE", cid, rel,
+                             "rejected 卡仍保留驳回前的 user_quote；应清空 user_quote/signoff，"
+                             "返工后重新取得人工确认")
+            elif (quote and card.get("status") in TERMINAL and isinstance(signed, int)
+                  and len(card.get("rejections") or []) > signed and quote == gate.get("signed_quote")):
+                ctx.advisory("SIGNOFF_STALE", cid, rel,
+                             "user_quote 仍是驳回前已记录的确认原话；返工后须取得新的人工确认")
 
     visited, active, path = set(), set(), []
 
@@ -840,12 +863,22 @@ def record_gates(ctx, cards, selected=None):
         p = ctx.root / rel
         # 重新读取实际卡片，候选状态只用于校验，不能随 gate 回写落盘。
         actual = json.loads(p.read_text(encoding="utf-8"))
+        prev = actual.get("gate") if isinstance(actual.get("gate"), dict) else {}
         gate = {"tool": "adflow-verify", "version": VERSION,
                 "ran_at": date.today().isoformat(), "exit_code": code}
         if cid == ctx.proposed_id:
             # 同时记下预检时的真实状态，回执据此显示 from → to，不靠推断。
             gate["from_status"] = actual.get("status")
             gate["target_status"] = card["status"]
+        # 代签指纹：记下本次依据的确认原话与当时的驳回次数，供驳回后识别沿用旧原话。
+        # 已判定过期时保留旧指纹，SIGNOFF_STALE 持续可见，直到写入新的确认原话。
+        signature = {k: prev[k] for k in ("signed_quote", "signed_rejection_count") if k in prev}
+        quote = str((actual.get("verification") or {}).get("user_quote") or "").strip()
+        stale = any(f["code"] == "SIGNOFF_STALE" and f["card"] == cid for f in ctx.findings)
+        if "/devel/change/" in rel and quote and not stale:
+            signature = {"signed_quote": quote,
+                         "signed_rejection_count": len(actual.get("rejections") or [])}
+        gate.update(signature)
         actual["gate"] = gate
         p.write_text(json.dumps(actual, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -916,17 +949,26 @@ def render_receipt(ctx, card, cid, rel, track, code):
     gate_bits += ["run_id %s" % cell(proof.get("run_id")), issue_summary(ctx, cid)]
     lines.append("- 门禁：" + " · ".join(gate_bits))
 
+    # 收口前尚未到期的同步项显示“待…”，收口后仍缺失才显示为缺口。
+    done = status in CLOSED
     commit = str(sync.get("commit") or "")
     if re.fullmatch(r"[0-9a-f]{8,40}", commit):
         commit = commit[:7]
-    sync_bits = ["commit %s" % cell(commit)]
+    sync_bits = ["commit %s" % (cell(commit) if commit else "缺失" if done else "待回填")]
+    quote = str(proof.get("user_quote") or "").strip()
+    if status == "rejected":
+        human = "已驳回，返工后重新请求确认"
+    elif quote:
+        human = "「%s」— %s" % (cell(quote), cell(proof.get("signoff")))
+    else:
+        human = "待人工确认"
     if track == "change":
-        sync_bits.append("CHANGELOG %s" % ("✓" if mentions(ctx.read_text("CHANGELOG.md"), cid) else "未登记"))
+        logged = mentions(ctx.read_text("CHANGELOG.md"), cid)
+        sync_bits.append("CHANGELOG %s" % ("✓" if logged else "未登记" if done else "待登记"))
         design = card.get("design") if isinstance(card.get("design"), dict) else {}
         sync_bits.append("设计回写 %s" % ("不涉及" if design.get("modified") is False else
-                                        "✓" if sync.get("design_pinned") is True else "未回写"))
-        quote = str(proof.get("user_quote") or "").strip()
-        human = "「%s」— %s" % (cell(quote), cell(proof.get("signoff"))) if quote else "待人工确认"
+                                        "✓" if sync.get("design_pinned") is True else
+                                        "未回写" if done else "待回写"))
         changes = [c.get("after") for c in card.get("changes") or [] if isinstance(c, dict) and c.get("after")]
         delta = "；".join(cell(a) for a in changes) or "（卡片未填写 changes）"
     else:
@@ -936,7 +978,6 @@ def render_receipt(ctx, card, cid, rel, track, code):
             state = (dc or {}).get("status")
             deps.append("%s %s" % (dep, "✓" if state == "completed" else cell(state or "缺失")))
         sync_bits.append("依赖 %s" % (", ".join(deps) or "无"))
-        human = "按项目要求另行验收（T 卡无代签字段）"
         tasks = [t for t in card.get("tasks") or [] if isinstance(t, dict)]
         delta = "；".join("%s %s %s" % (cell(t.get("id")), cell(t.get("title")), mark(t.get("done")))
                          for t in tasks) or "（卡片未填写 tasks）"

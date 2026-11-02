@@ -1,6 +1,6 @@
 # 阶段任务卡池 (task/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-10-20 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-02 ｜ **status**: active
 
 ## 1. 简介
 
@@ -30,7 +30,7 @@ T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends
 | `target` / `goal` | 具体设计正文、匹配主题及交付边界 | 按实际交付校正描述 |
 | `tasks[]` / `depends_on` | 能力单元、初始 `done: false` 及前置任务 | 如实记录各项完成情况 |
 | `precheck` / `callback` | 实际适用的完成性预检与前后回调 | 保存结果，按授权执行回调 |
-| `acceptance` | 预定义各项 `true_if` / `false_if`，结果先留 `null` | 真实 `evidence`、`run_id` 及验收结果 |
+| `acceptance` | 预定义各项 `true_if` / `false_if`，结果先留 `null` | 真实 `evidence`、`run_id`、验收结果、人工原话及 `signoff` |
 | `sync` / `gate` | 保留模板默认值 | 真实 `sync.commit` 及工具记录的门禁结果 |
 
 `target.design_doc` 使用项目根目录相对路径，指向含匹配 `<!-- @topic: TopicName -->` 的具体设计正文，不能指向 README。`tasks[].capability` 描述能力、数据契约或接口，不用源码文件清单代替交付目标。
@@ -39,7 +39,7 @@ T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends
 |---|---|---|
 | `pending` | 等待开工 | 目标、设计与验收定义已登记 |
 | `in_progress` | 正在交付 | 所有前置任务已 `completed`，执行范围已明确 |
-| `completed` | 能力验收及完成预检通过 | 业务验收满足、提交可追溯，卡片与索引同步 |
+| `completed` | 能力验收、人工确认及完成预检通过 | 业务验收满足、人工已确认、提交可追溯，卡片与索引同步 |
 
 由总账 `file` 定位依赖卡，核对文件、卡号和状态；归档依赖同样可用。归档卡只读解析身份与状态，不按当前规则重新验收或回写 `gate`。依赖缺失、未完成或成环时应先澄清，不假定任务已就绪。
 
@@ -48,7 +48,7 @@ T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends
 1. **设计与建卡**：确认对应设计，按阶段或里程碑拆解 T 卡，在总账登记。来自 todo 的事项在建卡登记后同步删除原行，不因仅完成设计就丢失执行事项。
 2. **选择就绪任务**：从 `pending` 卡中筛选所有依赖均已 `completed` 的任务，同步卡片与索引为 `in_progress`；不跨过未完成依赖。
 3. **预检与实现**：运行授权范围内的 `precheck.command`。已实现时记录证据并跳过重复编码，仍做验收；否则执行适用回调、能力实现与对应测试。
-4. **逐项验收**：核对 `tasks[].done` 与 `acceptance.checks`，保存真实命令、输出和 `run_id`。业务验收项须全部满足，完成项目要求的人工验收；工具的 `ADVISORY` 不代替业务判断，也不新增硬门槛。
+4. **逐项验收与确认**：核对 `tasks[].done` 与 `acceptance.checks`，保存真实命令、输出和 `run_id`。业务验收项须全部满足后运行 `scripts/adflow-verify --card <卡号> --receipt`，以节点回执汇报并请求确认；人工明确确认后摘录真实 `acceptance.user_quote` 与 `signoff`，不得用测试输出代替确认。工具的 `ADVISORY`（如 `TASK_SIGNOFF_MISSING`、`TASKS_NOT_ALL_DONE`）不代替业务判断，也不新增硬门槛。
 5. **完成预检**：回填真实 `sync.commit`，核对其为当前 HEAD 祖先；保持当前状态，运行以下命令。Exit 0 后同步卡片与索引为 `completed`，再以节点回执复核。
 
 以下以 `T01` 为例，执行时使用真实卡号；命令均在项目根目录运行：
@@ -63,4 +63,4 @@ scripts/adflow-verify --card T01 --to completed --record
 scripts/adflow-verify --card T01 --receipt
 ```
 
-6. **阶段发布**：本阶段任务完成后，按项目要求完成集成、构建和发布验收，更新根目录 CHANGELOG；运行 `scripts/adflow-verify --release <version>` 取得 Exit 0 后，在发布已获授权时按 [归档操作](../../archive/README.md) 封箱本批次卡片。任务 `completed` 不自动触发发版、部署或推送。
+6. **阶段发布**：本阶段任务完成后，按项目要求完成集成、构建和发布验收；运行 `scripts/adflow-verify --release <version>` 取得 Exit 0 后，在发布已获授权时按 [归档操作](../../archive/README.md) 封箱本批次卡片、定稿根目录 CHANGELOG，复核后提交并在该提交上打 Tag。任务 `completed` 不自动触发发版、部署或推送。

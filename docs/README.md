@@ -1,6 +1,6 @@
 # 文档中心 (docs/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-10-22 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-02 ｜ **status**: active
 
 ## 1. 简介
 
@@ -30,12 +30,12 @@
 
 代码编写规范及其语言片段使用英文，`workflow.yaml` 的执行说明使用英文；README、AGENTS、设计、指南、待办及卡片说明沿用中文正文。JSON 字段键、状态、命令与文档元数据保持原有英文形式；自定义规则、历史记录和人工原话原样保留。
 
-README、设计正文与指南采用小写英文元数据，日期填写真实的 `2026-10-22`：
+README、设计正文与指南采用小写英文元数据，日期填写真实的 `YYYY-MM-DD`：
 
 ```markdown
 # 文档标题
 
-> **created**: 2026-10-22 ｜ **last-change**: 2026-10-22 ｜ **status**: draft
+> **created**: YYYY-MM-DD ｜ **last-change**: YYYY-MM-DD ｜ **status**: draft
 ```
 
 `created` 保持初次创建日期，实质更新时修改 `last-change`。`status` 使用单一值，如 `draft`、`active`、`baseline`、`deprecated`；正文说明批准和适用范围。待办文件沿用其简短头部。
@@ -90,7 +90,7 @@ C/T 转入收口状态时，按对应卡池 README 运行 `--card ... --to ... -
 
 ## 附：项目既有约定（升级保留）
 
-> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.5.0。
+> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.6.0。
 
 ### 目录结构与职责
 
