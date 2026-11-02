@@ -4,7 +4,7 @@
   "title": "Agent / 模型品牌徽章补漏：品牌表双端对拍（Windows 补登记 Cline）、Windows 位图加载失败降级、AgentBrandBadge 编译告警（修正 C161）",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C166-agent-badge-followups",
   "is_hotfix": false,
   "target": {
@@ -64,10 +64,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261030-07",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -80,8 +80,8 @@
         "item": "行为实测",
         "true_if": "Windows 设置页 Cline 模型行 / chip 显示 Cline 徽章；人为移走 agent-icons 位图后 Codex 显示矢量、CodeBuddy 显示字标",
         "false_if": "Cline 仍为色点或位图失败后徽章空白",
-        "evidence": "未在 Windows 真机执行（无本机 Windows 部署环境）。Cline 徽章与位图失败降级由 DOM 用例覆盖；WebView2 中真实 <img> 加载失败事件与 Cline 模型实际出现在用量数据中的显示需真机确认。mac 侧仅改导入，徽章渲染路径未变。",
-        "result": null
+        "evidence": "未在 Windows 真机执行（无本机 Windows 部署环境）。Cline 徽章与位图失败降级由 DOM 用例覆盖；WebView2 中真实 <img> 加载失败事件与 Cline 模型实际出现在用量数据中的显示需真机确认。mac 侧仅改导入，徽章渲染路径未变。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -96,13 +96,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "4d2c049",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

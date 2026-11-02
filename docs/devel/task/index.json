@@ -352,7 +352,7 @@
       "topic": "PricingCatalogSync",
       "milestone": "M10-模型价格表远端同步",
       "depends_on": [],
-      "file": "docs/devel/task/T19.json",
+      "file": "docs/archive/0.16.0/task/T19.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T19-pricing-catalog-extract-contract"
     },
     "T20": {
@@ -364,7 +364,7 @@
       "depends_on": [
         "T19"
       ],
-      "file": "docs/devel/task/T20.json",
+      "file": "docs/archive/0.16.0/task/T20.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T20-macos-pricing-catalog-sync"
     },
     "T21": {
@@ -376,7 +376,7 @@
       "depends_on": [
         "T19"
       ],
-      "file": "docs/devel/task/T21.json",
+      "file": "docs/archive/0.16.0/task/T21.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T21-windows-pricing-catalog-sync"
     }
   }

@@ -3,7 +3,7 @@
 所有对本项目的显著变更均记录于此文件。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.16.0] - 2026-11-02
 
 ### Changed
 - **采集请求退役 `localScanSeconds` (C177)**：该超时字段只被校验、从未生效（本机扫描一直只受整轮 `moduleSeconds` 约束），mac 与 Windows 不再发送；Collector 仍兼容接受旧请求中的该字段。设计文档登记两端各自的超时预算（mac 90 / 10 s，Windows 150 / 30 s）。

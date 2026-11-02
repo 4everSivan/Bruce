@@ -4,7 +4,7 @@
   "title": "mac 自定义刷新间隔焦点离开即提交：此前只认回车，点别处后输入值未保存却仍显示（修正 C160）",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C167-refresh-interval-blur-commit",
   "is_hotfix": false,
   "target": {
@@ -56,10 +56,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261030-08",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -72,8 +72,8 @@
         "item": "行为实测",
         "true_if": "mac 设置页：输入 10 后点击别处，只读显示「10 分钟」且重开设置仍为 10；输入 0 后点击别处，回到原值只读显示；选择 3 分钟预设时不写入自定义值",
         "false_if": "点别处后值未保存、非法值被写入，或选预设后出现两次写盘 / 值错乱",
-        "evidence": "未在真机执行（本轮未部署 /Applications/Bruce.app）。SwiftUI 焦点变化（点击别处、关闭设置窗口、切到其他 App）是否都触发 customFocused = false，以及选预设时输入框先收起的顺序，只能真机确认。",
-        "result": null
+        "evidence": "未在真机执行（本轮未部署 /Applications/Bruce.app）。SwiftUI 焦点变化（点击别处、关闭设置窗口、切到其他 App）是否都触发 customFocused = false，以及选预设时输入框先收起的顺序，只能真机确认。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -88,13 +88,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "0ba408d",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

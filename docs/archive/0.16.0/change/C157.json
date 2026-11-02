@@ -4,19 +4,16 @@
   "title": "订阅卡空状态（未配置/无数据）与 Tab 回退修正（mac + Windows）",
   "version": "0.16.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "feat/C157-subscription-empty-state",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/macos + apps/win",
     "component": "仪表盘订阅卡与设置入口",
     "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "design_topic": "MenuBarIndicator"
   },
-
   "why": "未配置任何订阅时，mac `makeSubscription` 在 sections 为空时直接返回 nil，栈模式订阅卡整张消失；Tab 模式页签仍存在，选中订阅时 renderSingleTabCard 返回 nil，fallbackTabCard 把 Token 用量卡顶上，出现「点订阅却显示用量」的错卡。Windows 侧同样以 `subscription ? subscriptionCard(subscription) : null` 返回 null，Tab 回退循环会选到别的卡。用户既看不到订阅能力的存在，也没有入口补配置；且订阅卡在配置变化后无提示地消失/出现。",
-
   "precheck": {
     "description": "确认订阅卡在无 section 时返回 nil、Tab 模式回退到用量卡、Windows 工厂返回 null",
     "command": "rg -n \"guard !sections.isEmpty|fallbackTabCard|subscription: \\(\\) =>\" apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift apps/macos/Sources/BruceApp/MenuBarViews.swift apps/win/src/app.js",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-29 在基线 391d76a 干净检出上执行：SubscriptionMapping.swift:162 `guard !sections.isEmpty else {` 返回 nil；MenuBarViews.swift:570 订阅页签 subscription 为 nil 时调用 fallbackTabCard(panel)（:591 定义，优先返回 Token 用量卡）；Windows app.js:1293 `subscription: () => subscription ? subscriptionCard(subscription) : null`，Tab 回退循环取第一张非空卡。缺陷成立、未被前序提交修复。原命令的 `factories.subscription` 模式在源码中无匹配，已改为 `subscription: \\(\\) =>`。"
   },
-
   "callback": {
     "before": [
       "git switch -c feat/C157-subscription-empty-state"
@@ -35,7 +31,6 @@
       "scripts/adflow-verify --card C157 --receipt"
     ]
   },
-
   "changes": [
     {
       "scope": "mac 订阅卡空状态",
@@ -56,7 +51,6 @@
       "impact": "apps/win 看板渲染、设置窗口导航"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "topic": "MenuBarIndicator",
@@ -66,12 +60,11 @@
       "after": "新增规则 12：空状态由 SubscriptionEmptyStatePolicy 判定为 A 未配置 / C 无数据（不做 B）；栈模式与 Tab 模式都必须渲染空态卡，禁止回退到用量卡；按钮深链订阅额度设置。Windows 侧由 design/05 规则 33 同构承接。"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261029-09",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -84,31 +77,31 @@
         "item": "行为实测",
         "true_if": "mac 三种主题与 Windows 下，栈模式与 Tab 模式均显示空态卡；点订阅页签不再出现 Token 用量卡；按钮直达订阅额度页",
         "false_if": "空态仍缺失、页签错卡或深链落到通用页",
-        "evidence": "部分完成。Windows：真实 Chromium（headless Chrome，render-harness 同字节产物）fluent / nothing 两主题下栈模式未配置、栈模式无数据、Tab 订阅页签均渲染空态卡（图标 16×16 可见），订阅页签不出现 Token 用量卡；截图见 local/verify/c157-c158/empty-*.png。未完成：mac 三主题真机、Windows 真机（WebView2）以及两端按钮真实打开设置并落到订阅额度页的点击核验。",
-        "result": null
+        "evidence": "部分完成。Windows：真实 Chromium（headless Chrome，render-harness 同字节产物）fluent / nothing 两主题下栈模式未配置、栈模式无数据、Tab 订阅页签均渲染空态卡（图标 16×16 可见），订阅页签不出现 Token 用量卡；截图见 local/verify/c157-c158/empty-*.png。未完成：mac 三主题真机、Windows 真机（WebView2）以及两端按钮真实打开设置并落到订阅额度页的点击核验。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "已配置订阅的卡片渲染、排序、折叠与刷新不受影响；空态出现/消失不引入额外动画或高度抖动",
         "false_if": "既有订阅卡行为回归或面板高度异常",
-        "evidence": "部分完成。已有订阅时 SubscriptionEmptyStatePolicy 返回 nil（单测），订阅卡渲染路径未改；Windows 真实内核同一面板与基线 391d76a 几何逐像素一致（含订阅卡、窗口行、余额槽与胶囊）。未完成：mac 真机上空态出现 / 消失时的面板高度与动画核验。",
-        "result": null
+        "evidence": "部分完成。已有订阅时 SubscriptionEmptyStatePolicy 返回 nil（单测），订阅卡渲染路径未改；Windows 真实内核同一面板与基线 391d76a 几何逐像素一致（含订阅卡、窗口行、余额槽与胶囊）。未完成：mac 真机上空态出现 / 消失时的面板高度与动画核验。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "ec05018",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

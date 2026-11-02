@@ -4,7 +4,7 @@
   "title": "打包静态资源单一清单：Preview / Release 共用 BRUCE_BUNDLE_FILES 投放与校验，补 Release 漏装的 Nothing 主题字体",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C168-bundle-resources-shared",
   "is_hotfix": false,
   "target": {
@@ -63,10 +63,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261030-09",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -79,8 +79,8 @@
         "item": "行为实测",
         "true_if": "Preview 构建产物 Contents/Resources 含 AppIcon.icns / Fonts / AgentIcons 且 Nothing 主题字体生效；Developer ID 正式版构建产物同样含 Fonts",
         "false_if": "任一打包产物缺少清单内资源",
-        "evidence": "未执行真实打包。build-test-app.sh 会覆盖 dist/Bruce.app 与 dist/Bruce.zip（发版上传所用产物），未在功能分支上重建；build-release-app.sh 要求干净工作树、HEAD 带发布 tag 与 Developer ID 证书，本机不满足且打 tag 属发版动作。检查脚本调用的正是两个打包脚本使用的同一对函数；仍需在下一次 CI 打包（或授权本机 Preview 构建）后确认产物 Contents/Resources 内容，Developer ID 正式版需在首次启用时确认。",
-        "result": null
+        "evidence": "未执行真实打包。build-test-app.sh 会覆盖 dist/Bruce.app 与 dist/Bruce.zip（发版上传所用产物），未在功能分支上重建；build-release-app.sh 要求干净工作树、HEAD 带发布 tag 与 Developer ID 证书，本机不满足且打 tag 属发版动作。检查脚本调用的正是两个打包脚本使用的同一对函数；仍需在下一次 CI 打包（或授权本机 Preview 构建）后确认产物 Contents/Resources 内容，Developer ID 正式版需在首次启用时确认。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -95,13 +95,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "9adc35c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

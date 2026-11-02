@@ -4,7 +4,7 @@
   "title": "时序趋势图缩放 / 平移 / 刻度缺陷修复：不劫持页面滚动、捏合不叠乘、Windows 拖拽连续且不卡死、刻度锚定整点、峰值两侧让位、费用维度按费用峰值（修正 C162 / C163，双端对拍）",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C165-timeline-gesture-ticks",
   "is_hotfix": false,
   "target": {
@@ -69,10 +69,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261030-06",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -85,8 +85,8 @@
         "item": "行为实测",
         "true_if": "mac 真机：设置页悬停图表时可正常上下滚动；⌘ + 滚轮与双指捏合平滑缩放、不跳档；拖拽 / 水平滑动连续平移；刻度锚定整点、🔥 胶囊不与相邻标签重叠；费用维度胶囊标在费用峰值。Windows 同语义",
         "false_if": "页面滚动被拦截、捏合跳到 4x、拖拽卡顿或停住、标签重叠或费用维度峰值错位",
-        "evidence": "未在真机执行（本轮未部署 /Applications/Bruce.app，未获部署授权）。逻辑层由共享 fixture 与 Windows DOM 用例覆盖；以下依赖真实输入设备与 Swift Charts 布局，只能真机确认：mac 设置页悬停图表时纵向滚动放行、⌘ + 滚轮与 MagnifyGesture 捏合手感（触控板每 60pt 计一格的灵敏度）、水平滑动平移速度、🔥 胶囊与相邻标签在实际图宽下不重叠；Windows WebView2 下 Ctrl + 滚轮 / 触控板捏合与拖拽。",
-        "result": null
+        "evidence": "未在真机执行（本轮未部署 /Applications/Bruce.app，未获部署授权）。逻辑层由共享 fixture 与 Windows DOM 用例覆盖；以下依赖真实输入设备与 Swift Charts 布局，只能真机确认：mac 设置页悬停图表时纵向滚动放行、⌘ + 滚轮与 MagnifyGesture 捏合手感（触控板每 60pt 计一格的灵敏度）、水平滑动平移速度、🔥 胶囊与相邻标签在实际图宽下不重叠；Windows WebView2 下 Ctrl + 滚轮 / 触控板捏合与拖拽。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -101,13 +101,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "f92d976",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

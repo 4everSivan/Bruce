@@ -4,7 +4,7 @@
   "title": "订阅额度自动查询增加 3 分钟最短间隔：刷新间隔低于 3 分钟时额度接口不再逐分钟轮询（双端共享 collector-policy）",
   "version": "0.16.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C164-quota-poll-floor",
   "is_hotfix": false,
   "target": {
@@ -63,10 +63,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261030-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -79,8 +79,8 @@
         "item": "行为实测",
         "true_if": "刷新间隔 1 分钟时订阅额度最快约 3 分钟查询一次，本地 Token 统计仍按 1 分钟刷新；手动刷新立即查询额度",
         "false_if": "额度仍逐分钟查询，或本地统计被拖慢到 3 分钟，或手动刷新被下限拦截",
-        "evidence": "未在真机执行。门禁行为由共享 fixture 在 Rust、C ABI、mac RefreshSchedulerHarness、Windows quota_policy_coverage 四条调用路径上断言（1 分钟间隔 2 分钟内跳过、3 分 30 秒后查询、手动刷新绕过）；本地采集周期未改（RefreshScheduler.updateRefreshInterval 与 Windows refresh_interval_secs 计时逻辑不变）。需在本机把刷新间隔设为 1 分钟后观察额度 quotaAttemptedAt 间隔约 3 分钟、Token 统计每分钟更新。",
-        "result": null
+        "evidence": "未在真机执行。门禁行为由共享 fixture 在 Rust、C ABI、mac RefreshSchedulerHarness、Windows quota_policy_coverage 四条调用路径上断言（1 分钟间隔 2 分钟内跳过、3 分 30 秒后查询、手动刷新绕过）；本地采集周期未改（RefreshScheduler.updateRefreshInterval 与 Windows refresh_interval_secs 计时逻辑不变）。需在本机把刷新间隔设为 1 分钟后观察额度 quotaAttemptedAt 间隔约 3 分钟、Token 统计每分钟更新。；2026-11-02 人工知情验收：维护者以「确认」验收全部卡片，按上述未执行缺口接受，result 记为 false（未执行，非验证失败）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -95,13 +95,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "09d0e71",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-02",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
