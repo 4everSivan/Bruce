@@ -12,7 +12,7 @@
     "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
     "design_topic": "FirstLaunchWelcome"
   },
-  "goal": "在 macOS 与 Windows 双端实现方案 A（780 × 540 双栏沉浸式）首次启动欢迎与三步引导向导：左侧展示真实项目比格犬图标、三步导航轨与 100% 本地只读安全背书；Step 1 只读探测本机 9 个 Agent 与 CC Switch 并将本地会话采集授权（consentVersion=1 + agent-usage）与本机 0600 凭据存储（keychainAccessConfigured=true）合并为一键激活（同时存量老用户平滑免打扰）；Step 2 支持本机 CLI / CC Switch 凭据一键只读导入与 10 家 Provider 配置跳转；Step 3 提供菜单栏/托盘双同心子母环实时预览与图解、主题风格、卡片布局、纯图标/悬停预览开关及默认快捷键设置，完成后自动关闭向导并展开主看板；双端设置中心通用页提供「重新打开欢迎向导」入口。",
+  "goal": "在 macOS 与 Windows 双端实现方案 A（780 × 540 双栏沉浸式）首次启动欢迎与三步引导向导：左侧展示真实项目比格犬图标、三步导航轨与 100% 本地只读安全背书；Step 1 只读探测本机 9 个 Agent 与 CC Switch 并将本地会话采集授权（consentVersion=1 + agent-usage）与本机 0600 凭据存储（keychainAccessConfigured=true）合并为一键激活（同时存量老用户平滑免打扰）；Step 2 支持本机 CLI / CC Switch 凭据一键只读导入与 10 家 Provider 配置跳转；Step 3 提供菜单栏/托盘双同心子母环实时预览与图解、主题风格、卡片布局、纯图标/悬停预览开关及默认快捷键设置，完成后自动关闭向导并展开主看板；日常设置中心保持纯净不冗余测试按钮。",
   "precheck": {
     "description": "确认 macOS 与 Windows 尚未实现欢迎向导窗口/覆盖层、welcomeCompletedVersion 字段及双端对拍 fixture",
     "command": "rg -n 'WelcomeWindowController|WelcomeOnboardingView|welcomeCompletedVersion|welcome_completed_version' apps/macos/Sources apps/win/src apps/win/src-tauri/src; test -f tests/fixtures/welcome-onboarding-parity/cases.json",
@@ -47,14 +47,14 @@
     },
     {
       "id": "T22-3",
-      "title": "macOS 首次启动触发流改造、完成后展开看板与设置页重开入口",
-      "capability": "BruceApp.swift 首次启动按 coordinator.shouldPresentWelcomeOnStartup 弹出 WelcomeWindowController（替代旧版直接弹设置通用页与冷冰冰钥匙串 Sheet）；完成 Step 3 后关闭欢迎窗口并调用 statusItemController.openDashboardIfNeeded() 自动展开菜单栏看板；SettingsView 通用面板新增「欢迎与使用引导 → 重新打开欢迎向导」入口。",
+      "title": "macOS 首次启动触发流改造、完成后展开看板与设置页纯净收口",
+      "capability": "BruceApp.swift 首次启动按 coordinator.shouldPresentWelcomeOnStartup 弹出 WelcomeWindowController（替代旧版直接弹设置通用页与冷冰冰钥匙串 Sheet）；完成 Step 3 后关闭欢迎窗口并调用 statusItemController.openDashboardIfNeeded() 自动展开菜单栏看板；设置中心保持干净紧凑，按用户验收指令清理临时测试重开按钮。",
       "done": true
     },
     {
       "id": "T22-4",
-      "title": "Windows 首次启动欢迎向导、本机探测与设置页入口对齐",
-      "capability": "AppSettings 新增 welcome_completed_version 与 should_present_welcome 判定；get_runtime_info 补充 localProbes 只读目录探测；新增 welcome-presentation.js 与 settings-welcome.js 在 settings.html 挂载方案 A 双栏三步向导覆盖层（严格遵守 C178 CSP 与窗口最小命令集），支持 Step 1 一键激活、Step 2 本机凭据导入与跳转、Step 3 双环预览与定制并在完成时调用 expand_dashboard 展开看板；通用页同步提供「重新打开欢迎向导」按钮。",
+      "title": "Windows 首次启动欢迎向导、本机探测与设置页对齐",
+      "capability": "AppSettings 新增 welcome_completed_version 与 should_present_welcome 判定；get_runtime_info 补充 localProbes 只读目录探测；新增 welcome-presentation.js 与 settings-welcome.js 在 settings.html 挂载方案 A 双栏三步向导覆盖层（严格遵守 C178 CSP 与窗口最小命令集），支持 Step 1 一键激活、Step 2 本机凭据导入与跳转、Step 3 双环预览与定制并在完成时调用 expand_dashboard 展开看板；同步清理设置页临时重开按钮。",
       "done": true
     },
     {
@@ -78,10 +78,10 @@
         "result": true
       },
       {
-        "item": "方案 A 三步向导交互、完成后自动展开看板与设置重开入口",
-        "true_if": "macOS 与 Windows 双端均呈现 780×540 方案 A 双栏向导（含真实项目图标、Step 1 扫描、Step 2 本机凭据导入/跳过、Step 3 双同心环预览与主题/布局/快捷键定制），完成向导后自动展开主看板，且设置中心通用页可重新打开向导",
-        "false_if": "缺少任一步骤能力、图标失真、完成后未展开看板或设置页无重开入口",
-        "evidence": "macOS WelcomeWindowController / WelcomeOnboardingView 与 Windows settings-welcome.js / #welcome-wizard-overlay 实现 780×540 方案 A 双栏三步向导（含真实 AppIcon.icns / icons/icon.png），完成后分别调用 statusItemController.openDashboardIfNeeded() 与 expand_dashboard 展开看板；frontend.test.mjs (116 passed) 覆盖三步流与 #btn-reopen-welcome 重进。",
+        "item": "方案 A 三步向导交互、完成后自动展开看板与设置页纯净收口",
+        "true_if": "macOS 与 Windows 双端均呈现 780×540 方案 A 双栏向导（含真实项目图标、Step 1 扫描、Step 2 本机凭据导入/跳过、Step 3 双同心环预览与主题/布局/快捷键定制），完成向导后自动展开主看板，且设置中心通用页按用户签收要求清理测试重开按钮",
+        "false_if": "缺少任一步骤能力、图标失真、完成后未展开看板或设置页残留临时测试按钮",
+        "evidence": "macOS WelcomeWindowController / WelcomeOnboardingView 与 Windows settings-welcome.js / #welcome-wizard-overlay 实现 780×540 方案 A 双栏三步向导（含真实 AppIcon.icns / icons/icon.png），完成后分别调用 statusItemController.openDashboardIfNeeded() 与 expand_dashboard 展开看板；frontend.test.mjs (116 passed) 验证向导流且设置页无测试残留按钮。",
         "result": true
       },
       {
