@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 @testable import BruceAppCore
 import BruceOnboardingCore
 
@@ -77,7 +78,64 @@ struct NativeLifecycleHarness {
         try dashboardPlacementFallsBackFromInvalidStatusItemCoordinates()
         try panelSizingKeepsTopAnchoredWithinScreen()
         try swapHeightNeverClampsUnmeasuredContent()
-        print("Native lifecycle tests passed: 16")
+        try heatmapBreathingKeepsLegacyCurveOnLayers()
+        print("Native lifecycle tests passed: 17")
+    }
+
+    /// C179: 热力图呼吸改由每格 CALayer 上的 Core Animation 驱动, 动画参数须与旧逐格
+    /// SwiftUI `easeInOut(1.6).repeatForever(autoreverses: true).delay(phase)` 一致.
+    private static func heatmapBreathingKeepsLegacyCurveOnLayers() throws {
+        func near(_ a: Double, _ b: Double, _ tolerance: Double = 1e-6) -> Bool { abs(a - b) <= tolerance }
+        typealias Policy = HeatmapBreathingPolicy
+
+        try expect(
+            near(Policy.phase(column: 0, row: 0), 0)
+                && near(Policy.phase(column: 1, row: 0), 0.12)
+                && near(Policy.phase(column: 0, row: 1), 0.05),
+            "phase must keep the legacy 0.12s-per-column / 0.05s-per-row diagonal stagger"
+        )
+        try expect(
+            near(Policy.phase(column: 25, row: 6), 0.1),
+            "phase must wrap at the 3.2s round-trip cycle"
+        )
+
+        let animation = Policy.animation(base: 0.2, column: 1, row: 0, now: 100)
+        try expect(animation.keyPath == "opacity", "breathing must animate layer opacity only")
+        try expect(
+            near((animation.fromValue as? Double) ?? -1, 0.084) && (animation.toValue as? Double) == 1,
+            "breathing must span base x 0.42 (trough) to 1 (peak)"
+        )
+        try expect(
+            animation.duration == 1.6 && animation.autoreverses && animation.repeatCount == .infinity,
+            "each leg must last 1.6s, reverse, and repeat forever"
+        )
+        var c1: [Float] = [0, 0]
+        var c2: [Float] = [0, 0]
+        animation.timingFunction?.getControlPoint(at: 1, values: &c1)
+        animation.timingFunction?.getControlPoint(at: 2, values: &c2)
+        try expect(
+            c1 == [0.42, 0] && c2 == [0.58, 1],
+            "the curve must be easeInOut (0.42, 0, 0.58, 1), same as SwiftUI .easeInOut"
+        )
+        try expect(
+            near(animation.beginTime, 100.12),
+            "the cell must start its phase delay after the mount time"
+        )
+        try expect(
+            animation.fillMode == .backwards,
+            "a cell must rest at the trough until its phase delay has passed"
+        )
+
+        try expect(
+            Policy.restingOpacity(base: 0.6, isNothing: true, filled: true, motionSuppressed: true) == 1
+                && Policy.restingOpacity(base: 1, isNothing: false, filled: true, motionSuppressed: false) == 1
+                && Policy.restingOpacity(base: 1, isNothing: true, filled: false, motionSuppressed: false) == 1,
+            "reduced motion, non-Nothing and empty cells must rest at full opacity"
+        )
+        try expect(
+            near(Policy.restingOpacity(base: 0.6, isNothing: true, filled: true, motionSuppressed: false), 0.252),
+            "a filled Nothing cell without breathing (hidden panel) must rest at the trough"
+        )
     }
 
     /// C148: 交换态容器的高度目标 —— 未测量时退回自然高度, 绝不用 0 裁死内容;

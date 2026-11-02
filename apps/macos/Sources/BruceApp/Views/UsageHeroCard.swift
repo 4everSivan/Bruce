@@ -151,7 +151,7 @@ struct UsageHeroCard: View {
         }
     }
 
-    /// 迷你热力格配色: 与 HeatmapCellView.baseColor 同一语义
+    /// 迷你热力格配色: 与 HeatmapGridView.baseColor 同一语义
     /// (level 0 淡槽, 1-5 绿阶; Nothing 为 accent 透明度阶).
     private func miniHeatColor(_ level: Int) -> Color {
         if isNothing {
@@ -573,18 +573,9 @@ struct UsageHeroCard: View {
     /// level 0 淡槽, 1-5 沿用 UsageTier 绿色阶 (sage..forest), 窗口外与未来格透明.
     /// Nothing 下全方角, level 0 用 surface-raised, 1-5 为 display 白阶 5 档透明度.
     private var heatmapView: some View {
-        HStack(alignment: .top, spacing: 3) {
-            ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { colIndex, week in
-                VStack(spacing: 3) {
-                    ForEach(0..<7, id: \.self) { row in
-                        HeatmapCellView(cell: week.cells[row], isNothing: isNothing, col: colIndex, row: row, panelVisible: panelVisible)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("用量热力图")
+        HeatmapGridView(weeks: viewModel.heatmap, isNothing: isNothing, panelVisible: panelVisible)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("用量热力图")
     }
 
     /// 起止日期轴: 左窗口首日, 右今天, 与网格左右缘对齐.
@@ -641,80 +632,38 @@ struct UsageHeroCard: View {
         return heatmapLevelColor(cell.level)
     }
 
-    /// 热力图单元格: Nothing 填充格在定稿 display 白阶透明度上做错相位呼吸
-    /// (绿/橙仅用于 Hero, 热力图保持 display 白阶); 尊重 accessibilityReduceMotion.
-    private struct HeatmapCellView: View {
-        let cell: UsageHeatmapCell?
+    /// 热力图网格: Nothing 填充格在定稿 display 白阶透明度上做错相位呼吸
+    /// (绿/橙仅用于 Hero, 热力图保持 display 白阶); 尊重动效开关.
+    /// C179: 整张网格由一个 CALayer 宿主视图承载 (每格一个纯色子层), 呼吸动画挂在
+    /// 格子层上交给 Core Animation 逐帧插值; 不再逐格挂 SwiftUI 视图与 repeatForever
+    /// 动画 —— 约 180 条动画逐帧在主线程求值、展开首帧集中建树, 卡片展开因此掉帧.
+    private struct HeatmapGridView: View {
+        let weeks: [UsageHeatmapWeek]
         let isNothing: Bool
-        let col: Int
-        let row: Int
         var panelVisible: Bool
         @Environment(\.motionSuppressed) private var motionSuppressed
-        @State private var breathe = false
-
-        private var level: Int { cell?.level ?? 0 }
-        private var filled: Bool { level > 0 }
+        @Environment(\.colorScheme) private var colorScheme
 
         var body: some View {
-            if DashboardPanelAnimationPolicy.allowsHeatmap(
-                panelVisible: panelVisible,
-                isNothing: isNothing,
-                filled: filled,
-                motionSuppressed: motionSuppressed
-            ) {
-                animatedCell
-            } else {
-                staticCell
+            HeatmapGridLayout(columns: weeks.count, rows: 7, spacing: HeatmapLayerView.spacing) {
+                HeatmapLayerGrid(
+                    weeks: weeks,
+                    isNothing: isNothing,
+                    // Hidden/reduced-motion grids carry no animation (C044 / C145).
+                    breathing: DashboardPanelAnimationPolicy.allowsHeatmap(
+                        panelVisible: panelVisible,
+                        isNothing: isNothing,
+                        filled: hasFilledCell,
+                        motionSuppressed: motionSuppressed
+                    ),
+                    motionSuppressed: motionSuppressed,
+                    colorScheme: colorScheme
+                )
             }
         }
 
-        private var baseColor: Color {
-            HeatmapCellView.baseColor(cell: cell, isNothing: isNothing)
-        }
-
-        private var baseOpacity: Double {
-            guard isNothing, filled else { return 1 }
-            return [0.2, 0.4, 0.6, 0.8, 1.0][min(level, 5) - 1]
-        }
-
-        /// Hidden/reduced-motion cells have no animation modifier in the tree.
-        private var staticCell: some View {
-            RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
-                .fill(baseColor)
-                .opacity(motionSuppressed || !isNothing || !filled ? 1 : baseOpacity * 0.42)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-        }
-
-        private var animatedCell: some View {
-            RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
-                .fill(baseColor)
-                .opacity(breathe ? 1 : baseOpacity * 0.42)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .onAppear {
-                    restartBreathing()
-                }
-        }
-
-        private func restartBreathing() {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { breathe = false }
-            startBreathing()
-        }
-
-        private func startBreathing() {
-            // C145: 同英雄数字, 起播处再判一次动效开关.
-            guard !motionSuppressed else {
-                breathe = false
-                return
-            }
-            let phase = (Double(col) * 0.12 + Double(row) * 0.05)
-                .truncatingRemainder(dividingBy: 3.2)
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase)) {
-                breathe = true
-            }
+        private var hasFilledCell: Bool {
+            weeks.contains { week in week.cells.contains { ($0?.level ?? 0) > 0 } }
         }
 
         static func baseColor(cell: UsageHeatmapCell?, isNothing: Bool) -> Color {
@@ -735,6 +684,50 @@ struct UsageHeroCard: View {
             default: tier = .forest
             }
             return UsageHeroCard.tierColors(for: tier).0
+        }
+    }
+
+    /// 把格子配色按当前外观解析成 CGColor 交给图层宿主 (C179).
+    /// `colorScheme` 显式参与比较: 外观切换时触发 updateNSView 重新解析颜色.
+    private struct HeatmapLayerGrid: NSViewRepresentable {
+        let weeks: [UsageHeatmapWeek]
+        let isNothing: Bool
+        let breathing: Bool
+        let motionSuppressed: Bool
+        let colorScheme: ColorScheme
+
+        func makeNSView(context: Context) -> HeatmapLayerView {
+            HeatmapLayerView()
+        }
+
+        func updateNSView(_ view: HeatmapLayerView, context: Context) {
+            var cells: [HeatmapLayerView.Cell] = []
+            for (column, week) in weeks.enumerated() {
+                for (row, cell) in week.cells.enumerated() {
+                    guard let cell else { continue }
+                    let filled = cell.level > 0
+                    let base = isNothing && filled ? [0.2, 0.4, 0.6, 0.8, 1.0][min(cell.level, 5) - 1] : 1
+                    cells.append(HeatmapLayerView.Cell(
+                        column: column,
+                        row: row,
+                        color: HeatmapGridView.baseColor(cell: cell, isNothing: isNothing)
+                            .resolve(in: context.environment).cgColor,
+                        restingOpacity: HeatmapBreathingPolicy.restingOpacity(
+                            base: base,
+                            isNothing: isNothing,
+                            filled: filled,
+                            motionSuppressed: motionSuppressed
+                        ),
+                        breathingBase: isNothing && filled ? base : nil
+                    ))
+                }
+            }
+            view.update(
+                columns: weeks.count,
+                cells: cells,
+                cornerRadius: isNothing ? 0 : 2,
+                breathing: breathing
+            )
         }
     }
 
@@ -867,6 +860,147 @@ struct UsageHeroCard: View {
     /// 背景字符 tint: 档位浅色阶, 低透明度下呼应 hero 渐变.
     private static func tierTint(_ tier: UsageTier) -> Color {
         tierColors(for: tier).1
+    }
+}
+
+// MARK: - 热力图网格尺寸
+
+/// 热力图网格尺寸 (C179): 宽度撑满, 高度由宽度推出 —— 列等宽正方形格 × 行数 + 行间距,
+/// 与旧逐格 HStack (列 maxWidth: .infinity) + aspectRatio(1) 的自然高度一致.
+private struct HeatmapGridLayout: Layout {
+    let columns: Int
+    let rows: Int
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard columns > 0, rows > 0 else { return .zero }
+        // 无宽度提议时按 Shape 默认理想边长 10pt 估算, 与旧逐格网格的理想尺寸一致.
+        let width = proposal.width ?? CGFloat(columns) * 10 + spacing * CGFloat(columns - 1)
+        let side = max(0, (width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+        return CGSize(width: width, height: side * CGFloat(rows) + spacing * CGFloat(rows - 1))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        }
+    }
+}
+
+// MARK: - 热力图格子图层宿主
+
+/// 热力图格子图层宿主 (C179): 每格一个纯色 CALayer, 列等宽正方形、边缘对齐像素网格.
+/// 呼吸动画挂在格子层上由渲染服务插值, 主线程零逐帧开销; 只在开启、档位变化或
+/// 网格重建时 (重新) 挂载, 数据刷新与外观切换不打断进行中的呼吸.
+private final class HeatmapLayerView: NSView {
+    struct Cell: Equatable {
+        let column: Int
+        let row: Int
+        let color: CGColor
+        let restingOpacity: Double
+        /// 呼吸档位基准透明度; nil 表示该格不呼吸.
+        let breathingBase: Double?
+    }
+
+    static let spacing: CGFloat = 3
+
+    private var columns = 0
+    private var cells: [Cell] = []
+    private var cellLayers: [CALayer] = []
+    private var cornerRadius: CGFloat = 0
+    private var breathing = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("HeatmapLayerView does not support NSCoder initialization")
+    }
+
+    override var isFlipped: Bool { true }
+
+    /// 装饰性网格: 不拦截点击与拖拽, 事件交给下层卡片.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func update(columns: Int, cells: [Cell], cornerRadius: CGFloat, breathing: Bool) {
+        guard columns != self.columns
+            || cells != self.cells
+            || cornerRadius != self.cornerRadius
+            || breathing != self.breathing
+        else { return }
+        let rebuilt = cells.count != cellLayers.count
+        let previous = rebuilt ? [] : self.cells
+        let wasBreathing = self.breathing
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if rebuilt {
+            cellLayers.forEach { $0.removeFromSuperlayer() }
+            cellLayers = cells.map { _ in CALayer() }
+            cellLayers.forEach { layer?.addSublayer($0) }
+        }
+        let now = CACurrentMediaTime()
+        for (index, cell) in cells.enumerated() {
+            let cellLayer = cellLayers[index]
+            cellLayer.backgroundColor = cell.color
+            cellLayer.opacity = Float(cell.restingOpacity)
+            cellLayer.cornerRadius = cornerRadius
+            cellLayer.cornerCurve = .continuous
+            guard breathing, let base = cell.breathingBase else {
+                cellLayer.removeAnimation(forKey: HeatmapBreathingPolicy.animationKey)
+                continue
+            }
+            let previousBase = index < previous.count ? previous[index].breathingBase : nil
+            if !wasBreathing
+                || previousBase != base
+                || cellLayer.animation(forKey: HeatmapBreathingPolicy.animationKey) == nil {
+                cellLayer.add(
+                    HeatmapBreathingPolicy.animation(
+                        base: base,
+                        column: cell.column,
+                        row: cell.row,
+                        now: cellLayer.convertTime(now, from: nil)
+                    ),
+                    forKey: HeatmapBreathingPolicy.animationKey
+                )
+            }
+        }
+        CATransaction.commit()
+
+        self.columns = columns
+        self.cells = cells
+        self.cornerRadius = cornerRadius
+        self.breathing = breathing
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        guard columns > 0, cellLayers.count == cells.count else { return }
+        let scale = max(window?.backingScaleFactor ?? 2, 1)
+        let side = (bounds.width - Self.spacing * CGFloat(columns - 1)) / CGFloat(columns)
+        func snap(_ value: CGFloat) -> CGFloat { (value * scale).rounded() / scale }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (cellLayer, cell) in zip(cellLayers, cells) {
+            let x = CGFloat(cell.column) * (side + Self.spacing)
+            let y = CGFloat(cell.row) * (side + Self.spacing)
+            cellLayer.frame = CGRect(
+                x: snap(x),
+                y: snap(y),
+                width: snap(x + side) - snap(x),
+                height: snap(y + side) - snap(y)
+            )
+        }
+        CATransaction.commit()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsLayout = true
     }
 }
 
