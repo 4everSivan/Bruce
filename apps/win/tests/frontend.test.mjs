@@ -471,6 +471,9 @@ test("Nothing theme renders hero dot-square, threshold legend, project console, 
   assert.ok(legend, "Nothing 主题订阅卡包含三档阈值图例");
   const legendTexts = [...legend.querySelectorAll(".thresh-text")].map((t) => t.textContent);
   assert.deepEqual(legendTexts, ["<50", "50–79", "≥80"]);
+  if (panel.subscription?.updatedText) {
+    assert.equal(legend.querySelector(".updated")?.textContent, panel.subscription.updatedText, "Nothing 底栏右侧包含平齐的最后更新");
+  }
 
   // 3. 项目统计控制台: 展开首个 agent 检验 Dot-Leader console
   const getFirstRow = () => stack.querySelectorAll(".agent-row")[0];
@@ -1104,7 +1107,9 @@ test("card header follows mac CollapsibleCardHeader order and embeds the collaps
   assert.deepEqual(order, ["drag-handle", "card-title", "card-status", "collapsed-summary", "chev"]);
   assert.equal(head.querySelector(".card-status .live-text").textContent, "LIVE", "LIVE 位于状态件 (行尾)");
   const sub = app.node("stack").querySelector('[data-card="subscription"]');
-  assert.ok(sub.querySelector(".card-head .card-status .updated"), "最后更新位于状态件 (行尾)");
+  // C182: 订阅卡最后更新已由标题行状态件移至卡片底栏右侧 (与三档标注平齐)
+  assert.equal(sub.querySelector(".card-head .card-status .updated"), null, "标题行状态件不再包含最后更新");
+  assert.ok(sub.querySelector(".updated"), "最后更新位于卡片底栏右侧");
   assert.ok(head.querySelector(".chev svg"), "chevron 为线性图标");
 });
 

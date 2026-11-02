@@ -777,7 +777,7 @@ function accountCard(account, sectionID) {
 }
 function subscriptionCard(sub) {
   const card = el("div", "card");
-  cardHead(card, "订阅用量", sub.updatedText ? el("span", "updated", sub.updatedText) : null);
+  cardHead(card, "订阅用量", null);
   // 收起态: 各 provider 一组「品牌徽章 + 5pt 迷你量条」, 量条取最紧张窗口;
   // 纯余额型 (无窗口) 不出迷你量条 (mac collapsedMini)。
   makeCollapsible(card, () => {
@@ -868,21 +868,28 @@ function subscriptionCard(sub) {
       }
       body.append(block);
     }
-    if (isNothingTheme()) {
-      const legend = el("div", "nothing-threshold-legend");
-      const items = [
-        { color: "#4A9E5C", text: "<50" },
-        { color: "#D4A843", text: "50–79" },
-        { color: "#D71921", text: "≥80" },
-      ];
-      for (const item of items) {
-        const span = el("span", "thresh-item");
-        const box = el("span", "thresh-box");
-        box.style.background = item.color;
-        span.append(box, el("span", "thresh-text", item.text));
-        legend.append(span);
+    if (isNothingTheme() || sub.updatedText) {
+      const footer = el("div", isNothingTheme() ? "nothing-threshold-legend" : "subscription-footer");
+      if (isNothingTheme()) {
+        const legend = el("div", "thresh-items");
+        const items = [
+          { color: "#4A9E5C", text: "<50" },
+          { color: "#D4A843", text: "50–79" },
+          { color: "#D71921", text: "≥80" },
+        ];
+        for (const item of items) {
+          const span = el("span", "thresh-item");
+          const box = el("span", "thresh-box");
+          box.style.background = item.color;
+          span.append(box, el("span", "thresh-text", item.text));
+          legend.append(span);
+        }
+        footer.append(legend);
       }
-      body.append(legend);
+      if (sub.updatedText) {
+        footer.append(el("span", "updated", sub.updatedText));
+      }
+      body.append(footer);
     }
   };
   renderSections();
