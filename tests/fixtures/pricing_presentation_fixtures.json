@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "managed_by": "test-anything",
+    "module": "pricing_presentation",
+    "used_by_cases": [
+      "UT-pricing_presentation-001",
+      "UT-pricing_presentation-002",
+      "UT-pricing_presentation-003",
+      "UT-pricing_presentation-004",
+      "UT-pricing_presentation-005",
+      "BM-pricing_presentation-001",
+      "BM-pricing_presentation-002"
+    ]
+  },
+  "parity_cases_path": "tests/fixtures/pricing-sync-parity/cases.json",
+  "now": "2026-10-31T14:30:00+08:00",
+  "empty_catalog_subtitle": "上次同步 —",
+  "boundary_inputs": {
+    "builtin_zero_count": ["builtin", 0],
+    "unknown_source_string_count": ["github", "abc"]
+  }
+}

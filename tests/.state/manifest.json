@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.0",
+  "skill_version": "0.1.0",
+  "create_status": "complete",
+  "completed_stage": 4,
+  "created_at": "2026-11-02T14:28:17+08:00",
+  "updated_at": "2026-11-02T06:34:38.813Z",
+  "stack": {
+    "language": "javascript (Node.js 25, ESM)",
+    "unit_runner": "TMPDIR=tests/tmp node --test tests/unit/*.test.mjs",
+    "benchmark_runner": "TMPDIR=tests/tmp node tests/benchmark/b_run_all.bench.mjs"
+  },
+  "backup_ref": "_test_anything_backup/original_tests/tests",
+  "sources": {
+    "docs/devel/design/01-数据采集与多模型计费引擎.md": {
+      "sha256": "aac27c2307aae7f7bbe35458e4457c9277e6acffae85530f7a29c4d6fc01d96d"
+    },
+    "docs/devel/design/06-Agent用量分析与Token统计工作台.md": {
+      "sha256": "285d44d2ae8703f8f6d7a4af9ad2c84f480202dad1eb1eb021363e884e75234d"
+    },
+    "docs/devel/design/08-跨端共享策略核心.md": {
+      "sha256": "1ddc58967cdf28dd47fdbfcdab8481a544340135e7b6d2e223c6e982d94e7304"
+    },
+    "docs/devel/design/09-模型价格表远端同步.md": {
+      "sha256": "14bc4ab67c754d56dbaf37445882bc9546c435253175b79521c34397220f80ce"
+    },
+    "docs/official/采集引擎与本地用量设计.md": {
+      "sha256": "57bef4c7ec25b5014d1231c127f97734ddd7c444b39812728a063cf137bc19f9"
+    },
+    "docs/official/设置中心与价格校准设计.md": {
+      "sha256": "47073dd07eb84de2d830c765a6007cbb99c8cdeac9f6fa16f170c35dc5bb185b"
+    },
+    "config/pricing-catalog.json": {
+      "sha256": "d210024b6ca66efe4d622c861f22f12643a6273dbe6bfdfa62038c5f43d948ec"
+    },
+    "apps/win/src/pricing-presentation.js": {
+      "sha256": "7b89df7d30848a07e97c5814036abefdb153a504487520f9d87c0afbeac20f6c"
+    },
+    "apps/win/src/provider-brand.js": {
+      "sha256": "a66a97b9183ab10568526ff7ed71e3f4bf4bc43f8f88f416ebc7bbc3f9046010"
+    },
+    "tests/fixtures/pricing-sync-parity/cases.json": {
+      "sha256": "2512a3ad4a99f3336670befa3cf885d4ec2bae18a9b6685d1c0b5d090305aa1a"
+    },
+    "tests/fixtures/agent-brand-parity/cases.json": {
+      "sha256": "52211d74982713dd8a0611e58a1656d77fb6fb1d751cfb8097fd2f9e0d68d688"
+    }
+  },
+  "modules": {
+    "pricing_catalog": {
+      "draft": "tests/docs/drafts/pricing_catalog_draft.md",
+      "plan": "tests/docs/plans/pricing_catalog_plan.md",
+      "unit_cases_doc": "tests/docs/cases/u_pricing_catalog_cases.md",
+      "benchmark_cases_doc": "tests/docs/cases/b_pricing_catalog_cases.md",
+      "fixtures": "tests/fixtures/pricing_catalog_fixtures.json",
+      "unit_code": {
+        "path": "tests/unit/u_pricing_catalog.test.mjs",
+        "case_ids": [
+          "UT-pricing_catalog-001",
+          "UT-pricing_catalog-002",
+          "UT-pricing_catalog-003",
+          "UT-pricing_catalog-004"
+        ],
+        "sha256": "b890f8050511399ddcbb7ebac924a4aeba0d208fbaf25adc4c25e40a047c0307"
+      },
+      "benchmark_code": {
+        "path": "tests/benchmark/b_pricing_catalog.bench.mjs",
+        "case_ids": [
+          "BM-pricing_catalog-001"
+        ],
+        "sha256": "ae92a0c4d151ce9a842e33fcfbdbce5d2ac0675020b06d221c19c0842bf5f1e4"
+      }
+    },
+    "pricing_presentation": {
+      "draft": "tests/docs/drafts/pricing_presentation_draft.md",
+      "plan": "tests/docs/plans/pricing_presentation_plan.md",
+      "unit_cases_doc": "tests/docs/cases/u_pricing_presentation_cases.md",
+      "benchmark_cases_doc": "tests/docs/cases/b_pricing_presentation_cases.md",
+      "fixtures": "tests/fixtures/pricing_presentation_fixtures.json",
+      "unit_code": {
+        "path": "tests/unit/u_pricing_presentation.test.mjs",
+        "case_ids": [
+          "UT-pricing_presentation-001",
+          "UT-pricing_presentation-002",
+          "UT-pricing_presentation-003",
+          "UT-pricing_presentation-004",
+          "UT-pricing_presentation-005"
+        ],
+        "sha256": "b32f152bfe3e2e5e29d3e324c359f4e66d241c79d5c8d949a1025ceaf190179e"
+      },
+      "benchmark_code": {
+        "path": "tests/benchmark/b_pricing_presentation.bench.mjs",
+        "case_ids": [
+          "BM-pricing_presentation-001",
+          "BM-pricing_presentation-002"
+        ],
+        "sha256": "efbe2ee14d099145396b329b895fd49ccf1ababc43552c0f9e9563305d161a91"
+      }
+    },
+    "artifact_contract": {
+      "draft": "tests/docs/drafts/artifact_contract_draft.md",
+      "plan": "tests/docs/plans/artifact_contract_plan.md",
+      "unit_cases_doc": "tests/docs/cases/u_artifact_contract_cases.md",
+      "benchmark_cases_doc": "tests/docs/cases/b_artifact_contract_cases.md",
+      "fixtures": "tests/fixtures/artifact_contract_fixtures.json",
+      "unit_code": {
+        "path": "tests/unit/u_artifact_contract.test.mjs",
+        "case_ids": [
+          "UT-artifact_contract-001",
+          "UT-artifact_contract-002",
+          "UT-artifact_contract-003",
+          "UT-artifact_contract-004",
+          "UT-artifact_contract-005"
+        ],
+        "sha256": "fa55731e79ff0be6ad563153decdb92a3a485844f8893a0aae5cf0b77a55b599"
+      },
+      "benchmark_code": {
+        "path": "tests/benchmark/b_artifact_contract.bench.mjs",
+        "case_ids": [
+          "BM-artifact_contract-001"
+        ],
+        "sha256": "5ec18099f981df8dd5f33b4be1074a25d4589fe734a7d033eb6d1e15208d4785"
+      }
+    },
+    "quota_policy_contract": {
+      "draft": "tests/docs/drafts/quota_policy_contract_draft.md",
+      "plan": "tests/docs/plans/quota_policy_contract_plan.md",
+      "unit_cases_doc": "tests/docs/cases/u_quota_policy_contract_cases.md",
+      "benchmark_cases_doc": "tests/docs/cases/b_quota_policy_contract_cases.md",
+      "fixtures": "tests/fixtures/quota_policy_contract_fixtures.json",
+      "unit_code": {
+        "path": "tests/unit/u_quota_policy_contract.test.mjs",
+        "case_ids": [
+          "UT-quota_policy_contract-001",
+          "UT-quota_policy_contract-002",
+          "UT-quota_policy_contract-003",
+          "UT-quota_policy_contract-004"
+        ],
+        "sha256": "65144f21f31df97eea2b6d4256432b9811841527b6fb5beeff5f92b9eda8a4d0"
+      },
+      "benchmark_code": {
+        "path": "tests/benchmark/b_quota_policy_contract.bench.mjs",
+        "case_ids": [
+          "BM-quota_policy_contract-001"
+        ],
+        "sha256": "10982a44f24b8a14b312a45198750716df5c333b18b3608b8303a5e2138372f2"
+      }
+    },
+    "provider_brand": {
+      "draft": "tests/docs/drafts/provider_brand_draft.md",
+      "plan": "tests/docs/plans/provider_brand_plan.md",
+      "unit_cases_doc": "tests/docs/cases/u_provider_brand_cases.md",
+      "benchmark_cases_doc": "tests/docs/cases/b_provider_brand_cases.md",
+      "fixtures": "tests/fixtures/provider_brand_fixtures.json",
+      "unit_code": {
+        "path": "tests/unit/u_provider_brand.test.mjs",
+        "case_ids": [
+          "UT-provider_brand-001",
+          "UT-provider_brand-002",
+          "UT-provider_brand-003",
+          "UT-provider_brand-004"
+        ],
+        "sha256": "94f9976b21b468cfe84e6e598cc4aea5cfecdbc5c862a8720f8d4553ad6dc6be"
+      },
+      "benchmark_code": {
+        "path": "tests/benchmark/b_provider_brand.bench.mjs",
+        "case_ids": [
+          "BM-provider_brand-001"
+        ],
+        "sha256": "878f59c610e6333b37bf0569d909c59c2d77718507a517f3ec2b1608f6d32ebe"
+      }
+    }
+  }
+}

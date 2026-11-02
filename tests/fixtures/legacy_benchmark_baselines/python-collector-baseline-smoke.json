@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "implementation": "python",
+  "generatedAt": "2026-08-21T07:31:35.611294+00:00",
+  "runsPerScenario": 1,
+  "network": "disabled",
+  "credentials": "none",
+  "scenarios": [
+    {
+      "name": "small",
+      "fixture": {
+        "file_count": 4,
+        "lines_per_file": 32,
+        "total_lines": 128
+      },
+      "samples": [
+        {
+          "schemaVersion": 1,
+          "implementation": "python",
+          "wall_time_ms": 54.379,
+          "cpu_user_ms": 30.261,
+          "cpu_system_ms": 7.946,
+          "peak_rss_bytes": 24657920,
+          "disk_read_operations": 0,
+          "phases_ms": {
+            "bridge.context": 0.008,
+            "bridge.load_collector": 51.148,
+            "bridge.validate": 0.014,
+            "bridge.validate_credentials": 0.002,
+            "bridge.validate_result": 0.001,
+            "collector.execute": 1.881
+          },
+          "http_request_count": 0,
+          "credential_refresh_count": 0,
+          "files_visited": 0,
+          "files_changed": 0,
+          "json_lines_parsed": 0,
+          "sqlite_rows_read": 0,
+          "status": "partial",
+          "diagnostic_count": 1,
+          "credential_update_count": 0,
+          "credential_challenge_count": 0,
+          "parent_wall_time_ms": 102.856,
+          "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+        }
+      ],
+      "summary": {
+        "parent_wall_time_ms": {
+          "count": 1,
+          "min": 102.856,
+          "p50": 102.856,
+          "p95": 102.856,
+          "max": 102.856,
+          "mean": 102.856
+        },
+        "wall_time_ms": {
+          "count": 1,
+          "min": 54.379,
+          "p50": 54.379,
+          "p95": 54.379,
+          "max": 54.379,
+          "mean": 54.379
+        },
+        "cpu_user_ms": {
+          "count": 1,
+          "min": 30.261,
+          "p50": 30.261,
+          "p95": 30.261,
+          "max": 30.261,
+          "mean": 30.261
+        },
+        "cpu_system_ms": {
+          "count": 1,
+          "min": 7.946,
+          "p50": 7.946,
+          "p95": 7.946,
+          "max": 7.946,
+          "mean": 7.946
+        },
+        "peak_rss_bytes": {
+          "count": 1,
+          "min": 24657920,
+          "p50": 24657920,
+          "p95": 24657920,
+          "max": 24657920,
+          "mean": 24657920
+        },
+        "disk_read_bytes": {},
+        "disk_read_operations": {
+          "count": 1,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "http_request_count": {
+          "count": 1,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "credential_refresh_count": {
+          "count": 1,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        }
+      }
+    }
+  ]
+}

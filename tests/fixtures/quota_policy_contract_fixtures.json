@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "managed_by": "test-anything",
+    "module": "quota_policy_contract",
+    "used_by_cases": [
+      "UT-quota_policy_contract-001",
+      "UT-quota_policy_contract-002",
+      "UT-quota_policy_contract-003",
+      "UT-quota_policy_contract-004",
+      "BM-quota_policy_contract-001"
+    ]
+  },
+  "quota_policy_path": "tests/fixtures/quota-policy-parity/cases.json",
+  "quota_carry_over_path": "tests/fixtures/quota-carry-over-parity/cases.json",
+  "refresh_policy_path": "tests/fixtures/refresh-policy-parity/cases.json",
+  "expected_quota_case_count": 21,
+  "expected_carry_over_case_count": 15,
+  "expected_refresh_arrays": {
+    "boundaryIds": 3,
+    "boundaryWake": 10,
+    "backoff": 12
+  }
+}

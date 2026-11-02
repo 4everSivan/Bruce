@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "managed_by": "test-anything",
+    "module": "pricing_catalog",
+    "used_by_cases": [
+      "UT-pricing_catalog-001",
+      "UT-pricing_catalog-002",
+      "UT-pricing_catalog-003",
+      "UT-pricing_catalog-004",
+      "BM-pricing_catalog-001"
+    ]
+  },
+  "catalog_path": "config/pricing-catalog.json",
+  "expected_schema_version": 1,
+  "expected_model_count": 95,
+  "required_model_fields": ["model", "displayName", "vendor", "input", "output", "cacheRead", "note"]
+}

@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "managed_by": "test-anything",
+    "module": "provider_brand",
+    "used_by_cases": [
+      "UT-provider_brand-001",
+      "UT-provider_brand-002",
+      "UT-provider_brand-003",
+      "UT-provider_brand-004",
+      "BM-provider_brand-001"
+    ]
+  },
+  "brand_cases_path": "tests/fixtures/agent-brand-parity/cases.json",
+  "provider_glyph_source": "apps/win/src/provider-brand.js",
+  "expected_glyph_keys": [
+    "claude",
+    "cline",
+    "codex",
+    "deepseek",
+    "grok",
+    "kimi",
+    "opencodeGo",
+    "stepfun",
+    "volcengine",
+    "zcode",
+    "zhipu"
+  ],
+  "unknown_identifiers": ["unknown-agent", "cursor", "gemini-3-pro", "qwen3-coder"]
+}

@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "managed_by": "test-anything",
+    "module": "artifact_contract",
+    "used_by_cases": [
+      "UT-artifact_contract-001",
+      "UT-artifact_contract-002",
+      "UT-artifact_contract-003",
+      "UT-artifact_contract-004",
+      "UT-artifact_contract-005",
+      "BM-artifact_contract-001"
+    ]
+  },
+  "artifact_paths": {
+    "valid": "tests/fixtures/artifacts/agent-usage/valid.json",
+    "partial": "tests/fixtures/artifacts/agent-usage/partial.json",
+    "empty": "tests/fixtures/artifacts/agent-usage/empty.json"
+  },
+  "bridge_dir": "tests/fixtures/bridge/agent-usage",
+  "allowed_agent_statuses": ["ok", "not_found", "error"],
+  "required_bridge_statuses": ["success", "partial", "error"]
+}
