@@ -4,7 +4,7 @@
   "title": "首次启动欢迎与三步引导向导（方案 A · macOS / Windows 双端同构）",
   "version": "0.16.1",
   "milestone": "M11-首次启动欢迎与引导向导",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T22-first-launch-welcome-wizard",
   "depends_on": [],
   "target": {
@@ -67,8 +67,8 @@
   "acceptance": {
     "result": true,
     "run_id": "local-20261102-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "“确认” 签收，清理掉测试通道",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "首启判定、存量老用户免打扰与 Step 1 双门禁合并激活",
@@ -94,14 +94,14 @@
     ]
   },
   "sync": {
-    "commit": "9c88c1d"
+    "commit": "813ad73"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-02",
     "exit_code": 0,
-    "from_status": "in_progress",
+    "from_status": "completed",
     "target_status": "completed"
   }
 }

@@ -394,7 +394,7 @@
     },
     "T22": {
       "title": "首次启动欢迎与三步引导向导（方案 A · macOS / Windows 双端同构）",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T22-first-launch-welcome-wizard",
       "topic": "FirstLaunchWelcome",
       "milestone": "M11-首次启动欢迎与引导向导",
