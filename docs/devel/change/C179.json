@@ -1,0 +1,115 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C179",
+  "title": "卡片展开动画掉帧：用量热力图逐格 SwiftUI 视图与逐格 repeatForever 呼吸改为图层宿主 + Core Animation 呼吸",
+  "version": "0.16.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C179-heatmap-breathing",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "UsageHeroCard (HeatmapGridView / HeatmapLayerGrid / HeatmapLayerView / HeatmapGridLayout) / BruceAppCore.HeatmapBreathingPolicy",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户反馈（2026-11-01）：仪表盘卡片展开动画卡顿，像帧率太低。用户当前配置为 Nothing 主题 + 深色 + 动效「始终开启」。用临时探针（local/perf/expand-harness：复刻面板结构 —— 顶边锚定无边框面板、宿主视图四边贴合、显式高度交换容器、Canvas 点阵背景、30ms 合并的窗口高度动画、滚动条压制 —— 以 CADisplayLink 统计主线程丢帧与线程 CPU，多模式同进程交错 A/B 抵消机器负载漂移）定位：用量卡半年热力图约 180 格，每格是独立 SwiftUI 视图并各挂一条 easeInOut(1.6).repeatForever(autoreverses).delay(phase) 呼吸动画。1) 展开后约 180 条动画逐帧在主线程各自求值，主线程常驻约 25% 负载（每 500ms 约 123-140ms CPU，关呼吸后约 4ms），面板内任何动画（含其他卡片展开）都在这份底噪上掉帧；2) 卡片展开的第一帧要同时构建约 180 个格子视图并集中起播 180 条动画，展开首帧最长间隔约 50ms（丢 2-3 帧），0.30s 的展开动画开头就跳一截，读数即「帧率低」。方案取舍：先试过单 Canvas + TimelineView 30fps 时钟，主线程常驻仍约一成且每帧重新栅格化，重负载下展开丢帧不稳定（三轮里一轮反而更差）；改为每格一个 CALayer、呼吸交给 Core Animation 后常驻开销降到与关闭呼吸相同（约 4ms/500ms）。排除项：窗口逐帧 setFrame 被怀疑为主因，但「窗口只在过渡前后各跳一次、SwiftUI 承担高度动画」的原型在 30 轮及 12 轮交错 A/B 下与现状无显著差异（不修热力图时展开丢帧仍约 2 帧），故不改动 C148 的窗口单一高度动画源架构；早期测得的 100% 主线程占用是探针缺少滚动条压制导致的布局振荡（真实 App 有 ScrollIndicatorSuppressor，不受影响）。",
+  "precheck": {
+    "description": "确认热力图仍为逐格视图 + 逐格 repeatForever 呼吸动画（未被前序提交修复）",
+    "command": "grep -n \"repeatForever(autoreverses: true).delay(phase)\" apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift && grep -n \"HeatmapCellView(cell:\" apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+    "expected": "两处均命中：逐格呼吸动画与逐格视图构造",
+    "is_completed": false,
+    "evidence": "2026-11-01 main@774cf95 预检命中：UsageHeroCard.swift:715 withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase))，UsageHeroCard.swift:580 HeatmapCellView(cell: week.cells[row], …) 逐格构造；缺陷存在，需修复"
+  },
+  "callback": {
+    "before": [
+      "git worktree add local/worktrees/C179 -b fix/C179-heatmap-breathing main",
+      "zsh -c 'source scripts/runtime-manifest.zsh && source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && Bruce_build_policy_ffi \"$PWD\"'"
+    ],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "apps/macos/.build/debug/NativeLifecycleHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C179 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "用量热力图承载（UsageHeroCard.heatmapView）",
+      "before": "周列 × 7 行逐格 SwiftUI 视图：HStack(spacing: 3) 内每列 VStack(spacing: 3)，每格一个 HeatmapCellView（RoundedRectangle + aspectRatio(1) + frame(maxWidth: .infinity)），半年约 180 个视图，卡片每次展开都要整批构建",
+      "after": "整张网格一个 HeatmapGridView：HeatmapGridLayout 按宽度推出高度（列等宽正方形格 × 7 行 + 3pt 间距），内部一个 NSViewRepresentable 图层宿主 HeatmapLayerView，每格一个纯色 CALayer、边缘对齐像素网格、不参与命中测试；格子配色仍取 baseColor，在 updateNSView 按当前环境 resolve 为 CGColor，colorScheme 显式作为输入保证外观切换重新解析；无障碍仍为整体元素「用量热力图」",
+      "impact": "展开首帧不再集中构建约 180 个视图；离屏渲染对拍与旧逐格视图一致（Nothing 深浅色 × 静态/低谷/峰值逐像素一致；经典主题仅 2pt 圆角抗锯齿差 ≤ 15/255），版式与配色不变；慢放抓帧确认展开/收起过程中图层宿主与 SwiftUI 内容同步裁切"
+    },
+    {
+      "scope": "Nothing 热力图错相位呼吸",
+      "before": "每个填充格持有 @State breathe，onAppear 里各起一条 withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase))，phase = (列 × 0.12 + 行 × 0.05) mod 3.2；约 180 条 SwiftUI 动画逐帧在主线程求值",
+      "after": "每个填充格层挂一条 CABasicAnimation（BruceAppCore.HeatmapBreathingPolicy.animation：opacity base × 0.42 → 1，1.6s easeInEaseOut，autoreverses，无限循环，beginTime = 挂载时刻 + phase，fillMode backwards），由渲染服务插值；是否挂载仍由 DashboardPanelAnimationPolicy.allowsHeatmap 裁决，不满足时移除动画、按 restingOpacity 静态显示；每次挂载从低谷重新起播，数据刷新与外观切换不打断进行中的呼吸",
+      "impact": "展开态呼吸的主线程常驻开销由每 500ms 约 130ms 降到约 4ms（与关闭呼吸相同）；呼吸观感、动效开关与面板隐藏门控不变；Windows 端（CSS keyframes，合成器驱动）不受影响"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/03 对热力图的绘制方式与呼吸实现没有约束，逐格视图 + 逐格 repeatForever 呼吸是隐式现状",
+      "after": "新增规则 15：热力图整网格一个图层宿主（每格一个 CALayer，像素对齐，不参与命中测试），呼吸是格子层上的 Core Animation 动画（HeatmapBreathingPolicy），禁止回退为逐格 SwiftUI 视图或逐格 SwiftUI 循环动画、也不得改用 TimelineView + Canvas 逐帧重绘；相位、曲线、透明度区间与 allowsHeatmap 门控保持不变；Windows 不受约束"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261101-c179",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "NativeLifecycleHarness 新增 heatmapBreathingKeepsLegacyCurveOnOneClock 通过，且 zsh scripts/verify-local.sh 退出码为 0",
+        "false_if": "任一 Harness 失败、编译报错或回归用例缺失",
+        "evidence": "NativeLifecycleHarness 新增 heatmapBreathingKeepsLegacyCurveOnLayers，17 项全绿（变异检查：把曲线改成 easeIn 后该用例失败）；zsh scripts/verify-local.sh exit 0（日志 local/c179/verify-local-final.log）：Rust 49 组 test result ok / 0 failed、fmt 与 clippy 通过、fixture 敏感扫描 0 命中、全部 Swift Harness 通过（Onboarding Core 178、NativeLifecycle 17、PanelViewModel 64 等）、变更总账一致 cards=177 topics=11",
+        "result": true
+      },
+      {
+        "item": "展开过渡帧率（探针 A/B）",
+        "true_if": "同进程交错 A/B 下，图层宿主 + Core Animation 呼吸相对逐格 SwiftUI 呼吸的展开丢帧与首帧最长间隔下降、展开态呼吸主线程 CPU 降到与关闭呼吸同量级",
+        "false_if": "丢帧、首帧最长间隔或常驻 CPU 无改善",
+        "evidence": "探针同进程交错 A/B（Nothing + 呼吸开启，每次展开/收起取 0.5s 窗口统计 CADisplayLink 丢帧与主线程 CPU），日志 local/perf/c179-ab-4way.log（12 轮）：逐格 SwiftUI 呼吸 → 图层宿主 + CA 呼吸，展开丢帧均值 2.42 → 0.42（中位 2 → 0，p90 4 → 1），展开首帧最长间隔中位 50.2 → 24.8ms，收起丢帧均值 3.00 → 0.67，展开态呼吸主线程 CPU 133 → 4.4ms/500ms；重负载轮 local/perf/c179-ab-3way.log（15 轮，load avg 9-19）：展开主线程 CPU 185 → 117ms、收起丢帧均值 5.93 → 2.47、常驻 133 → 4ms，但展开丢帧在该负载下各方案均约 4 帧（中位 3），未见差异。单 Canvas + TimelineView 方案的三轮记录见 local/perf/c179-ab.log（重负载轮展开丢帧反而更差，已弃用）。探针为复刻结构，非真实 App 实测",
+        "result": true
+      },
+      {
+        "item": "视觉一致（离屏像素对拍）",
+        "true_if": "离屏渲染旧逐格网格（ImageRenderer 2x）与新图层宿主（CALayer.render 2x）：Nothing 深浅色 × 静态/低谷/峰值逐像素一致，经典主题差异仅限圆角抗锯齿",
+        "false_if": "尺寸不一致，或存在圆角抗锯齿以外的像素差",
+        "evidence": "local/perf/c179-parity.log（run-layers）：旧逐格 SwiftUI（ImageRenderer 2x）vs 图层宿主（CALayer.render 2x，配色经 Color.resolve(in:) 与真实代码同路径），780×198px，Nothing 深浅色 × 静态 / 隐藏低谷 / 呼吸低谷 / 峰值 maxΔ ≤ 1；经典深浅色 1.7-2.1% 像素差 ≤ 15/255，改为直角后 maxΔ=0，确认仅为 2pt 圆角抗锯齿差异；慢放（3s）抓帧 local/c179/expand-mid2.png、expand-late1.png、expand-late2.png：展开过程中图层宿主与 SwiftUI 文字/卡片同步裁切，未越出卡片区域，呼吸在格子间错相位进行",
+        "result": true
+      },
+      {
+        "item": "行为实测（真机）",
+        "true_if": "安装新包后 Nothing 主题下展开/收起用量卡与其他卡片顺滑，热力图呼吸观感与旧版一致；经典/液态玻璃主题热力图显示不变",
+        "false_if": "展开仍明显卡顿、呼吸节奏或配色失真、热力图尺寸变化",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "面板隐藏 / 动效「从不」时格子层无呼吸动画、停在静态透明度；慢放抓帧确认展开/收起时图层宿主与 SwiftUI 内容同步裁切；其他卡片与面板高度动画链路未改动",
+        "false_if": "隐藏态仍有呼吸动画、动效开关失效、图层越出卡片裁切区或高度动画行为变化",
+        "evidence": "门控沿用 DashboardPanelAnimationPolicy.allowsHeatmap（面板隐藏 / 动效抑制 / 非 Nothing / 无填充格时移除格子层动画、按 restingOpacity 静态显示），restingOpacity 由 Harness 断言；面板高度动画链路（MenuBarStatusItemController / MenuBarViews / PanelCardContainer）未改动；verify-local 全量通过。注意：真机上隐藏面板后格子层动画确实被移除、动效「从不」下无呼吸，尚未在真实 App 中实测",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "317c4cf",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

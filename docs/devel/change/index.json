@@ -45,7 +45,8 @@
         "C148",
         "C157",
         "C158",
-        "C159"
+        "C159",
+        "C179"
       ]
     },
     "PricingEngine": {
@@ -1825,6 +1826,15 @@
       "topic": "WindowsCompat",
       "version": "0.16.0",
       "file": "docs/archive/0.16.0/change/C178.json"
+    },
+    "C179": {
+      "title": "卡片展开动画掉帧：用量热力图逐格 SwiftUI 视图与逐格 repeatForever 呼吸改为图层宿主 + Core Animation 呼吸",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C179-heatmap-breathing",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C179.json"
     }
   }
 }
