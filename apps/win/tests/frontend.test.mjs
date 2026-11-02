@@ -2975,11 +2975,9 @@ test("upgraded existing user skips welcome wizard on startup and can reopen from
   const overlay = app.node("welcome-wizard-overlay");
   assert.equal(overlay.classList.contains("hidden"), true, "存量老用户 (consentVersion=1) 启动不弹欢迎向导");
 
-  // 通用设置页「重新打开欢迎向导」按钮随时可重进
-  const reopenBtn = app.node("btn-reopen-welcome");
-  assert.ok(reopenBtn, "设置 → 通用 提供重新打开欢迎向导按钮");
-  assert.equal(reopenBtn.textContent, "重新打开欢迎向导");
-  await reopenBtn.click();
+  // 设置页已清理测试按钮，向导仅在首启/未激活时弹出
+  assert.equal(app.node("btn-reopen-welcome"), null, "设置 → 通用 已移除重开测试按钮");
+  app.window.BruceSettingsSections.openWelcomeWizard();
   await settle();
-  assert.equal(overlay.classList.contains("hidden"), false, "点击重新打开欢迎向导后展示向导遮罩");
+  assert.equal(overlay.classList.contains("hidden"), false, "编程式调起向导后展示向导遮罩");
 });

@@ -505,21 +505,10 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "外部 CLI 来源",
-                    sub: "仅允许已明确开启的 Claude / Grok 本机来源, 不保存凭证内容",
-                    divided: true
+                    sub: "仅允许已明确开启的 Claude / Grok 本机来源, 不保存凭证内容"
                 ) {
                     Button("管理") {
                         showsExternalKeychainSourceManager = true
-                    }
-                    .fluentButton()
-                }
-                FluentRow(
-                    WelcomeCopy.settingsRowTitle,
-                    sub: WelcomeCopy.settingsRowSubtitle,
-                    divided: true
-                ) {
-                    Button(WelcomeCopy.settingsReopenButton) {
-                        onReopenWelcome()
                     }
                     .fluentButton()
                 }

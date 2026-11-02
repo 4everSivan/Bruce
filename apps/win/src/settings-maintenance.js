@@ -162,18 +162,6 @@
     });
     row(c1, "托盘实时预览", previewWrap, "鼠标悬停任务栏托盘图标时，弹出 420px 亚克力微缩实时预览卡");
 
-    // T22: 欢迎与使用引导重进门 (10-首次启动欢迎与引导向导 §4.2 R6, 对齐 mac SettingsView 通用页)
-    const reopenWrap = node("div", null, { class: "welcome-reopen-wrap" });
-    button(reopenWrap, "btn-reopen-welcome", WP?.copy?.settingsReopenButton || "重新打开欢迎向导", () => {
-      if (S.openWelcomeWizard) S.openWelcomeWizard();
-    });
-    row(
-      c1,
-      WP?.copy?.settingsRowTitle || "欢迎与使用引导",
-      reopenWrap,
-      WP?.copy?.settingsRowSubtitle || "重新查看首次启动的环境扫描、额度连接与菜单栏指示说明"
-    );
-
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
     const recordButton = button(hotkeyWrap, "hotkey-record", "录制热键", () => {
