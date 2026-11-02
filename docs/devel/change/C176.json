@@ -89,7 +89,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "0b8c526",
+    "commit": "eca205d",
     "tag": ""
   },
   "gate": {

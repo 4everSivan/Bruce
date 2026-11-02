@@ -19,7 +19,7 @@
     "command": "grep -n 'let mut usage = query_result?;' core/collector/crates/collector-provider/src/providers.rs; grep -n 'let local = local_result?;' core/collector/crates/collector-application/src/lib.rs; grep -n 'response.status != .error, !response.credentialUpdates.isEmpty\\|if response.status == .error {' apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift; grep -n 'after: timeouts.moduleSeconds' apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
     "expected": "providers.rs 命中 2 处（Claude / StepFun）；lib.rs 命中 1 处；Pipeline 命中 status 门控；CollectorRunner 外层定时器直接取 moduleSeconds",
     "is_completed": true,
-    "evidence": "2026-10-31 在 worktree local/worktrees/C171（fix/C171-rotated-token-loss，基于 docs/C171-C178-register e227fa6）执行预检命令：providers.rs 命中 496 / 780 两处 `let mut usage = query_result?;`（Claude / StepFun）；collector-application lib.rs:137 `let local = local_result?;`；RefreshExecutionPipeline.swift:384 `response.status != .error` 与 :442 `if response.status == .error {` 两处门控；CollectorRunner.swift:498 `after: timeouts.moduleSeconds`。另于审查期 scratch 副本（/tmp/bruce-review/x）以 FixtureHttp 复现：刷新请求已发出后 usage 返回 429 → `Err(PROVIDER_RATE_LIMIT)`，新 refresh token 无出口。缺陷存在且未被前序提交修复。"
+    "evidence": "2026-10-31 在 worktree local/worktrees/C171（fix/C171-rotated-token-loss，基于 docs/C171-C178-register 53409f2）执行预检命令：providers.rs 命中 496 / 780 两处 `let mut usage = query_result?;`（Claude / StepFun）；collector-application lib.rs:137 `let local = local_result?;`；RefreshExecutionPipeline.swift:384 `response.status != .error` 与 :442 `if response.status == .error {` 两处门控；CollectorRunner.swift:498 `after: timeouts.moduleSeconds`。另于审查期 scratch 副本（/tmp/bruce-review/x）以 FixtureHttp 复现：刷新请求已发出后 usage 返回 429 → `Err(PROVIDER_RATE_LIMIT)`，新 refresh token 无出口。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -106,7 +106,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "48737ad",
+    "commit": "7b750ba",
     "tag": ""
   },
   "gate": {

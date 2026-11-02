@@ -19,7 +19,7 @@
     "command": "grep -c '\"csp\"' apps/win/src-tauri/tauri.conf.json; cat apps/win/src-tauri/build.rs",
     "expected": "csp 计数为 0；build.rs 仅 tauri_build::build()",
     "is_completed": true,
-    "evidence": "2026-11-01 在 worktree local/worktrees/C178（fix/C178-win-csp，基于 docs/C171-C178-register e227fa6）执行预检命令：`grep -c '\"csp\"' tauri.conf.json` → 0；build.rs 仅 `tauri_build::build()`（无 AppManifest）。lib.rs generate_handler! 注册 60 个应用命令；capabilities 只有 local-panels（dashboard / settings：event listen/unlisten + dialog:allow-save）与 preview-panel（preview / quota-alert：event listen/unlisten），应用命令未受 ACL 约束、对四个窗口全部开放。另发现 preview.html / quota-alert.html 为内联脚本，quota-alert 以 innerHTML 拼接未转义的服务名 / 重置文案并含内联 onclick。缺陷存在。"
+    "evidence": "2026-11-01 在 worktree local/worktrees/C178（fix/C178-win-csp，基于 docs/C171-C178-register 53409f2）执行预检命令：`grep -c '\"csp\"' tauri.conf.json` → 0；build.rs 仅 `tauri_build::build()`（无 AppManifest）。lib.rs generate_handler! 注册 60 个应用命令；capabilities 只有 local-panels（dashboard / settings：event listen/unlisten + dialog:allow-save）与 preview-panel（preview / quota-alert：event listen/unlisten），应用命令未受 ACL 约束、对四个窗口全部开放。另发现 preview.html / quota-alert.html 为内联脚本，quota-alert 以 innerHTML 拼接未转义的服务名 / 重置文案并含内联 onclick。缺陷存在。"
   },
   "callback": {
     "before": [
@@ -81,7 +81,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "5128b21",
+    "commit": "05ac600",
     "tag": ""
   },
   "gate": {

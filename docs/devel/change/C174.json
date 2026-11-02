@@ -19,7 +19,7 @@
     "command": "grep -rn 'signature' apps/macos/Sources/BruceAppCore/SoftwareUpdate*.swift",
     "expected": "仅 SoftwareUpdateModels 中的字段声明，无任何校验调用",
     "is_completed": true,
-    "evidence": "2026-11-01 在 worktree local/worktrees/C174（fix/C174-mac-update-signature，基于 docs/C171-C178-register e227fa6）改动前执行预检命令：仅命中 SoftwareUpdateModels.swift:54 `package let signature: String?`（字段声明），全部 SoftwareUpdate*.swift 无任何校验调用；SoftwareUpdateInstaller.prepare 顺序为 SHA256 → ditto → xattr -cr → Info.plist。另核对 design/07 R8.1：T10（2026-10-25）评估结论「本期不启用」且标注待维护者确认——本卡修订该结论（见设计回写与卡内 why 校正）。缺陷存在。"
+    "evidence": "2026-11-01 在 worktree local/worktrees/C174（fix/C174-mac-update-signature，基于 docs/C171-C178-register 53409f2）改动前执行预检命令：仅命中 SoftwareUpdateModels.swift:54 `package let signature: String?`（字段声明），全部 SoftwareUpdate*.swift 无任何校验调用；SoftwareUpdateInstaller.prepare 顺序为 SHA256 → ditto → xattr -cr → Info.plist。另核对 design/07 R8.1：T10（2026-10-25）评估结论「本期不启用」且标注待维护者确认——本卡修订该结论（见设计回写与卡内 why 校正）。缺陷存在。"
   },
   "callback": {
     "before": [
@@ -87,7 +87,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "c8ffeb5",
+    "commit": "ff4e765",
     "tag": ""
   },
   "gate": {

@@ -19,7 +19,7 @@
     "command": "grep -n 'if update\\[\"provider\"\\] != \"stepfun\"' apps/win/src-tauri/src/credentials/lifecycle.rs",
     "expected": "命中 1 处，非 stepfun 更新记 CREDENTIAL_UPDATE_UNSUPPORTED",
     "is_completed": true,
-    "evidence": "2026-10-31 在 worktree local/worktrees/C172（fix/C172-win-claude-rotation，基于 fix/C171-rotated-token-loss 48737ad）执行预检命令：lifecycle.rs:225 命中 `if update[\"provider\"] != \"stepfun\" {`，非 stepfun 更新记 CREDENTIAL_UPDATE_UNSUPPORTED 后 continue。另查 scheduler.rs:242–243：`with_local_claude` 在采集闭包内注入零配置 claude-cli 账号，`apply_updates` 收到的 expected 不含该账号——即便放开 provider 判断，按 compare-and-replace 也永远写不回跟随账号。缺陷存在且未被前序提交修复。"
+    "evidence": "2026-10-31 在 worktree local/worktrees/C172（fix/C172-win-claude-rotation，基于 fix/C171-rotated-token-loss 7b750ba）执行预检命令：lifecycle.rs:225 命中 `if update[\"provider\"] != \"stepfun\" {`，非 stepfun 更新记 CREDENTIAL_UPDATE_UNSUPPORTED 后 continue。另查 scheduler.rs:242–243：`with_local_claude` 在采集闭包内注入零配置 claude-cli 账号，`apply_updates` 收到的 expected 不含该账号——即便放开 provider 判断，按 compare-and-replace 也永远写不回跟随账号。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -88,7 +88,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "6d10558",
+    "commit": "032ec09",
     "tag": ""
   },
   "gate": {

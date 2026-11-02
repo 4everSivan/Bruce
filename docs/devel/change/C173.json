@@ -19,7 +19,7 @@
     "command": "grep -n 'func deleteCredential' -A14 apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift | grep -n 'writePayloadLocked'; grep -n 'lastPathComponent).bak' apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
     "expected": "deleteCredential 调用 writePayloadLocked；writePayloadLocked 无条件复制上一版为 .bak",
     "is_completed": true,
-    "evidence": "2026-11-01 在 worktree local/worktrees/C173（fix/C173-credential-bak-residue，基于 docs/C171-C178-register e227fa6）执行预检命令：deleteCredential 块内命中 `try writePayloadLocked(payload)`（OnboardingConfiguration.swift:774）；writePayloadLocked 在 :875 无条件把当前文件复制为 `credentials.json.bak` 后 replaceItemAt。preserveCorruptedFile（:821）每次以新时间戳 move 出 `.corrupt-<时间戳>`，全文件无任何清理旧副本的代码。缺陷存在且未被前序提交修复。"
+    "evidence": "2026-11-01 在 worktree local/worktrees/C173（fix/C173-credential-bak-residue，基于 docs/C171-C178-register 53409f2）执行预检命令：deleteCredential 块内命中 `try writePayloadLocked(payload)`（OnboardingConfiguration.swift:774）；writePayloadLocked 在 :875 无条件把当前文件复制为 `credentials.json.bak` 后 replaceItemAt。preserveCorruptedFile（:821）每次以新时间戳 move 出 `.corrupt-<时间戳>`，全文件无任何清理旧副本的代码。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -79,7 +79,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "b8bbd1f",
+    "commit": "6398e3a",
     "tag": ""
   },
   "gate": {

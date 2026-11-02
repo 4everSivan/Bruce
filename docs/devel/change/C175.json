@@ -19,7 +19,7 @@
     "command": "grep -n 'sync_all' core/collector/crates/collector-local/src/*.rs core/collector/crates/collector-local/src/sources/*.rs",
     "expected": "cache_util.rs write_json_atomic 命中",
     "is_completed": true,
-    "evidence": "2026-11-01 在 worktree local/worktrees/C175（fix/C175-cache-fsync，基于 docs/C171-C178-register e227fa6）执行预检命令：仅 cache_util.rs:85 `file.sync_all()` 命中（write_json_atomic，JSONL / SQLite 条目与 JSONL manifest 共用）。另核对：Codex 按文件缓存 write_codex_file_cache 自 C117 起即不 sync_all；collector-bridge metrics.rs 的 sync_all 属调试指标写盘，不是缓存，不在本卡范围。缺陷存在且未被前序提交修复。"
+    "evidence": "2026-11-01 在 worktree local/worktrees/C175（fix/C175-cache-fsync，基于 docs/C171-C178-register 53409f2）执行预检命令：仅 cache_util.rs:85 `file.sync_all()` 命中（write_json_atomic，JSONL / SQLite 条目与 JSONL manifest 共用）。另核对：Codex 按文件缓存 write_codex_file_cache 自 C117 起即不 sync_all；collector-bridge metrics.rs 的 sync_all 属调试指标写盘，不是缓存，不在本卡范围。缺陷存在且未被前序提交修复。"
   },
   "callback": {
     "before": [
@@ -65,7 +65,7 @@
         "item": "性能实测",
         "true_if": "同一合成数据集（2,000 文件 / 40 万观测）冷扫描 ≤ 5 s，artifact 与改动前逐字节一致",
         "false_if": "冷扫描未显著下降或 artifact 不一致",
-        "evidence": "2026-11-01 同一合成数据集（/tmp/bruce-review/synth：2,000 个窗口内 Claude 会话、289 MB）、同一请求（days=30、仅 localSessions），未改动构建（主干 6993c12 同源 release，core/ 与 e227fa6 无差异）与本分支 release 构建交替运行：冷扫描（每次全新 home）base 20.22 / 18.11 / 18.62 s → 本分支 4.48 / 4.13 / 3.87 s（≤ 5 s）；热扫描 base 1.07 / 0.64 / 0.76 s → 0.99 / 0.65 / 0.70 s（无差异）。12 次运行 status 均为 success，artifact（去掉 generatedAt）SHA-256 全部为 58203b0de16c…，逐字节一致。审查期（2026-10-31）同数据集测得 15.1 s → 3.6 s，本轮 base 偏慢属磁盘 / 负载波动，降幅一致。",
+        "evidence": "2026-11-01 同一合成数据集（/tmp/bruce-review/synth：2,000 个窗口内 Claude 会话、289 MB）、同一请求（days=30、仅 localSessions），未改动构建（主干 6993c12 同源 release，core/ 与 53409f2 无差异）与本分支 release 构建交替运行：冷扫描（每次全新 home）base 20.22 / 18.11 / 18.62 s → 本分支 4.48 / 4.13 / 3.87 s（≤ 5 s）；热扫描 base 1.07 / 0.64 / 0.76 s → 0.99 / 0.65 / 0.70 s（无差异）。12 次运行 status 均为 success，artifact（去掉 generatedAt）SHA-256 全部为 58203b0de16c…，逐字节一致。审查期（2026-10-31）同数据集测得 15.1 s → 3.6 s，本轮 base 偏慢属磁盘 / 负载波动，降幅一致。",
         "result": true
       },
       {
@@ -81,7 +81,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "ca3bd7b",
+    "commit": "e99def7",
     "tag": ""
   },
   "gate": {

@@ -19,7 +19,7 @@
     "command": "grep -rn 'local_scan_seconds' core/collector/crates apps/win/src-tauri/src --include='*.rs'",
     "expected": "仅 collector-domain 字段声明、collector-bridge 校验与 Windows 赋值，无任何读取用于控制扫描",
     "is_completed": true,
-    "evidence": "2026-11-01 在 worktree local/worktrees/C177（fix/C177-timeout-contract，基于 docs/C171-C178-register e227fa6）执行预检命令：命中 collector-bridge lib.rs:255 `validate_timeout(request.timeouts.local_scan_seconds, …)`（唯一读取点，只做范围校验）、collector-domain lib.rs:40 字段声明、Windows collector.rs:64 发送 120.0 与 :280 测试断言；本机扫描的实际约束来自 collector-application context.rs:80 的 moduleSeconds deadline 与 :99 的 externalRequestSeconds。mac 发送 30 / 10 / 90、Windows 发送 120 / 30 / 150，design/01 无记录。注：预检命令只覆盖 src/，Windows tests/scheduler_collector_coverage.rs:183 的另一处读取在第二轮门禁时才暴露（见自动化测试）。缺陷存在。"
+    "evidence": "2026-11-01 在 worktree local/worktrees/C177（fix/C177-timeout-contract，基于 docs/C171-C178-register 53409f2）执行预检命令：命中 collector-bridge lib.rs:255 `validate_timeout(request.timeouts.local_scan_seconds, …)`（唯一读取点，只做范围校验）、collector-domain lib.rs:40 字段声明、Windows collector.rs:64 发送 120.0 与 :280 测试断言；本机扫描的实际约束来自 collector-application context.rs:80 的 moduleSeconds deadline 与 :99 的 externalRequestSeconds。mac 发送 30 / 10 / 90、Windows 发送 120 / 30 / 150，design/01 无记录。注：预检命令只覆盖 src/，Windows tests/scheduler_collector_coverage.rs:183 的另一处读取在第二轮门禁时才暴露（见自动化测试）。缺陷存在。"
   },
   "callback": {
     "before": [
@@ -80,7 +80,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "abaf549",
+    "commit": "b0c24c4",
     "tag": ""
   },
   "gate": {
