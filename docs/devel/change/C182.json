@@ -79,7 +79,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "bee9592",
+    "commit": "a052c34",
     "tag": ""
   },
   "gate": {
@@ -87,7 +87,7 @@
     "version": "1.6.0",
     "ran_at": "2026-11-02",
     "exit_code": 0,
-    "from_status": "draft",
+    "from_status": "closed",
     "target_status": "closed",
     "signed_quote": "重新打包部署",
     "signed_rejection_count": 0
