@@ -31,6 +31,7 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "codexQuotaAccountOrder",
     "localUsageOnly",
     "quotaSkipProviders",
+    "egressRules",
     "pricingOverrides",
     "pricingCatalog",
 ];
@@ -275,6 +276,37 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
             ));
         }
     }
+    if let Some(raw) = request.context.get("egressRules") {
+        let invalid = || protocol_error("BRIDGE_INVALID_REQUEST", "出口保护规则无效");
+        let rules = raw.as_object().ok_or_else(invalid)?;
+        if rules.len() > 32 {
+            return Err(invalid());
+        }
+        for (provider, raw_rule) in rules {
+            if provider.is_empty() || provider.len() > 64 {
+                return Err(invalid());
+            }
+            let rule = raw_rule.as_object().ok_or_else(invalid)?;
+            if rule.len() != 2 || !rule.contains_key("country") || !rule.contains_key("port") {
+                return Err(invalid());
+            }
+            let country = rule
+                .get("country")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(invalid)?;
+            if country.len() != 2 || !country.bytes().all(|value| value.is_ascii_uppercase()) {
+                return Err(invalid());
+            }
+            let port = rule.get("port").ok_or_else(invalid)?;
+            if !port.is_null()
+                && !port
+                    .as_u64()
+                    .is_some_and(|value| (1..=65535).contains(&value))
+            {
+                return Err(invalid());
+            }
+        }
+    }
     if let Some(raw) = request.context.get("pricingOverrides") {
         let invalid = || protocol_error("BRIDGE_INVALID_REQUEST", "价格覆盖配置无效");
         let entries = raw.as_object().ok_or_else(invalid)?;
@@ -474,6 +506,26 @@ mod tests {
 
     fn request() -> String {
         r#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"/tmp","capabilities":["localSessions"]},"credentials":{}}"#.to_owned()
+    }
+
+    #[test]
+    fn validates_egress_rules_without_treating_missing_port_as_unmanaged() {
+        let mut request: collector_domain::BridgeRequest =
+            serde_json::from_str(&request()).unwrap();
+        request.context.insert(
+            "egressRules".into(),
+            json!({"codex":{"country":"JP","port":null}}),
+        );
+        assert!(super::validate_request(&request).is_ok());
+        for invalid in [
+            json!(null),
+            json!({"codex":{"country":"JP","port":0}}),
+            json!({"codex":{"country":"jp","port":1234}}),
+            json!({"codex":{"country":"JP"}}),
+        ] {
+            request.context.insert("egressRules".into(), invalid);
+            assert!(super::validate_request(&request).is_err());
+        }
     }
 
     /// C043: panic 兜底必须产出可解析的 envelope (含 runId 与诊断码),

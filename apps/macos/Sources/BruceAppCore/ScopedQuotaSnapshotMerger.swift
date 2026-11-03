@@ -189,7 +189,7 @@ struct ScopedQuotaSnapshotMerger: Sendable {
         previous: [String: JSONValue]?
     ) {
         if let previous, Self.qualifiedPreviousSuccess(previous) {
-            for key in ["windows", "plan", "extra", "kind", "capturedAt"] {
+            for key in ["windows", "balance", "currency", "plan", "extra", "kind", "capturedAt"] {
                 if let existingValue = previous[key] {
                     service[key] = existingValue
                 }

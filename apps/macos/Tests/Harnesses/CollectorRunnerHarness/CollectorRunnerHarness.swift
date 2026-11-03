@@ -1094,7 +1094,21 @@ struct CollectorRunnerHarness {
         )
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        _ = try await provider.runInput(for: .agentUsage)
+        let configStore = try OnboardingConfigurationStore(configDirectory: tempDir)
+        guard var config = configStore.load() else {
+            throw RunnerTestFailure.expectation("配置加载失败")
+        }
+        try config.egressGroups.addCountry("JP")
+        try config.egressGroups.assign(.codex, to: "JP")
+        try config.egressGroups.setProxyPort(12345, for: "JP")
+        try configStore.save(config)
+        let initial = try await provider.runInput(for: .agentUsage)
+        let expectedRule: JSONValue = .object(["codex": .object([
+            "country": .string("JP"), "port": .integer(12345),
+        ])])
+        try runnerExpect(initial.context["egressRules"] == expectedRule, "常规刷新须携带出口规则")
+        let scoped = try await provider.scopedRunInput(for: .agentUsage, providers: [.codex])
+        try runnerExpect(scoped.context["egressRules"] == expectedRule, "定向刷新须携带出口规则")
         try runnerExpect(
             provider.resolvedCodexAccountIDs() == ["acc-a", "acc-b"],
             "v2 index 顺序应为 acc-a, acc-b (索引按 accountID 排序)"
@@ -1106,6 +1120,7 @@ struct CollectorRunnerHarness {
         ) else {
             throw RunnerTestFailure.expectation("retryInput 返回 nil")
         }
+        try runnerExpect(retry.context["egressRules"] == expectedRule, "重试须携带出口规则")
         guard case .object(let retryAccounts)? = retry.credentials["codexQuotaAccounts"] else {
             throw RunnerTestFailure.expectation("retry codexQuotaAccounts 缺失")
         }

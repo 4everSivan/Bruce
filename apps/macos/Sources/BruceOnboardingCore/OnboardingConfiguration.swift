@@ -144,10 +144,10 @@ public enum MotionPreference: String, Codable, Equatable, Sendable, CaseIterable
 
 /// 非敏感配置. 持久化到 Application Support/Bruce/config/onboarding-v1.json.
 public struct OnboardingConfiguration: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let currentWelcomeVersion = 1
 
-    public let schemaVersion: Int
+    public var schemaVersion: Int
     public var selectedModules: Set<String>
     public var consentVersion: Int?
     /// 首次启动欢迎向导完成版本 (T22, 10-首次启动欢迎与引导向导 §4.2 R1).
@@ -160,6 +160,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 订阅 provider 配置, 键为 SubscriptionProviderID rawValue.
     /// v1 配置文件无此键, 加载时按缺省 (全部未配置) 处理.
     public var subscriptionProviders: [String: SubscriptionProviderConfiguration]
+    /// 仅保存分组配置；实际启用保护还要求采集链路接入专用代理门禁。
+    public var egressGroups: EgressCountryGroups
     /// 模型单价人工校准覆盖, 键为模型标识 (如 "k3-agent", "deepseek-v4-flash").
     public var pricingOverrides: [String: ModelPricingOverride]?
     /// 自动刷新间隔 (分钟). nil (含 JSON 显式 null) 表示使用默认 30 分钟.
@@ -299,6 +301,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         menuBarMetrics: [String]? = nil,
         menuBarIconOnly: Bool? = nil,
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
+        egressGroups: EgressCountryGroups = EgressCountryGroups(),
         pricingOverrides: [String: ModelPricingOverride]? = nil,
         refreshIntervalMinutes: Int? = nil,
         appearanceMode: AppearancePreference? = nil,
@@ -320,6 +323,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.menuBarMetrics = menuBarMetrics
         self.menuBarIconOnly = menuBarIconOnly
         self.subscriptionProviders = subscriptionProviders
+        self.egressGroups = egressGroups
         self.pricingOverrides = pricingOverrides
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.appearanceMode = appearanceMode
@@ -349,6 +353,12 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
             [String: SubscriptionProviderConfiguration].self,
             forKey: .subscriptionProviders
         ) ?? [:]
+        if container.contains(.egressGroups) {
+            // 显式 null 或损坏不能解释为未分组。
+            egressGroups = try container.decode(EgressCountryGroups.self, forKey: .egressGroups)
+        } else {
+            egressGroups = EgressCountryGroups()
+        }
         pricingOverrides = try container.decodeIfPresent(
             [String: ModelPricingOverride].self,
             forKey: .pricingOverrides
@@ -417,6 +427,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case menuBarMetrics
         case menuBarIconOnly
         case subscriptionProviders
+        case egressGroups
         case pricingOverrides
         case refreshIntervalMinutes
         case appearanceMode
@@ -441,6 +452,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         try container.encodeIfPresent(menuBarMetrics, forKey: .menuBarMetrics)
         try container.encodeIfPresent(menuBarIconOnly, forKey: .menuBarIconOnly)
         try container.encode(subscriptionProviders, forKey: .subscriptionProviders)
+        try container.encode(egressGroups, forKey: .egressGroups)
         try container.encodeIfPresent(pricingOverrides, forKey: .pricingOverrides)
         try container.encodeIfPresent(
             refreshIntervalMinutes, forKey: .refreshIntervalMinutes
@@ -517,19 +529,11 @@ public final class OnboardingConfigurationStore: @unchecked Sendable {
                 // 高版本 schema: 保守拒绝, 不回滚 (避免降回旧结构).
                 return nil
             case .unreadable:
-                // 读取失败 (权限/IO): 文件内容未知, 保守不回滚, 视为缺失.
-                return OnboardingConfiguration()
+                // 无法证明旧配置中没有受保护订阅，必须拒绝加载。
+                return nil
             case .corrupt:
-                // 损坏: 尝试从备份回滚一次; 回滚结果与直读同样执行 schema 校验,
-                // 高版本备份保守拒绝 (App 降级场景), 仍不可用则视为缺失.
-                if atomicStore.rollback(configURL) == .rolledBack,
-                   case .loaded(let rolled) = atomicStore.read(
-                       OnboardingConfiguration.self, from: configURL
-                   ),
-                   rolled.schemaVersion <= OnboardingConfiguration.currentSchemaVersion {
-                    return rolled
-                }
-                return OnboardingConfiguration()
+                // 旧备份可能早于出口保护配置，不能自动回滚导致受管订阅放行。
+                return nil
             }
         }
     }
@@ -538,11 +542,26 @@ public final class OnboardingConfigurationStore: @unchecked Sendable {
     /// 原子替换, 并备份上一版本以支持回滚.
     public func save(_ config: OnboardingConfiguration) throws {
         try queue.sync {
+            switch atomicStore.read(OnboardingConfiguration.self, from: configURL) {
+            case .missing:
+                break
+            case .loaded(let current):
+                guard current.schemaVersion <= OnboardingConfiguration.currentSchemaVersion else {
+                    throw AtomicJSONStore.AtomicJSONStoreError.storageFailure
+                }
+            case .incompatible, .unreadable, .corrupt:
+                // 保留损坏现场及备份，不能由默认配置覆盖后丢失保护规则。
+                throw AtomicJSONStore.AtomicJSONStoreError.storageFailure
+            }
+            var stored = config
+            if !stored.egressGroups.groups.isEmpty {
+                stored.schemaVersion = OnboardingConfiguration.currentSchemaVersion
+            }
             try atomicStore.write(
-                config,
+                stored,
                 to: configURL,
                 validate: { reread in
-                    guard reread == config else {
+                    guard reread == stored else {
                         throw AtomicJSONStore.AtomicJSONStoreError.storageFailure
                     }
                 },

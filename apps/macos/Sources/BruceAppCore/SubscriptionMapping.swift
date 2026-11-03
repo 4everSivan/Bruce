@@ -91,7 +91,8 @@ extension PanelViewModelMapper {
                     status: svc.service.status,
                     note: svc.note,
                     windows: svc.windows,
-                    lastSuccessText: lastSuccessText(for: svc.service, now: now)
+                    lastSuccessText: lastSuccessText(for: svc.service, now: now),
+                    hasProtectedSnapshot: svc.service.egress?.status == .blocked && svc.service.freshness == "stale"
                 )
 
                 sections.append(SubscriptionProviderSection(
@@ -114,7 +115,9 @@ extension PanelViewModelMapper {
                             BalanceRow(amount: amount, currency: svc.service.currency)
                         }
                     },
-                    accountCountText: nil
+                    accountCountText: nil,
+                    egress: svc.service.egress,
+                    hasProtectedSnapshot: svc.service.egress?.status == .blocked && svc.service.freshness == "stale"
                 ))
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow.
@@ -133,7 +136,8 @@ extension PanelViewModelMapper {
                             from: item.service.name,
                             providerID: providerID,
                             totalAccountCount: services.count
-                        )
+                        ),
+                        hasProtectedSnapshot: item.service.egress?.status == .blocked && item.service.freshness == "stale"
                     )
                 }
                 let groupStatus = SubscriptionPresentationPolicy.codexGroupStatus(
@@ -154,7 +158,10 @@ extension PanelViewModelMapper {
                     accounts: accountVMs,
                     collapsedWindow: collapsed,
                     balance: nil,
-                    accountCountText: "\(accountVMs.count) 个账号"
+                    accountCountText: "\(accountVMs.count) 个账号",
+                    egress: services.compactMap { $0.service.egress }.first(where: { $0.status == .blocked })
+                        ?? services.compactMap { $0.service.egress }.first,
+                    hasProtectedSnapshot: services.allSatisfy { $0.service.egress?.status == .blocked && $0.service.freshness == "stale" }
                 ))
             }
         }

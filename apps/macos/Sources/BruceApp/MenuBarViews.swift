@@ -566,6 +566,10 @@ struct MenuBarDashboardView: View {
                         onRefreshProvider: { provider in
                             coordinator.refreshSubscription(provider)
                         },
+                        onOpenSubscriptionSettings: {
+                            coordinator.requestedEgressSettings = true
+                            openSubscriptionSettings()
+                        },
                         panelVisible: model.dashboardPanelVisible
                     )
                 }

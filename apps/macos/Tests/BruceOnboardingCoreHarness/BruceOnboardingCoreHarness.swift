@@ -23,6 +23,7 @@ enum IsNonInteractiveEnvironment {
 @MainActor
 struct BruceOnboardingCoreHarness {
     static func main() async throws {
+        try egressCountryGroupsTests()
         try gateDeniesAllBeforeConsent()
         try gateDeniesWhenConsentVersionMismatch()
         try gateAllowsAgentReady()
@@ -76,7 +77,7 @@ struct BruceOnboardingCoreHarness {
         try standardPathsIncludeCodeBuddyProjects()
         try firstLaunchDecisionFlow()
         try configStoreLoadsV1WithSubscriptionDefaults()
-        try configStoreRejectsNewerSchemaV3()
+        try configStoreRejectsNewerSchemaV4()
         try configStoreSubscriptionProvidersRoundTrip()
         try configRefreshIntervalDecodeAndFallback()
         try customRefreshIntervalInputParsing()

@@ -406,12 +406,12 @@ extension RefreshSchedulerHarness {
             services: [
                 scopeService(
                     id: "deepseek_aaa", status: "ok", freshness: "fresh", capturedAt: "2026-08-17T00:00:00Z",
-                    extra: ["windows": .array([.object(["usedPercent": .string("50")])]), "plan": .string("pro")]
+                    extra: ["windows": .array([.object(["usedPercent": .string("50")])]), "plan": .string("pro"), "balance": .double(42.5), "currency": .string("CNY")]
                 )
             ]
         )
         let first = scopeArtifact(
-            services: [scopeService(id: "deepseek_aaa", status: "error")]
+            services: [scopeService(id: "deepseek_aaa", status: "error", extra: ["egress": .object(["status": .string("blocked")])])]
         )
         let result = ScopedQuotaSnapshotMerger().merge(
             previous: previous, first: first, retry: nil,
@@ -423,6 +423,8 @@ extension RefreshSchedulerHarness {
         try refreshExpect(ds?["capturedAt"] == JSONValue.string("2026-08-17T00:00:00Z"), "stale 应复制 previous capturedAt")
         try refreshExpect(ds?["windows"] != nil, "stale 应复制 previous windows")
         try refreshExpect(ds?["plan"] == JSONValue.string("pro"), "stale 应复制 previous plan")
+        try refreshExpect(ds?["balance"] == .double(42.5) && ds?["currency"] == .string("CNY"), "stale 应保留余额与币种")
+        try refreshExpect(ds?["egress"] == .object(["status": .string("blocked")]), "应保留本轮出口阻断状态")
     }
 
     /// 目标失败且无合格 previous: 标 unavailable, 不写 capturedAt.

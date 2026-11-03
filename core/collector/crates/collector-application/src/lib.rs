@@ -8,6 +8,7 @@
 
 mod account;
 mod context;
+mod egress;
 mod execution;
 mod paths;
 
@@ -1029,6 +1030,144 @@ mod tests {
                 body: self.body.clone(),
             })
         }
+    }
+
+    struct EgressFixtureHttp {
+        loc: &'static str,
+        direct: AtomicUsize,
+        proxy: AtomicUsize,
+        probes: AtomicUsize,
+    }
+
+    impl HttpClient for EgressFixtureHttp {
+        fn send(
+            &self,
+            _: HttpRequest,
+            _: &CancellationToken,
+        ) -> Result<HttpResponse, ProviderError> {
+            self.direct.fetch_add(1, Ordering::SeqCst);
+            Ok(HttpResponse {
+                status: 200,
+                body: b"{}".to_vec(),
+            })
+        }
+
+        fn send_via_loopback_proxy(
+            &self,
+            port: u16,
+            request: HttpRequest,
+            _: &CancellationToken,
+        ) -> Result<HttpResponse, ProviderError> {
+            assert_eq!(port, 12345);
+            if request.url.contains("cdn-cgi/trace") {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                if self.loc == "FAIL" {
+                    return Err(ProviderError::new(
+                        "TEST_TIMEOUT",
+                        "request",
+                        "timeout",
+                        true,
+                    ));
+                }
+                return Ok(HttpResponse {
+                    status: 200,
+                    body: format!("ip=192.0.2.1\nloc={}\n", self.loc).into_bytes(),
+                });
+            }
+            self.proxy.fetch_add(1, Ordering::SeqCst);
+            Ok(HttpResponse {
+                status: 200,
+                body: br#"{"is_available":true,"balance_infos":[]}"#.to_vec(),
+            })
+        }
+    }
+
+    #[test]
+    fn protected_quota_uses_proxy_and_blocks_mismatched_trace() {
+        for (loc, expected_queries) in [("CN", 0), ("US", 0), ("FAIL", 0), ("JP", 1)] {
+            let mut request = request(&["externalQuotas"]);
+            request.context.insert(
+                "egressRules".into(),
+                json!({"deepseek":{"country":"JP","port":12345}}),
+            );
+            request.credentials.insert(
+                "deepseekQuotaAccounts".into(),
+                json!({
+                    "account": {"display_name":"fixture", "api_key":"fixture"}
+                }),
+            );
+            let http = EgressFixtureHttp {
+                loc,
+                direct: AtomicUsize::new(0),
+                proxy: AtomicUsize::new(0),
+                probes: AtomicUsize::new(0),
+            };
+            let window = super::CollectionWindow::from_context(&request.context).unwrap();
+            let context = super::RunContext::new(
+                &request,
+                window,
+                &http,
+                &EmptyCredentialSource,
+                super::RuntimeLimits::default(),
+            )
+            .unwrap();
+            let result = super::collect_quota_usage(&context);
+            assert_eq!(http.direct.load(Ordering::SeqCst), 0);
+            assert_eq!(http.probes.load(Ordering::SeqCst), 1);
+            assert_eq!(http.proxy.load(Ordering::SeqCst), expected_queries);
+            let state = &result.services[0]["egress"];
+            assert_eq!(
+                state["status"],
+                if expected_queries == 0 {
+                    "blocked"
+                } else {
+                    "allowed"
+                }
+            );
+            if expected_queries == 0 {
+                assert_eq!(result.services[0]["failureKind"], "network");
+                let code = match loc {
+                    "CN" => "EGRESS_CN_DIRECT",
+                    "US" => "EGRESS_COUNTRY_MISMATCH",
+                    _ => "EGRESS_PROBE_TIMEOUT",
+                };
+                assert!(result.diagnostics.iter().any(|item| item.code == code));
+                assert!(result.credential_challenges.is_empty());
+            }
+            assert!(!result.services[0].to_string().contains("192.0.2.1"));
+        }
+    }
+
+    #[test]
+    fn unmanaged_quota_stays_on_original_transport() {
+        let mut request = request(&["externalQuotas"]);
+        request.context.insert("egressRules".into(), json!({}));
+        request.credentials.insert(
+            "deepseekQuotaAccounts".into(),
+            json!({
+                "account": {"display_name":"fixture", "api_key":"fixture"}
+            }),
+        );
+        let http = EgressFixtureHttp {
+            loc: "CN",
+            direct: AtomicUsize::new(0),
+            proxy: AtomicUsize::new(0),
+            probes: AtomicUsize::new(0),
+        };
+        let window = super::CollectionWindow::from_context(&request.context).unwrap();
+        let context = super::RunContext::new(
+            &request,
+            window,
+            &http,
+            &EmptyCredentialSource,
+            super::RuntimeLimits::default(),
+        )
+        .unwrap();
+        let result = super::collect_quota_usage(&context);
+        assert_eq!(http.direct.load(Ordering::SeqCst), 1);
+        assert_eq!(http.probes.load(Ordering::SeqCst), 0);
+        assert_eq!(http.proxy.load(Ordering::SeqCst), 0);
+        assert!(result.services[0].get("egress").is_none());
     }
 
     struct EmptyCredentialSource;

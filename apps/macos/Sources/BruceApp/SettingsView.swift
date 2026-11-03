@@ -63,6 +63,7 @@ struct SettingsView: View {
     @State var accountRenameRequest: AccountRenameRequest?
     /// 统一悬浮错误胶囊状态 (C111: 零抖动、4s倒计时、手动✕关闭、Tab切换自动失效)
     @State private var activeToastMessage: String?
+    @State var highlightEgressSettings = false
 
     struct AccountRemovalRequest {
         let provider: SubscriptionProviderID
@@ -82,15 +83,21 @@ struct SettingsView: View {
                     .fill(SettingsDemoTokens.separator)
                     .frame(width: 1)
                     .frame(maxHeight: .infinity)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        crumb("设置 / \(category.title)")
-                        paneTitle(category.title)
-                        paneContent
+                ScrollViewReader { scroll in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            crumb("设置 / \(category.title)")
+                            paneTitle(category.title)
+                            paneContent
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onAppear { navigateToEgressIfRequested(scroll) }
+                    .onChange(of: coordinator.requestedEgressSettings) { _, _ in
+                        navigateToEgressIfRequested(scroll)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(SettingsDemoTokens.window)
@@ -221,6 +228,21 @@ struct SettingsView: View {
             coordinator.refreshLaunchAtLoginStatus()
             if let initialError = model.settingsErrorMessage {
                 activeToastMessage = initialError
+            }
+        }
+    }
+
+    private func navigateToEgressIfRequested(_ scroll: ScrollViewProxy) {
+        guard coordinator.requestedEgressSettings else { return }
+        category = .subscription
+        coordinator.requestedEgressSettings = false
+        DispatchQueue.main.async {
+            withAnimation(motionSuppressed ? nil : .easeInOut(duration: 0.25)) {
+                scroll.scrollTo("egress-settings", anchor: .center)
+                highlightEgressSettings = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                highlightEgressSettings = false
             }
         }
     }
@@ -421,32 +443,6 @@ struct SettingsView: View {
                     )
                 }
                 FluentRow(
-                    "开机自启动",
-                    sub: "开机时自动启动 Bruce 并在后台常驻菜单栏",
-                    divided: true
-                ) {
-                    HStack(spacing: 8) {
-                        if coordinator.launchAtLoginStatus.needsApproval {
-                            Text("需在系统设置中允许")
-                                .font(.system(size: 12))
-                                .foregroundStyle(SettingsDemoTokens.warn)
-                            Button("打开系统设置") {
-                                coordinator.openSystemLoginItemsSettings()
-                            }
-                            .fluentButton()
-                        }
-                        Toggle(
-                            "",
-                            isOn: Binding(
-                                get: { coordinator.launchAtLoginEnabled },
-                                set: { coordinator.setLaunchAtLogin(enabled: $0) }
-                            )
-                        )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                    }
-                }
-                FluentRow(
                     "仪表盘卡片布局",
                     sub: "纵向级联可滚轮纵览全部卡片；顶栏 Tab 切换通过右上角小图标在用量、订阅与活跃卡片间快速切换",
                     divided: true
@@ -501,6 +497,32 @@ struct SettingsView: View {
                     )
                     .labelsHidden()
                     .toggleStyle(.switch)
+                }
+                FluentRow(
+                    "开机自启动",
+                    sub: "开机时自动启动 Bruce 并在后台常驻菜单栏",
+                    divided: true
+                ) {
+                    HStack(spacing: 8) {
+                        if coordinator.launchAtLoginStatus.needsApproval {
+                            Text("需在系统设置中允许")
+                                .font(.system(size: 12))
+                                .foregroundStyle(SettingsDemoTokens.warn)
+                            Button("打开系统设置") {
+                                coordinator.openSystemLoginItemsSettings()
+                            }
+                            .fluentButton()
+                        }
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { coordinator.launchAtLoginEnabled },
+                                set: { coordinator.setLaunchAtLogin(enabled: $0) }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
                 }
                 FluentRow(
                     "凭据存储",

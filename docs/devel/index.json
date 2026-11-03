@@ -2,16 +2,17 @@
   "$schema": "adflow-devel-index-v1",
   "project": "Bruce",
   "created": "2026-09-23",
-  "last_change": "2026-09-23",
+  "last_change": "2026-11-03",
   "status": "active",
-  "description": "研发内场核心工作区总账路由，聚合现行设计基线与执行卡池",
+  "description": "研发内场核心工作区总账路由，聚合现行设计、待评审草稿与执行卡池",
   "subsystems": [
     {
       "name": "design",
       "path": "docs/devel/design",
       "type": "living_baseline",
-      "description": "现行系统设计基线真理源（以 @topic 锚点保持全文自洽）",
-      "readme": "docs/devel/design/README.md"
+      "description": "现行系统设计基线与待评审草稿的导航入口（以状态区分）",
+      "readme": "docs/devel/design/README.md",
+      "draft_designs": []
     },
     {
       "name": "change",

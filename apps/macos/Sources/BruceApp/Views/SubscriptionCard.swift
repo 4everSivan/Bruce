@@ -81,6 +81,7 @@ struct SubscriptionCard: View {
     /// Provider 定向刷新动作; 目标由 section ID 经
     /// SubscriptionRefreshControlPolicy 解析, 与按钮禁用态共用同一解析.
     var onRefreshProvider: (SubscriptionProviderID) -> Void = { _ in }
+    var onOpenSubscriptionSettings: () -> Void = {}
     /// 面板可见性: 隐藏时不得挂载逐帧动画载体 (C044, 见 DashboardPanelAnimationPolicy).
     var panelVisible: Bool = true
 
@@ -143,6 +144,7 @@ struct SubscriptionCard: View {
                     section: section,
                     isFirst: index == 0,
                     refreshControl: refreshControl(for: section),
+                    onOpenSettings: onOpenSubscriptionSettings,
                     panelVisible: panelVisible
                 )
             }
@@ -162,19 +164,24 @@ struct SubscriptionCard: View {
     /// 量条取该 provider 最紧张窗口 (collapsedPeakWindow), 三档告警配色;
     /// 无窗口的 provider (纯余额型) 不出迷你量条.
     private var collapsedMini: some View {
-        let sections = viewModel.sections.filter { $0.collapsedPeakWindow != nil }
+        let sections = viewModel.sections.filter { $0.collapsedPeakWindow != nil || $0.egress?.status == .blocked }
         return HStack(spacing: 10) {
             ForEach(sections, id: \.id) { section in
-                if let peak = section.collapsedPeakWindow {
                     HStack(spacing: 5) {
                         ProviderBrandBadge(
                             providerID: section.badgeProviderID,
                             name: section.name
                         )
-                        MiniMeterBar(usedFraction: peak.usedPercent / 100, panelVisible: panelVisible)
+                        .overlay(alignment: .topTrailing) {
+                            if section.egress?.status == .blocked {
+                                Circle().fill(.orange).frame(width: 6, height: 6)
+                            }
+                        }
+                        if let peak = section.collapsedPeakWindow {
+                            MiniMeterBar(usedFraction: peak.usedPercent / 100, panelVisible: panelVisible)
+                        }
                     }
                     .frame(maxWidth: .infinity)
-                }
             }
         }
     }
@@ -213,6 +220,7 @@ private struct ProviderSectionView: View {
     let isFirst: Bool
     /// 非 nil 时头部行尾渲染定向刷新按钮.
     var refreshControl: ProviderRefreshControl? = nil
+    var onOpenSettings: () -> Void = {}
     /// 面板可见性: 隐藏时刷新指示回退静态图标, 不挂 ProgressView (C044).
     var panelVisible: Bool = true
     @Environment(\.motionSuppressed) private var motionSuppressed
@@ -232,6 +240,8 @@ private struct ProviderSectionView: View {
             head
                 .padding(.bottom, 3)
 
+            egressIssue
+
             if section.isMultiAccount {
                 multiAccountContent
                     .animation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve, value: expanded)
@@ -240,15 +250,41 @@ private struct ProviderSectionView: View {
             }
 
             // error/empty 段保留 collector 说明, 不静默吞掉.
-            if section.status == "error" || section.status == "empty", let note = section.note {
+            if section.egress?.status != .blocked, (section.status == "error" || section.status == "empty"), let note = section.note {
                 Text(note)
                     .font(.system(size: 10))
                     .foregroundStyle(Color(hex: "#ff9f0a"))
                     .padding(.top, 2)
             }
+            if section.hasProtectedSnapshot {
+                Text("快照 · 已保护").font(.system(size: 9)).foregroundStyle(.secondary)
+            }
         }
         .padding(.top, isFirst ? 10 : 8)
         .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private var egressIssue: some View {
+        if let egress = section.egress, egress.status == .blocked {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(egress.badgeText).font(.system(size: 10, weight: .semibold))
+                    Text(egress.explanation).font(.system(size: 9))
+                }
+                Spacer(minLength: 2)
+                Button("去设置", action: onOpenSettings).buttonStyle(.plain)
+                if let refreshControl {
+                    Button("重测", action: refreshControl.action)
+                        .buttonStyle(.plain)
+                        .disabled(!refreshControl.presentation.isEnabled)
+                }
+            }
+            .font(.system(size: 9)).foregroundStyle(.orange)
+            .padding(.horizontal, 8).frame(minHeight: 40)
+            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        }
     }
 
     // MARK: 多账号内容
@@ -269,7 +305,7 @@ private struct ProviderSectionView: View {
                 .readingNaturalHeight(into: $accountsHeight)
                 .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.20)))
             } else if let collapsed = section.collapsedWindow {
-                WindowRowView(row: collapsed, panelVisible: panelVisible)
+                WindowRowView(row: collapsed, panelVisible: panelVisible, protectedSnapshot: section.hasProtectedSnapshot)
                     .readingNaturalHeight(into: $collapsedRowHeight)
                     .transition(.opacity.animation(motionSuppressed ? nil : .easeOut(duration: 0.20)))
             }
@@ -291,7 +327,7 @@ private struct ProviderSectionView: View {
             BalanceDualSlotView(section: section, panelVisible: panelVisible)
         } else {
             ForEach(section.windows, id: \.label) { row in
-                WindowRowView(row: row, panelVisible: panelVisible)
+                WindowRowView(row: row, panelVisible: panelVisible, protectedSnapshot: section.hasProtectedSnapshot)
             }
         }
     }
@@ -336,6 +372,22 @@ private struct ProviderSectionView: View {
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
             }
+            if let egress = section.egress {
+                if egress.status == .blocked {
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text(egress.badgeText)
+                            .font(.system(size: 12))
+                    }
+                    .foregroundStyle(Color.orange)
+                    .help(egress.maskedIp.map { "探测出口：\($0) (阻断)" } ?? "出口探测阻断")
+                } else if !egress.badgeText.isEmpty {
+                    Text(egress.badgeText)
+                        .font(.system(size: 12))
+                        .help(egressTooltip(egress))
+                }
+            }
             if let extraText = section.extraText {
                 Text(extraText)
                     .font(.system(size: 9))
@@ -351,6 +403,17 @@ private struct ProviderSectionView: View {
                     panelVisible: panelVisible
                 )
             }
+        }
+    }
+
+    private func egressTooltip(_ egress: EgressPresentationInfo) -> String {
+        let expectedSuffix = egress.expected.map { " (\($0))" } ?? ""
+        if let maskedIp = egress.maskedIp {
+            return "探测出口：\(maskedIp)\(expectedSuffix)"
+        } else if let expected = egress.expected {
+            return "预设出口：\(expected)"
+        } else {
+            return "出口已校验放行"
         }
     }
 }
@@ -534,6 +597,7 @@ private struct WindowRowView: View {
     var animateEntrance: Bool = true
     /// C044/C158: 面板隐藏时不挂更新动画.
     var panelVisible: Bool = true
+    var protectedSnapshot: Bool = false
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -543,10 +607,10 @@ private struct WindowRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(row.label)
+            Text(row.label + (protectedSnapshot ? " (快照)" : ""))
                 .font(isNothing ? NothingFont.mono(10) : .system(size: 10))
                 .foregroundStyle(labelStyle)
-                .frame(width: 62, alignment: .leading)
+                .frame(width: protectedSnapshot ? 86 : 62, alignment: .leading)
             // usedPercent 是已用比例, 量条从 0 向 100 填充已用量 (消耗式);
             // 百分比文字 percentText 同样是已用值 (如 "68%"), 与量条语义一致.
             let meterLevel = MeterLevel(usedPercent: row.usedPercent)
@@ -583,7 +647,7 @@ private struct WindowRowView: View {
 
     /// 百分比数字与量条同拍滚动: numericText 逐位上下滚动, 方向由 usedPercent 决定.
     private func percentText(_ level: MeterLevel) -> some View {
-        Text(row.percentText)
+        Text(row.percentText + (protectedSnapshot ? " 已保护" : ""))
             .font(isNothing ? NothingFont.mono(12, weight: .bold) : .system(size: 10, weight: .semibold))
             .monospacedDigit()
             .contentTransition(.numericText(value: row.usedPercent))
@@ -936,7 +1000,7 @@ private struct ProviderAccountCard: View {
             .padding(.bottom, 2)
 
             ForEach(account.windows, id: \.label) { row in
-                WindowRowView(row: row, animateEntrance: false, panelVisible: panelVisible)
+                WindowRowView(row: row, animateEntrance: false, panelVisible: panelVisible, protectedSnapshot: account.hasProtectedSnapshot)
             }
 
             // 分组段本身不带 note, 账号级 error 说明在子卡内展示.

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T24",
+  "title": "状态预警微气泡通用化与分流路由（弹窗支持点击跳设置，额度超限跳看板）",
+  "version": "0.16.1",
+  "milestone": "M12-网络出口国家校验",
+  "status": "pending",
+  "branch": "main",
+  "depends_on": [
+    "T23"
+  ],
+  "target": {
+    "module": "apps/macos/Sources/BruceApp（QuotaAlertBubblePanel / QuotaAlertBubbleView / QuotaAlertNotifier）",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "goal": "通用化升级既有的 280pt 状态预警微气泡浮层（QuotaAlertBubblePanel / QuotaAlertBubbleView）：支持承载网络出口阻断异常告警（如 [⚠️ 国内直连] / [⚠️ US ≠ JP]）；实现边沿跳变触发（仅在正常->阻断跳变时单次弹出，静默刷新不重复骚扰）；实现差异化点击分发路由：额度超限报警点击打开主看板，网络出口异常点击直达设置中心订阅额度面板。",
+  "precheck": {
+    "description": "确认 QuotaAlertBubblePanel 目前仅支持额度超限单向打开主看板，尚未支持出口异常与分流路由",
+    "command": "rg -n 'onOpenSettings|egressIssue|StatusBubbleAlert' apps/macos/Sources/BruceApp/QuotaAlertBubblePanel.swift apps/macos/Sources/BruceApp/Views/QuotaAlertBubbleView.swift",
+    "expected": "无 onOpenSettings / egressIssue / StatusBubbleAlert 实现（退出码 1）",
+    "is_completed": false,
+    "evidence": "2026-11-03 开工前预检：rg 查找 onOpenSettings / egressIssue / StatusBubbleAlert 退出码 1（0 命中，尚未实现）"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "swift build --package-path apps/macos",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T24 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T24 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T24-1",
+      "title": "预警实体多态抽象与差异化路由委托",
+      "capability": "重构/扩展告警实体为通用 StatusBubbleAlertItem，支持 .quota(QuotaAlert) 与 .egressIssue(EgressAlertItem)；QuotaAlertBubbleController 增加 onOpenSettings 回调并在点击出口异常微卡时精准跳转至设置中心「订阅额度」面板。",
+      "done": false
+    },
+    {
+      "id": "T24-2",
+      "title": "280pt 预警微气泡视图多态适配",
+      "capability": "QuotaAlertBubbleView 适配出口异常行渲染：展示 24pt 品牌瓷砖徽章、服务名、[⚠️ 国内直连] / [⚠️ US ≠ JP] 胶囊标签及保护文案，保持 280pt 黄金宽度与 Classic / Liquid Glass / Nothing 三主题自适应。",
+      "done": false
+    },
+    {
+      "id": "T24-3",
+      "title": "边沿跳变触发与防频繁打扰策略",
+      "capability": "在调度刷新管理器中落实防骚扰逻辑：仅当网络状态由「放行」跳变至「阻断」时弹出一次气泡；持续阻断期间静默更新快照不弹窗；手动重测失败或网络恢复后再度异常重新激活。",
+      "done": false
+    },
+    {
+      "id": "T24-4",
+      "title": "路由分发与交互单元测试回归",
+      "capability": "补充 QuotaAlertBubbleController 与 QuotaAlertBubbleView 单元测试，断言额度超限点击触发 onOpenDashboard，出口异常点击触发 onOpenSettings；验证边沿防骚扰定时器与悬停保持逻辑。",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "差异化点击路由分流",
+        "true_if": "点击额度超限微卡展开主仪表盘；点击网络出口异常微卡直接打开设置中心并高亮订阅额度面板",
+        "false_if": "两者跳往同一界面，或点击出口异常无法直达设置页",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "边沿跳变防打扰契约",
+        "true_if": "连续多次处于国内直连或阻断状态时，仅首次弹出气泡，后续静默刷新不反复弹窗",
+        "false_if": "每 3 分钟定时刷新均弹出气泡骚扰用户",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

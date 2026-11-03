@@ -135,14 +135,14 @@ extension BruceOnboardingCoreHarness {
             "v1 配置的既有字段必须保留"
         )
         try coreExpect(
-            OnboardingConfiguration.currentSchemaVersion == 2,
-            "当前 schema 版本必须为 2"
+            OnboardingConfiguration.currentSchemaVersion == 3,
+            "当前 schema 版本必须为 3"
         )
     }
 
-    /// 高于当前版本 (v3) 的配置必须拒绝加载.
-    static func configStoreRejectsNewerSchemaV3() throws {
-        let tempDir = makeTempDir("config-v3")
+    /// 高于当前版本的配置必须拒绝加载.
+    static func configStoreRejectsNewerSchemaV4() throws {
+        let tempDir = makeTempDir("config-v4")
         try FileManager.default.createDirectory(
             at: tempDir, withIntermediateDirectories: true
         )
@@ -150,14 +150,14 @@ extension BruceOnboardingCoreHarness {
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
 
         let v3Config: [String: Any] = [
-            "schemaVersion": 3,
+            "schemaVersion": 4,
             "selectedModules": ["agent-usage"],
         ]
         let data = try JSONSerialization.data(withJSONObject: v3Config)
         let configURL = tempDir.appendingPathComponent("onboarding-v1.json")
         try data.write(to: configURL)
 
-        try coreExpect(store.load() == nil, "v3 配置必须拒绝加载")
+        try coreExpect(store.load() == nil, "v4 配置必须拒绝加载")
     }
 
     /// 订阅 provider 配置 (含 failed 原因与 needsRelogin) 原子读写往返一致.

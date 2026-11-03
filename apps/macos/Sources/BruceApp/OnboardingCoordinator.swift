@@ -48,6 +48,9 @@ final class OnboardingCoordinator: ObservableObject {
     var launchAtLoginEnabled: Bool {
         launchAtLoginStatus.isEnabled
     }
+    /// 国家分组及其专用代理端口，不包含凭据。
+    @Published private(set) var egressGroups: EgressCountryGroups
+    @Published var requestedEgressSettings = false
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
     /// 可注入的系统「减弱动态效果」读取 (测试), 默认读系统; C145.
@@ -121,6 +124,7 @@ final class OnboardingCoordinator: ObservableObject {
         self.launchAtLoginService = launchAtLoginService
         self.launchAtLoginStatus = launchAtLoginService.status
         let config = configStore?.load()
+        self.egressGroups = config?.egressGroups ?? EgressCountryGroups()
         let resolvedKeychainAccessController = keychainAccessController
             ?? KeychainAccessController(
                 policy: KeychainAccessPolicy(
@@ -227,6 +231,25 @@ final class OnboardingCoordinator: ObservableObject {
             MainActor.assumeIsolated {
                 self?.objectWillChange.send()
             }
+        }
+    }
+
+    /// 对最新配置原子应用分组变更；失败不更新界面或凭据。
+    func updateEgressGroups(_ mutate: (inout EgressCountryGroups) throws -> Void) {
+        guard let configStore, var config = configStore.load() else {
+            model.setSettingsError("无法读取配置，出口分组未更改")
+            return
+        }
+        do {
+            try mutate(&config.egressGroups)
+            try configStore.save(config)
+            egressGroups = config.egressGroups
+        } catch EgressCountryGroupError.invalidCountry {
+            model.setSettingsError("请输入有效的两位国家代码")
+        } catch EgressCountryGroupError.duplicateCountry {
+            model.setSettingsError("该国家已存在")
+        } catch {
+            model.setSettingsError("无法保存出口分组，请检查配置文件")
         }
     }
 

@@ -1,6 +1,20 @@
 import Foundation
 import BruceOnboardingCore
 
+/// 空端口仍传入受管规则，使 Collector 阻断而非误判为未分组。
+private func egressRules(_ groups: EgressCountryGroups) -> JSONValue? {
+    var rules: [String: JSONValue] = [:]
+    for group in groups.groups {
+        for provider in group.providers {
+            rules[provider.rawValue] = .object([
+                "country": .string(group.country),
+                "port": group.proxyPort.map { .integer(Int($0)) } ?? .null,
+            ])
+        }
+    }
+    return rules.isEmpty ? nil : .object(rules)
+}
+
 /// 单次 Collector 运行的受控输入. 凭证只经 Bridge stdin JSON 传递,
 /// 不进入命令行参数或日志.
 package struct CollectorRunInput: Sendable {
@@ -301,6 +315,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 .string(CollectorCapability.externalQuotas.rawValue),
             ]),
         ]
+        context["egressRules"] = egressRules(config.egressGroups)
         // codex 目标: 携带与 codexQuotaAccounts 键一致的 account order.
         if let codex = assembled["codexQuotaAccounts"],
            case .object(let accounts) = codex {
@@ -333,6 +348,13 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             for: module,
             purpose: "无法重试订阅额度"
         )
+        guard let config = configStore?.load(),
+              config.consentVersion != nil,
+              config.subscriptionProviders[SubscriptionProviderID.codex.rawValue]?.enabled == true else {
+            throw CollectorRunInputError.missingAuthorization(
+                module: module, reason: "无法读取出口保护配置，已暂停重试"
+            )
+        }
         // 按本轮决议 index 重新排序; 未出现在决议中的账号按 accountID
         // 排尾 (确定性).
         let decisionIndexByAccount: [String: Int] = {
@@ -379,6 +401,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             ]),
             "quotaRetryOnly": .boolean(true),
         ]
+        context["egressRules"] = egressRules(config.egressGroups)
         context["codexQuotaAccountOrder"] = .array(
             order.map { .string($0) }
         )
@@ -416,6 +439,9 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             "timezone": .string(TimeZone.current.identifier),
             "days": .integer(182),
         ]
+        if let config {
+            context["egressRules"] = egressRules(config.egressGroups)
+        }
 
         if let pricingOverrides = config?.pricingOverrides, !pricingOverrides.isEmpty {
             if let data = try? JSONEncoder().encode(pricingOverrides),

@@ -20,9 +20,6 @@ extension SettingsView {
                 if visibleSubscriptionProviders.isEmpty {
                     FluentRow("尚未配置任何订阅 Provider", sub: "从下方添加服务")
                 }
-            }
-            .accessibilityElement(children: .contain)
-            FluentCard {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("添加服务")
@@ -57,9 +54,17 @@ extension SettingsView {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
             }
+            .accessibilityElement(children: .contain)
             Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序")
                 .font(.system(size: 11.5))
                 .foregroundStyle(SettingsDemoTokens.text3)
+            EgressSettingsCard(coordinator: coordinator, providers: visibleSubscriptionProviders)
+                .id("egress-settings")
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.accentColor.opacity(highlightEgressSettings ? 0.7 : 0), lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
         }
         .onAppear {
             coordinator.refreshOfficialLocalAvailability()

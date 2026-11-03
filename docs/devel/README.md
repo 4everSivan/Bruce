@@ -1,6 +1,6 @@
 # 开发文档入口 (devel/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-02 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-03 ｜ **status**: active
 
 ## 1. 简介
 
@@ -55,7 +55,7 @@
 
 | 子目录 | 机器索引 | 核心职责 | 状态/纪律 |
 |---|---|---|---|
-| **design/** | *(由 devel/index.json 汇聚)* | 包含系统总体设计与各模块现行方案，为系统唯一真理 | 现行基线 |
+| **design/** | *(由 devel/index.json 汇聚)* | 系统总体设计、模块现行方案与待评审草稿 | 基线与 `draft` 分开标记；草稿不是执行基线 |
 | **change/** | [change/index.json](change/index.json) | 承载日常 Bug 修复，维护变更对照、证据与回写基线 | 持续轮转 |
 | **task/** | [task/index.json](task/index.json) | 承载当前阶段研发任务，维护 DAG 依赖拓扑与交付物 | 随阶段演进 |
 | **todo/** | *(now.md / future.md)* | 未入轨缺陷与需求缓冲池，落地建卡即物理移出 | 零沉淀 |

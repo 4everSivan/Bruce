@@ -13,6 +13,8 @@ mod signing;
 mod tests_parsers;
 #[cfg(test)]
 mod tests_providers;
+#[cfg(test)]
+mod tests_proxy;
 
 pub use protobuf::parse_grok_usage;
 pub use providers::{
@@ -330,6 +332,21 @@ pub trait HttpClient: Send + Sync {
         request: HttpRequest,
         cancellation: &CancellationToken,
     ) -> Result<HttpResponse, ProviderError>;
+
+    /// 显式使用本机专用 HTTP 代理端口；实现未提供时必须拒绝，不能回退直连。
+    fn send_via_loopback_proxy(
+        &self,
+        _port: u16,
+        _request: HttpRequest,
+        _cancellation: &CancellationToken,
+    ) -> Result<HttpResponse, ProviderError> {
+        Err(ProviderError::new(
+            "EGRESS_PROXY_UNAVAILABLE",
+            "request",
+            "专用代理传输不可用",
+            true,
+        ))
+    }
 }
 
 /// Production HTTPS transport. Tests use the `HttpClient` trait with an
@@ -402,6 +419,38 @@ impl HttpClient for UreqHttpClient {
                 true,
             )),
         }
+    }
+
+    fn send_via_loopback_proxy(
+        &self,
+        port: u16,
+        request: HttpRequest,
+        cancellation: &CancellationToken,
+    ) -> Result<HttpResponse, ProviderError> {
+        if port == 0 {
+            return Err(ProviderError::new(
+                "EGRESS_CONFIG_INVALID",
+                "request",
+                "专用代理端口无效",
+                false,
+            ));
+        }
+        let proxy = ureq::Proxy::new(format!("http://127.0.0.1:{port}")).map_err(|_| {
+            ProviderError::new(
+                "EGRESS_CONFIG_INVALID",
+                "request",
+                "专用代理端口无效",
+                false,
+            )
+        })?;
+        let client = UreqHttpClient {
+            agent: ureq::AgentBuilder::new()
+                .https_only(true)
+                .redirects(0)
+                .proxy(proxy)
+                .build(),
+        };
+        client.send(request, cancellation)
     }
 }
 

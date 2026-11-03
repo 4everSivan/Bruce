@@ -202,7 +202,8 @@ private func makeService(
     extra: String? = nil,
     capturedAt: String? = nil,
     freshness: String? = nil,
-    failureKind: String? = nil
+    failureKind: String? = nil,
+    egress: EgressPresentationInfo? = nil
 ) -> AgentServiceItem {
     AgentServiceItem(
         id: id,
@@ -219,7 +220,8 @@ private func makeService(
         extra: extra,
         capturedAt: capturedAt,
         freshness: freshness,
-        failureKind: failureKind
+        failureKind: failureKind,
+        egress: egress
     )
 }
 
@@ -260,6 +262,7 @@ struct PanelViewModelHarness {
         try codexAccountsGroupIntoOneSection()
         try subscriptionIsNilWhenAllPlaceholders()
         try serviceErrorKeepsNoteAndDiagnoses()
+        try egressStateMapsWithoutAffectingUnmanagedProviders()
         try malformedWindowIsDroppedWithDiagnostic()
         try usageHeroAggregatesTotalsAndFormatting()
         try usageTierFollowsTotalThresholds()
@@ -539,6 +542,29 @@ struct PanelViewModelHarness {
             )),
             "缺少 serviceIssue 诊断: \(vm.diagnostics)"
         )
+    }
+
+    private static func egressStateMapsWithoutAffectingUnmanagedProviders() throws {
+        let blocked = EgressPresentationInfo(status: .blocked, reason: "EGRESS_COUNTRY_MISMATCH",
+            expected: "JP", observed: "US", maskedIp: "192.0.***.***")
+        let services = [
+            makeService(id: "codex_1", name: "Codex", status: "error", freshness: "stale", egress: blocked),
+            makeService(id: "deepseek_1", name: "DeepSeek", status: "ok"),
+        ]
+        let vm = try subscriptionSectionsWithDiagnostics(services: services)
+        guard let managed = vm.sections.first(where: { $0.badgeProviderID == "codex" }),
+              let unmanaged = vm.sections.first(where: { $0.badgeProviderID == "deepseek" }) else {
+            throw PanelTestFailure.expectation("缺少订阅分组")
+        }
+        try expect(managed.egress?.badgeText == "US ≠ JP", "应呈现国家不匹配")
+        try expect(managed.hasProtectedSnapshot, "应标记受保护的历史快照")
+        try expect(unmanaged.egress == nil, "未分组订阅不得出现出口状态")
+        let allowed = EgressPresentationInfo(status: .allowed, reason: nil, expected: "JP", observed: "JP", maskedIp: nil)
+        try expect(allowed.badgeText == "🇯🇵", "匹配态应只显示国旗徽标")
+        do {
+            _ = try JSONDecoder().decode(EgressPresentationInfo.self, from: Data("{\"status\":\"unknown\"}".utf8))
+            throw PanelTestFailure.expectation("未知出口状态不得视为放行")
+        } catch is DecodingError {}
     }
 
     // 单个窗口解析失败被丢弃并产生诊断, 不拖垮整段.

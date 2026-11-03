@@ -647,6 +647,7 @@ package struct CodexAccountViewModel: Equatable, Sendable {
     package let lastSuccessText: String?
     /// 账号标记 (例如国外站/国际站标记, 仅在多账号时按需展示).
     package let tag: String?
+    package let hasProtectedSnapshot: Bool
 
     package init(
         id: String,
@@ -656,7 +657,8 @@ package struct CodexAccountViewModel: Equatable, Sendable {
         note: String?,
         windows: [SubscriptionWindowRow],
         lastSuccessText: String? = nil,
-        tag: String? = nil
+        tag: String? = nil,
+        hasProtectedSnapshot: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -666,6 +668,7 @@ package struct CodexAccountViewModel: Equatable, Sendable {
         self.windows = windows
         self.lastSuccessText = lastSuccessText
         self.tag = tag
+        self.hasProtectedSnapshot = hasProtectedSnapshot
     }
 }
 
@@ -687,6 +690,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// 余额型条目 (DeepSeek), 排序沉底, 左右排版.
     package let balance: BalanceRow?
     package let accountCountText: String?
+    package let egress: EgressPresentationInfo?
+    package let hasProtectedSnapshot: Bool
 
     package init(
         id: String,
@@ -699,7 +704,9 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         accounts: [CodexAccountViewModel],
         collapsedWindow: SubscriptionWindowRow?,
         balance: BalanceRow?,
-        accountCountText: String?
+        accountCountText: String?,
+        egress: EgressPresentationInfo? = nil,
+        hasProtectedSnapshot: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -712,6 +719,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         self.collapsedWindow = collapsedWindow
         self.balance = balance
         self.accountCountText = accountCountText
+        self.egress = egress
+        self.hasProtectedSnapshot = hasProtectedSnapshot
     }
 
     /// 是否为多账号 section (>= 2 个账号).

@@ -140,6 +140,47 @@ package struct AgentUsageItem: Codable, Equatable, Sendable {
     }
 }
 
+/// 专用线路探测后的放行状态。未知值不能被当成放行。
+package enum EgressCountryStatus: String, Codable, Equatable, Sendable {
+    case allowed
+    case blocked
+}
+
+/// 专用线路的探测结果；不代表后续连接的实际出口已经得到验证。
+package struct EgressPresentationInfo: Codable, Equatable, Sendable {
+    package let status: EgressCountryStatus
+    package let reason: String?
+    package let expected: String?
+    package let observed: String?
+    package let maskedIp: String?
+
+    package init(status: EgressCountryStatus, reason: String?, expected: String?, observed: String?, maskedIp: String?) {
+        self.status = status
+        self.reason = reason
+        self.expected = expected
+        self.observed = observed
+        self.maskedIp = maskedIp
+    }
+
+    package var badgeText: String {
+        guard status == .blocked else {
+            guard let expected else { return "" }
+            return EgressCountryGroups.flagEmoji(for: expected)
+        }
+        switch reason {
+        case "EGRESS_CN_DIRECT": return "国内出口"
+        case "EGRESS_COUNTRY_MISMATCH": return "\(observed ?? "?") ≠ \(expected ?? "?")"
+        case "EGRESS_PROBE_TIMEOUT": return "探测失败"
+        case "EGRESS_COUNTRY_UNKNOWN": return "出口未知"
+        default: return "配置无效"
+        }
+    }
+
+    package var explanation: String {
+        status == .blocked ? "已拦截查额 · 请检查专用代理线路" : ""
+    }
+}
+
 package struct AgentServiceItem: Codable, Equatable, Sendable {
     let id: String
     let name: String
@@ -167,6 +208,7 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
     /// 订阅 Provider 稳定标识 (C118), 与 `SubscriptionProviderID` rawValue 同值;
     /// 旧 artifact 为 nil, 由 `SubscriptionPresentationPolicy.providerID(for:)` 回退按 id 推断。
     let provider: String?
+    let egress: EgressPresentationInfo?
 
     package init(
         id: String,
@@ -184,7 +226,8 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
         capturedAt: String? = nil,
         freshness: String? = nil,
         failureKind: String? = nil,
-        provider: String? = nil
+        provider: String? = nil,
+        egress: EgressPresentationInfo? = nil
     ) {
         self.id = id
         self.name = name
@@ -202,6 +245,7 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
         self.freshness = freshness
         self.failureKind = failureKind
         self.provider = provider
+        self.egress = egress
     }
 }
 
