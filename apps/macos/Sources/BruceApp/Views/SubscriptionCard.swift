@@ -256,9 +256,6 @@ private struct ProviderSectionView: View {
                     .foregroundStyle(Color(hex: "#ff9f0a"))
                     .padding(.top, 2)
             }
-            if section.hasProtectedSnapshot {
-                Text("快照 · 已保护").font(.system(size: 9)).foregroundStyle(.secondary)
-            }
         }
         .padding(.top, isFirst ? 10 : 8)
         .padding(.bottom, 8)
@@ -271,7 +268,8 @@ private struct ProviderSectionView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(egress.badgeText).font(.system(size: 10, weight: .semibold))
-                    Text(egress.explanation).font(.system(size: 9))
+                    let snapshotHint = section.hasProtectedSnapshot ? " · 保持历史快照" : ""
+                    Text("已拦截查额以保护账号\(snapshotHint)").font(.system(size: 9))
                 }
                 Spacer(minLength: 2)
                 Button("去设置", action: onOpenSettings).buttonStyle(.plain)
@@ -374,14 +372,15 @@ private struct ProviderSectionView: View {
             }
             if let egress = section.egress {
                 if egress.status == .blocked {
-                    HStack(spacing: 3) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
-                        Text(egress.badgeText)
-                            .font(.system(size: 12))
+                    // 阻断态: 不在标题旁重复输出 "US ≠ SG" 冗余文本，保持展示目标出口纯净国旗
+                    if let expected = egress.expected {
+                        let flag = EgressCountryGroups.flagEmoji(for: expected)
+                        if !flag.isEmpty {
+                            Text(flag)
+                                .font(.system(size: 12))
+                                .help(egress.maskedIp.map { "探测出口：\($0) (阻断)" } ?? "出口探测阻断")
+                        }
                     }
-                    .foregroundStyle(Color.orange)
-                    .help(egress.maskedIp.map { "探测出口：\($0) (阻断)" } ?? "出口探测阻断")
                 } else if !egress.badgeText.isEmpty {
                     Text(egress.badgeText)
                         .font(.system(size: 12))
@@ -607,10 +606,10 @@ private struct WindowRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(row.label + (protectedSnapshot ? " (快照)" : ""))
+            Text(row.label)
                 .font(isNothing ? NothingFont.mono(10) : .system(size: 10))
                 .foregroundStyle(labelStyle)
-                .frame(width: protectedSnapshot ? 86 : 62, alignment: .leading)
+                .frame(width: 62, alignment: .leading)
             // usedPercent 是已用比例, 量条从 0 向 100 填充已用量 (消耗式);
             // 百分比文字 percentText 同样是已用值 (如 "68%"), 与量条语义一致.
             let meterLevel = MeterLevel(usedPercent: row.usedPercent)
@@ -647,7 +646,7 @@ private struct WindowRowView: View {
 
     /// 百分比数字与量条同拍滚动: numericText 逐位上下滚动, 方向由 usedPercent 决定.
     private func percentText(_ level: MeterLevel) -> some View {
-        Text(row.percentText + (protectedSnapshot ? " 已保护" : ""))
+        Text(row.percentText)
             .font(isNothing ? NothingFont.mono(12, weight: .bold) : .system(size: 10, weight: .semibold))
             .monospacedDigit()
             .contentTransition(.numericText(value: row.usedPercent))
