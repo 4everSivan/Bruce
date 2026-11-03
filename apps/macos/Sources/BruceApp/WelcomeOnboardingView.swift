@@ -1019,6 +1019,48 @@ struct WelcomeOnboardingView: View {
                         .strokeBorder(SettingsDemoTokens.separator, lineWidth: 1)
                 )
             }
+
+            // 开机自启动行 (12-开机自启动.md, T25)
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("开机自动运行")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(SettingsDemoTokens.text)
+                    Text("登录系统后自动启动 Bruce 并在菜单栏常驻")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(SettingsDemoTokens.text3)
+                }
+                Spacer()
+                if coordinator.launchAtLoginStatus.needsApproval {
+                    Text("需系统设置允许")
+                        .font(.system(size: 11))
+                        .foregroundStyle(SettingsDemoTokens.warn)
+                    Button("打开系统设置") {
+                        coordinator.openSystemLoginItemsSettings()
+                    }
+                    .fluentButton()
+                }
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { coordinator.launchAtLoginEnabled },
+                        set: { coordinator.setLaunchAtLogin(enabled: $0) }
+                    )
+                )
+                .toggleStyle(.switch)
+                .labelsHidden()
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                SettingsDemoTokens.surface,
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(SettingsDemoTokens.separator, lineWidth: 1)
+            )
         }
     }
 

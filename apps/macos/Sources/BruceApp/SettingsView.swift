@@ -218,6 +218,7 @@ struct SettingsView: View {
         .onAppear {
             consumeRequestedCategory()
             presentKeychainAccessGuideIfNeeded()
+            coordinator.refreshLaunchAtLoginStatus()
             if let initialError = model.settingsErrorMessage {
                 activeToastMessage = initialError
             }
@@ -418,6 +419,32 @@ struct SettingsView: View {
                         ),
                         accessibilityHintText: "选择界面动效策略"
                     )
+                }
+                FluentRow(
+                    "开机自启动",
+                    sub: "开机时自动启动 Bruce 并在后台常驻菜单栏",
+                    divided: true
+                ) {
+                    HStack(spacing: 8) {
+                        if coordinator.launchAtLoginStatus.needsApproval {
+                            Text("需在系统设置中允许")
+                                .font(.system(size: 12))
+                                .foregroundStyle(SettingsDemoTokens.warn)
+                            Button("打开系统设置") {
+                                coordinator.openSystemLoginItemsSettings()
+                            }
+                            .fluentButton()
+                        }
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { coordinator.launchAtLoginEnabled },
+                                set: { coordinator.setLaunchAtLogin(enabled: $0) }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
                 }
                 FluentRow(
                     "仪表盘卡片布局",

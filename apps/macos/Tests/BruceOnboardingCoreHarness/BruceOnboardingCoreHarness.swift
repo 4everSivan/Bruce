@@ -183,7 +183,44 @@ struct BruceOnboardingCoreHarness {
         try providerAccountStoreRenameAndUpsertPreservation()
         try codexCustomNameOverridesAndBackwardCompatibility()
         try welcomeOnboardingConfigPersistenceAndUpgradeRules()
-        print("BruceOnboardingCore tests passed: 179")
+        try launchAtLoginConfigPersistenceRoundTrip()
+        print("BruceOnboardingCore tests passed: 180")
+    }
+
+    static func launchAtLoginConfigPersistenceRoundTrip() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-launch-at-login-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        // 1. 默认配置: launchAtLogin == nil
+        var config = OnboardingConfiguration()
+        guard config.launchAtLogin == nil else {
+            throw NSError(domain: "LaunchAtLoginTest", code: 1)
+        }
+
+        // 2. 开启自启动并保存
+        config.launchAtLogin = true
+        try store.save(config)
+        guard let loaded = store.load(), loaded.launchAtLogin == true else {
+            throw NSError(domain: "LaunchAtLoginTest", code: 2)
+        }
+
+        // 3. 关闭自启动并保存
+        config.launchAtLogin = false
+        try store.save(config)
+        guard let loadedDisabled = store.load(), loadedDisabled.launchAtLogin == false else {
+            throw NSError(domain: "LaunchAtLoginTest", code: 3)
+        }
+
+        // 4. 旧版本配置缺键平滑兼容
+        let legacyJSON = "{\"schemaVersion\": 3, \"selectedModules\": [\"agent-usage\"]}"
+        let decoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: Data(legacyJSON.utf8))
+        guard decoded.launchAtLogin == nil else {
+            throw NSError(domain: "LaunchAtLoginTest", code: 4)
+        }
     }
 
     static func welcomeOnboardingConfigPersistenceAndUpgradeRules() throws {

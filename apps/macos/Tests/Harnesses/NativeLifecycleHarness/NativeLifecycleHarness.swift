@@ -80,7 +80,45 @@ struct NativeLifecycleHarness {
         try swapHeightNeverClampsUnmeasuredContent()
         try heatmapBreathingKeepsLegacyCurveOnLayers()
         try welcomeOnboardingPresentationMatchesParityFixture()
-        print("Native lifecycle tests passed: 18")
+        try launchAtLoginServiceMockAndStateTransitions()
+        print("Native lifecycle tests passed: 19")
+    }
+
+    /// T25: 开机自启动 Mock 服务与状态转换断言
+    private static func launchAtLoginServiceMockAndStateTransitions() throws {
+        let mock = MockLaunchAtLoginService(status: .notRegistered)
+        try expect(mock.status == .notRegistered, "initial status must be notRegistered")
+        try expect(!mock.status.isEnabled, "notRegistered must not be enabled")
+        try expect(!mock.status.needsApproval, "notRegistered must not need approval")
+
+        // 注册测试
+        try mock.register()
+        try expect(mock.registerCallCount == 1, "registerCallCount must be 1")
+        try expect(mock.status == .enabled, "status must be enabled after register")
+        try expect(mock.status.isEnabled, "enabled status must return isEnabled == true")
+
+        // 注销测试
+        try mock.unregister()
+        try expect(mock.unregisterCallCount == 1, "unregisterCallCount must be 1")
+        try expect(mock.status == .notRegistered, "status must be notRegistered after unregister")
+
+        // 拦截与需系统批准状态测试
+        mock.setStatus(.requiresApproval)
+        try expect(mock.status.needsApproval, "requiresApproval must return needsApproval == true")
+        try expect(!mock.status.isEnabled, "requiresApproval must not be enabled")
+
+        // 打开系统设置
+        mock.openSystemSettings()
+        try expect(mock.openSettingsCallCount == 1, "openSettingsCallCount must be 1")
+
+        // 错误抛出测试
+        mock.shouldThrowOnRegister = NSError(domain: "SMAppServiceErrorDomain", code: 1)
+        do {
+            try mock.register()
+            throw TestFailure.expectation("mock.register should have thrown error")
+        } catch where !(error is TestFailure) {
+            // Expected error
+        }
     }
 
     /// C179: 热力图呼吸改由每格 CALayer 上的 Core Animation 驱动, 动画参数须与旧逐格
