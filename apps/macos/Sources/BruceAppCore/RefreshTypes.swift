@@ -98,9 +98,17 @@ package struct RefreshIntent: Equatable, Sendable {
     }
 
     /// 自动退避重试: includesManual 仅沿用上一轮的手动标记以抑制额度预警,
-    /// 不表示本次是用户直接动作.
-    package static func backoff(includesManual: Bool) -> RefreshIntent {
-        RefreshIntent(reason: .backoff, includesManual: includesManual)
+    /// 不表示本次是用户直接动作。scope 沿用失败轮的作用域 (C185),
+    /// 避免定向刷新失败后的重试放大成全量查询与其它 provider 的出口探测。
+    package static func backoff(
+        includesManual: Bool,
+        scope: RefreshScope = .all
+    ) -> RefreshIntent {
+        RefreshIntent(
+            reason: .backoff,
+            includesManual: includesManual,
+            scope: scope
+        )
     }
 
     /// 构造定向刷新意图 (单 Provider 按钮点击入口).

@@ -53,6 +53,8 @@ extension PanelViewModelMapper {
             let windows = service.windows.compactMap { raw -> SubscriptionWindowRow? in
                 parseWindow(raw, serviceID: service.id, now: now, diagnostics: &diagnostics)
             }
+            // C186: 出口阻断快照的重置时间列统一显示「已拦截」，阻断优先于窗口过期「刷新中」。
+            let displayWindows = applyingEgressBlockedText(windows, service: service)
 
             let providerID = SubscriptionPresentationPolicy.providerID(for: service)
             if SubscriptionPresentationPolicy.isProviderTemporarilyDisabled(providerID) {
@@ -66,7 +68,7 @@ extension PanelViewModelMapper {
                 groups[providerID] = ProviderGroup(providerID: providerID, displayName: displayName)
                 groupOrder.append(providerID)
             }
-            groups[providerID]?.services.append((service, windows, note))
+            groups[providerID]?.services.append((service, displayWindows, note))
         }
 
         // 按 provider 组装 sections.
@@ -244,6 +246,28 @@ extension PanelViewModelMapper {
             ownRow: object["ownRow"]?.boolValue ?? false,
             windowMinutes: minutes
         )
+    }
+
+    /// 出口阻断快照（egress blocked + freshness stale）的窗口重置时间列改「已拦截」。
+    /// 阻断期间不会再有成功查额，借用窗口的 resetsAt 不再前进，继续输出倒计时/过期后的
+    /// 「刷新中」会误导为刷新在途；阻断态优先显示拦截结论，解除阻断后自动恢复真实倒计时。
+    func applyingEgressBlockedText(
+        _ windows: [SubscriptionWindowRow],
+        service: AgentServiceItem
+    ) -> [SubscriptionWindowRow] {
+        guard service.egress?.status == .blocked,
+              service.freshness == "stale" else {
+            return windows
+        }
+        return windows.map { row in
+            SubscriptionWindowRow(
+                label: row.label,
+                usedPercent: row.usedPercent,
+                resetText: "已拦截",
+                ownRow: row.ownRow,
+                windowMinutes: row.windowMinutes
+            )
+        }
     }
 
     /// freshness=stale 且有 capturedAt 时显示"上次成功 HH:mm";

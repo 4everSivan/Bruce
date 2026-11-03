@@ -618,6 +618,11 @@ struct MenuBarDashboardView: View {
                     onRefreshProvider: { provider in
                         coordinator.refreshSubscription(provider)
                     },
+                    onOpenSubscriptionSettings: {
+                        // C187: Tab 回退路径同样补齐设置深链路由.
+                        coordinator.requestedEgressSettings = true
+                        openSubscriptionSettings()
+                    },
                     panelVisible: model.dashboardPanelVisible
                 )
             }
@@ -703,6 +708,12 @@ struct MenuBarDashboardView: View {
                         refreshControls: subscriptionRefreshControls(for: subscription),
                         onRefreshProvider: { provider in
                             coordinator.refreshSubscription(provider)
+                        },
+                        onOpenSubscriptionSettings: {
+                            // C187: stack 布局与 tab 布局共用同一条设置深链路由;
+                            // 注入的 openSubscriptionSettings 内部先关闭仪表盘再打开设置.
+                            coordinator.requestedEgressSettings = true
+                            openSubscriptionSettings()
                         },
                         panelVisible: model.dashboardPanelVisible
                     )

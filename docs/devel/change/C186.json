@@ -1,0 +1,96 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C186",
+  "title": "出口阻断快照的订阅窗口倒计时改为「已拦截」，不再误显示「刷新中」",
+  "version": "0.16.1",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "fix/C185-C187-egress-dashboard-ux",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "SubscriptionMapping / PanelViewModels",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "现象：被出口IP检测拦截的订阅，其仪表盘订阅卡窗口行右侧倒计时列显示「刷新中」。根因：PanelFormat.resetText 只按 resetsAt <= now 返回「刷新中」，整条映射链不接收 egress/freshness；阻断期间窗口快照不再更新，借用窗口的 resetsAt 不再前进，跨过窗口边界后永久显示「刷新中」。T24 提交 b23dd19 移除了「(快照)/(已保护)」文本后，SubscriptionCard 的 protectedSnapshot 形参未被视图消费，阻断态没有任何快照文案补偿。",
+  "precheck": {
+    "description": "确认阻断态窗口倒计时由 PanelFormat.resetText 决定且 protectedSnapshot 未被视图读取",
+    "command": "grep -n 'return \"刷新中\"' apps/macos/Sources/BruceAppCore/PanelModels.swift; grep -n 'protectedSnapshot' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift",
+    "expected": "resetText 对 resetsAt<=now 无条件返回刷新中；protectedSnapshot 仅作为形参/传参存在",
+    "is_completed": true,
+    "evidence": "2026-11-03 实测：PanelModels.swift:268 为 return \"刷新中\"；SubscriptionCard.swift:599 声明 protectedSnapshot，但 body 无消费"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C185-C187-egress-dashboard-ux"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "scripts/adflow-verify --card C186 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "订阅卡阻断态窗口文案（SubscriptionMapping / PanelViewModels）",
+      "before": "egress 阻断且 freshness=stale 的订阅借用旧窗口，resetsAt 过期后 resetText 恒为「刷新中」；protectedSnapshot 形参未被消费，界面没有任何已拦截快照文案",
+      "after": "映射层对 hasProtectedSnapshot（blocked + stale）服务的全部窗口行将 resetText 统一覆写为「已拦截」，其余窗口字段原样保留；阻断期不再出现误导性的「刷新中」",
+      "impact": "被出口拦截的订阅卡窗口行右侧明确显示「已拦截」，与上方拦截问题卡语义一致"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "出口阻断态保留历史额度快照并在问题卡中说明拦截；未明确规定窗口行重置时间列的文案",
+      "after": "出口阻断态（blocked + stale 快照）的窗口行重置时间列统一显示「已拦截」，优先于窗口过期文案「刷新中」"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261103-22",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "PanelViewModelHarness 新增 blocked+stale+已过期窗口映射断言 resetText == 已拦截；全部 Harness 与 swift build 退出码 0",
+        "false_if": "断言失败，或缺少阻断态倒计时覆盖",
+        "evidence": "scripts/verify-local.sh Exit 0：PanelViewModel 66 项全绿，含新增 blocked+stale+过期窗口映射「已拦截」与未阻断倒计时不变的对照断言；PanelParity 对拍通过",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "出口被拦截的订阅卡窗口行右侧显示「已拦截」，刷新成功或解除拦截后恢复真实倒计时",
+        "false_if": "仍显示「刷新中」，或解除拦截后倒计时未恢复",
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview）实测并明确签收，原话「确认」：阻断订阅窗口行右侧显示「已拦截」，解除阻断后恢复真实倒计时",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "非阻断服务的倒计时、窗口过期「刷新中」语义与折叠态摘要保持不变",
+        "false_if": "非阻断服务文案被误改或既有用例失败",
+        "evidence": "既有 resetText 变体（当天/几天后/过期刷新中/空串）用例保持通过；PanelParity 双端对拍通过，非阻断订阅文案未受影响",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "f9f095e",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

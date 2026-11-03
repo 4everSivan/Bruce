@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C187",
+  "title": "修复默认纵向布局下订阅卡「去设置」无响应：补齐路由并在跳转设置中心前关闭仪表盘",
+  "version": "0.16.1",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "fix/C185-C187-egress-dashboard-ux",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarViews / MenuBarStatusItemController",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "现象：默认纵向级联（.stack）布局下，点击仪表盘订阅卡的黄色出口问题卡「去设置」没有任何反应。根因：MenuBarViews 的 renderCard 订阅分支与 fallbackTabCard 未传 onOpenSubscriptionSettings，SubscriptionCard 回落到空闭包；同时状态预警气泡的出口卡路由仅隐藏气泡后直接打开设置，不关闭 statusBar 层级的仪表盘面板也不携带出口深链，设置窗口会被仪表盘遮挡；设计 03 §14「主面板可见时静默跳过气泡」的互斥门控也未实现。",
+  "precheck": {
+    "description": "确认 stack/fallback 分支缺失 onOpenSubscriptionSettings 且气泡出口卡路由未关闭仪表盘",
+    "command": "sed -n '696,709p' apps/macos/Sources/BruceApp/MenuBarViews.swift | grep -c onOpenSubscriptionSettings; grep -n 'quotaAlertBubbleController.onOpenSettings' -A 3 apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+    "expected": "stack 分支命中 0 次 onOpenSubscriptionSettings；气泡 onOpenSettings 直接 openSubscriptionSettings()",
+    "is_completed": true,
+    "evidence": "2026-11-03 实测：MenuBarViews.swift:696-709 无 onOpenSubscriptionSettings（grep -c = 0）；MenuBarStatusItemController.swift:86-88 仅调用 openSubscriptionSettings()"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C185-C187-egress-dashboard-ux"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "scripts/adflow-verify --card C187 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "仪表盘订阅卡设置路由（MenuBarViews）",
+      "before": "stack 与 fallbackTab 分支的 SubscriptionCard 未传 onOpenSubscriptionSettings，黄色问题卡「去设置」执行空闭包，点击无反应",
+      "after": "两个分支补齐与 tab 分支一致的闭包：置 requestedEgressSettings 后调用注入的 openSubscriptionSettings（该注入实现先关闭仪表盘再打开设置）",
+      "impact": "默认布局下「去设置」可关闭仪表盘并直达设置中心订阅额度/出口IP面板"
+    },
+    {
+      "scope": "状态预警气泡出口设置路由与互斥（MenuBarStatusItemController / QuotaAlertBubblePanel）",
+      "before": "气泡出口卡 onOpenSettings 仅打开设置，不关闭仪表盘面板、不携带出口深链；仪表盘打开时仍会弹出气泡叠加显示",
+      "after": "统一路由：先 closeDashboard → 置 requestedEgressSettings → openSubscriptionSettings；showStatusAlertBubble 在仪表盘处于打开态时静默跳过，兑现设计 03 §14 互斥门控",
+      "impact": "点击气泡出口条可关闭仪表盘并高亮设置页；仪表盘打开时不再叠加气泡"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "出口异常条目点击跳转设置中心；未明确规定跳转前需关闭菜单栏仪表盘面板，以及主面板可见时气泡的互斥关系",
+      "after": "出口异常条目与状态预警气泡跳转设置中心前必须先关闭菜单栏仪表盘面板并写入出口设置深链；主面板可见时按设计 03 §14 静默跳过气泡"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261103-22",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "新增设置路由顺序单测（关面板→置深链→开设置）与气泡互斥门控单测并通过；全部 Harness 与 swift build 退出码 0",
+        "false_if": "存在失败，或路由/互斥用例缺失",
+        "evidence": "scripts/verify-local.sh Exit 0：NativeLifecycle 20 项全绿，含新增「关闭面板→置深链→打开设置」顺序与气泡互斥门控断言；PanelViewModel 66 项、PanelParity 对拍通过",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "默认纵向布局点击订阅卡「去设置」关闭仪表盘并打开设置订阅额度页；点击出口气泡同样先关面板并高亮设置页；仪表盘打开时不再出现叠加气泡",
+        "false_if": "点击仍无反应、面板不关闭或气泡仍叠层",
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview）实测并明确签收，原话「确认」：默认纵向布局点击「去设置」关闭仪表盘并打开设置定位出口IP检查；仪表盘打开时不再叠加气泡",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "tab 布局、底栏/空态设置入口、额度超限气泡路由保持不变，NativeLifecycle/PanelViewModel 既有用例全绿",
+        "false_if": "破坏其它设置入口或既有用例失败",
+        "evidence": "既有面板显隐/焦点归还/空态设置入口用例全绿（NativeLifecycle 20 项）；PanelParity 对拍通过，Tab 布局与底栏设置入口未受影响",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "a1cbd2e",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

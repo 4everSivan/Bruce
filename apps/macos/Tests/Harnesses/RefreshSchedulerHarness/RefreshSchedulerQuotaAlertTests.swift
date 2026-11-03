@@ -358,4 +358,101 @@ extension RefreshSchedulerHarness {
         await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
         try refreshExpect(alerts.statusItems.count == 2, "手动重测仍阻断应重新激活弹窗: \(alerts.statusItems)")
     }
+
+    // MARK: - 定向刷新不重弹非目标 Provider 出口告警 (C185)
+
+    /// 双服务 artifact: Claude 放行 + Codex 出口国家不匹配阻断.
+    static func makeMultiProviderEgressArtifact() -> JSONValue {
+        .object([
+            "schemaVersion": .integer(1),
+            "module": .string("agent-usage"),
+            "generatedAt": .string("2026-11-03T12:00:00Z"),
+            "agents": .array([]),
+            "services": .array([
+                .object([
+                    "id": .string("claude"),
+                    "name": .string("Claude"),
+                    "provider": .string("claude"),
+                    "status": .string("ok"),
+                    "windows": .array([
+                        .object([
+                            "label": .string("5小时窗口"),
+                            "usedPercent": .double(32),
+                            "windowMinutes": .integer(300),
+                            "resetsAt": .null,
+                        ])
+                    ]),
+                    "egress": .object([
+                        "status": .string("allowed"),
+                        "reason": .null,
+                        "expected": .string("US"),
+                        "observed": .string("US"),
+                        "maskedIp": .string("104.28.***.***"),
+                    ]),
+                ]),
+                .object([
+                    "id": .string("codex"),
+                    "name": .string("Codex"),
+                    "provider": .string("codex"),
+                    "status": .string("error"),
+                    "windows": .array([]),
+                    "egress": .object([
+                        "status": .string("blocked"),
+                        "reason": .string("EGRESS_COUNTRY_MISMATCH"),
+                        "expected": .string("JP"),
+                        "observed": .string("US"),
+                        "maskedIp": .string("104.28.***.***"),
+                    ]),
+                ]),
+            ]),
+        ])
+    }
+
+    /// C185 核心回归: 定向刷新 Claude 时, 已阻断的 Codex 不得因合并 artifact 原样保留
+    /// 而重复弹出出口告警; 全量手动刷新仍保留原有全面重弹语义.
+    static func egressBlockedAlertNotRefiredForNonTargetProvider(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeMultiProviderEgressArtifact()
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.statusItems.count == 1, "首次自动刷新应对 Codex 阻断弹出 1 条告警: \(alerts.statusItems)")
+        guard case .egressIssue(let firstAlert)? = alerts.statusItems.first else {
+            throw RefreshTestFailure.expectation("首条预警应为 egressIssue")
+        }
+        try refreshExpect(firstAlert.serviceName == "Codex", "首条预警应点名 Codex")
+
+        // 定向刷新 Claude: Codex 未被请求刷新, 不得重弹其出口告警.
+        let beforeTargeted = alerts.statusItems.count
+        scheduler.refreshSubscription(.claude)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(
+            alerts.statusItems.count == beforeTargeted,
+            "定向刷新 Claude 不应重弹 Codex 的出口告警: \(alerts.statusItems)"
+        )
+
+        // 全量手动刷新: 既有语义保持, 仍对当前全部阻断服务重新激活警.
+        scheduler.refresh(.agentUsage)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 3)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(
+            alerts.statusItems.count == beforeTargeted + 1,
+            "全量手动刷新应重新激活当前阻断告警: \(alerts.statusItems)"
+        )
+        guard case .egressIssue(let fullRefreshAlert)? = alerts.statusItems.last else {
+            throw RefreshTestFailure.expectation("全量刷新重弹项应为 egressIssue")
+        }
+        try refreshExpect(fullRefreshAlert.serviceName == "Codex", "全量刷新重弹项应点名 Codex")
+    }
 }
