@@ -4,7 +4,7 @@
   "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置",
   "version": "0.16.1",
   "milestone": "M13-开机自启动",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T25-launch-at-login",
   "depends_on": [],
   "target": {
@@ -62,8 +62,8 @@
   "acceptance": {
     "result": true,
     "run_id": "local-20261103-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "合并到主分支",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "macOS 原生 SMAppService API 合规接入",
@@ -96,7 +96,7 @@
     "version": "1.6.0",
     "ran_at": "2026-11-03",
     "exit_code": 0,
-    "from_status": "in_progress",
+    "from_status": "completed",
     "target_status": "completed"
   }
 }

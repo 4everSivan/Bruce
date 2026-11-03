@@ -417,7 +417,7 @@
     },
     "T25": {
       "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T25-launch-at-login",
       "topic": "LaunchAtLogin",
       "milestone": "M13-开机自启动",

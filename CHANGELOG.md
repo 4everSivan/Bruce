@@ -6,6 +6,11 @@
 ## [Unreleased]
 
 ### Added
+- **macOS 原生开机自启动与设置中心/欢迎向导双入口配置 (T25)**：
+  - 基于 macOS 14+ `ServiceManagement.SMAppService.mainApp` API 封装合规无侵入的自启动服务抽象，彻底规避隐式 LaunchDaemons/LaunchAgents；
+  - 设置中心「通用」面板落地标准 Switch 开关；当系统登录项权限被系统策略拦截（`.requiresApproval`）时，即时提示「需在系统设置中允许」并提供一键跳转系统偏好设置；
+  - 首次启动欢迎向导（Welcome Wizard）Step 3 外观与快捷唤出页同步内嵌「开机自动运行」偏好卡片，与设置页及底层服务双向实时联动；
+  - 配置持久化于 `config/onboarding-v1.json`（POSIX 0600），旧配置缺失键时平滑向前兼容；提供 `MockLaunchAtLoginService` 供测试与 Preview 隔离。
 - **首次启动双栏沉浸式欢迎向导（方案 A · macOS / Windows 双端同构）(T22)**：
   - 打造 780 × 540 独立双栏沉浸式三步欢迎向导（左侧 224pt 品牌导览栏展示真实 Puppy 比格犬 App 图标、三步导航轨与 100% 本地只读隐私承诺卡），彻底替换原冷启动直接弹设置窗口与钥匙串授权的割裂流程；
   - **Step 1 环境扫描与合并激活**：只读检测本机 9 个 AI Agent（Codex、Claude、Cursor 等）会话目录与 CC Switch 账号库，将本地 Token 统计与 0600 本机凭据存储合并为一键激活；支持存量老用户免打扰平滑升级；
