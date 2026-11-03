@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C185",
+  "title": "定向刷新订阅时不再重弹其它订阅的出口阻断告警，并让失败退避重试保持定向作用域",
+  "version": "0.16.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C185-C187-egress-dashboard-ux",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "RefreshScheduler / RefreshExecutionPipeline / EgressAlertEvaluator",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "现象：在仪表盘单独刷新 Claude 订阅时，已处于出口国家不匹配阻断态的 Codex 会再次弹出「⚠️ US ≠ JP」黄色微气泡。根因：定向刷新 intent 必为 manual（RefreshTypes.swift 的 subscription(_:)），收尾 applyCompleted 在 includesManual 为 true 时把整份合并 artifact 中所有 blocked service 全部重新派发（RefreshScheduler.swift newBlockedAlerts = blockedEntries.map），而定向合并会原样保留非目标 service 及其旧 blocked egress，因此每次刷新目标订阅都会重弹非目标订阅的出口告警；另外失败退避重试构造 .backoff intent 时丢失 scope 恒为 .all，定向刷新失败后的重试可能变成全量查询并探测其它 provider。",
+  "precheck": {
+    "description": "确认定向刷新收尾的出口告警派发未按 scope 过滤，且 backoff intent 无 scope 参数",
+    "command": "grep -n 'newBlockedAlerts = blockedEntries.map' apps/macos/Sources/BruceAppCore/RefreshScheduler.swift; grep -n 'static func backoff' apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+    "expected": "命中不带 scope 过滤的 blockedEntries.map 重派，以及无 scope 参数的 backoff 构造",
+    "is_completed": true,
+    "evidence": "2026-11-03 实测：RefreshScheduler.swift:800 为 newBlockedAlerts = blockedEntries.map(\\.alert)（无 scope 过滤）；RefreshTypes.swift:102 为 backoff(includesManual:)（无 scope 参数）"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C185-C187-egress-dashboard-ux"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "scripts/adflow-verify --card C185 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "定向刷新出口告警派发（RefreshExecutionPipeline / RefreshScheduler）",
+      "before": "CompletedRun 不携带刷新作用域；manual 收尾把整份 artifact 的所有 blocked service 重弹出口气泡，定向刷新目标订阅会带出其它订阅的旧阻断告警",
+      "after": "CompletedRun 增加 scope；定向刷新仅对目标 Provider 的 blocked service 重新激活告警，全量刷新保持原有语义；egressBlockedServiceIDs 仍记录全量阻断集合用于边沿去重",
+      "impact": "仪表盘/预警微气泡：刷新 Claude 不再重复弹出 Codex 的出口阻断告警"
+    },
+    {
+      "scope": "失败退避重试作用域（RefreshTypes / RefreshScheduler）",
+      "before": "backoff intent 固定 .all，定向刷新失败后的退避重试丢失 scope，可能触发全量查询与其它 provider 的出口探测",
+      "after": "ModuleScheduleState 记录 lastScope，backoff 继承该 scope；定向刷新失败后的重试仍只查询目标 Provider",
+      "impact": "定向刷新失败重试不再额外查询或出口探测其它 provider"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "状态预警微气泡仅在状态由放行跳变至阻断时弹出一次；手动重测失败时重新触发告警，未限定定向刷新只影响目标 Provider",
+      "after": "定向刷新仅对目标 Provider 的出口阻断状态重新激活告警，非目标订阅的旧阻断状态不得重复弹出；失败退避重试继承原刷新作用域"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "RefreshSchedulerHarness 新增定向刷新不重弹非目标出口告警、退避继承 scope 用例并通过；swift build 与全部 Harness 退出码 0",
+        "false_if": "存在测试失败，或定向/退避回归用例缺失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "仪表盘定向刷新 Claude 后 Codex 的出口阻断气泡不再弹出；全量手动刷新仍会重新提示当前阻断",
+        "false_if": "定向刷新仍弹非目标告警，或全量刷新不再提示阻断",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "全量刷新、边沿跳变去重、目标 Provider 手动重测告警等既有语义保持不变，RefreshScheduler 既有用例全绿",
+        "false_if": "破坏既有告警语义或导致既有用例失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "42db5a7",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

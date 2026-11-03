@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-01",
+  "updated_at": "2026-11-03",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -252,7 +252,10 @@
     "NetworkEgressCountry": {
       "design_doc": "docs/devel/design/11-网络出口国家校验.md",
       "changes": [
-        "C184"
+        "C184",
+        "C185",
+        "C186",
+        "C187"
       ]
     }
   },
@@ -1894,6 +1897,33 @@
       "topic": "NetworkEgressCountry",
       "version": "0.16.1",
       "file": "docs/devel/change/C184.json"
+    },
+    "C185": {
+      "title": "定向刷新订阅时不再重弹其它订阅的出口阻断告警，并让失败退避重试保持定向作用域",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C185-C187-egress-dashboard-ux",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C185.json"
+    },
+    "C186": {
+      "title": "出口阻断快照的订阅窗口倒计时改为「已拦截」，不再误显示「刷新中」",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C185-C187-egress-dashboard-ux",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C186.json"
+    },
+    "C187": {
+      "title": "修复默认纵向布局下订阅卡「去设置」无响应：补齐路由并在跳转设置中心前关闭仪表盘",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C185-C187-egress-dashboard-ux",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C187.json"
     }
   }
 }
