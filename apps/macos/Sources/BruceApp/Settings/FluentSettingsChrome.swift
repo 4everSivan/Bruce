@@ -251,12 +251,13 @@ extension View {
 
 struct FluentStatusDot: View {
     enum Level {
-        case ok, warn, off
+        case ok, warn, danger, off
 
         var color: Color {
             switch self {
             case .ok: return SettingsDemoTokens.ok
             case .warn: return SettingsDemoTokens.warn
+            case .danger: return SettingsDemoTokens.danger
             case .off: return SettingsDemoTokens.text3
             }
         }

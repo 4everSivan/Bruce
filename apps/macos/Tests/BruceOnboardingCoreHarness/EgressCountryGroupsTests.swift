@@ -136,6 +136,42 @@ func egressCountryGroupsTests() throws {
     guard groups.groups.count == 1, groups.groups[0].providers.isEmpty else {
         throw TestFailure("移出与解散应仅修改分组")
     }
+
+    // 验证 lastTestResult 持久化与编解码往返
+    groups.setLastTestResult("出口国家不匹配 · 198.44.***.*** (US)", for: "US")
+    guard groups.groups.first(where: { $0.country == "US" })?.lastTestResult
+            == "出口国家不匹配 · 198.44.***.*** (US)" else {
+        throw TestFailure("lastTestResult 设置失败")
+    }
+    let roundTripWithResult = try JSONDecoder().decode(
+        EgressCountryGroups.self, from: JSONEncoder().encode(groups)
+    )
+    guard roundTripWithResult.groups.first(where: { $0.country == "US" })?.lastTestResult
+            == "出口国家不匹配 · 198.44.***.*** (US)" else {
+        throw TestFailure("lastTestResult 编解码往返保留失败")
+    }
+    // 验证修改端口时自动清除旧测试结果
+    try groups.setProxyPort(8080, for: "US")
+    guard groups.groups.first(where: { $0.country == "US" })?.lastTestResult == nil else {
+        throw TestFailure("更改代理端口后应重置清除旧测试结果")
+    }
+    // 验证相同端口不清除测试结果
+    groups.setLastTestResult("线路探测匹配 · 104.28.***.*** (US)", for: "US")
+    try groups.setProxyPort(8080, for: "US")
+    guard groups.groups.first(where: { $0.country == "US" })?.lastTestResult
+            == "线路探测匹配 · 104.28.***.*** (US)" else {
+        throw TestFailure("设置相同端口不应清除已有测试结果")
+    }
+
+    // 验证文案前缀契约 (供 EgressSettingsCard 状态色阶精准分流)
+    let mismatchText = EgressTracePresentation.describe("ip=198.44.1.2\nloc=US\n", expected: "SG")
+    guard mismatchText.hasPrefix("出口国家不匹配") else {
+        throw TestFailure("预期国家与出口不符时应输出出口国家不匹配")
+    }
+    let matchText = EgressTracePresentation.describe("ip=198.44.1.2\nloc=US\n", expected: "US")
+    guard matchText.hasPrefix("线路探测匹配") else {
+        throw TestFailure("预期国家与出口相符时应输出线路探测匹配")
+    }
 }
 
 private struct TestFailure: Error {
