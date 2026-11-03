@@ -263,6 +263,8 @@ struct PanelViewModelHarness {
         try subscriptionIsNilWhenAllPlaceholders()
         try serviceErrorKeepsNoteAndDiagnoses()
         try egressStateMapsWithoutAffectingUnmanagedProviders()
+        try blockedSnapshotWindowsShowInterceptedText()
+        try egressScopeFiltersBlockedAlertsToTargetProvider()
         try statusBubbleAlertPolymorphismAndEgressEvaluation()
         try malformedWindowIsDroppedWithDiagnostic()
         try usageHeroAggregatesTotalsAndFormatting()
@@ -317,7 +319,7 @@ struct PanelViewModelHarness {
         try meterMotionPolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 64")
+        print("PanelViewModel tests passed: 66")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -566,6 +568,89 @@ struct PanelViewModelHarness {
             _ = try JSONDecoder().decode(EgressPresentationInfo.self, from: Data("{\"status\":\"unknown\"}".utf8))
             throw PanelTestFailure.expectation("未知出口状态不得视为放行")
         } catch is DecodingError {}
+    }
+
+    // MARK: - 出口阻断快照窗口文案 (C186)
+
+    /// 阻断 + stale 快照的窗口重置时间列统一显示「已拦截」，阻断优先于过期「刷新中」；
+    /// 放行态仍保持真实倒计时 / 过期「刷新中」语义。
+    private static func blockedSnapshotWindowsShowInterceptedText() throws {
+        let blocked = EgressPresentationInfo(
+            status: .blocked, reason: "EGRESS_COUNTRY_MISMATCH",
+            expected: "JP", observed: "US", maskedIp: "104.28.***.***"
+        )
+        let expired = makeWindow(
+            label: "5小时窗口", usedPercent: 68, windowMinutes: 300,
+            resetsAt: .integer(Int(fixedNow.timeIntervalSince1970) - 100)
+        )
+        let future = makeWindow(
+            label: "每周窗口", usedPercent: 39, windowMinutes: 10080,
+            resetsAt: .integer(Int(fixedNow.timeIntervalSince1970) + 3 * 86400)
+        )
+        let blockedService = makeService(
+            id: "codex_1", name: "Codex", status: "error",
+            windows: [expired, future],
+            capturedAt: "2026-07-30T10:00:00+00:00",
+            freshness: "stale",
+            egress: blocked
+        )
+        let blockedSections = try subscriptionSections(services: [blockedService])
+        try expect(blockedSections.count == 1, "阻断服务应保留为订阅段")
+        try expect(blockedSections[0].hasProtectedSnapshot, "阻断 + stale 应标记受保护快照")
+        try expect(
+            blockedSections[0].windows.map(\.resetText) == ["已拦截", "已拦截"],
+            "阻断快照窗口应显示已拦截, got \(blockedSections[0].windows.map(\.resetText))"
+        )
+
+        // 反向: 未阻断时倒计时语义不变.
+        let allowed = EgressPresentationInfo(
+            status: .allowed, reason: nil, expected: "JP", observed: "JP", maskedIp: nil
+        )
+        let normalService = makeService(
+            id: "codex_1", name: "Codex", status: "ok",
+            windows: [expired, future],
+            freshness: "fresh",
+            egress: allowed
+        )
+        let normalSections = try subscriptionSections(services: [normalService])
+        try expect(
+            normalSections[0].windows.map(\.resetText) == ["刷新中", "3 天后"],
+            "未阻断服务的倒计时不得被改写, got \(normalSections[0].windows.map(\.resetText))"
+        )
+    }
+
+    // MARK: - 出口告警作用域过滤 (C185)
+
+    /// 定向 scope 只保留目标 Provider 的阻断告警；未知归属条目 fail-closed 丢弃；
+    /// 全量 scope 原样返回。
+    private static func egressScopeFiltersBlockedAlertsToTargetProvider() throws {
+        func blockedService(_ id: String, provider: String) -> JSONValue {
+            .object([
+                "id": .string(id),
+                "name": .string(id),
+                "provider": .string(provider),
+                "egress": .object(["status": .string("blocked")]),
+            ])
+        }
+        let artifact: JSONValue = .object([
+            "services": .array([
+                blockedService("claude", provider: "claude"),
+                blockedService("codex", provider: "codex"),
+                blockedService("mystery_1", provider: "mystery"),
+            ]),
+        ])
+        let entries = EgressAlertEvaluator.blockedEntries(artifact: artifact)
+        try expect(entries.count == 3, "应提取全部 3 条阻断告警")
+        let scoped = EgressAlertEvaluator.scopedEntries(
+            entries,
+            scope: .subscriptionProviders([.claude])
+        )
+        try expect(
+            scoped.map(\.serviceID) == ["claude"],
+            "定向刷新应只保留目标 Provider 告警, got \(scoped.map(\.serviceID))"
+        )
+        let all = EgressAlertEvaluator.scopedEntries(entries, scope: .all)
+        try expect(all.count == entries.count, "全量刷新应保留全部阻断告警")
     }
 
     // MARK: - 通用状态预警气泡多态与阻断评估 (T24)
