@@ -208,6 +208,7 @@ final class MockCollectorExecutor: CollectorExecuting {
 @MainActor
 final class AlertCapture {
     var items: [QuotaAlert] = []
+    var statusItems: [StatusBubbleAlertItem] = []
 }
 
 // MARK: - Fixture loader

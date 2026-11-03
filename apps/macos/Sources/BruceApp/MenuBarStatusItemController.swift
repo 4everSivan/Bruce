@@ -83,6 +83,9 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         quotaAlertBubbleController.onOpenDashboard = { [weak self] in
             self?.openDashboardIfNeeded()
         }
+        quotaAlertBubbleController.onOpenSettings = { [weak self] in
+            self?.openSubscriptionSettings()
+        }
     }
 
     isolated deinit {
@@ -592,18 +595,23 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// 弹出额度预警气泡 (方案 A · 280pt 胶囊微卡)
-    func showQuotaAlertBubble(alerts: [QuotaAlert], force: Bool = false) {
+    /// 弹出通用状态预警气泡 (方案 A · 280pt 胶囊微卡，支持额度超限与网络出口阻断多态)
+    func showStatusAlertBubble(items: [StatusBubbleAlertItem], force: Bool = false) {
         if !force {
             guard coordinator.systemNotificationsEnabled else { return }
         }
         guard let button = statusItem?.button else { return }
         quotaAlertBubbleController.show(
-            alerts: alerts,
+            items: items,
             theme: coordinator.resolvedTheme,
             colorScheme: coordinator.appearanceMode.colorScheme,
             relativeTo: button
         )
+    }
+
+    /// 弹出额度预警气泡 (方案 A · 280pt 胶囊微卡，兼容旧接口)
+    func showQuotaAlertBubble(alerts: [QuotaAlert], force: Bool = false) {
+        showStatusAlertBubble(items: alerts.map { .quota($0) }, force: force)
     }
 
     /// 若主看板未处于打开状态则展开主看板

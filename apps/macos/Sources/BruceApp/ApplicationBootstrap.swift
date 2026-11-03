@@ -18,7 +18,9 @@ final class ApplicationBootstrap {
     /// Codex token manager: 启动时发布一次非敏感状态,
     /// 并在每个调度周期后刷新, 供设置页订阅.
     private let codexTokenManager: CodexTokenManager
-    /// 额度预警回调 (弹出气泡微卡)
+    /// 通用状态预警回调 (支持额度超限与网络出口阻断多态微卡 T24)
+    var onStatusAlerts: (([StatusBubbleAlertItem]) -> Void)?
+    /// 额度预警回调 (兼容旧版)
     var onQuotaAlerts: (([QuotaAlert]) -> Void)?
     private weak var model: AppModel?
     private var started = false
@@ -79,6 +81,10 @@ final class ApplicationBootstrap {
         // credentialUpdates 由 RefreshScheduler 注入的 CredentialUpdateCoordinator
         // 在 RefreshExecutionPipeline 中于 publish 前应用; 写回失败降级为 partial + 诊断.
         // C159: 后台刷新发现 5h 额度新跨越阶梯阈值时弹出气泡微卡 (退役系统通知).
+        // T24: 状态预警微气泡多态升级 (支持额度超限与网络出口阻断).
+        scheduler.onStatusAlerts = { [weak self] _, items in
+            self?.onStatusAlerts?(items)
+        }
         scheduler.onQuotaAlerts = { [weak self] _, alerts in
             self?.onQuotaAlerts?(alerts)
         }

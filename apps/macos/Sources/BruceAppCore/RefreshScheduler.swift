@@ -70,6 +70,8 @@ struct ModuleScheduleState: Equatable, Sendable {
     var quotaAlertedKeys: Set<String> = []
     /// 记录每个 key 已告警的最高阶梯档位 [key: highestDeliveredTier (50, 80, 95)].
     var quotaAlertedTiers: [String: Int] = [:]
+    /// 上次刷新后处于出口阻断的 serviceID 集合；只有新跳变至阻断才报警 (边沿跳变防打扰 T24).
+    var egressBlockedServiceIDs: Set<String> = []
 }
 
 // MARK: - RefreshScheduler
@@ -116,6 +118,8 @@ package final class RefreshScheduler {
     package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
     /// 后台刷新发现 5h 窗口用量新跨越 80% 阈值; 手动刷新不触发.
     package var onQuotaAlerts: ((CollectorModule, [QuotaAlert]) -> Void)?
+    /// 通用状态预警回调 (支持额度超限与网络出口阻断多态微卡 T24)
+    package var onStatusAlerts: ((CollectorModule, [StatusBubbleAlertItem]) -> Void)?
     /// 每个运行周期完成 (无论成败) 后触发, 供宿主刷新非敏感状态.
     package var onRunCycleCompleted: (() -> Void)?
     /// 最近一次成功发布的响应诊断 (去重后, 任务 7): 供诊断展示/记录
@@ -429,6 +433,9 @@ package final class RefreshScheduler {
                     cachedEntries.map { ($0.key, $0.alert.tier) },
                     uniquingKeysWith: { max($0, $1) }
                 )
+                // 用缓存快照回填出口阻断状态, 避免重启后对已知阻断服务重复弹窗打扰
+                let cachedBlocked = EgressAlertEvaluator.blockedEntries(artifact: stored.artifact)
+                state.egressBlockedServiceIDs = Set(cachedBlocked.map(\.serviceID))
                 states[module] = state
             }
         } catch {
@@ -781,6 +788,35 @@ package final class RefreshScheduler {
             }
             state.quotaAlertedTiers = state.quotaAlertedTiers.filter { currentKeys.contains($0.key) }
             state.quotaAlertedKeys = Set(state.quotaAlertedTiers.keys)
+
+            // 网络出口阻断预警: 边沿跳变触发 (Edge-Triggered Anti-Spam T24)
+            // 仅当网络状态由「放行」跳变至「阻断」时弹出一次气泡；
+            // 持续阻断期间静默更新快照不弹窗；手动重测失败或网络恢复后再度异常重新激活。
+            let blockedEntries = EgressAlertEvaluator.blockedEntries(artifact: artifact)
+            let currentBlockedIDs = Set(blockedEntries.map(\.serviceID))
+            let newBlockedAlerts: [EgressAlertItem]
+            if run.includesManual {
+                // 手动重测处于阻断态: 重新激活报警
+                newBlockedAlerts = blockedEntries.map(\.alert)
+            } else {
+                // 定时自动刷新: 仅当该 serviceID 原先未阻断时触发 (边沿跳变)
+                newBlockedAlerts = blockedEntries
+                    .filter { !state.egressBlockedServiceIDs.contains($0.serviceID) }
+                    .map(\.alert)
+            }
+            state.egressBlockedServiceIDs = currentBlockedIDs
+
+            // 汇总派发多态通用状态预警
+            var bubbleItems: [StatusBubbleAlertItem] = []
+            for item in newAlerts {
+                bubbleItems.append(.quota(item.alert))
+            }
+            for item in newBlockedAlerts {
+                bubbleItems.append(.egressIssue(item))
+            }
+            if !bubbleItems.isEmpty {
+                onStatusAlerts?(module, bubbleItems)
+            }
             if !newAlerts.isEmpty {
                 onQuotaAlerts?(module, newAlerts.map(\.alert))
             }

@@ -177,6 +177,9 @@ struct BruceApp: App {
         settingsController.onReopenWelcome = { [weak welcomeController] in
             welcomeController?.present()
         }
+        bootstrap.onStatusAlerts = { [weak statusController] items in
+            statusController?.showStatusAlertBubble(items: items)
+        }
         bootstrap.onQuotaAlerts = { [weak statusController] alerts in
             statusController?.showQuotaAlertBubble(alerts: alerts)
         }

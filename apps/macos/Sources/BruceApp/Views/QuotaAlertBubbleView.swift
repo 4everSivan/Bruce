@@ -37,15 +37,45 @@ private enum BubbleNothingTokens {
 ///   - Classic / LiquidGlass: 柔白/高斯底座 + 10pt 胶囊 + SF Pro 字体 + 4pt 胶囊进度条;
 ///   - Nothing: 纯黑/白底座 + 8pt 硬朗方角 + Space Grotesk / Space Mono 点阵字体 + 14 段方块点阵迷你进度条;
 /// - 左侧 24pt 品牌瓷砖徽章 (ProviderBrandBadge, Nothing 模式自动跟随 3pt 方角与柔彩图元);
-/// - 中段: 首行服务名 + 窗口名 + 进度百分比; 次行量条 + 右置 R3-A 电子表秒级倒计时;
+/// - 多态条目支持:
+///   - 额度预警 (.quota): 首行服务名 + 窗口名 + 进度百分比; 次行量条 + 右置 R3-A 电子表秒级倒计时; 点击直达主看板;
+///   - 出口阻断 (.egressIssue): 首行服务名 + [⚠️ 国内直连] / [⚠️ US ≠ JP] 标签; 次行保护文案; 点击直达设置中心;
 /// - 右侧: 14pt 关闭微按钮;
-/// - 顶部居中指向小三角 (小箭头锚定菜单栏图标);
 /// - 视图可见期间以 1s 内部定时器跳动读秒, 关闭后销毁, 保持 0% CPU 空转.
 struct QuotaAlertBubbleView: View {
-    let alerts: [QuotaAlert]
+    let items: [StatusBubbleAlertItem]
     var onOpenDashboard: () -> Void = {}
+    var onOpenSettings: () -> Void = {}
     var onClose: () -> Void = {}
     var onHoverChange: (Bool) -> Void = { _ in }
+
+    init(
+        items: [StatusBubbleAlertItem],
+        onOpenDashboard: @escaping () -> Void = {},
+        onOpenSettings: @escaping () -> Void = {},
+        onClose: @escaping () -> Void = {},
+        onHoverChange: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.items = items
+        self.onOpenDashboard = onOpenDashboard
+        self.onOpenSettings = onOpenSettings
+        self.onClose = onClose
+        self.onHoverChange = onHoverChange
+    }
+
+    init(
+        alerts: [QuotaAlert],
+        onOpenDashboard: @escaping () -> Void = {},
+        onOpenSettings: @escaping () -> Void = {},
+        onClose: @escaping () -> Void = {},
+        onHoverChange: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.items = alerts.map { .quota($0) }
+        self.onOpenDashboard = onOpenDashboard
+        self.onOpenSettings = onOpenSettings
+        self.onClose = onClose
+        self.onHoverChange = onHoverChange
+    }
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -73,8 +103,13 @@ struct QuotaAlertBubbleView: View {
     var body: some View {
         // 卡片主体 (移除顶部尖头，呈现精致极简微卡底座)
         VStack(spacing: 8) {
-            ForEach(alerts, id: \.serviceID) { alert in
-                alertRow(alert: alert)
+            ForEach(items) { item in
+                switch item {
+                case .quota(let alert):
+                    quotaAlertRow(alert: alert)
+                case .egressIssue(let egressAlert):
+                    egressAlertRow(alert: egressAlert)
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -113,10 +148,10 @@ struct QuotaAlertBubbleView: View {
         }
     }
 
-    // MARK: - 单服务告警条目
+    // MARK: - 单服务额度超限告警条目 (点击跳主看板)
 
     @ViewBuilder
-    private func alertRow(alert: QuotaAlert) -> some View {
+    private func quotaAlertRow(alert: QuotaAlert) -> some View {
         let alertColor = alertTierColor(tier: alert.tier)
         let percent = Int(alert.usedPercent.rounded())
         let countdown = formatCountdown(resetsAt: alert.resetsAt, resetText: alert.resetText)
@@ -213,7 +248,7 @@ struct QuotaAlertBubbleView: View {
             }
             .buttonStyle(.plain)
 
-            // 右侧关闭微按钮 (恢复置于最右端)
+            // 右侧关闭微按钮
             Button {
                 onClose()
             } label: {
@@ -229,6 +264,109 @@ struct QuotaAlertBubbleView: View {
             }
             .buttonStyle(.plain)
             .help("关闭提示")
+        }
+    }
+
+    // MARK: - 单服务出口阻断异常条目 (点击跳设置中心订阅面板)
+
+    @ViewBuilder
+    private func egressAlertRow(alert: EgressAlertItem) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            // 左侧品牌瓷砖徽章 (24pt)
+            Button {
+                onOpenSettings()
+            } label: {
+                ProviderBrandBadge(
+                    providerID: alert.providerID ?? alert.serviceID,
+                    name: alert.serviceName,
+                    size: 24
+                )
+            }
+            .buttonStyle(.plain)
+
+            // 中段信息区 (首行: 服务名 ... [⚠️ 国内直连] 标签; 次行: 拦截保护文案)
+            Button {
+                onOpenSettings()
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    // 首行: 服务名 (左) + 琥珀色微胶囊标签 (右)
+                    HStack(alignment: .center, spacing: 4) {
+                        Text(alert.serviceName)
+                            .font(isNothing ? NothingFont.ui(11, weight: .semibold) : .system(size: 11, weight: .semibold))
+                            .foregroundStyle(isNothing ? BubbleNothingTokens.display(colorScheme) : .primary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Spacer(minLength: 4)
+
+                        egressBadge(alert.badgeText)
+                            .layoutPriority(1)
+                    }
+
+                    // 次行: 精炼拦截保护文案
+                    Text(alert.explanation)
+                        .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                        .foregroundStyle(isNothing ? BubbleNothingTokens.secondary(colorScheme) : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .buttonStyle(.plain)
+
+            // 右侧关闭微按钮
+            Button {
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(isNothing ? NothingFont.mono(8.5, weight: .bold) : .system(size: 8, weight: .bold))
+                    .foregroundStyle(isNothing ? BubbleNothingTokens.secondary(colorScheme) : .secondary)
+                    .frame(width: 14, height: 14)
+                    .background(
+                        isNothing
+                            ? RoundedRectangle(cornerRadius: 2, style: .continuous).fill(Color.clear)
+                            : RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("关闭提示")
+        }
+    }
+
+    /// 琥珀色出口拦截微胶囊标签
+    @ViewBuilder
+    private func egressBadge(_ text: String) -> some View {
+        if isNothing {
+            Text(text)
+                .font(NothingFont.mono(8.5, weight: .bold))
+                .foregroundStyle(BubbleNothingTokens.warning)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(BubbleNothingTokens.emptySegment(colorScheme).opacity(0.40))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(BubbleNothingTokens.borderVisible(colorScheme), lineWidth: 1)
+                )
+        } else {
+            Text(text)
+                .font(.system(size: 8.5, weight: .semibold))
+                .foregroundStyle(Color(hex: "#D97706")) // 暖琥珀橙
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 4.5)
+                .padding(.vertical, 1.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                        .fill(Color(hex: "#F59E0B").opacity(colorScheme == .dark ? 0.18 : 0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                        .strokeBorder(Color(hex: "#F59E0B").opacity(colorScheme == .dark ? 0.35 : 0.25), lineWidth: 0.5)
+                )
         }
     }
 

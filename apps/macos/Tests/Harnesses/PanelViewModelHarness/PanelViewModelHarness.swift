@@ -263,6 +263,7 @@ struct PanelViewModelHarness {
         try subscriptionIsNilWhenAllPlaceholders()
         try serviceErrorKeepsNoteAndDiagnoses()
         try egressStateMapsWithoutAffectingUnmanagedProviders()
+        try statusBubbleAlertPolymorphismAndEgressEvaluation()
         try malformedWindowIsDroppedWithDiagnostic()
         try usageHeroAggregatesTotalsAndFormatting()
         try usageTierFollowsTotalThresholds()
@@ -565,6 +566,104 @@ struct PanelViewModelHarness {
             _ = try JSONDecoder().decode(EgressPresentationInfo.self, from: Data("{\"status\":\"unknown\"}".utf8))
             throw PanelTestFailure.expectation("未知出口状态不得视为放行")
         } catch is DecodingError {}
+    }
+
+    // MARK: - 通用状态预警气泡多态与阻断评估 (T24)
+
+    private static func statusBubbleAlertPolymorphismAndEgressEvaluation() throws {
+        // 1. EgressAlertEvaluator 提取与原因映射测试
+        let artifact: JSONValue = .object([
+            "schemaVersion": .integer(1),
+            "module": .string("agent-usage"),
+            "generatedAt": .string("2026-11-03T12:00:00Z"),
+            "services": .array([
+                .object([
+                    "id": .string("claude"),
+                    "name": .string("Claude"),
+                    "provider": .string("claude"),
+                    "egress": .object([
+                        "status": .string("blocked"),
+                        "reason": .string("EGRESS_CN_DIRECT"),
+                        "expected": .string("US"),
+                        "observed": .string("CN"),
+                        "maskedIp": .string("114.114.***.***")
+                    ])
+                ]),
+                .object([
+                    "id": .string("codex"),
+                    "name": .string("Codex"),
+                    "provider": .string("codex"),
+                    "egress": .object([
+                        "status": .string("blocked"),
+                        "reason": .string("EGRESS_COUNTRY_MISMATCH"),
+                        "expected": .string("JP"),
+                        "observed": .string("US"),
+                        "maskedIp": .string("104.28.***.***")
+                    ])
+                ]),
+                .object([
+                    "id": .string("kimi"),
+                    "name": .string("Kimi"),
+                    "provider": .string("kimi"),
+                    "egress": .object([
+                        "status": .string("allowed"),
+                        "reason": .null,
+                        "expected": .string("CN"),
+                        "observed": .string("CN")
+                    ])
+                ])
+            ])
+        ])
+
+        let blockedEntries = EgressAlertEvaluator.blockedEntries(artifact: artifact)
+        try expect(blockedEntries.count == 2, "应提取出 2 个阻断服务，放行的 kimi 不得被提取")
+
+        let claudeAlert = blockedEntries.first(where: { $0.serviceID == "claude" })?.alert
+        try expect(claudeAlert?.badgeText == "⚠️ 国内直连", "国内直连徽标匹配错误: \(String(describing: claudeAlert?.badgeText))")
+        try expect(claudeAlert?.explanation == "已拦截海外查额以保护账号 · 保持快照", "保护文案不匹配")
+
+        let codexAlert = blockedEntries.first(where: { $0.serviceID == "codex" })?.alert
+        try expect(codexAlert?.badgeText == "⚠️ US ≠ JP", "国家不匹配徽标文本错误: \(String(describing: codexAlert?.badgeText))")
+
+        // 2. StatusBubbleAlertItem 多态抽象与分流路由判定
+        let quotaAlert = QuotaAlert(
+            serviceID: "deepseek",
+            serviceName: "DeepSeek",
+            windowLabel: "5小时窗口",
+            usedPercent: 88,
+            tier: 80
+        )
+        let quotaItem = StatusBubbleAlertItem.quota(quotaAlert)
+        let egressItem = StatusBubbleAlertItem.egressIssue(claudeAlert!)
+
+        try expect(quotaItem.serviceName == "DeepSeek", "quota item 服务名错误")
+        try expect(quotaItem.id == "quota|deepseek|5小时窗口", "quota item ID 规范不匹配")
+
+        try expect(egressItem.serviceName == "Claude", "egress item 服务名错误")
+        try expect(egressItem.id == "egress|claude", "egress item ID 规范不匹配")
+
+        // 3. 差异化路由分流断言:
+        // 额度告警 -> 路由主仪表盘看板
+        // 出口阻断 -> 路由设置中心订阅额度面板
+        var navigatedToDashboard = false
+        var navigatedToSettings = false
+
+        let routeItem: (StatusBubbleAlertItem) -> Void = { item in
+            switch item {
+            case .quota:
+                navigatedToDashboard = true
+            case .egressIssue:
+                navigatedToSettings = true
+            }
+        }
+
+        routeItem(quotaItem)
+        try expect(navigatedToDashboard && !navigatedToSettings, "额度告警微卡点击必须路由至主看板")
+
+        navigatedToDashboard = false
+        navigatedToSettings = false
+        routeItem(egressItem)
+        try expect(!navigatedToDashboard && navigatedToSettings, "出口阻断微卡点击必须路由至设置中心订阅面板")
     }
 
     // 单个窗口解析失败被丢弃并产生诊断, 不拖垮整段.

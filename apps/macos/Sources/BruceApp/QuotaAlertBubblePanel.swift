@@ -36,19 +36,22 @@ final class QuotaAlertBubbleController {
     private var dismissTimer: Timer?
     private var isMouseHovering = false
 
-    /// 外部回调: 点击气泡主体打开主看板
+    /// 外部回调: 点击气泡主体打开主看板 (额度告警)
     var onOpenDashboard: (() -> Void)?
+
+    /// 外部回调: 点击出口异常条目跳转设置中心 (出口IP检查)
+    var onOpenSettings: (() -> Void)?
 
     init() {}
 
-    /// 显示额度预警气泡
+    /// 显示通用状态预警气泡 (支持额度超限与网络出口阻断多态)
     func show(
-        alerts: [QuotaAlert],
+        items: [StatusBubbleAlertItem],
         theme: ResolvedTheme,
         colorScheme: ColorScheme? = nil,
         relativeTo button: NSStatusBarButton?
     ) {
-        guard !alerts.isEmpty else { return }
+        guard !items.isEmpty else { return }
 
         // 如果已有气泡，先取消旧的淡出定时器
         dismissTimer?.invalidate()
@@ -59,10 +62,14 @@ final class QuotaAlertBubbleController {
         self.panel = bubblePanel
 
         let rootView = QuotaAlertBubbleView(
-            alerts: alerts,
+            items: items,
             onOpenDashboard: { [weak self] in
                 self?.hide(animated: false)
                 self?.onOpenDashboard?()
+            },
+            onOpenSettings: { [weak self] in
+                self?.hide(animated: false)
+                self?.onOpenSettings?()
             },
             onClose: { [weak self] in
                 self?.hide(animated: true)
@@ -107,6 +114,21 @@ final class QuotaAlertBubbleController {
 
         // 启动 6 秒平滑淡出定时器 (T2 样式)
         scheduleDismiss(after: 6.0)
+    }
+
+    /// 便利方法: 兼容旧版仅传额度预警
+    func show(
+        alerts: [QuotaAlert],
+        theme: ResolvedTheme,
+        colorScheme: ColorScheme? = nil,
+        relativeTo button: NSStatusBarButton?
+    ) {
+        show(
+            items: alerts.map { .quota($0) },
+            theme: theme,
+            colorScheme: colorScheme,
+            relativeTo: button
+        )
     }
 
     /// 隐藏气泡
