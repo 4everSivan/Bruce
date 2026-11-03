@@ -560,8 +560,18 @@ struct PanelViewModelHarness {
             throw PanelTestFailure.expectation("缺少订阅分组")
         }
         try expect(managed.egress?.badgeText == "US ≠ JP", "应呈现国家不匹配")
+        // C188: 阻断问题卡标题不再复用对比串，改为可读的「出口 IP 泄漏」；
+        // badgeText 保持原样，供状态预警气泡等入口继续使用。
+        try expect(managed.egress?.cardTitleText == "出口 IP 泄漏", "阻断问题卡标题应为「出口 IP 泄漏」，got \(String(describing: managed.egress?.cardTitleText))")
         try expect(managed.hasProtectedSnapshot, "应标记受保护的历史快照")
         try expect(unmanaged.egress == nil, "未分组订阅不得出现出口状态")
+        // 其余阻断原因保留各自原因文案，避免被误述为 IP 泄漏。
+        let cnDirect = EgressPresentationInfo(status: .blocked, reason: "EGRESS_CN_DIRECT",
+            expected: "JP", observed: "CN", maskedIp: nil)
+        try expect(cnDirect.cardTitleText == "国内出口", "国内直连问题卡标题应保留原因文案")
+        let probeTimeout = EgressPresentationInfo(status: .blocked, reason: "EGRESS_PROBE_TIMEOUT",
+            expected: "JP", observed: nil, maskedIp: nil)
+        try expect(probeTimeout.cardTitleText == "探测失败", "探测超时问题卡标题应保留原因文案")
         let allowed = EgressPresentationInfo(status: .allowed, reason: nil, expected: "JP", observed: "JP", maskedIp: nil)
         try expect(allowed.badgeText == "🇯🇵", "匹配态应只显示国旗徽标")
         do {

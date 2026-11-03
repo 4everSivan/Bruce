@@ -176,6 +176,17 @@ package struct EgressPresentationInfo: Codable, Equatable, Sendable {
         }
     }
 
+    /// 阻断问题卡（单行紧凑布局）的标题文案。
+    ///
+    /// 国家不匹配不再把 `US ≠ SG` 这类对比串当作标题，统一显示「出口 IP 泄漏」；
+    /// 对比信息由卡片 tooltip（预期国家 · 探测国家）与设置页承载。
+    /// 其余阻断原因保留各自原因文案，避免把探测超时 / 配置无效误述为 IP 泄漏。
+    /// 注意：`badgeText` 仍供状态预警气泡等入口复用，本属性只服务仪表盘问题卡。
+    package var cardTitleText: String {
+        guard status == .blocked else { return badgeText }
+        return reason == "EGRESS_COUNTRY_MISMATCH" ? "出口 IP 泄漏" : badgeText
+    }
+
     package var explanation: String {
         status == .blocked ? "已拦截查额 · 请检查专用代理线路" : ""
     }

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C188",
+  "title": "订阅卡出口问题卡改为单行紧凑布局，标题改用「出口 IP 泄漏」并放大上下留白",
+  "version": "0.16.1",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C188-egress-issue-card-single-line",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "SubscriptionCard / EgressPresentationInfo",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "现象：Nothing 深色主题下订阅卡的黄色出口问题卡与上方 Provider 标题行、下方进度条间距过小（仅 3pt / 0pt），且卡片 40pt 高度内堆叠两行文字，视觉拥挤。标题直接输出 artifact 对比串「US ≠ SG」，属于技术性文案，不便于普通用户理解。诉求：卡片高度不能变大，上下留白要明显放大，标题改为「出口 IP 泄漏」。经高保真 demo 对比后选定单行极简方案：标题与保护说明同排，卡片压到 30pt，上下各留 10pt。",
+  "precheck": {
+    "description": "确认当前问题卡仍是 40pt 双行、标题为对比串、上下间距 3pt/0pt",
+    "command": "grep -n 'padding(.bottom, 3)' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift; grep -n 'frame(minHeight: 40)' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift; grep -n 'EGRESS_COUNTRY_MISMATCH' apps/macos/Sources/BruceAppCore/ArtifactModels.swift -A 1",
+    "expected": "head 下间距 3pt；问题卡 minHeight 40；mismatch badgeText 输出 observed ≠ expected 对比串",
+    "is_completed": true,
+    "evidence": "2026-11-03 实测：SubscriptionCard.swift 中 head 为 .padding(.bottom, 3)，问题卡为 .frame(minHeight: 40)；ArtifactModels.swift 中 EGRESS_COUNTRY_MISMATCH 的 badgeText 为 observed ≠ expected 对比串"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C188-egress-issue-card-single-line"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C188 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "问题卡标题映射 (BruceAppCore.EgressPresentationInfo)",
+      "before": "阻断问题卡标题直接使用 badgeText；国家不匹配时输出 `US ≠ SG` 对比串，与状态预警气泡共用同一原因文案源",
+      "after": "新增 cardTitleText：国家不匹配固定输出「出口 IP 泄漏」，其余原因（国内出口 / 探测失败 / 出口未知 / 配置无效）保留各自原因文案；badgeText 保持原样仅供气泡等入口复用",
+      "impact": "问题卡标题可读性提升，且不改变状态预警气泡的徽标文案"
+    },
+    {
+      "scope": "问题卡布局与间距 (SubscriptionCard.ProviderSectionView)",
+      "before": "40pt 双行卡片：图标 + 两行文字 + 去设置 / 重测；标题行下 3pt，卡片下 0pt",
+      "after": "30pt 单行卡片：图标 + 标题 + 1px 分隔 + 保护说明同排，右侧去设置 / 重测以 8pt 间距 + 1px 竖线分隔；阻断态标题行下 10pt、卡片下 10pt；卡片悬停提示承载「预期 JP · 探测为 US」对比信息",
+      "impact": "问题卡与标题行、进度条之间有明确留白，卡片本体反而比原实现矮 10pt；非阻断 Provider 段落节奏保持 3pt 不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "出口阻断态为 40px 双行问题卡，标题为 `[⚠️ US ≠ JP]` 等对比串，核心矛盾以胶囊或文本展示",
+      "after": "出口阻断态为 30pt 单行问题卡：国家不匹配标题固定「出口 IP 泄漏」，其余原因保留原因文案；对比信息移入 tooltip；卡片上下各留 10pt，操作区 8pt 间距 + 竖线分隔"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261103-24",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "PanelViewModelHarness 新增标题映射断言通过；swift build --build-tests 与 verify-local.sh 退出码 0",
+        "false_if": "存在失败或标题映射断言缺失",
+        "evidence": "zsh scripts/verify-local.sh Exit 0：Rust 全量 + Swift build + 18 项 Harness 全绿；PanelViewModelHarness 66 项含新增 cardTitleText 断言（mismatch→「出口 IP 泄漏」、国内直连/探测超时保留原因文案、badgeText 不变）；RefreshSchedulerHarness 118 项全绿，气泡徽标文案未改",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Nothing 深色主题订阅卡中，出口阻断问题卡为单行 30pt、上下各 10pt，标题显示「出口 IP 泄漏」，悬停展示预期 / 探测国家；其他原因标题与气泡徽标不受影响",
+        "false_if": "仍显示 US ≠ SG、卡片仍贴住标题或进度条，或气泡徽标被改",
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview · Universal 2 · PID 33549）实测后以原话「确认」签收：Nothing 深色主题下问题卡为单行 30pt、标题「出口 IP 泄漏」，与 ChatGPT 标题行及进度条留白符合预期；悬停提示、去设置、重测均正常，非阻断段与其他阻断原因文案未受影响",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "状态预警气泡 badgeText（⚠️ US ≠ JP / 国内直连）与说明文案不变；非阻断段落 3pt 节奏不变；既有 Harness 全绿",
+        "false_if": "气泡文案被改、非阻断段落间距被连带放大或既有 Harness 失败",
+        "evidence": "PanelViewModelHarness 66 项、RefreshSchedulerHarness 118 项全绿；EgressAlertItem.badgeText 未改动；head 下间距按阻断态条件化，非阻断段落保持 3pt",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "3fba028",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}
