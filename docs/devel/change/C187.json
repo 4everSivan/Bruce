@@ -4,7 +4,7 @@
   "title": "修复默认纵向布局下订阅卡「去设置」无响应：补齐路由并在跳转设置中心前关闭仪表盘",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C185-C187-egress-dashboard-ux",
   "is_hotfix": false,
   "target": {
@@ -94,8 +94,8 @@
     "version": "1.6.0",
     "ran_at": "2026-11-03",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "确认",
     "signed_rejection_count": 0
   }

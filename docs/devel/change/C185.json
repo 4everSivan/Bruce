@@ -4,7 +4,7 @@
   "title": "定向刷新订阅时不再重弹其它订阅的出口阻断告警，并让失败退避重试保持定向作用域",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C185-C187-egress-dashboard-ux",
   "is_hotfix": false,
   "target": {
@@ -94,8 +94,8 @@
     "version": "1.6.0",
     "ran_at": "2026-11-03",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "确认",
     "signed_rejection_count": 0
   }
