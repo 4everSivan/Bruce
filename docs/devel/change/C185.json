@@ -4,7 +4,7 @@
   "title": "定向刷新订阅时不再重弹其它订阅的出口阻断告警，并让失败退避重试保持定向作用域",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C185-C187-egress-dashboard-ux",
   "is_hotfix": false,
   "target": {
@@ -54,10 +54,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261103-22",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -70,8 +70,8 @@
         "item": "行为实测",
         "true_if": "仪表盘定向刷新 Claude 后 Codex 的出口阻断气泡不再弹出；全量手动刷新仍会重新提示当前阻断",
         "false_if": "定向刷新仍弹非目标告警，或全量刷新不再提示阻断",
-        "evidence": "待人工在预览版实测：仪表盘定向刷新 Claude 后，Codex 的出口阻断气泡不再重复弹出；全量手动刷新仍会提示当前阻断",
-        "result": null
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview，主可执行 SHA256 9ee5147a…）实测并明确签收，原话「确认」：定向刷新 Claude 后 Codex 出口阻断气泡不再重弹；全量刷新仍提示当前阻断",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -93,8 +93,10 @@
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-03",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "in_progress",
-    "target_status": "verified"
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

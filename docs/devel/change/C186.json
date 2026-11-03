@@ -4,7 +4,7 @@
   "title": "出口阻断快照的订阅窗口倒计时改为「已拦截」，不再误显示「刷新中」",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C185-C187-egress-dashboard-ux",
   "is_hotfix": false,
   "target": {
@@ -48,10 +48,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261103-22",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -64,8 +64,8 @@
         "item": "行为实测",
         "true_if": "出口被拦截的订阅卡窗口行右侧显示「已拦截」，刷新成功或解除拦截后恢复真实倒计时",
         "false_if": "仍显示「刷新中」，或解除拦截后倒计时未恢复",
-        "evidence": "待人工在预览版实测：被出口拦截的订阅卡窗口行右侧显示「已拦截」，解除拦截或刷新成功后恢复真实倒计时",
-        "result": null
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview）实测并明确签收，原话「确认」：阻断订阅窗口行右侧显示「已拦截」，解除阻断后恢复真实倒计时",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -87,8 +87,10 @@
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-03",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "in_progress",
-    "target_status": "verified"
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

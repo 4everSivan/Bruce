@@ -1901,7 +1901,7 @@
     "C185": {
       "title": "定向刷新订阅时不再重弹其它订阅的出口阻断告警，并让失败退避重试保持定向作用域",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C185-C187-egress-dashboard-ux",
       "topic": "NetworkEgressCountry",
       "version": "0.16.1",
@@ -1910,7 +1910,7 @@
     "C186": {
       "title": "出口阻断快照的订阅窗口倒计时改为「已拦截」，不再误显示「刷新中」",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C185-C187-egress-dashboard-ux",
       "topic": "NetworkEgressCountry",
       "version": "0.16.1",
@@ -1919,7 +1919,7 @@
     "C187": {
       "title": "修复默认纵向布局下订阅卡「去设置」无响应：补齐路由并在跳转设置中心前关闭仪表盘",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C185-C187-egress-dashboard-ux",
       "topic": "NetworkEgressCountry",
       "version": "0.16.1",

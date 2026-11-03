@@ -4,7 +4,7 @@
   "title": "修复默认纵向布局下订阅卡「去设置」无响应：补齐路由并在跳转设置中心前关闭仪表盘",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C185-C187-egress-dashboard-ux",
   "is_hotfix": false,
   "target": {
@@ -54,10 +54,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261103-22",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -70,8 +70,8 @@
         "item": "行为实测",
         "true_if": "默认纵向布局点击订阅卡「去设置」关闭仪表盘并打开设置订阅额度页；点击出口气泡同样先关面板并高亮设置页；仪表盘打开时不再出现叠加气泡",
         "false_if": "点击仍无反应、面板不关闭或气泡仍叠层",
-        "evidence": "待人工在预览版实测：默认纵向布局点击订阅卡「去设置」会关闭仪表盘并打开设置订阅额度页；仪表盘打开时不再叠加气泡",
-        "result": null
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview）实测并明确签收，原话「确认」：默认纵向布局点击「去设置」关闭仪表盘并打开设置定位出口IP检查；仪表盘打开时不再叠加气泡",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -93,8 +93,10 @@
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-03",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "in_progress",
-    "target_status": "verified"
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }
