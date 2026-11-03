@@ -55,7 +55,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261103-22",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -63,22 +63,22 @@
         "item": "自动化测试",
         "true_if": "新增设置路由顺序单测（关面板→置深链→开设置）与气泡互斥门控单测并通过；全部 Harness 与 swift build 退出码 0",
         "false_if": "存在失败，或路由/互斥用例缺失",
-        "evidence": "",
-        "result": null
+        "evidence": "scripts/verify-local.sh Exit 0：NativeLifecycle 20 项全绿，含新增「关闭面板→置深链→打开设置」顺序与气泡互斥门控断言；PanelViewModel 66 项、PanelParity 对拍通过",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "默认纵向布局点击订阅卡「去设置」关闭仪表盘并打开设置订阅额度页；点击出口气泡同样先关面板并高亮设置页；仪表盘打开时不再出现叠加气泡",
         "false_if": "点击仍无反应、面板不关闭或气泡仍叠层",
-        "evidence": "",
+        "evidence": "待人工在预览版实测：默认纵向布局点击订阅卡「去设置」会关闭仪表盘并打开设置订阅额度页；仪表盘打开时不再叠加气泡",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "tab 布局、底栏/空态设置入口、额度超限气泡路由保持不变，NativeLifecycle/PanelViewModel 既有用例全绿",
         "false_if": "破坏其它设置入口或既有用例失败",
-        "evidence": "",
-        "result": null
+        "evidence": "既有面板显隐/焦点归还/空态设置入口用例全绿（NativeLifecycle 20 项）；PanelParity 对拍通过，Tab 布局与底栏设置入口未受影响",
+        "result": true
       }
     ]
   },
