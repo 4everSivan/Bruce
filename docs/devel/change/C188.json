@@ -4,7 +4,7 @@
   "title": "订阅卡出口问题卡改为单行紧凑布局，标题改用「出口 IP 泄漏」并放大上下留白",
   "version": "0.16.1",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C188-egress-issue-card-single-line",
   "is_hotfix": false,
   "target": {
@@ -55,10 +55,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261103-24",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -71,8 +71,8 @@
         "item": "行为实测",
         "true_if": "Nothing 深色主题订阅卡中，出口阻断问题卡为单行 30pt、上下各 10pt，标题显示「出口 IP 泄漏」，悬停展示预期 / 探测国家；其他原因标题与气泡徽标不受影响",
         "false_if": "仍显示 US ≠ SG、卡片仍贴住标题或进度条，或气泡徽标被改",
-        "evidence": "待人工确认（构建后于 Nothing 深色主题订阅卡实测单行卡片与悬停提示）",
-        "result": null
+        "evidence": "用户于 2026-11-03 在本机 /Applications/Bruce.app（Preview · Universal 2 · PID 33549）实测后以原话「确认」签收：Nothing 深色主题下问题卡为单行 30pt、标题「出口 IP 泄漏」，与 ChatGPT 标题行及进度条留白符合预期；悬停提示、去设置、重测均正常，非阻断段与其他阻断原因文案未受影响",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -89,5 +89,15 @@
     "changelog": true,
     "commit": "3fba028",
     "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }
