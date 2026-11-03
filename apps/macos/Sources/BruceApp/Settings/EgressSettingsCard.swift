@@ -488,8 +488,14 @@ private struct EgressChannelTile: View {
     private var statusLevel: FluentStatusDot.Level {
         if testing {
             return .warn
-        } else if let result = routeResult {
-            return result.contains("匹配") ? .ok : .warn
+        } else if let result = routeResult ?? group.lastTestResult {
+            if result.hasPrefix("线路探测匹配") {
+                return .ok
+            } else if result.hasPrefix("出口国家不匹配") {
+                return .danger
+            } else {
+                return .warn
+            }
         } else if group.proxyPort != nil {
             return .off
         } else {
@@ -500,7 +506,7 @@ private struct EgressChannelTile: View {
     private var statusText: String {
         if testing {
             return "正在探测出口线路…"
-        } else if let result = routeResult {
+        } else if let result = routeResult ?? group.lastTestResult {
             return result
         } else if let port = group.proxyPort {
             return "127.0.0.1:\(port) · 点击 ↻ 测试"
@@ -510,11 +516,7 @@ private struct EgressChannelTile: View {
     }
 
     private var statusColor: Color {
-        switch statusLevel {
-        case .ok: return SettingsDemoTokens.ok
-        case .warn: return SettingsDemoTokens.warn
-        case .off: return SettingsDemoTokens.text3
-        }
+        statusLevel.color
     }
 
     var body: some View {
@@ -565,6 +567,7 @@ private struct EgressChannelTile: View {
         .frame(minHeight: 46)
         .onAppear {
             portText = group.proxyPort.map(String.init) ?? ""
+            routeResult = group.lastTestResult
         }
         .onChange(of: portText) { _, newText in
             let digits = newText.filter { $0.isASCII && $0.isNumber }
@@ -723,6 +726,7 @@ private struct EgressChannelTile: View {
             let result = await EgressRouteTester.test(port: port, expected: group.country)
             if coordinator.egressGroups.groups.first(where: { $0.country == group.country })?.proxyPort == port {
                 routeResult = result
+                coordinator.updateEgressGroups { $0.setLastTestResult(result, for: group.country) }
             }
             testing = false
         }

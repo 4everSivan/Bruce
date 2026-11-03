@@ -6,6 +6,8 @@ public struct EgressCountryGroup: Codable, Equatable, Sendable {
     public fileprivate(set) var providers: [SubscriptionProviderID]
     /// 回环 HTTP 专用代理端口；nil 表示尚未配置，不能放行查额。
     public fileprivate(set) var proxyPort: UInt16?
+    /// 上次线路测试的脱敏结果；nil 表示尚未测试。
+    public fileprivate(set) var lastTestResult: String?
 
     /// 对应的国旗 Emoji (例如 "🇯🇵")。
     public var flag: String {
@@ -16,6 +18,7 @@ public struct EgressCountryGroup: Codable, Equatable, Sendable {
         self.country = country
         self.providers = []
         self.proxyPort = nil
+        self.lastTestResult = nil
     }
 }
 
@@ -85,7 +88,18 @@ public struct EgressCountryGroups: Codable, Equatable, Sendable {
             throw EgressCountryGroupError.countryNotFound
         }
         guard port != 0 else { throw EgressCountryGroupError.invalidPort }
-        groups[index].proxyPort = port
+        if groups[index].proxyPort != port {
+            groups[index].proxyPort = port
+            groups[index].lastTestResult = nil
+        }
+    }
+
+    /// 记录指定国家的最近线路测试结果；目标不存在时忽略。
+    public mutating func setLastTestResult(_ result: String?, for country: String) {
+        guard let index = groups.firstIndex(where: { $0.country == country }) else {
+            return
+        }
+        groups[index].lastTestResult = result
     }
 
     /// 将 provider 分配至指定大写国家代码；目标不存在时保持原归属。
@@ -115,6 +129,7 @@ public struct EgressCountryGroups: Codable, Equatable, Sendable {
             try addCountry(group.country)
             let country = groups[groups.count - 1].country
             try setProxyPort(group.proxyPort, for: country)
+            setLastTestResult(group.lastTestResult, for: country)
             for provider in group.providers {
                 guard providers.insert(provider.rawValue).inserted else {
                     throw EgressCountryGroupError.duplicateProvider
