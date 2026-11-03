@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-11-02",
+  "updated_at": "2026-11-03",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -90,6 +90,13 @@
       "tasks": [
         "T22"
       ]
+    },
+    "M13-开机自启动": {
+      "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置（SMAppService API + 通用面板开关 + Step 3 可选配置 + 权限拦截引导）",
+      "design_doc": "docs/devel/design/12-开机自启动.md",
+      "tasks": [
+        "T25"
+      ]
     }
   },
   "topics": {
@@ -148,6 +155,12 @@
       "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
       "tasks": [
         "T22"
+      ]
+    },
+    "LaunchAtLogin": {
+      "design_doc": "docs/devel/design/12-开机自启动.md",
+      "tasks": [
+        "T25"
       ]
     }
   },
@@ -401,6 +414,16 @@
       "depends_on": [],
       "file": "docs/devel/task/T22.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T22-first-launch-welcome-wizard"
+    },
+    "T25": {
+      "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置",
+      "status": "in_progress",
+      "branch": "feat/T25-launch-at-login",
+      "topic": "LaunchAtLogin",
+      "milestone": "M13-开机自启动",
+      "depends_on": [],
+      "file": "docs/devel/task/T25.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T25-launch-at-login"
     }
   }
 }
