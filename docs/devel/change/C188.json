@@ -4,7 +4,7 @@
   "title": "订阅卡出口问题卡改为单行紧凑布局，标题改用「出口 IP 泄漏」并放大上下留白",
   "version": "0.16.1",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C188-egress-issue-card-single-line",
   "is_hotfix": false,
   "target": {
@@ -95,8 +95,8 @@
     "version": "1.6.0",
     "ran_at": "2026-11-03",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "确认",
     "signed_rejection_count": 0
   }

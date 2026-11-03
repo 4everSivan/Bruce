@@ -1929,7 +1929,7 @@
     "C188": {
       "title": "订阅卡出口问题卡改为单行紧凑布局，标题改用「出口 IP 泄漏」并放大上下留白",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C188-egress-issue-card-single-line",
       "topic": "NetworkEgressCountry",
       "version": "0.16.1",
