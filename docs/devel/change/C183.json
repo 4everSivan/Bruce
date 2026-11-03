@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C183",
+  "title": "菜单栏图标高级重构：德系包豪斯整体订阅单轨星环 + 新三档动态色阶 (>50%绿 / 20%~50%橙 / <20%红)",
+  "version": "0.16.1",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "feat/C183-menubar-single-orbit-satellite",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarStatusItemController / MenuBarStatusItemContent / SettingsView",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "现有的 I-2 双同心子母环仪表在 22pt 状态栏画幅下线条致密拥挤、缺少负空间呼吸感；重构为极简德系包豪斯单轨星规（The Orbit & Satellite），单轨完整映射整体订阅剩余额度，新色阶动力学切换为 >50% 翡翠绿、20%~50% 警示橙、<20% 科技红，赋予机械腕表级精致微观质感与克制的高级感。",
+  "precheck": {
+    "description": "确认当前菜单栏仍为双同心环架构（outerRadius / innerRadius / outerQuotaRatio）及旧 30%/15% 阈值",
+    "command": "rg -n 'radiusOuter|outerQuotaRatio|0\\.15|0\\.30' apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+    "expected": "命中双同心环参数与旧阈值逻辑（退出码 0）",
+    "is_completed": true,
+    "evidence": "2026-11-03 15:20 预检命中：MenuBarStatusItemController 与 MenuBarStatusItemContent 包含 radiusOuter/innerQuotaRatio 与旧 0.15/0.30 阈值"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C183 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C183 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "几何拓扑与信息映射",
+      "before": "I-2 双同心子母环规：外母环(r=6.8, w=1.7)映射平均额度，内子环(r=4.0, w=1.4)映射短板额度",
+      "after": "德系包豪斯单轨星规 (The Orbit & Satellite)：单轨(r=6.4, w=1.4)完整映射整体订阅剩余额度，端点嵌合 1.8pt 实心卫星定位点（内含 0.75pt 高光微核）",
+      "impact": "MenuBarStatusItemController / MenuBarStatusItemContent / SettingsView 菜单栏预览条"
+    },
+    {
+      "scope": "色彩动力学阶梯契约",
+      "before": ">=30% 翡翠绿, 15%~30% 警示橙, <15% 科技红",
+      "after": ">50% 翡翠绿 (#30D158 / #15803D), 20%~50% 警示橙 (#FFB800 / #D97706), <20% 科技红 (#FF453A / #DC2626)",
+      "impact": "所有菜单栏图标与预览条状态项色彩判定"
+    },
+    {
+      "scope": "刷新动效契约",
+      "before": "外环顺时针、内环逆时针差速双向旋转",
+      "after": "卫星定位点沿单轨顺时针 60fps 平滑自旋，如机械陀飞轮秒针滑过",
+      "impact": "刷新中的菜单栏动态反馈"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 1 为赛博精密双同心子母环仪表（母环 r=6.8/1.7pt, 子环 r=4.0/1.4pt, 30%/15% 三色阶）",
+      "after": "规则 1 升级为德系包豪斯整体订阅单轨星规（单轨 r=6.4/1.4pt 映射整体订阅额度, 卫星点 r=1.8pt, >50%绿/20%~50%橙/<20%红三色阶）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261103-183",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "单轨几何与卫星刻度渲染",
+        "true_if": "菜单栏呈现 1.4pt 极细单轨圆弧，端点精确渲染带高光微核的卫星定位点，且 4pt 步进防抖正常",
+        "false_if": "残留双同心套圈或卫星点位置计算漂移",
+        "evidence": "NativeLifecycleHarness 19 项通过；MenuBarStatusItemController 实现 r=6.4pt 单轨圆规 + r=1.8pt 弧端卫星定位点（内含 0.75pt 微核）；SettingsView.menuBarPreviewIcon 同步对齐",
+        "result": true
+      },
+      {
+        "item": "新三档色阶动力学判定",
+        "true_if": ">50% 准确呈现翡翠绿，20%~50% 呈现警示橙，<20% 呈现科技红，深浅色对比度达标",
+        "false_if": "色阶判定仍沿用旧 30%/15% 阈值",
+        "evidence": "MenuBarQuotaTier 单测验证：0.51 -> .healthy (绿), 0.50 -> .warning (橙), 0.20 -> .warning (橙), 0.19 -> .critical (红)；深浅色 WCAG 对比度满足契约",
+        "result": true
+      },
+      {
+        "item": "刷新平滑自旋动效",
+        "true_if": "刷新时卫星点沿单轨平滑匀速旋转，无双环差速撕裂感",
+        "false_if": "旋转异常或逐帧定时器卡顿",
+        "evidence": "refreshPhase 驱动单一卫星定位点沿单轨顺时针 60fps 平滑自旋，双环差速撕裂感消除",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "0f98776",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

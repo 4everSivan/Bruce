@@ -757,45 +757,54 @@ struct SettingsView: View {
             .joined(separator: separator)
     }
 
+    /// C183: 德系包豪斯单轨星规预览图标
     var menuBarPreviewIcon: some View {
-        let ratios = liveQuotaRatios
+        let ratio = liveQuotaRatio
 
-        func colorForRatio(_ ratio: Double) -> Color {
-            if ratio < 0.15 {
+        func colorForRatio(_ r: Double) -> Color {
+            if r < 0.20 {
                 return isPreviewLight ? Color(red: 0.86, green: 0.15, blue: 0.15) : Color(red: 1.0, green: 0.27, blue: 0.23)
-            } else if ratio < 0.30 {
+            } else if r <= 0.50 {
                 return isPreviewLight ? Color(red: 0.85, green: 0.47, blue: 0.02) : Color(red: 1.0, green: 0.72, blue: 0.0)
             } else {
                 return isPreviewLight ? Color(red: 0.08, green: 0.50, blue: 0.24) : Color(red: 0.19, green: 0.82, blue: 0.35)
             }
         }
 
-        let outerColor = colorForRatio(ratios.outer)
-        let innerColor = colorForRatio(ratios.inner)
+        let orbitColor = colorForRatio(ratio)
         let trackColor = isPreviewLight
             ? Color.black.opacity(0.18)
-            : Color.white.opacity(0.24)
+            : Color.white.opacity(0.22)
+
+        let orbitRadius: CGFloat = 6.4
+        let angleDeg = ratio * 360.0 - 90.0
+        let angleRad = angleDeg * .pi / 180.0
+        let satOffsetX = orbitRadius * cos(angleRad)
+        let satOffsetY = orbitRadius * sin(angleRad)
 
         return ZStack {
-            // 外母环 (全局平均剩余配额)
+            // 单轨底规
             Circle()
-                .stroke(trackColor, lineWidth: 1.6)
-                .frame(width: 14, height: 14)
-            Circle()
-                .trim(from: 0, to: CGFloat(ratios.outer))
-                .stroke(outerColor, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: 14, height: 14)
+                .stroke(trackColor, lineWidth: 1.4)
+                .frame(width: orbitRadius * 2, height: orbitRadius * 2)
 
-            // 内子环 (最低短板剩余配额)
+            // 整体订阅额度弧线
             Circle()
-                .stroke(trackColor, lineWidth: 1.3)
-                .frame(width: 8.5, height: 8.5)
-            Circle()
-                .trim(from: 0, to: CGFloat(ratios.inner))
-                .stroke(innerColor, style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+                .trim(from: 0, to: CGFloat(ratio))
+                .stroke(orbitColor, style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .frame(width: 8.5, height: 8.5)
+                .frame(width: orbitRadius * 2, height: orbitRadius * 2)
+
+            // 卫星定位点 (外圆 + 高光微核)
+            Circle()
+                .fill(orbitColor)
+                .frame(width: 3.6, height: 3.6)
+                .offset(x: satOffsetX, y: satOffsetY)
+
+            Circle()
+                .fill(isPreviewLight ? Color(white: 0.96) : Color.white)
+                .frame(width: 1.5, height: 1.5)
+                .offset(x: satOffsetX, y: satOffsetY)
         }
         .frame(width: 16, height: 16)
     }

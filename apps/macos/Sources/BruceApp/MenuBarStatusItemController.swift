@@ -368,11 +368,11 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         return max(64, steppedWidth)
     }
 
-    /// 方案 I-2 (双同心子母环规) 与主题联动排版 (T-0 / T-4) 绘制:
-    /// - 外环母环: r=6.8pt / w=1.7pt, 映射全局平均剩余额度 (outerQuotaRatio)
-    /// - 内环子环: r=4.0pt / w=1.4pt, 映射最低短板剩余额度 (innerQuotaRatio)
-    /// - 绿 (>=30%) / 琥珀橙 (15%~30%) / 霓虹红 (<15% 或异常) 三色阶动力学
-    /// - 刷新态: 外环顺时针、内环逆时针双向差速自旋
+    /// 方案 B (德系包豪斯单轨星规 The Orbit & Satellite · C183) 与主题联动排版 (T-0 / T-4) 绘制:
+    /// - 单轨圆规 (Orbit Track): r=6.4pt / w=1.4pt, 完整映射整体订阅剩余额度 (subscriptionQuotaRatio)
+    /// - 卫星定位点 (The Satellite): r=1.8pt 锚定于当前弧端 (内核点缀 0.75pt 高光微核)
+    /// - 动态色阶: 绿 (>50%) / 警示橙 (20%~50%) / 科技红 (<20% 或异常)
+    /// - 刷新态: 卫星定位点在 refreshPhase 驱动下沿轨顺时针 60fps 平滑自旋，呈现机械陀飞轮秒针滑过的精密质感
     /// - 排版联动: 经典/液态玻璃为 T-0 (12pt monospacedDigit + 双空格),
     ///   Nothing 主题自动切换为 T-4 (12.5pt SF Mono Semibold + 弱化斜杠分隔)
     private func makeStatusItemImage(
@@ -383,10 +383,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         let isIconOnly = content.metricText.isEmpty
         let iconCenterX: CGFloat = isIconOnly ? (size.width / 2) : 13
         let center = NSPoint(x: iconCenterX, y: size.height / 2)
-        let radiusOuter: CGFloat = 6.8
-        let lineWidthOuter: CGFloat = 1.7
-        let radiusInner: CGFloat = 4.0
-        let lineWidthInner: CGFloat = 1.4
+        let radiusOrbit: CGFloat = 6.4
+        let lineWidthOrbit: CGFloat = 1.4
+        let radiusSatellite: CGFloat = 1.8
+        let radiusSatelliteCore: CGFloat = 0.75
 
         let image = NSImage(size: size, flipped: false) { [weak self] _ in
             guard let self else { return false }
@@ -400,9 +400,9 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             }
 
             // 2. 配色系统 (三色阶动力学 + 深浅双向高对比):
-            // - 翡翠绿 (>=30%): 深色 #30D158 / 浅色 #15803D (WCAG 对比度 > 4.8:1)
-            // - 警示琥珀 (15%~30%): 深色 #FFB800 / 浅色 #D97706
-            // - 科技红 (<15% 或 failed): 深色 #FF453A / 浅色 #DC2626
+            // - 翡翠绿 (>50%): 深色 #30D158 / 浅色 #15803D (WCAG 对比度 > 4.8:1)
+            // - 警示琥珀 (20%~50%): 深色 #FFB800 / 浅色 #D97706
+            // - 科技红 (<20% 或 failed): 深色 #FF453A / 浅色 #DC2626
             let trackColor: NSColor
             let greenColor: NSColor
             let amberColor: NSColor
@@ -411,14 +411,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             let separatorColor: NSColor
 
             if isDark {
-                trackColor = NSColor(white: 1.0, alpha: 0.26)
+                trackColor = NSColor(white: 1.0, alpha: 0.22)
                 greenColor = NSColor(srgbRed: 0.19, green: 0.82, blue: 0.35, alpha: 1.0)
                 amberColor = NSColor(srgbRed: 1.0, green: 0.72, blue: 0.0, alpha: 1.0)
                 redColor = NSColor(srgbRed: 1.0, green: 0.27, blue: 0.23, alpha: 1.0)
                 labelTextColor = NSColor(white: 1.0, alpha: 0.95)
                 separatorColor = NSColor(white: 1.0, alpha: 0.36)
             } else {
-                trackColor = NSColor(white: 0.0, alpha: 0.22)
+                trackColor = NSColor(white: 0.0, alpha: 0.18)
                 greenColor = NSColor(srgbRed: 0.08, green: 0.50, blue: 0.24, alpha: 1.0)
                 amberColor = NSColor(srgbRed: 0.85, green: 0.47, blue: 0.02, alpha: 1.0)
                 redColor = NSColor(srgbRed: 0.86, green: 0.15, blue: 0.15, alpha: 1.0)
@@ -434,92 +434,93 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 if isFailedIcon { return redColor }
                 if isWarningIcon { return amberColor }
                 guard let ratio else { return greenColor }
-                if ratio < 0.15 { return redColor }
-                if ratio < 0.30 { return amberColor }
-                return greenColor
+                let tier = MenuBarQuotaTier.tier(for: ratio)
+                switch tier {
+                case .healthy: return greenColor
+                case .warning: return amberColor
+                case .critical: return redColor
+                }
             }
 
-            let outerColor = tierColor(for: content.outerQuotaRatio)
-            let innerColor = tierColor(for: content.innerQuotaRatio)
+            let quotaRatio = content.subscriptionQuotaRatio ?? content.outerQuotaRatio
+            let orbitColor = tierColor(for: quotaRatio)
 
-            // 3. 底环 (Track): 外母环 (1.7pt) + 内存环 (1.4pt)
-            let outerTrack = NSBezierPath()
-            outerTrack.appendArc(withCenter: center, radius: radiusOuter, startAngle: 0, endAngle: 360)
-            outerTrack.lineWidth = lineWidthOuter
+            // 3. 底轨 (Track): 德系极简 1.4pt 单轨圆规
+            let orbitTrack = NSBezierPath()
+            orbitTrack.appendArc(withCenter: center, radius: radiusOrbit, startAngle: 0, endAngle: 360)
+            orbitTrack.lineWidth = lineWidthOrbit
             if isUnconfigured {
                 let dash: [CGFloat] = [2.2, 2.2]
-                outerTrack.setLineDash(dash, count: 2, phase: 0)
+                orbitTrack.setLineDash(dash, count: 2, phase: 0)
             }
             trackColor.setStroke()
-            outerTrack.stroke()
-
-            let innerTrack = NSBezierPath()
-            innerTrack.appendArc(withCenter: center, radius: radiusInner, startAngle: 0, endAngle: 360)
-            innerTrack.lineWidth = lineWidthInner
-            if isUnconfigured {
-                let dash: [CGFloat] = [1.8, 1.8]
-                innerTrack.setLineDash(dash, count: 2, phase: 0)
-            }
-            trackColor.setStroke()
-            innerTrack.stroke()
+            orbitTrack.stroke()
 
             if self.isRefreshing {
-                // 4. 刷新中: 外环顺时针、内环逆时针双向差速自旋
-                let sweepOuter = NSBezierPath()
-                let startOuter = self.refreshPhase
-                let endOuter = (self.refreshPhase - 100).truncatingRemainder(dividingBy: 360)
-                sweepOuter.appendArc(withCenter: center, radius: radiusOuter, startAngle: startOuter, endAngle: endOuter, clockwise: true)
-                sweepOuter.lineWidth = lineWidthOuter + 0.15
-                sweepOuter.lineCapStyle = .round
-                greenColor.setStroke()
-                sweepOuter.stroke()
+                // 4. 刷新中: 卫星定位点沿单轨顺时针 60fps 平滑自旋，呈现机械陀飞轮秒针滑过的精密质感
+                let currentAngle = (90.0 - self.refreshPhase).truncatingRemainder(dividingBy: 360)
+                let rad = currentAngle * .pi / 180.0
+                let satCenter = NSPoint(x: center.x + radiusOrbit * cos(rad), y: center.y + radiusOrbit * sin(rad))
 
-                let sweepInner = NSBezierPath()
-                let startInner = (360 - self.refreshPhase).truncatingRemainder(dividingBy: 360)
-                let endInner = (startInner + 90).truncatingRemainder(dividingBy: 360)
-                sweepInner.appendArc(withCenter: center, radius: radiusInner, startAngle: startInner, endAngle: endInner, clockwise: false)
-                sweepInner.lineWidth = lineWidthInner + 0.1
-                sweepInner.lineCapStyle = .round
-                greenColor.setStroke()
-                sweepInner.stroke()
+                let satOuter = NSBezierPath(ovalIn: NSRect(
+                    x: satCenter.x - radiusSatellite,
+                    y: satCenter.y - radiusSatellite,
+                    width: radiusSatellite * 2,
+                    height: radiusSatellite * 2
+                ))
+                greenColor.setFill()
+                satOuter.fill()
+
+                let coreColor = isDark ? NSColor.white : NSColor(white: 0.96, alpha: 1.0)
+                let satCore = NSBezierPath(ovalIn: NSRect(
+                    x: satCenter.x - radiusSatelliteCore,
+                    y: satCenter.y - radiusSatelliteCore,
+                    width: radiusSatelliteCore * 2,
+                    height: radiusSatelliteCore * 2
+                ))
+                coreColor.setFill()
+                satCore.fill()
             } else if !isUnconfigured {
-                // 5. 就绪态: 双同心环规配额填充
-                // - 母环 (外环 · 平均配额)
-                if let outerRatio = content.outerQuotaRatio {
-                    let fillRatio = max(0.0, min(1.0, outerRatio))
+                // 5. 就绪态: 单轨星规额度填充与卫星定位点
+                if let ratio = quotaRatio {
+                    let fillRatio = max(0.0, min(1.0, ratio))
                     if fillRatio > 0.005 {
-                        let outerArc = NSBezierPath()
+                        let orbitArc = NSBezierPath()
                         let startAngle: CGFloat = 90
                         let endAngle = startAngle - CGFloat(fillRatio * 360)
-                        outerArc.appendArc(withCenter: center, radius: radiusOuter, startAngle: startAngle, endAngle: endAngle, clockwise: true)
-                        outerArc.lineWidth = lineWidthOuter + 0.15
-                        outerArc.lineCapStyle = .round
-                        outerColor.setStroke()
-                        outerArc.stroke()
-                    } else {
-                        let dotRect = NSRect(x: center.x - 0.9, y: center.y + radiusOuter - 0.9, width: 1.8, height: 1.8)
-                        let dotPath = NSBezierPath(ovalIn: dotRect)
-                        outerColor.setFill()
-                        dotPath.fill()
-                    }
-                }
+                        orbitArc.appendArc(withCenter: center, radius: radiusOrbit, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+                        orbitArc.lineWidth = lineWidthOrbit
+                        orbitArc.lineCapStyle = .round
+                        orbitColor.setStroke()
+                        orbitArc.stroke()
 
-                // - 子环 (内环 · 最低短板配额)
-                if let innerRatio = content.innerQuotaRatio {
-                    let fillRatio = max(0.0, min(1.0, innerRatio))
-                    if fillRatio > 0.005 {
-                        let innerArc = NSBezierPath()
-                        let startAngle: CGFloat = 90
-                        let endAngle = startAngle - CGFloat(fillRatio * 360)
-                        innerArc.appendArc(withCenter: center, radius: radiusInner, startAngle: startAngle, endAngle: endAngle, clockwise: true)
-                        innerArc.lineWidth = lineWidthInner + 0.1
-                        innerArc.lineCapStyle = .round
-                        innerColor.setStroke()
-                        innerArc.stroke()
+                        // 卫星定位点锚定于弧端 endAngle
+                        let rad = endAngle * .pi / 180.0
+                        let satCenter = NSPoint(x: center.x + radiusOrbit * cos(rad), y: center.y + radiusOrbit * sin(rad))
+
+                        let satOuter = NSBezierPath(ovalIn: NSRect(
+                            x: satCenter.x - radiusSatellite,
+                            y: satCenter.y - radiusSatellite,
+                            width: radiusSatellite * 2,
+                            height: radiusSatellite * 2
+                        ))
+                        orbitColor.setFill()
+                        satOuter.fill()
+
+                        let coreColor = isDark ? NSColor.white : NSColor(white: 0.96, alpha: 1.0)
+                        let satCore = NSBezierPath(ovalIn: NSRect(
+                            x: satCenter.x - radiusSatelliteCore,
+                            y: satCenter.y - radiusSatelliteCore,
+                            width: radiusSatelliteCore * 2,
+                            height: radiusSatelliteCore * 2
+                        ))
+                        coreColor.setFill()
+                        satCore.fill()
                     } else {
-                        let dotRect = NSRect(x: center.x - 0.8, y: center.y + radiusInner - 0.8, width: 1.6, height: 1.6)
+                        // 零额度微型警告点
+                        let dotRect = NSRect(x: center.x - 0.9, y: center.y + radiusOrbit - 0.9, width: 1.8, height: 1.8)
                         let dotPath = NSBezierPath(ovalIn: dotRect)
-                        innerColor.setFill()
+                        orbitColor.setFill()
                         dotPath.fill()
                     }
                 }

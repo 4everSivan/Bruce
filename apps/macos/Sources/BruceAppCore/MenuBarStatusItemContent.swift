@@ -12,6 +12,7 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
     package let remainingQuotaRatio: Double?
     package let outerQuotaRatio: Double?
     package let innerQuotaRatio: Double?
+    package let subscriptionQuotaRatio: Double?
     package let isNothingTheme: Bool
 
     package init(
@@ -21,15 +22,32 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
         remainingQuotaRatio: Double? = nil,
         outerQuotaRatio: Double? = nil,
         innerQuotaRatio: Double? = nil,
+        subscriptionQuotaRatio: Double? = nil,
         isNothingTheme: Bool = false
     ) {
         self.iconName = iconName
         self.metricText = metricText
         self.accessibilityLabel = accessibilityLabel
-        self.remainingQuotaRatio = remainingQuotaRatio ?? innerQuotaRatio ?? outerQuotaRatio
-        self.outerQuotaRatio = outerQuotaRatio ?? remainingQuotaRatio
-        self.innerQuotaRatio = innerQuotaRatio ?? remainingQuotaRatio
+        let resolvedSubRatio = subscriptionQuotaRatio ?? outerQuotaRatio ?? remainingQuotaRatio ?? innerQuotaRatio
+        self.subscriptionQuotaRatio = resolvedSubRatio
+        self.remainingQuotaRatio = remainingQuotaRatio ?? innerQuotaRatio ?? outerQuotaRatio ?? resolvedSubRatio
+        self.outerQuotaRatio = outerQuotaRatio ?? resolvedSubRatio
+        self.innerQuotaRatio = innerQuotaRatio ?? resolvedSubRatio
         self.isNothingTheme = isNothingTheme
+    }
+}
+
+/// C183: 德系包豪斯单轨星规三档色阶动力学枚举
+package enum MenuBarQuotaTier: Sendable, Equatable {
+    case healthy   // > 50% (翡翠绿)
+    case warning   // 20%...50% (警示琥珀橙)
+    case critical  // < 20% (科技红)
+
+    package static func tier(for ratio: Double?) -> MenuBarQuotaTier {
+        guard let ratio else { return .healthy }
+        if ratio < 0.20 { return .critical }
+        if ratio <= 0.50 { return .warning }
+        return .healthy
     }
 }
 
@@ -47,13 +65,13 @@ package struct MenuBarStatusItemContentBuilder {
         iconOnly: Bool = false,
         isNothingTheme: Bool = false
     ) -> MenuBarStatusItemContent {
-        // 双同心环规配额计算:
-        // - 外环 (母环): 映射全局平均配额比例 summary.averageRemainingQuota ?? summary.minimumRemainingQuota
-        // - 内环 (子环): 映射最低短板配额比例 summary.minimumRemainingQuota ?? summary.averageRemainingQuota
+        // C183: 包豪斯单轨星规配额计算:
+        // - 单轨与卫星点: 映射整体订阅剩余额度 (summary.averageRemainingQuota ?? summary.minimumRemainingQuota)
         let avgQuotaPercentage = summary.averageRemainingQuota ?? summary.minimumRemainingQuota
         let minQuotaPercentage = summary.minimumRemainingQuota ?? summary.averageRemainingQuota
 
-        let outerRatio = avgQuotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
+        let subRatio = avgQuotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
+        let outerRatio = subRatio
         let innerRatio = minQuotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
 
         let formattedMetrics = iconOnly ? [] : metrics.map { metric in
@@ -78,9 +96,10 @@ package struct MenuBarStatusItemContentBuilder {
                 isRefreshing: isRefreshing,
                 quotaPercentage: minQuotaPercentage ?? avgQuotaPercentage
             ),
-            remainingQuotaRatio: innerRatio ?? outerRatio,
+            remainingQuotaRatio: subRatio ?? innerRatio,
             outerQuotaRatio: outerRatio,
             innerQuotaRatio: innerRatio,
+            subscriptionQuotaRatio: subRatio,
             isNothingTheme: isNothingTheme
         )
     }
