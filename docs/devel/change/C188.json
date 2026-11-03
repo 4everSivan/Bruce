@@ -87,7 +87,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "3fba028",
     "tag": ""
   }
 }
