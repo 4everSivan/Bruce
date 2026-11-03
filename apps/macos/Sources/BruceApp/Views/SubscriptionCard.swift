@@ -235,10 +235,15 @@ private struct ProviderSectionView: View {
         section.windows.isEmpty && !section.isMultiAccount && section.balance != nil
     }
 
+    /// 当前段是否处于出口阻断态: 问题卡单独放大上下留白, 不放行段保持原 3pt 节奏.
+    private var isEgressBlocked: Bool {
+        section.egress?.status == .blocked
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             head
-                .padding(.bottom, 3)
+                .padding(.bottom, isEgressBlocked ? 10 : 3)
 
             egressIssue
 
@@ -250,7 +255,7 @@ private struct ProviderSectionView: View {
             }
 
             // error/empty 段保留 collector 说明, 不静默吞掉.
-            if section.egress?.status != .blocked, (section.status == "error" || section.status == "empty"), let note = section.note {
+            if !isEgressBlocked, (section.status == "error" || section.status == "empty"), let note = section.note {
                 Text(note)
                     .font(.system(size: 10))
                     .foregroundStyle(Color(hex: "#ff9f0a"))
@@ -261,28 +266,56 @@ private struct ProviderSectionView: View {
         .padding(.bottom, 8)
     }
 
+    /// 出口阻断问题卡: 单行紧凑布局 (30pt) ——
+    /// 图标 + 标题 + 1px 分隔 + 保护说明同排, 右侧去设置/重测;
+    /// 标题行下与卡片下各 10pt, 避免卡片贴住标题与进度条.
     @ViewBuilder
     private var egressIssue: some View {
         if let egress = section.egress, egress.status == .blocked {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(egress.badgeText).font(.system(size: 10, weight: .semibold))
-                    let snapshotHint = section.hasProtectedSnapshot ? " · 保持历史快照" : ""
-                    Text("已拦截查额以保护账号\(snapshotHint)").font(.system(size: 9))
-                }
-                Spacer(minLength: 2)
-                Button("去设置", action: onOpenSettings).buttonStyle(.plain)
-                if let refreshControl {
-                    Button("重测", action: refreshControl.action)
-                        .buttonStyle(.plain)
-                        .disabled(!refreshControl.presentation.isEnabled)
-                }
+                    .font(.system(size: 10))
+                Text(egress.cardTitleText)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                Rectangle()
+                    .fill(Color.orange.opacity(0.30))
+                    .frame(width: 1, height: 9)
+                let snapshotHint = section.hasProtectedSnapshot ? " · 保持历史快照" : ""
+                Text("已拦截查额以保护账号\(snapshotHint)")
+                    .font(.system(size: 9))
+                    .opacity(0.72)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 8)
+                egressActions
             }
-            .font(.system(size: 9)).foregroundStyle(.orange)
-            .padding(.horizontal, 8).frame(minHeight: 40)
+            .font(.system(size: 9))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(minHeight: 30)
             .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .help(egressTooltip(egress))
+            .padding(.bottom, 10)
         }
+    }
+
+    /// 问题卡右侧操作区: 去设置 / 重测 以 8pt 间距 + 1px 竖线分隔.
+    private var egressActions: some View {
+        HStack(spacing: 8) {
+            Button("去设置", action: onOpenSettings)
+                .buttonStyle(.plain)
+            if let refreshControl {
+                Rectangle()
+                    .fill(Color.orange.opacity(0.28))
+                    .frame(width: 1, height: 10)
+                Button("重测", action: refreshControl.action)
+                    .buttonStyle(.plain)
+                    .disabled(!refreshControl.presentation.isEnabled)
+            }
+        }
+        .font(.system(size: 9))
     }
 
     // MARK: 多账号内容
@@ -372,7 +405,7 @@ private struct ProviderSectionView: View {
             }
             if let egress = section.egress {
                 if egress.status == .blocked {
-                    // 阻断态: 不在标题旁重复输出 "US ≠ SG" 冗余文本，保持展示目标出口纯净国旗
+                    // 阻断态: 不在标题旁重复输出阻断标题文本，保持展示目标出口纯净国旗
                     if let expected = egress.expected {
                         let flag = EgressCountryGroups.flagEmoji(for: expected)
                         if !flag.isEmpty {
@@ -406,6 +439,16 @@ private struct ProviderSectionView: View {
     }
 
     private func egressTooltip(_ egress: EgressPresentationInfo) -> String {
+        // 阻断问题卡标题改为「出口 IP 泄漏」后, 国家对比信息由 tooltip 承载,
+        // 保留隐私最小暴露原则: 只展示国家代码与脱敏 IP.
+        if egress.status == .blocked,
+           let expected = egress.expected,
+           let observed = egress.observed,
+           !expected.isEmpty, !observed.isEmpty,
+           expected != observed {
+            let ipSuffix = egress.maskedIp.map { " · 出口 IP：\($0)" } ?? ""
+            return "预期 \(expected) · 探测为 \(observed)\(ipSuffix)"
+        }
         let expectedSuffix = egress.expected.map { " (\($0))" } ?? ""
         if let maskedIp = egress.maskedIp {
             return "探测出口：\(maskedIp)\(expectedSuffix)"
