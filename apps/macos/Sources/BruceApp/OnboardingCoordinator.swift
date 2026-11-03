@@ -42,6 +42,12 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var motionPreference: MotionPreference
     /// 模型单价人工校准覆盖 (模型名 -> 校准单价).
     @Published private(set) var pricingOverrides: [String: ModelPricingOverride]
+    /// 开机自启动在系统登录项中的状态 (12-开机自启动.md, T25).
+    @Published private(set) var launchAtLoginStatus: LaunchAtLoginStatus
+    /// 开机自启动是否已启用.
+    var launchAtLoginEnabled: Bool {
+        launchAtLoginStatus.isEnabled
+    }
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
     /// 可注入的系统「减弱动态效果」读取 (测试), 默认读系统; C145.
@@ -87,6 +93,7 @@ final class OnboardingCoordinator: ObservableObject {
     private var gate: CollectorActivationGate
     private let subscriptions: SubscriptionService
     private var hotkeyMonitor: GlobalHotkeyMonitor?
+    private let launchAtLoginService: LaunchAtLoginServiceProtocol
 
     init(
         scheduler: RefreshScheduler,
@@ -102,7 +109,8 @@ final class OnboardingCoordinator: ObservableObject {
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         localProbe: LocalCredentialProbe? = nil,
         consentVersion: Int = OnboardingCoordinator.currentConsentVersion,
-        collectorRuntime: CollectorRuntimeStatus = .rustUnavailable
+        collectorRuntime: CollectorRuntimeStatus = .rustUnavailable,
+        launchAtLoginService: LaunchAtLoginServiceProtocol = SystemLaunchAtLoginService()
     ) {
         self.scheduler = scheduler
         self.model = model
@@ -110,6 +118,8 @@ final class OnboardingCoordinator: ObservableObject {
         self.configStore = configStore
         self.homeURL = homeURL
         self.collectorRuntime = collectorRuntime
+        self.launchAtLoginService = launchAtLoginService
+        self.launchAtLoginStatus = launchAtLoginService.status
         let config = configStore?.load()
         let resolvedKeychainAccessController = keychainAccessController
             ?? KeychainAccessController(
@@ -968,5 +978,53 @@ final class OnboardingCoordinator: ObservableObject {
                 scheduler.disableModule(module)
             }
         }
+    }
+
+    // MARK: - 开机自启动 (12-开机自启动.md, T25)
+
+    /// 刷新开机自启动在系统登录项中的最新状态.
+    func refreshLaunchAtLoginStatus() {
+        launchAtLoginStatus = launchAtLoginService.status
+    }
+
+    /// 设置开机自启动开关并持久化偏好 (T25).
+    func setLaunchAtLogin(enabled: Bool) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存开机自启动设置")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        if enabled {
+            do {
+                try launchAtLoginService.register()
+                launchAtLoginStatus = launchAtLoginService.status
+                config.launchAtLogin = true
+                try configStore.save(config)
+                model.setSettingsError(nil)
+            } catch {
+                launchAtLoginStatus = launchAtLoginService.status
+                if launchAtLoginStatus.needsApproval {
+                    model.setSettingsError("开机自启动需要在系统偏好设置中允许")
+                } else {
+                    model.setSettingsError("开机自启动注册失败: \(error.localizedDescription)")
+                }
+            }
+        } else {
+            do {
+                try launchAtLoginService.unregister()
+                launchAtLoginStatus = launchAtLoginService.status
+                config.launchAtLogin = false
+                try configStore.save(config)
+                model.setSettingsError(nil)
+            } catch {
+                launchAtLoginStatus = launchAtLoginService.status
+                model.setSettingsError("开机自启动注销失败: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// 打开 macOS「系统设置 → 通用 → 登录项与扩展」.
+    func openSystemLoginItemsSettings() {
+        launchAtLoginService.openSystemSettings()
     }
 }

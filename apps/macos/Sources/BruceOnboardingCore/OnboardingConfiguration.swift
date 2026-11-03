@@ -194,6 +194,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var pauseSubscriptionRefreshOnScreenLock: Bool
     /// 全局界面动效偏好 (C145). nil 表示跟随系统.
     public var motionPreference: MotionPreference?
+    /// 是否开启开机自启动 (12-开机自启动.md, T25). nil 表示未显式配置，以系统真实状态为准.
+    public var launchAtLogin: Bool?
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -308,7 +310,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         keychainAccess: KeychainAccessConfiguration? = nil,
         systemNotificationsEnabled: Bool = true,
         pauseSubscriptionRefreshOnScreenLock: Bool = true,
-        motionPreference: MotionPreference? = nil
+        motionPreference: MotionPreference? = nil,
+        launchAtLogin: Bool? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
@@ -330,6 +333,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.systemNotificationsEnabled = systemNotificationsEnabled
         self.pauseSubscriptionRefreshOnScreenLock = pauseSubscriptionRefreshOnScreenLock
         self.motionPreference = motionPreference
+        self.launchAtLogin = launchAtLogin
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -401,6 +405,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         motionPreference = (try? container.decodeIfPresent(
             MotionPreference.self, forKey: .motionPreference
         )) ?? nil
+        // 开机自启动偏好: 旧配置缺该键时按 nil 处理 (T25).
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -423,6 +429,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case systemNotificationsEnabled
         case pauseSubscriptionRefreshOnScreenLock
         case motionPreference
+        case launchAtLogin
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -452,6 +459,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
             forKey: .pauseSubscriptionRefreshOnScreenLock
         )
         try container.encodeIfPresent(motionPreference, forKey: .motionPreference)
+        try container.encodeIfPresent(launchAtLogin, forKey: .launchAtLogin)
     }
 }
 
