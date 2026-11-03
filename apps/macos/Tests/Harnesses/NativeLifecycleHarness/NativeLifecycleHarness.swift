@@ -678,6 +678,27 @@ struct NativeLifecycleHarness {
                 && abs((content.innerQuotaRatio ?? 0) - 0.676) < 0.001,
             "dual concentric quota ratios must map average and minimum quotas respectively"
         )
+        // C183: 整体订阅单轨星规映射与三档色阶动力学校验
+        try expect(
+            abs((content.subscriptionQuotaRatio ?? 0) - 0.50) < 0.001,
+            "subscription quota ratio must map average quota for single orbit gauge"
+        )
+        try expect(
+            MenuBarQuotaTier.tier(for: 0.51) == .healthy,
+            ">50% quota must be healthy tier (emerald green)"
+        )
+        try expect(
+            MenuBarQuotaTier.tier(for: 0.50) == .warning,
+            "50% quota must be warning tier (amber)"
+        )
+        try expect(
+            MenuBarQuotaTier.tier(for: 0.20) == .warning,
+            "20% quota must be warning tier (amber)"
+        )
+        try expect(
+            MenuBarQuotaTier.tier(for: 0.19) == .critical,
+            "<20% quota must be critical tier (red)"
+        )
 
         // C180: Nothing 极客点阵主题自动切 T-4 极客等宽与斜杠弱化分隔符
         let nothingContent = MenuBarStatusItemContentBuilder().build(

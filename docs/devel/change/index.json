@@ -49,7 +49,8 @@
         "C179",
         "C180",
         "C181",
-        "C182"
+        "C182",
+        "C183"
       ]
     },
     "PricingEngine": {
@@ -247,6 +248,12 @@
     "FirstLaunchWelcome": {
       "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
       "changes": []
+    },
+    "NetworkEgressCountry": {
+      "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+      "changes": [
+        "C184"
+      ]
     }
   },
   "cards": {
@@ -1869,6 +1876,24 @@
       "topic": "MenuBarIndicator",
       "version": "0.16.1",
       "file": "docs/devel/change/C182.json"
+    },
+    "C183": {
+      "title": "菜单栏图标高级重构：德系包豪斯整体订阅单轨星环 + 新三档动态色阶 (>50%绿 / 20%~50%橙 / <20%红)",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C183-menubar-single-orbit-satellite",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C183.json"
+    },
+    "C184": {
+      "title": "修复出口IP检查线路测试结果为不匹配时状态点与文案错误显示为绿色问题，修正为红色警示并持久化保留上次测试结果及地址",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C184-egress-mismatch-status-color",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C184.json"
     }
   }
 }
