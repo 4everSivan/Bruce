@@ -71,6 +71,24 @@ extension RefreshSchedulerHarness {
         try refreshExpect(set == Set([.kimi, .codex]), "两个定向合并为并集, got \(set)")
     }
 
+    /// 退避重试继承失败轮作用域 (C185): 定向刷新失败后的重试不得放大成全量.
+    static func backoffIntentPreservesScope() throws {
+        let targeted = RefreshScope.subscriptionProviders([.claude])
+        let retry = RefreshIntent.backoff(includesManual: true, scope: targeted)
+        try refreshExpect(
+            retry.reason == .backoff,
+            "退避重试 reason 应为 backoff, got \(retry.reason)"
+        )
+        try refreshExpect(
+            retry.scope == targeted,
+            "退避重试应继承定向作用域, got \(retry.scope)"
+        )
+        try refreshExpect(
+            RefreshIntent.backoff(includesManual: false).scope == .all,
+            "未显式指定作用域时退避重试保持全量语义"
+        )
+    }
+
     // MARK: - Directed refresh lifecycle (scheduler + MockCollectorExecutor)
 
     /// 成功路径: started → finished, 不触发 failed/cancelled, 仅运行一次.

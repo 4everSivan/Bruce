@@ -66,6 +66,8 @@ struct ModuleScheduleState: Equatable, Sendable {
     var offlinePaused: Bool = false
     /// 本轮刷新是否由手动触发; 手动刷新不弹额度预警.
     var lastTriggerWasManual: Bool = false
+    /// 最近一轮刷新的作用域; 失败退避重试继承该作用域, 避免定向刷新失败后放大成全量 (C185).
+    var lastScope: RefreshScope = .all
     /// 上次刷新后已超预警阈值的 5h 窗口 key 集合; 只有新跨越的窗口才报警.
     var quotaAlertedKeys: Set<String> = []
     /// 记录每个 key 已告警的最高阶梯档位 [key: highestDeliveredTier (50, 80, 95)].
@@ -547,6 +549,7 @@ package final class RefreshScheduler {
         state.phase = .running
         state.lastAttemptAt = clock.now()
         state.lastTriggerWasManual = intent.includesManual
+        state.lastScope = intent.scope
         state.pendingIntent = nil
         states[module] = state
 
@@ -789,18 +792,24 @@ package final class RefreshScheduler {
             state.quotaAlertedTiers = state.quotaAlertedTiers.filter { currentKeys.contains($0.key) }
             state.quotaAlertedKeys = Set(state.quotaAlertedTiers.keys)
 
-            // 网络出口阻断预警: 边沿跳变触发 (Edge-Triggered Anti-Spam T24)
+            // 网络出口阻断预警: 边沿跳变触发 (Edge-Triggered Anti-Spam T24/C185)
             // 仅当网络状态由「放行」跳变至「阻断」时弹出一次气泡；
             // 持续阻断期间静默更新快照不弹窗；手动重测失败或网络恢复后再度异常重新激活。
+            // C185: 定向刷新只对目标 Provider 重新激活告警，非目标 Provider 的旧阻断
+            // 状态不得因合并 artifact 原样保留而重复弹窗；全量刷新保持原语义。
             let blockedEntries = EgressAlertEvaluator.blockedEntries(artifact: artifact)
             let currentBlockedIDs = Set(blockedEntries.map(\.serviceID))
+            let scopedBlockedEntries = EgressAlertEvaluator.scopedEntries(
+                blockedEntries,
+                scope: run.scope
+            )
             let newBlockedAlerts: [EgressAlertItem]
             if run.includesManual {
-                // 手动重测处于阻断态: 重新激活报警
-                newBlockedAlerts = blockedEntries.map(\.alert)
+                // 手动重测处于阻断态: 重新激活报警 (定向刷新限定目标 Provider)
+                newBlockedAlerts = scopedBlockedEntries.map(\.alert)
             } else {
                 // 定时自动刷新: 仅当该 serviceID 原先未阻断时触发 (边沿跳变)
-                newBlockedAlerts = blockedEntries
+                newBlockedAlerts = scopedBlockedEntries
                     .filter { !state.egressBlockedServiceIDs.contains($0.serviceID) }
                     .map(\.alert)
             }
@@ -1089,11 +1098,13 @@ package final class RefreshScheduler {
         timers[module]?.cancel()
         timers[module] = timerScheduler.schedule(after: backoff) { [weak self] in
             guard let self else { return }
-            // Preserve prior lastTriggerWasManual across automatic backoff retries.
+            // Preserve prior lastTriggerWasManual / lastScope across automatic backoff retries.
+            // C185: 定向刷新失败后的重试必须仍限定在目标 Provider, 不得放大成全量查询.
             let includesManual = self.states[module]?.lastTriggerWasManual ?? false
+            let lastScope = self.states[module]?.lastScope ?? .all
             self.triggerRefresh(
                 for: module,
-                intent: .backoff(includesManual: includesManual)
+                intent: .backoff(includesManual: includesManual, scope: lastScope)
             )
         }
         return (newState, false)

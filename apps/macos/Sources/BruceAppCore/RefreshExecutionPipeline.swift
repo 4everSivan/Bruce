@@ -54,6 +54,8 @@ struct CompletedRun: Sendable {
     let credentialApply: CredentialUpdateApplyResult
     let quotaAlertEntries: [(key: String, alert: QuotaAlert)]
     let includesManual: Bool
+    /// 本轮刷新作用域; 出口告警重派按此收敛到目标 Provider (C185).
+    let scope: RefreshScope
     /// 已成功 publish 的 artifact; nil = 本轮未写 store.
     let publishedArtifact: JSONValue?
 
@@ -62,12 +64,14 @@ struct CompletedRun: Sendable {
         credentialApply: CredentialUpdateApplyResult,
         quotaAlertEntries: [(key: String, alert: QuotaAlert)],
         includesManual: Bool,
+        scope: RefreshScope,
         publishedArtifact: JSONValue?
     ) {
         self.output = output
         self.credentialApply = credentialApply
         self.quotaAlertEntries = quotaAlertEntries
         self.includesManual = includesManual
+        self.scope = scope
         self.publishedArtifact = publishedArtifact
     }
 }
@@ -446,6 +450,7 @@ struct RefreshExecutionPipeline {
                 credentialApply: applyResult,
                 quotaAlertEntries: [],
                 includesManual: includesManual,
+                scope: request.intent.scope,
                 publishedArtifact: nil
             ))
         }
@@ -455,6 +460,7 @@ struct RefreshExecutionPipeline {
                 credentialApply: applyResult,
                 quotaAlertEntries: [],
                 includesManual: includesManual,
+                scope: request.intent.scope,
                 publishedArtifact: nil
             ))
         }
@@ -498,6 +504,7 @@ struct RefreshExecutionPipeline {
                 credentialApply: applyResult,
                 quotaAlertEntries: [],
                 includesManual: includesManual,
+                scope: request.intent.scope,
                 publishedArtifact: nil
             ))
         }
@@ -519,6 +526,7 @@ struct RefreshExecutionPipeline {
             credentialApply: applyResult,
             quotaAlertEntries: entries,
             includesManual: includesManual,
+            scope: request.intent.scope,
             publishedArtifact: artifact
         ))
     }

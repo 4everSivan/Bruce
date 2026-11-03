@@ -56,6 +56,8 @@ struct RefreshSchedulerHarness {
         try await egressBlockedAlertRefiresAfterRecovery(repository: repository)
         print("Refresh scheduler: egress blocked alert manual rerun (T24)")
         try await egressBlockedAlertRefiresOnManualRefresh(repository: repository)
+        print("Refresh scheduler: targeted refresh does not refire non-target egress alert (C185)")
+        try await egressBlockedAlertNotRefiredForNonTargetProvider(repository: repository)
         print("Refresh scheduler: codex challenge retry")
         try await codexChallengeTriggersSingleTargetedRetry(repository: repository)
         print("Refresh scheduler: codex retry no third run")
@@ -158,6 +160,8 @@ struct RefreshSchedulerHarness {
         try scopeMergeUnionAndDedup()
         print("Refresh scheduler: intent merge scope all priority")
         try intentMergeScopeAllPriority()
+        print("Refresh scheduler: backoff intent preserves scope")
+        try backoffIntentPreservesScope()
         print("Refresh scheduler: merger preserves non-target services/agents/cost")
         try mergerPreservesNonTargetServicesAgentsAndCost()
         print("Refresh scheduler: merger target success fresh")
@@ -257,6 +261,6 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 116")
+        print("Refresh scheduler tests passed: 118")
     }
 }

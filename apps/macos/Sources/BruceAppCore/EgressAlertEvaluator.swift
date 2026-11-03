@@ -1,9 +1,26 @@
 import Foundation
+import BruceOnboardingCore
 
 // MARK: - 网络出口阻断预警评估器
 
 /// 从 artifact services 中提取出口校验处于 blocked 状态的条目
 package enum EgressAlertEvaluator {
+    /// 按刷新作用域收敛阻断条目 (C185): 定向刷新只保留目标 Provider 的告警;
+    /// 全量刷新保持原样。serviceID -> Provider 归一走稳定展示映射, 未知归属的条目
+    /// 在定向刷新下丢弃 (fail-closed, 不猜测目标)。
+    package static func scopedEntries(
+        _ entries: [(serviceID: String, alert: EgressAlertItem)],
+        scope: RefreshScope
+    ) -> [(serviceID: String, alert: EgressAlertItem)] {
+        guard scope.isTargeted else { return entries }
+        let targets = scope.targetProviders
+        return entries.filter { entry in
+            let raw = SubscriptionPresentationPolicy.providerID(forServiceID: entry.serviceID)
+            guard let provider = SubscriptionProviderID(rawValue: raw) else { return false }
+            return targets.contains(provider)
+        }
+    }
+
     /// 返回当前 artifact 中所有被出口拦截的 serviceID 与 EgressAlertItem
     package static func blockedEntries(
         artifact: JSONValue
