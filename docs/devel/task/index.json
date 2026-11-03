@@ -91,6 +91,14 @@
         "T22"
       ]
     },
+    "M12-网络出口国家校验": {
+      "title": "订阅额度查询前网络出口国家校验：设置页双卡分立、Cloudflare Trace 两级检测（含国内 IP 快速熔断）、仪表盘 40px 紧凑问题小卡片与预警微气泡分流",
+      "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+      "tasks": [
+        "T23",
+        "T24"
+      ]
+    },
     "M13-开机自启动": {
       "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置（SMAppService API + 通用面板开关 + Step 3 可选配置 + 权限拦截引导）",
       "design_doc": "docs/devel/design/12-开机自启动.md",
@@ -155,6 +163,13 @@
       "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
       "tasks": [
         "T22"
+      ]
+    },
+    "NetworkEgressCountry": {
+      "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+      "tasks": [
+        "T23",
+        "T24"
       ]
     },
     "LaunchAtLogin": {
@@ -414,6 +429,28 @@
       "depends_on": [],
       "file": "docs/devel/task/T22.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T22-first-launch-welcome-wizard"
+    },
+    "T23": {
+      "title": "订阅额度网络出口国家校验（双卡分立 + Cloudflare Trace 两级检测 + 仪表盘紧凑问题卡）",
+      "status": "completed",
+      "branch": "main",
+      "topic": "NetworkEgressCountry",
+      "milestone": "M12-网络出口国家校验",
+      "depends_on": [],
+      "file": "docs/devel/task/T23.json",
+      "branch_note": "按用户要求在主分支 main 上执行，不新建分支"
+    },
+    "T24": {
+      "title": "状态预警微气泡通用化与分流路由（弹窗支持点击跳设置，额度超限跳看板）",
+      "status": "pending",
+      "branch": "main",
+      "topic": "NetworkEgressCountry",
+      "milestone": "M12-网络出口国家校验",
+      "depends_on": [
+        "T23"
+      ],
+      "file": "docs/devel/task/T24.json",
+      "branch_note": "按用户要求在主分支 main 上执行，不新建分支"
     },
     "T25": {
       "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置",

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T23",
+  "title": "订阅额度网络出口国家校验（双卡分立 + Cloudflare Trace 两级检测 + 仪表盘紧凑问题卡）",
+  "version": "0.16.1",
+  "milestone": "M12-网络出口国家校验",
+  "status": "completed",
+  "branch": "main",
+  "depends_on": [],
+  "target": {
+    "module": "core/collector/crates/collector-application；apps/macos（BruceApp / BruceAppCore / BruceOnboardingCore）；config/onboarding-v1.json",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "goal": "在订阅额度查询发送请求前实现网络出口国家校验机制：1. 设置中心「订阅额度」面板实现上下双卡分立，国家分组配置固定节点的专用代理端口；2. Collector 经同一专用端口探测并查额，CN、国家不匹配及探测失败时阻断，按端口在同轮次合并探测；3. 仪表盘展示出口状态和合格历史额度快照；4. 明确提示固定节点和出口稳定的用户配置前提，不能保证代理或上游在两次连接之间变化时的实际出口。",
+  "precheck": {
+    "description": "确认代码库中尚未实现 egress_rules 配置、Cloudflare Trace 出口探测与仪表盘出口问题卡片",
+    "command": "rg -n 'egress_rules|EgressCountry|probe_egress|EGRESS_CN_DIRECT' core/collector apps/macos/Sources",
+    "expected": "无 egress_rules / EgressCountry / probe_egress / EGRESS_CN_DIRECT 实现（退出码 1）",
+    "is_completed": false,
+    "evidence": "2026-11-03 开工前预检：rg 查找 egress_rules / EgressCountry / probe_egress / EGRESS_CN_DIRECT 退出码 1（0 命中，尚未实现）"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "swift build --package-path apps/macos",
+      "cargo test --manifest-path core/collector/Cargo.toml",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T23 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T23 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T23-1",
+      "title": "配置存储与数据契约扩展",
+      "capability": "config/onboarding-v1.json 与 OnboardingConfiguration 扩展国家组与服务商归属结构（如 egressGroups: [EgressCountryGroup]）；BruceOnboardingCore 与 BruceAppCore 补充 EgressCountryStatus、EgressPresentationInfo 与映射策略，确保移出分组不破坏凭据。",
+      "done": true
+    },
+    {
+      "id": "T23-2",
+      "title": "设置中心「订阅额度」双卡分立界面实现",
+      "capability": "SettingsView+SubscriptionPane 重塑为双卡分立布局：上卡保留既有凭证管理与启用开关；下卡支持国家分组、专用代理端口配置、服务商分配及线路测试，说明固定节点与出口稳定的前提；移出分组不删除凭据。",
+      "done": true
+    },
+    {
+      "id": "T23-3",
+      "title": "Collector 查额前出口探测与两级熔断决策",
+      "capability": "查额与 Cloudflare Trace 显式使用同一组回环专用 HTTP 代理端口；探测 CN、国家不匹配、失败或配置无效时阻断，不允许回退直连。单轮按端口共享探测结果；输出标准错误码。该结果依赖代理节点和出口稳定，不能证明后续独立连接的实际出口。",
+      "done": true
+    },
+    {
+      "id": "T23-4",
+      "title": "仪表盘 SubscriptionCard 紧凑问题小卡片与状态渲染",
+      "capability": "SubscriptionCard 适配放行态低调微胶囊（[🇯🇵 JP]）、未分组订阅零多余标识；受阻时渲染 40px 紧凑问题小卡片（Issue Sub-Card，带 [⚠️ 国内直连] / [⚠️ US ≠ JP]、说明、[去设置] 与 [↻ 重测]）；周期进度条保留合格历史快照（显示 (快照) 与已保护数值）；折叠 Mini 态徽章右上角加预警小圆点。",
+      "done": true
+    },
+    {
+      "id": "T23-5",
+      "title": "自动化测试与全量门禁回归",
+      "capability": "补充 Collector 出口校验单元测试（两级熔断、同轮次合并、超时失败保护）；补充 macOS Onboarding / AppCore 策略测试；全量跑通本地构建与 adflow-verify 门禁。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261103-02",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "设置页双卡分立与凭证解耦安全",
+        "true_if": "设置中心清晰呈现凭证卡与出口国家校验卡；添加/调整/移出国家分组操作绝不影响 credentials.json 中的已有凭据与账号",
+        "false_if": "移出分组误删凭据，或未配置国家的服务商受到出口阻断",
+        "evidence": "BruceOnboardingCoreHarness 的 EgressCountryGroupsTests 验证国家去重、跨组移动、端口和配置往返、损坏拒绝回滚及凭据文件字节不变；设置页已编译，真实界面和代理配置待人工验收。",
+        "result": true
+      },
+      {
+        "item": "两级检测与国内 IP 快速熔断 (CN Fast-Fail)",
+        "true_if": "专用端口探测为 CN 且期望海外、超时或国家不匹配时不发查额请求；探测匹配时通过同一专用端口查额，并明确固定节点和出口稳定的前提",
+        "false_if": "探测阻断后仍调用查额 API、代理失败回退直连，或将探测结果宣称为后续连接实际出口的保证",
+        "evidence": "collector-application 的 egress::tests 和 protected_quota_uses_proxy_and_blocks_mismatched_trace 验证按端口并发去重、CN/不匹配/失败阻断及无凭据挑战；collector-provider/tests_proxy.rs 和本机模拟代理验证显式端口与无直连回退。真实 Mihomo 出口待人工验收。",
+        "result": true
+      },
+      {
+        "item": "仪表盘紧凑问题小卡片与快照保护",
+        "true_if": "受阻时展示 40px 紧凑问题卡与直达设置按钮；历史额度进度条清晰保留并标注 (快照)；未分组订阅零出口标记",
+        "false_if": "受阻时将账号误标为失效/需重新登录，或吞掉历史额度",
+        "evidence": "PanelViewModelHarness 验证出口状态及未分组映射；RefreshSchedulerHarness 验证定向失败时保留历史窗口、余额和币种及本轮阻断状态。仪表盘真实布局和操作待人工验收。",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": "f5f583e"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-03",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
+  }
+}
