@@ -4,7 +4,7 @@
   "title": "菜单栏图标高级重构：德系包豪斯整体订阅单轨星环 + 新三档动态色阶 (>50%绿 / 20%~50%橙 / <20%红)",
   "version": "0.16.1",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "feat/C183-menubar-single-orbit-satellite",
   "is_hotfix": false,
   "target": {
@@ -90,14 +90,14 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "0f98776",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-03",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "verified",
     "target_status": "closed",
     "signed_quote": "确认",

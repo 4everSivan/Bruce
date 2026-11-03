@@ -1880,7 +1880,7 @@
     "C183": {
       "title": "菜单栏图标高级重构：德系包豪斯整体订阅单轨星环 + 新三档动态色阶 (>50%绿 / 20%~50%橙 / <20%红)",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C183-menubar-single-orbit-satellite",
       "topic": "MenuBarIndicator",
       "version": "0.16.1",
