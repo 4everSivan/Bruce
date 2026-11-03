@@ -84,7 +84,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             self?.openDashboardIfNeeded()
         }
         quotaAlertBubbleController.onOpenSettings = { [weak self] in
-            self?.openSubscriptionSettings()
+            guard let self else { return }
+            // C187: 气泡在 .statusBar 层级的下拉面板可见时也可弹出, 直接打开设置会被
+            // 仪表盘遮挡; 统一走 关闭仪表盘 → 写入出口深链 → 打开设置 的顺序.
+            DashboardSettingsRoute.open(
+                deepLink: { self.coordinator.requestedEgressSettings = true },
+                closeDashboard: { self.closeDashboard(restorePreviousFrontmostApp: false) },
+                openSettings: { self.openSubscriptionSettings() }
+            )
         }
     }
 
@@ -601,6 +608,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         if !force {
             guard coordinator.systemNotificationsEnabled else { return }
         }
+        // 设计 03 §14: 主面板可见时静默跳过气泡, 避免与仪表盘卡片叠加 (C187).
+        guard StatusBubblePresentationPolicy.shouldPresent(
+            dashboardOpen: dashboardToggleState == .open
+        ) else { return }
         guard let button = statusItem?.button else { return }
         quotaAlertBubbleController.show(
             items: items,

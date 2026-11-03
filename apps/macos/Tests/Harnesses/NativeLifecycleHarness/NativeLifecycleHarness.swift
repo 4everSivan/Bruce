@@ -77,11 +77,35 @@ struct NativeLifecycleHarness {
         try menuBarContentUsesRefreshAndFailureIcons()
         try dashboardPlacementFallsBackFromInvalidStatusItemCoordinates()
         try panelSizingKeepsTopAnchoredWithinScreen()
+        try dashboardSettingsRouteOrdersCloseBeforeOpen()
         try swapHeightNeverClampsUnmeasuredContent()
         try heatmapBreathingKeepsLegacyCurveOnLayers()
         try welcomeOnboardingPresentationMatchesParityFixture()
         try launchAtLoginServiceMockAndStateTransitions()
-        print("Native lifecycle tests passed: 19")
+        print("Native lifecycle tests passed: 20")
+    }
+
+    /// C187: 仪表盘/气泡跳转设置中心的顺序固定为 关闭面板 → 写入深链 → 打开设置，
+    /// 且主面板可见时状态预警气泡静默跳过（设计 03 §14 互斥门控）。
+    private static func dashboardSettingsRouteOrdersCloseBeforeOpen() throws {
+        var order: [String] = []
+        DashboardSettingsRoute.open(
+            deepLink: { order.append("deepLink") },
+            closeDashboard: { order.append("close") },
+            openSettings: { order.append("open") }
+        )
+        try expect(
+            order == ["close", "deepLink", "open"],
+            "设置跳转必须 关闭面板→置深链→打开设置, got \(order)"
+        )
+        try expect(
+            !StatusBubblePresentationPolicy.shouldPresent(dashboardOpen: true),
+            "仪表盘打开时应静默跳过状态气泡"
+        )
+        try expect(
+            StatusBubblePresentationPolicy.shouldPresent(dashboardOpen: false),
+            "仪表盘关闭时应允许状态气泡"
+        )
     }
 
     /// T25: 开机自启动 Mock 服务与状态转换断言
