@@ -1967,7 +1967,7 @@
     "C191": {
       "title": "Codex 仅含累计计数的事件在计数回退时按重置基线计量（低优先级防御）",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C191-codex-counter-rollback",
       "topic": "TokenUsage",
       "version": "0.17.0",
