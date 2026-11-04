@@ -4,7 +4,7 @@
   "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
   "version": "0.17.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C200-partial-detail-skips-notices",
   "is_hotfix": false,
   "target": {
@@ -56,10 +56,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261104-13",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -95,8 +95,10 @@
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-04",
-    "exit_code": 4,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

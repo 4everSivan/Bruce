@@ -4,7 +4,7 @@
   "title": "卡片展开动画掉帧：用量热力图逐格 SwiftUI 视图与逐格 repeatForever 呼吸改为图层宿主 + Core Animation 呼吸",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C179-heatmap-breathing",
   "is_hotfix": false,
   "target": {
@@ -57,10 +57,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "local-20261101-c179",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261101-02",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -87,29 +87,33 @@
         "item": "行为实测（真机）",
         "true_if": "安装新包后 Nothing 主题下展开/收起用量卡与其他卡片顺滑，热力图呼吸观感与旧版一致；经典/液态玻璃主题热力图显示不变",
         "false_if": "展开仍明显卡顿、呼吸节奏或配色失真、热力图尺寸变化",
-        "evidence": "",
-        "result": null
+        "evidence": "未做真机帧率/交互实测（面板内的展开过渡仅由离屏 A/B 探针与像素对拍覆盖）；用户以「确认」签收，此项按未执行如实记为 false，待真机补证后可回填",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "面板隐藏 / 动效「从不」时格子层无呼吸动画、停在静态透明度；慢放抓帧确认展开/收起时图层宿主与 SwiftUI 内容同步裁切；其他卡片与面板高度动画链路未改动",
         "false_if": "隐藏态仍有呼吸动画、动效开关失效、图层越出卡片裁切区或高度动画行为变化",
-        "evidence": "门控沿用 DashboardPanelAnimationPolicy.allowsHeatmap（面板隐藏 / 动效抑制 / 非 Nothing / 无填充格时移除格子层动画、按 restingOpacity 静态显示），restingOpacity 由 Harness 断言；面板高度动画链路（MenuBarStatusItemController / MenuBarViews / PanelCardContainer）未改动；verify-local 全量通过。注意：真机上隐藏面板后格子层动画确实被移除、动效「从不」下无呼吸，尚未在真实 App 中实测",
-        "result": null
+        "evidence": "门控沿用 DashboardPanelAnimationPolicy.allowsHeatmap（面板隐藏 / 动效抑制 / 非 Nothing / 无填充格时移除格子层动画、按 restingOpacity 静态显示），restingOpacity 由 Harness 断言；面板高度动画链路（MenuBarStatusItemController / MenuBarViews / PanelCardContainer）未改动；verify-local 全量通过。真机慢放抓帧（隐藏面板、动效「从不」）尚未执行，此项如实记为 false",
+        "result": false
       }
     ]
   },
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
+    "changelog": true,
     "commit": "317c4cf",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
-    "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

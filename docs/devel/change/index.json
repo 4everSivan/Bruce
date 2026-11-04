@@ -1862,7 +1862,7 @@
     "C179": {
       "title": "卡片展开动画掉帧：用量热力图逐格 SwiftUI 视图与逐格 repeatForever 呼吸改为图层宿主 + Core Animation 呼吸",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C179-heatmap-breathing",
       "topic": "MenuBarIndicator",
       "version": "0.16.1",
@@ -1961,7 +1961,7 @@
     "C190": {
       "title": "修复 Codex 跨根同名副本整份择一：分叉副本少计、前缀副本误报冲突",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C190-codex-rollout-dedupe",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -1970,7 +1970,7 @@
     "C191": {
       "title": "Codex 仅含累计计数的事件在计数回退时按重置基线计量（低优先级防御）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C191-codex-counter-rollback",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -1979,7 +1979,7 @@
     "C192": {
       "title": "修复 dsh 单帧解码失败即整会话跳过：改为逐帧隔离，并让帧上限在解码中生效",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C192-dsh-frame-isolation",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -1988,7 +1988,7 @@
     "C193": {
       "title": "为本机来源补充 usage 口径漂移哨兵（按来源汇总），并接入 Codex 新增的 cache_write_input_tokens",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C193-usage-field-drift-guard",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -1997,7 +1997,7 @@
     "C194": {
       "title": "修复 Grok 以文件 mtime 重打全部历史时间戳，追加后经台账造成跨日重复计数",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C194-grok-timestamp-estimate",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -2006,7 +2006,7 @@
     "C195": {
       "title": "为可能携带用量的超长行补充持久化计数与信息级说明（目录深度护栏维持现状）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C195-scan-limit-diagnostics",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -2015,7 +2015,7 @@
     "C196": {
       "title": "修复 JSONL 引擎单文件消失竞态中止整源扫描，并在解析失败时沿用陈旧条目",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C196-jsonl-file-race",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -2024,7 +2024,7 @@
     "C197": {
       "title": "修复 Codex rollout 打开失败被缓存为空观测、会话永久记 0 且无诊断",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C197-codex-open-failure-cache",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -2033,7 +2033,7 @@
     "C198": {
       "title": "修复来源信息级说明一律升格为 agent error 并误用 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C198-source-note-severity",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -2042,7 +2042,7 @@
     "C199": {
       "title": "为用量历史台账补充按来源口径版本向下修正的路径，修复已落库的多计",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C199-history-downward-correction",
       "topic": "TokenUsage",
       "version": "0.17.0",
@@ -2051,7 +2051,7 @@
     "C200": {
       "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C200-partial-detail-skips-notices",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
@@ -2060,7 +2060,7 @@
     "C201": {
       "title": "JSONL 与 dsh 会话文件读取失败时补信息级说明（与 Codex 同口径）",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C201-read-failure-notice",
       "topic": "TokenUsage",
       "version": "0.17.0",
