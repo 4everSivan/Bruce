@@ -30,3 +30,7 @@ uuid = { version = "=1.11.0", features = ["v4"] }
 libc = "=0.2.189"
 memchr = "=2.8.3"
 ureq = { version = "=2.12.1", default-features = true }
+# C189: dsh 会话是 zstd 压缩 JSONL (每次追加写一个独立帧), 采集端需要流式多帧解码。
+# 选纯 Rust 的 ruzstd: 不引入 zstd-sys 的 C 编译链 (macOS Universal 2 / Windows Tauri
+# 构建都不必额外准备 C 工具链), 解码器只在冷扫描生效 —— 热扫描走按文件签名缓存。
+ruzstd = "=0.7.3"

@@ -9,6 +9,7 @@ collector-domain = { path = "../collector-domain" }
 collector-runtime = { path = "../collector-runtime" }
 memchr = { workspace = true }
 rusqlite = { workspace = true }
+ruzstd = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

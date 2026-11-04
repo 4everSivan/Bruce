@@ -7,14 +7,18 @@
 
 mod codebuddy;
 mod codex;
+mod dsh;
 mod jsonl_adapters;
 mod sqlite_adapters;
 #[cfg(test)]
 mod tests_cache;
 #[cfg(test)]
+mod tests_dsh;
+#[cfg(test)]
 mod tests_sources;
 
 pub use codex::scan_codex_cached_with_cancellation;
+pub use dsh::scan_dsh_cached;
 pub use jsonl_adapters::{
     scan_claude_cached, scan_codebuddy_cached, scan_grok_cached, scan_kimi_cli_cached,
     scan_kimi_tree_cached, scan_pi_cached,
@@ -26,6 +30,8 @@ pub use sqlite_adapters::{scan_opencode_cached, scan_zcode_cached};
 pub(crate) use codebuddy::scan_codebuddy;
 #[cfg(test)]
 pub(crate) use codex::{scan_codex, scan_codex_cached, scan_codex_with_cancellation};
+#[cfg(test)]
+pub(crate) use dsh::scan_dsh_uncached;
 #[cfg(test)]
 pub(crate) use sqlite_adapters::{scan_opencode, scan_zcode};
 
