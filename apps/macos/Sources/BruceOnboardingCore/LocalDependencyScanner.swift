@@ -82,6 +82,11 @@ public struct LocalDependencyScanPaths: Sendable {
                     displayName: "CodeBuddy",
                     url: home.appendingPathComponent(".codebuddy/projects")
                 ),
+                // DSH (DeepSeek Harness) 会话树 (jsonl 目录, agent 用量只读来源, C189)
+                SessionDirectory(
+                    displayName: "DSH",
+                    url: home.appendingPathComponent(".dsh/sessions")
+                ),
             ],
             sqliteDatabases: [
                 SQLiteDatabase(

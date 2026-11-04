@@ -327,7 +327,7 @@ struct SubscriptionBrandGlyphHarness {
     private static func agentBrandPaletteCoverage() throws {
         let knownAgents = [
             "zcode", "claude-code", "codex", "kimi-code-cli", "kimi-work",
-            "opencode", "codebuddy", "grok", "pi",
+            "opencode", "codebuddy", "grok", "pi", "dsh",
         ]
         for agentID in knownAgents {
             guard let asset = AgentBrandPalette.asset(forAgent: agentID) else {
@@ -430,7 +430,7 @@ struct SubscriptionBrandGlyphHarness {
         let iconDirectory = repoRoot.appendingPathComponent("apps/macos/Assets/AgentIcons")
         let agentIDs = [
             "zcode", "claude-code", "codex", "kimi-code-cli", "kimi-work",
-            "opencode", "codebuddy", "grok", "pi",
+            "opencode", "codebuddy", "grok", "pi", "dsh",
         ]
         for agentID in agentIDs {
             guard let name = AgentBrandPalette.asset(forAgent: agentID)?.imageName else { continue }

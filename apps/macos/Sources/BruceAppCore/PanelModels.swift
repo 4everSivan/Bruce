@@ -26,6 +26,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     case green
     /// CodeBuddy — 系统橙 (第 9 个已知 agent; 与 coral 暖珊瑚拉开明度)
     case orange
+    /// DSH (DeepSeek Harness) — 品牌蓝 (第 10 个已知 agent; 取 DeepSeek 官方 #4D6BFE)
+    case azure
 
     package var hex: String {
         switch self {
@@ -47,6 +49,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return "#30d158"
         case .orange:
             return "#ff9f0a"
+        case .azure:
+            return "#4d6bfe"
         }
     }
 
@@ -58,7 +62,7 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     }
 
     /// 已知 agent 固定配色 (冷→暖: work → code → grok → codex → claude;
-    /// pi/zcode/opencode 固定 rose/mint/green, 8 个已知 agent 各占一色);
+    /// pi/zcode/opencode/codebuddy/dsh 固定 rose/mint/green/orange/azure, 10 个已知 agent 各占一色);
     /// 未知 agent 用 FNV-1a 散列稳定落到调色板.
     package static func resolve(agentID: String) -> PanelAgentColor {
         switch agentID {
@@ -80,6 +84,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .green
         case "codebuddy":
             return .orange
+        case "dsh":
+            return .azure
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
@@ -112,12 +118,14 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return ["#30d158", "#5bda7f", "#8ae6a6", "#b8f1cc"]
         case .orange:
             return ["#ff9f0a", "#ffb340", "#ffcc7a", "#ffe5b3"]
+        case .azure:
+            return ["#4d6bfe", "#7089ff", "#9aabff", "#c3ccff"]
         }
     }
 
     /// Nothing 主题系列色: 呼吸灯绿 (#4A9E5C) 基色的 5 档绿阶.
     /// 深色模式亮→暗 (高频 agent 更亮, 黑底可读), 浅色模式反转保证白底可读;
-    /// 已知 agent 固定档位 (5 个高频 agent 各占一档, 其余按约定复用), 未知 agent 沿用 FNV-1a 散列稳定落档.
+    /// 已知 agent 固定档位 (5 个高频 agent 各占一档, 其余按约定复用; dsh 复用第 1 档), 未知 agent 沿用 FNV-1a 散列稳定落档.
     package static func nothingRampHex(agentID: String, darkMode: Bool) -> String {
         let ramp = darkMode
             ? ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]
@@ -136,6 +144,9 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             index = 4
         case "codebuddy":
             index = 2
+        case "dsh":
+            // 与 claude-code 共用第 1 档: 两者同现概率低, 分段上色场景必须可读.
+            index = 1
         case "kimi-work":
             // 与 kimi-code-cli 高频同现, 从 0 档移到 4 档避免撞色;
             // 与 opencode 共档是可接受取舍 (同现概率低), 分段上色场景必须可读.

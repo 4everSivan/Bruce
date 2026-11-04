@@ -1267,9 +1267,19 @@ struct PanelViewModelHarness {
         try expect(PanelAgentColor.resolve(agentID: "zcode") == .mint, "ZCode 应为显式 mint 色")
         try expect(PanelAgentColor.resolve(agentID: "opencode") == .green, "OpenCode 应为显式 green 色")
         try expect(PanelAgentColor.resolve(agentID: "codebuddy") == .orange, "CodeBuddy 应为显式 orange 色")
+        try expect(PanelAgentColor.resolve(agentID: "dsh") == .azure, "DSH 应为显式 azure 色")
+        try expect(PanelAgentColor.azure.hex == "#4d6bfe", "DSH 系列色应为 DeepSeek 官方蓝 #4d6bfe")
+        try expect(
+            (0..<4).allSatisfy { !PanelAgentColor.azure.distributionHex(at: $0).isEmpty },
+            "DSH 4 档占比色阶不得缺档"
+        )
+        try expect(
+            PanelAgentColor.azure.distributionHex(at: 0) == "#4d6bfe",
+            "DSH 占比条 0 档应为主色 #4d6bfe"
+        )
         let knownIDs = [
             "kimi-work", "kimi-code-cli", "grok", "codex",
-            "claude-code", "pi", "zcode", "opencode", "codebuddy",
+            "claude-code", "pi", "zcode", "opencode", "codebuddy", "dsh",
         ]
         let knownColors = knownIDs.map { PanelAgentColor.resolve(agentID: $0) }
         try expect(
@@ -2052,6 +2062,10 @@ struct PanelViewModelHarness {
         try expect(
             PanelAgentColor.nothingRampHex(agentID: "kimi-code-cli", darkMode: false) == "#2A6B3C",
             "浅色模式应取反转色板"
+        )
+        try expect(
+            PanelAgentColor.nothingRampHex(agentID: "dsh", darkMode: true) == "#5FAF6E",
+            "DSH 固定复用绿阶第 1 档"
         )
         try expect(
             !PanelAgentColor.nothingRampHex(agentID: "unknown-agent", darkMode: true).isEmpty,

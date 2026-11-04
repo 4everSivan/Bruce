@@ -75,6 +75,7 @@ struct BruceOnboardingCoreHarness {
         try standardPathsIncludePiSessions()
         try standardPathsIncludeZcodeDatabase()
         try standardPathsIncludeCodeBuddyProjects()
+        try standardPathsIncludeDshSessions()
         try firstLaunchDecisionFlow()
         try configStoreLoadsV1WithSubscriptionDefaults()
         try configStoreRejectsNewerSchemaV4()
@@ -185,7 +186,7 @@ struct BruceOnboardingCoreHarness {
         try codexCustomNameOverridesAndBackwardCompatibility()
         try welcomeOnboardingConfigPersistenceAndUpgradeRules()
         try launchAtLoginConfigPersistenceRoundTrip()
-        print("BruceOnboardingCore tests passed: 180")
+        print("BruceOnboardingCore tests passed: 181")
     }
 
     static func launchAtLoginConfigPersistenceRoundTrip() throws {

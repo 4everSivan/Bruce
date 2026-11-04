@@ -471,6 +471,7 @@ struct WelcomeOnboardingView: View {
             DependencyProbe(kind: .sessionDirectory, status: .missing, detail: "ZCode"),
             DependencyProbe(kind: .sessionDirectory, status: .missing, detail: "CodeBuddy"),
             DependencyProbe(kind: .sessionDirectory, status: .missing, detail: "Pi"),
+            DependencyProbe(kind: .sessionDirectory, status: .missing, detail: "DSH"),
             DependencyProbe(kind: .sqliteDatabase, status: .available, detail: SQLiteSchemaProfile.ccSwitch.displayName),
         ]
     }
@@ -558,6 +559,8 @@ struct WelcomeOnboardingView: View {
             return ("codebuddy", "#5B3DF5", "~/.codebuddy/projects")
         case "Pi":
             return ("pi", "#EC4899", "~/.pi/agent/sessions")
+        case "DSH":
+            return ("dsh", "#4D6BFE", "~/.dsh/sessions")
         default:
             return (nil, "#0EA5E9", "~/.cc-switch/cc-switch.db (mode=ro)")
         }
