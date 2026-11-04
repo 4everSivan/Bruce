@@ -1958,7 +1958,7 @@
     "C190": {
       "title": "修复 Codex 跨根同名副本整份择一：分叉副本少计、前缀副本误报冲突",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C190-codex-rollout-dedupe",
       "topic": "TokenUsage",
       "version": "0.17.0",
