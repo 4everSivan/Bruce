@@ -413,6 +413,11 @@ fn dsh_skips_corrupt_compressed_files() {
     );
     assert_eq!(scan.stats.usage_records, 1, "只有完好文件产出用量");
     assert_eq!(today(&scan).total, 10);
+    // C201: 整文件读取失败与 Codex / JSONL 同口径附信息级说明。
+    assert_eq!(
+        scan.notice.as_deref(),
+        Some("会话文件读取失败 4 个, 本轮沿用上次结果或暂未计入, 下次刷新重试")
+    );
     fs::remove_dir_all(root).ok();
 }
 

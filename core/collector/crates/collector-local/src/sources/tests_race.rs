@@ -56,6 +56,10 @@ fn file_deleted_between_listing_and_stat_skips_only_that_file() {
     assert_eq!(today_total(&raced), 103, "其余文件完整计入");
     assert!(raced.found);
     assert_eq!(raced.stats.io_errors, 1);
+    assert!(
+        raced.notice.is_none(),
+        "C201: 列目录后被删除是正常竞态, 不算读取失败"
+    );
 
     let next =
         scan_claude_cached(&projects, &window(), &cache_root, &CancellationToken::new()).unwrap();
@@ -104,6 +108,12 @@ fn unreadable_changed_file_keeps_stale_payload_and_other_files() {
     assert_eq!(today_total(&stale), 107, "沿用旧载荷, 本轮数字不下降");
     assert_eq!(stale.stats.io_errors, 1);
     assert_eq!(stale.stats.cache_hits, 1, "只有另一个文件命中");
+    // C201: 与 Codex (C197) 同口径附信息级说明; 失败不缓存, 下一轮重试。
+    assert_eq!(
+        stale.notice.as_deref(),
+        Some("会话文件读取失败 1 个, 本轮沿用上次结果或暂未计入, 下次刷新重试")
+    );
+    assert!(stale.diagnostic.is_none());
 
     fs::set_permissions(&live, fs::Permissions::from_mode(0o644)).unwrap();
     let recovered = scan();
@@ -112,5 +122,6 @@ fn unreadable_changed_file_keeps_stale_payload_and_other_files() {
         recovered.stats.cache_appends, 1,
         "旧条目仍在, 恢复后按追加计入"
     );
+    assert!(recovered.notice.is_none(), "恢复后说明消失");
     fs::remove_dir_all(root).ok();
 }

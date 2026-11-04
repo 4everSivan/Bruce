@@ -220,6 +220,11 @@ pub(crate) fn truncated_usage_notice(lines: u64) -> String {
     )
 }
 
+/// C201: 本轮读取 / 解析失败的会话文件数说明 (与 Codex C197 同口径; 沿用旧条目或暂未计入)。
+pub(crate) fn unreadable_files_notice(files: u64) -> String {
+    format!("会话文件读取失败 {files} 个, 本轮沿用上次结果或暂未计入, 下次刷新重试")
+}
+
 /// 一个来源的全部说明以「; 」连接; 没有说明时为 None。
 pub(crate) fn join_notices(notes: Vec<String>) -> Option<String> {
     (!notes.is_empty()).then(|| notes.join("; "))
@@ -527,6 +532,7 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
         stats: ScanStats::default(),
         drifted_files: 0,
         truncated_usage: 0,
+        unreadable_files: 0,
         seen: std::collections::BTreeSet::new(),
         visited_dirs: std::collections::BTreeSet::new(),
         #[cfg(test)]
@@ -554,6 +560,8 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
             [
                 (state.drifted_files > 0).then(|| file_drift_notice(state.drifted_files)),
                 (state.truncated_usage > 0).then(|| truncated_usage_notice(state.truncated_usage)),
+                (state.unreadable_files > 0)
+                    .then(|| unreadable_files_notice(state.unreadable_files)),
             ]
             .into_iter()
             .flatten()
@@ -571,6 +579,8 @@ struct TreeState<'a, A> {
     drifted_files: u64,
     /// C195: 疑似用量的超长行数。
     truncated_usage: u64,
+    /// C201: 本轮读取 / 解析失败的会话文件数。
+    unreadable_files: u64,
     seen: std::collections::BTreeSet<String>,
     /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
     visited_dirs: std::collections::BTreeSet<PathBuf>,
@@ -671,8 +681,12 @@ fn process_file<A: JsonlCacheAdapter>(
     // 已登记进 seen, 本轮不回收其缓存条目; 文件真被删除时下一轮按差集回收。
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
-        Err(_) => {
+        Err(error) => {
             state.stats.io_errors = state.stats.io_errors.saturating_add(1);
+            // C201: 列目录后被删除是正常竞态, 不算读取失败; 其余 (权限等) 计入说明。
+            if error.kind() != io::ErrorKind::NotFound {
+                state.unreadable_files = state.unreadable_files.saturating_add(1);
+            }
             return Ok(None);
         }
     };
@@ -729,6 +743,7 @@ fn process_file<A: JsonlCacheAdapter>(
                 Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                 Err(SourceScanError::Io(_)) => {
                     state.stats.io_errors = state.stats.io_errors.saturating_add(1);
+                    state.unreadable_files = state.unreadable_files.saturating_add(1);
                     return Ok(Some(std::mem::take(&mut entry.payload)));
                 }
             }
@@ -754,6 +769,7 @@ fn process_file<A: JsonlCacheAdapter>(
             // 只计 io_errors (不计 cache_hits / cache_rebuilds), 旧条目原样留在磁盘上,
             // 签名仍不一致, 下一轮重试。没有旧条目时本轮不计入该文件。
             state.stats.io_errors = state.stats.io_errors.saturating_add(1);
+            state.unreadable_files = state.unreadable_files.saturating_add(1);
             return Ok(stale);
         }
     };

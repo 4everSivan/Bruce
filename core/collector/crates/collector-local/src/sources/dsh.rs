@@ -25,8 +25,9 @@ use super::{
 };
 use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
 use crate::jsonl_cache::{
-    file_drift_notice, join_notices, truncated_usage_notice, CachedFilePayload, JsonlAggregator,
-    JsonlFileSignature, JsonlObservation, UsageProbe, FILE_DRIFT_STREAK,
+    file_drift_notice, join_notices, truncated_usage_notice, unreadable_files_notice,
+    CachedFilePayload, JsonlAggregator, JsonlFileSignature, JsonlObservation, UsageProbe,
+    FILE_DRIFT_STREAK,
 };
 use crate::{
     read_bounded_line, trim_line_end, ScanStats, MAX_DIRECTORY_SCAN_DEPTH, MAX_JSONL_RECORD_BYTES,
@@ -191,6 +192,7 @@ fn scan_dsh(
     let mut drifted_files = 0_u64;
     let mut truncated_usage = 0_u64;
     let mut damaged_frames = 0_u64;
+    let mut unreadable_files = 0_u64;
     let mut entries = BTreeMap::new();
     let mut changed = false;
     for candidate in &candidates {
@@ -228,6 +230,8 @@ fn scan_dsh(
                     // 陈旧条目保留的是旧签名, 下一轮签名仍不一致会再次尝试重建, 一旦
                     // 文件写完即被真实观测替换。
                     stats.io_errors = stats.io_errors.saturating_add(1);
+                    // C201: 整文件读取失败 (撕裂末帧不走这里) 计入说明。
+                    unreadable_files = unreadable_files.saturating_add(1);
                     match fallback {
                         Some(entry) => entry,
                         None => continue,
@@ -288,6 +292,7 @@ fn scan_dsh(
                         DSH_MAX_FRAME_CONTENT_BYTES / (1024 * 1024)
                     )
                 }),
+                (unreadable_files > 0).then(|| unreadable_files_notice(unreadable_files)),
             ]
             .into_iter()
             .flatten()
