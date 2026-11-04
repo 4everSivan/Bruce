@@ -8,6 +8,7 @@
 use super::sources::{SourceScan, SourceScanError};
 use super::{CompactContribution, ScanStats, AGGREGATION_VERSION};
 use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
+use crate::jsonl_cache::{UsageProbe, DATABASE_DRIFT_STREAK};
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
 use rusqlite::{Connection, OpenFlags};
@@ -128,6 +129,9 @@ pub(crate) struct SqliteCacheEntry {
     pub(crate) append_safe: bool,
     pub(crate) diagnostic: Option<String>,
     pub(crate) contribution: CompactContribution,
+    /// C193: 按 rowid 序的 usage 口径哨兵, 增量读取时接续。
+    #[serde(default)]
+    pub(crate) usage_probe: UsageProbe,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +150,8 @@ pub(crate) struct SqliteReadResult {
     pub(crate) rows_read: u64,
     pub(crate) diagnostic: Option<String>,
     pub(crate) append_safe: bool,
+    /// C193: 本次读到的行的口径哨兵 (全量读为整库, 增量读为新行)。
+    pub(crate) probe: UsageProbe,
 }
 
 pub(crate) trait SqliteIncrementalAdapter {
@@ -255,7 +261,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                     contribution,
                     stats,
                     diagnostic: entry.diagnostic.clone(),
-                    notice: None,
+                    notice: database_drift_notice(&entry.usage_probe),
                 });
             }
             stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
@@ -299,6 +305,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         adapter.merge_delta(&base, &delta.contribution, &config.window);
                     let cursor = merge_cursor(&entry.cursor, &delta.cursor);
                     let found = entry.found || delta.found;
+                    let probe = entry.usage_probe.then(delta.probe);
                     // C043: 编码失败不再 panic —— 跳过写缓存条目并计损坏,
                     // 本轮扫描结果照常返回, 下一轮走全量重建自愈。
                     match make_entry(
@@ -310,6 +317,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         delta.diagnostic.clone(),
                         delta.append_safe,
                         &contribution,
+                        probe,
                     ) {
                         Some(cache_entry) => {
                             match write_json_atomic(&cache_path, &cache_entry, cancellation) {
@@ -331,7 +339,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         contribution,
                         stats,
                         diagnostic: delta.diagnostic,
-                        notice: None,
+                        notice: database_drift_notice(&probe),
                     });
                 }
                 Ok(_) | Err(SourceScanError::Io(_)) => {
@@ -380,6 +388,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         append_safe: result.append_safe,
         diagnostic: result.diagnostic.clone(),
         contribution: compact,
+        usage_probe: result.probe,
     };
     match write_json_atomic(&cache_path, &entry, cancellation) {
         Ok(()) => {}
@@ -393,7 +402,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         contribution,
         stats,
         diagnostic: result.diagnostic,
-        notice: None,
+        notice: database_drift_notice(&result.probe),
     })
 }
 
@@ -461,6 +470,7 @@ fn make_entry(
     diagnostic: Option<String>,
     append_safe: bool,
     contribution: &UsageContribution,
+    usage_probe: UsageProbe,
 ) -> Option<SqliteCacheEntry> {
     // contribution 无法编码进当前窗口 (某天不在 day_list 中) 时返回 None:
     // 调用方应放弃写缓存条目并计入 cache_corruptions, 回退下一轮全量重建。
@@ -483,6 +493,17 @@ fn make_entry(
         append_safe,
         diagnostic,
         contribution: compact,
+        usage_probe,
+    })
+}
+
+/// C193: 数据库按 rowid 末尾连续 `DATABASE_DRIFT_STREAK` 行取不到用量 → 信息级说明。
+fn database_drift_notice(probe: &UsageProbe) -> Option<String> {
+    probe.drifted(DATABASE_DRIFT_STREAK).then(|| {
+        format!(
+            "疑似来源 usage 字段口径变化: 数据库最近 {} 条用量记录均未取到用量",
+            probe.zero_streak
+        )
     })
 }
 

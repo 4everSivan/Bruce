@@ -154,13 +154,71 @@ impl JsonlObservation {
     }
 }
 
+/// usage 口径漂移哨兵 (C193): 来源字段改名或嵌套变化时, 适配器会静默记 0 或丢弃该行,
+/// 用户只会看到数字骤降。按缓存单元 (会话文件 / 数据库) 记录「应带用量的候选行数」与
+/// 「末尾连续取不到非零用量的候选行数」; 末尾连续条数达到阈值即疑似口径变化。
+/// 随缓存条目持久化, 命中缓存的轮次同样可见; 旧条目缺省为空, 不触发说明。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub(crate) struct UsageProbe {
+    #[serde(rename = "c", default)]
+    pub(crate) candidates: u32,
+    #[serde(rename = "z", default)]
+    pub(crate) zero_streak: u32,
+}
+
+/// 会话文件末尾连续这么多条候选行取不到用量即疑似口径变化 (本机真实数据: 0)。
+pub(crate) const FILE_DRIFT_STREAK: u32 = 5;
+/// 数据库按 rowid 末尾连续这么多行取不到用量即疑似口径变化 (本机 ZCode 4 万行中最长零值连续 5 行)。
+pub(crate) const DATABASE_DRIFT_STREAK: u32 = 20;
+
+impl UsageProbe {
+    /// 记一条应带用量的候选行; `usable` 表示取到了非零用量。
+    pub(crate) fn observe(&mut self, usable: bool) {
+        self.candidates = self.candidates.saturating_add(1);
+        self.zero_streak = if usable {
+            0
+        } else {
+            self.zero_streak.saturating_add(1)
+        };
+    }
+
+    /// 接在 `self` 之后读到的 `later` (追加段 / 增量行) 合并进来。
+    pub(crate) fn then(self, later: Self) -> Self {
+        let later_saw_usage = later.candidates > later.zero_streak;
+        Self {
+            candidates: self.candidates.saturating_add(later.candidates),
+            zero_streak: if later_saw_usage {
+                later.zero_streak
+            } else {
+                self.zero_streak.saturating_add(later.zero_streak)
+            },
+        }
+    }
+
+    pub(crate) fn drifted(&self, threshold: u32) -> bool {
+        self.zero_streak >= threshold
+    }
+
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// 文件级哨兵说明: 有 `files` 个会话文件末尾连续取不到用量。
+pub(crate) fn file_drift_notice(files: u64) -> String {
+    format!(
+        "疑似来源 usage 字段口径变化: {files} 个会话文件末尾连续 {FILE_DRIFT_STREAK} 条以上用量记录均未取到用量"
+    )
+}
+
 /// 一个 JSONL 文件的观测载荷。落盘形状 (v3) 由下方手写 serde 决定:
-/// `{"project", "models": [..], "observations": [{"k","t","m","i","o","r","w","h"}]}`,
-/// 其中 `m` 是 `models` 下标, `k` 是 32 位十六进制去重键, 零值与缺省不落盘。
+/// `{"project", "models": [..], "observations": [{"k","t","m","i","o","r","w","h"}], "u": {"c","z"}}`,
+/// 其中 `m` 是 `models` 下标, `k` 是 32 位十六进制去重键, `u` 是 C193 口径哨兵, 零值与缺省不落盘。
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct CachedFilePayload {
     pub(crate) project: Option<String>,
     pub(crate) observations: Vec<JsonlObservation>,
+    pub(crate) probe: UsageProbe,
 }
 
 #[derive(Serialize)]
@@ -170,6 +228,8 @@ struct PayloadWireOut<'a> {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     models: Vec<&'a str>,
     observations: Vec<ObservationWireOut>,
+    #[serde(rename = "u", skip_serializing_if = "UsageProbe::is_empty")]
+    probe: UsageProbe,
 }
 
 #[derive(Serialize)]
@@ -202,6 +262,8 @@ struct PayloadWireIn {
     models: Vec<String>,
     #[serde(default)]
     observations: Vec<ObservationWireIn>,
+    #[serde(rename = "u", default)]
+    probe: UsageProbe,
 }
 
 #[derive(Deserialize)]
@@ -251,6 +313,7 @@ impl Serialize for CachedFilePayload {
             project: self.project.as_deref(),
             models,
             observations,
+            probe: self.probe,
         }
         .serialize(serializer)
     }
@@ -292,6 +355,7 @@ impl<'de> Deserialize<'de> for CachedFilePayload {
         Ok(Self {
             project: wire.project,
             observations,
+            probe: wire.probe,
         })
     }
 }
@@ -341,6 +405,7 @@ pub(crate) trait JsonlCacheAdapter {
         CachedFilePayload {
             project: appended.project,
             observations,
+            ..CachedFilePayload::default()
         }
     }
 
@@ -404,6 +469,7 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         adapter,
         cancellation,
         stats: ScanStats::default(),
+        drifted_files: 0,
         seen: std::collections::BTreeSet::new(),
         visited_dirs: std::collections::BTreeSet::new(),
     };
@@ -424,7 +490,8 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         contribution,
         stats: state.stats,
         diagnostic,
-        notice: None,
+        // C193: 口径哨兵走信息级通道 (C198), 不把 agent 置 error。
+        notice: (state.drifted_files > 0).then(|| file_drift_notice(state.drifted_files)),
     })
 }
 
@@ -433,6 +500,8 @@ struct TreeState<'a, A> {
     adapter: &'a A,
     cancellation: &'a CancellationToken,
     stats: ScanStats,
+    /// C193: 末尾连续取不到用量的会话文件数。
+    drifted_files: u64,
     seen: std::collections::BTreeSet<String>,
     /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
     visited_dirs: std::collections::BTreeSet<PathBuf>,
@@ -497,6 +566,9 @@ fn visit_tree<A: JsonlCacheAdapter>(
         }
         state.stats.files_scanned = state.stats.files_scanned.saturating_add(1);
         if let Some(payload) = process_file(&path, modified, state)? {
+            if payload.probe.drifted(FILE_DRIFT_STREAK) {
+                state.drifted_files = state.drifted_files.saturating_add(1);
+            }
             aggregator.absorb(&payload);
         }
     }
@@ -545,10 +617,11 @@ fn process_file<A: JsonlCacheAdapter>(
                     return Ok(None);
                 }
             };
-            let merged =
-                state
-                    .adapter
-                    .merge_append(std::mem::take(&mut entry.payload), appended, modified);
+            let previous = std::mem::take(&mut entry.payload);
+            // C193: 哨兵随追加段接续 (适配器的 merge_append 只管观测与项目)。
+            let probe = previous.probe.then(appended.probe);
+            let mut merged = state.adapter.merge_append(previous, appended, modified);
+            merged.probe = probe;
             if let Err(error) = cache_payload_entry(
                 path,
                 &metadata,

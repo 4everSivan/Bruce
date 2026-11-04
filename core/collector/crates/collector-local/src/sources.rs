@@ -13,6 +13,8 @@ mod sqlite_adapters;
 #[cfg(test)]
 mod tests_cache;
 #[cfg(test)]
+mod tests_drift;
+#[cfg(test)]
 mod tests_dsh;
 #[cfg(test)]
 mod tests_sources;

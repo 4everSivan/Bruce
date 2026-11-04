@@ -2684,6 +2684,56 @@ mod tests {
         std::fs::remove_dir_all(&home).ok();
     }
 
+    /// C193: 来源 usage 键改名 (Claude message.usage → message.token_usage) → 口径哨兵说明经
+    /// LOCAL_SOURCE_NOTICE 输出, Claude 仍为 ok、envelope 不 Partial。
+    #[test]
+    fn usage_drift_sentinel_is_a_notice_not_an_error() {
+        let home = history_test_home("usage-drift");
+        let history_db = home.join("usage-history.sqlite");
+        let claude = home.join("claude").join("demo");
+        std::fs::create_dir_all(&claude).unwrap();
+        let lines: String = (0..5)
+            .map(|index| {
+                json!({
+                    "type": "assistant",
+                    "timestamp": format!("2026-07-28T03:0{index}:00Z"),
+                    "message": {
+                        "id": format!("drift-{index}"),
+                        "model": "claude-sonnet",
+                        "token_usage": {"input_tokens": 100, "output_tokens": 10}
+                    }
+                })
+                .to_string()
+                    + "\n"
+            })
+            .collect();
+        std::fs::write(claude.join("session.jsonl"), lines).unwrap();
+        let request = history_request(&home, &history_db);
+        let output =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        let claude = claude_agent(&output.artifact);
+        assert_eq!(claude["status"], "ok", "哨兵说明不得把 agent 置 error");
+        assert!(
+            claude["note"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("疑似来源 usage 字段口径变化"),
+            "{}",
+            claude["note"]
+        );
+        assert!(has_diagnostic(
+            &output.diagnostics,
+            LOCAL_SOURCE_NOTICE,
+            "claude-code"
+        ));
+        assert_eq!(
+            collector_domain::response_status(true, &output.diagnostics),
+            collector_domain::ResponseStatus::Success
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
     /// C198: 说明附在 note 后且不改变状态; 故障优先, 说明不覆盖故障说明。
     #[test]
     fn finalize_local_agent_appends_notice_without_changing_status() {

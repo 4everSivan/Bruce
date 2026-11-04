@@ -3,6 +3,7 @@ use super::finish;
 use super::{
     number_u64, project_from_zcode, record, timestamp_number, SourceScan, SourceScanError,
 };
+use crate::jsonl_cache::UsageProbe;
 use crate::sqlite_cache::{
     scan_sqlite_cached, SqliteCacheConfig, SqliteCursor, SqliteIncrementalAdapter, SqliteReadResult,
 };
@@ -125,11 +126,12 @@ impl OpenCodeSqliteAdapter {
         window: &CollectionWindow,
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
-    ) -> Result<(UsageContribution, SqliteCursor, u64, bool), SourceScanError> {
+    ) -> Result<(UsageContribution, SqliteCursor, u64, bool, UsageProbe), SourceScanError> {
         cancellation.check()?;
         let mut builder = UsageContributionBuilder::new(window.clone());
         let mut next_cursor = SqliteCursor::default();
         let mut rows_read = 0u64;
+        let mut probe = UsageProbe::default();
         if let Some(cursor) = cursor {
             let Some(rowid) = cursor.rowid else {
                 return Err(sqlite_schema_error("opencode row cursor is unavailable"));
@@ -137,7 +139,7 @@ impl OpenCodeSqliteAdapter {
             let mut statement = connection
                 .prepare(
                     "SELECT rowid, data FROM message \
-                     WHERE rowid > ?1 AND data LIKE '%tokens%' \
+                     WHERE rowid > ?1 AND (data LIKE '%tokens%' OR data LIKE '%\"assistant\"%') \
                      ORDER BY rowid ASC",
                 )
                 .map_err(|_| sqlite_schema_error("opencode row cursor is unavailable"))?;
@@ -154,21 +156,31 @@ impl OpenCodeSqliteAdapter {
                 stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
                 rows_read = rows_read.saturating_add(1);
                 let row = row.map_err(|_| sqlite_query_error("opencode row read failed"))?;
-                Self::record_row(&mut builder, &mut next_cursor, &row, window, stats);
+                Self::record_row(
+                    &mut builder,
+                    &mut next_cursor,
+                    &mut probe,
+                    &row,
+                    window,
+                    stats,
+                );
             }
-            return Ok((builder.contribution(), next_cursor, rows_read, true));
+            return Ok((builder.contribution(), next_cursor, rows_read, true, probe));
         }
 
         let mut rowid_supported = true;
         let mut statement = match connection.prepare(
             "SELECT rowid, data FROM message \
-             WHERE data LIKE '%tokens%' ORDER BY rowid ASC",
+             WHERE data LIKE '%tokens%' OR data LIKE '%\"assistant\"%' ORDER BY rowid ASC",
         ) {
             Ok(statement) => statement,
             Err(_) => {
                 rowid_supported = false;
                 connection
-                    .prepare("SELECT data FROM message WHERE data LIKE '%tokens%'")
+                    .prepare(
+                        "SELECT data FROM message \
+                         WHERE data LIKE '%tokens%' OR data LIKE '%\"assistant\"%'",
+                    )
                     .map_err(|_| sqlite_query_error("opencode message query failed"))?
             }
         };
@@ -186,7 +198,14 @@ impl OpenCodeSqliteAdapter {
                 stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
                 rows_read = rows_read.saturating_add(1);
                 let row = row.map_err(|_| sqlite_query_error("opencode row read failed"))?;
-                Self::record_row(&mut builder, &mut next_cursor, &row, window, stats);
+                Self::record_row(
+                    &mut builder,
+                    &mut next_cursor,
+                    &mut probe,
+                    &row,
+                    window,
+                    stats,
+                );
             }
         } else {
             let result = statement
@@ -202,7 +221,14 @@ impl OpenCodeSqliteAdapter {
                 stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
                 rows_read = rows_read.saturating_add(1);
                 let row = row.map_err(|_| sqlite_query_error("opencode row read failed"))?;
-                Self::record_row(&mut builder, &mut next_cursor, &row, window, stats);
+                Self::record_row(
+                    &mut builder,
+                    &mut next_cursor,
+                    &mut probe,
+                    &row,
+                    window,
+                    stats,
+                );
             }
         }
         Ok((
@@ -210,12 +236,14 @@ impl OpenCodeSqliteAdapter {
             next_cursor,
             rows_read,
             rowid_supported,
+            probe,
         ))
     }
 
     fn record_row(
         builder: &mut UsageContributionBuilder,
         cursor: &mut SqliteCursor,
+        probe: &mut UsageProbe,
         row: &OpenCodeRow,
         window: &CollectionWindow,
         stats: &mut ScanStats,
@@ -232,6 +260,15 @@ impl OpenCodeSqliteAdapter {
             return;
         }
         let tokens = value.get("tokens").unwrap_or(&Value::Null);
+        let cache = tokens.get("cache").unwrap_or(&Value::Null);
+        let input = number_u64(tokens.get("input"));
+        let output =
+            number_u64(tokens.get("output")).saturating_add(number_u64(tokens.get("reasoning")));
+        let cache_read = number_u64(cache.get("read"));
+        let cache_write = number_u64(cache.get("write"));
+        // C193: 助手消息都应带 tokens; 取不到 (键改名 / 嵌套变化) 计入口径哨兵。查询同时选出不含
+        // tokens 的助手消息行, 否则改名后的行会在 SQL 层被静默滤掉。
+        probe.observe(input > 0 || output > 0 || cache_read > 0 || cache_write > 0);
         let Some(created) =
             timestamp_number(value.get("time").and_then(|value| value.get("created")))
         else {
@@ -241,7 +278,6 @@ impl OpenCodeSqliteAdapter {
         if created < (window.cutoff_ts * 1000.0) as i64 {
             return;
         }
-        let cache = tokens.get("cache").unwrap_or(&Value::Null);
         record(
             builder,
             created,
@@ -249,10 +285,10 @@ impl OpenCodeSqliteAdapter {
                 .get("modelID")
                 .and_then(Value::as_str)
                 .or(Some("opencode")),
-            number_u64(tokens.get("input")),
-            number_u64(tokens.get("output")).saturating_add(number_u64(tokens.get("reasoning"))),
-            number_u64(cache.get("read")),
-            number_u64(cache.get("write")),
+            input,
+            output,
+            cache_read,
+            cache_write,
             None,
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
@@ -282,7 +318,7 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
         stats: &mut ScanStats,
     ) -> Result<SqliteReadResult, SourceScanError> {
         let found = Self::has_rows(connection)?;
-        let (contribution, cursor, rows_read, rowid_supported) =
+        let (contribution, cursor, rows_read, rowid_supported, probe) =
             Self::read_and_parse(connection, None, window, cancellation, stats)?;
         Ok(SqliteReadResult {
             contribution,
@@ -291,6 +327,7 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
             rows_read,
             diagnostic: None,
             append_safe: rowid_supported,
+            probe,
         })
     }
 
@@ -302,7 +339,7 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
     ) -> Result<SqliteReadResult, SourceScanError> {
-        let (contribution, cursor, rows_read, _rowid_supported) =
+        let (contribution, cursor, rows_read, _rowid_supported, probe) =
             Self::read_and_parse(connection, Some(cursor), window, cancellation, stats)?;
         Ok(SqliteReadResult {
             contribution,
@@ -311,6 +348,7 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
             rows_read,
             diagnostic: None,
             append_safe: true,
+            probe,
         })
     }
 
@@ -381,11 +419,12 @@ impl ZCodeSqliteAdapter {
         cutoff_ms: i64,
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
-    ) -> Result<(UsageContribution, SqliteCursor, u64, bool), SourceScanError> {
+    ) -> Result<(UsageContribution, SqliteCursor, u64, bool, UsageProbe), SourceScanError> {
         cancellation.check()?;
         let mut builder = UsageContributionBuilder::new(window.clone());
         let mut next_cursor = SqliteCursor::default();
         let mut rows_read = 0u64;
+        let mut probe = UsageProbe::default();
         if let Some(cursor) = cursor {
             let Some(rowid) = cursor.rowid else {
                 return Err(sqlite_schema_error("zcode row cursor is unavailable"));
@@ -421,9 +460,9 @@ impl ZCodeSqliteAdapter {
                 stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
                 rows_read = rows_read.saturating_add(1);
                 let row = row.map_err(|_| sqlite_query_error("zcode row read failed"))?;
-                Self::record_row(&mut builder, &mut next_cursor, &row, window);
+                Self::record_row(&mut builder, &mut next_cursor, &mut probe, &row, window);
             }
-            return Ok((builder.contribution(), next_cursor, rows_read, true));
+            return Ok((builder.contribution(), next_cursor, rows_read, true, probe));
         }
 
         let mut rowid_supported = true;
@@ -470,7 +509,7 @@ impl ZCodeSqliteAdapter {
                 stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
                 rows_read = rows_read.saturating_add(1);
                 let row = row.map_err(|_| sqlite_query_error("zcode row read failed"))?;
-                Self::record_row(&mut builder, &mut next_cursor, &row, window);
+                Self::record_row(&mut builder, &mut next_cursor, &mut probe, &row, window);
             }
         } else {
             let result = statement
@@ -494,7 +533,7 @@ impl ZCodeSqliteAdapter {
                 stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
                 rows_read = rows_read.saturating_add(1);
                 let row = row.map_err(|_| sqlite_query_error("zcode row read failed"))?;
-                Self::record_row(&mut builder, &mut next_cursor, &row, window);
+                Self::record_row(&mut builder, &mut next_cursor, &mut probe, &row, window);
             }
         }
         Ok((
@@ -502,12 +541,14 @@ impl ZCodeSqliteAdapter {
             next_cursor,
             rows_read,
             rowid_supported,
+            probe,
         ))
     }
 
     fn record_row(
         builder: &mut UsageContributionBuilder,
         cursor: &mut SqliteCursor,
+        probe: &mut UsageProbe,
         row: &ZCodeRow,
         _window: &CollectionWindow,
     ) {
@@ -525,7 +566,11 @@ impl ZCodeSqliteAdapter {
         let reasoning = u64::try_from(row.reasoning.unwrap_or(0)).unwrap_or(0);
         let cache_creation = u64::try_from(row.cache_creation.unwrap_or(0)).unwrap_or(0);
         let cache_read = u64::try_from(row.cache_read.unwrap_or(0)).unwrap_or(0);
-        if input == 0 && output == 0 && reasoning == 0 && cache_creation == 0 && cache_read == 0 {
+        let usable =
+            input > 0 || output > 0 || reasoning > 0 || cache_creation > 0 || cache_read > 0;
+        // C193: 每行 model_usage 都应带用量 (列改名已由 schema 指纹拦截, 这里看取值全零)。
+        probe.observe(usable);
+        if !usable {
             return;
         }
         let project = project_from_zcode(row.directory.clone(), row.task_type.clone());
@@ -590,7 +635,7 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
     ) -> Result<SqliteReadResult, SourceScanError> {
         let found = Self::has_rows(connection)?;
         let cutoff_ms = (window.cutoff_ts * 1000.0) as i64;
-        let (contribution, cursor, rows_read, rowid_supported) =
+        let (contribution, cursor, rows_read, rowid_supported, probe) =
             Self::read_and_parse(connection, None, window, cutoff_ms, cancellation, stats)?;
         Ok(SqliteReadResult {
             contribution,
@@ -599,6 +644,7 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
             rows_read,
             diagnostic: None,
             append_safe: rowid_supported,
+            probe,
         })
     }
 
@@ -611,7 +657,7 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
         stats: &mut ScanStats,
     ) -> Result<SqliteReadResult, SourceScanError> {
         let cutoff_ms = (window.cutoff_ts * 1000.0) as i64;
-        let (contribution, cursor, rows_read, _rowid_supported) = Self::read_and_parse(
+        let (contribution, cursor, rows_read, _rowid_supported, probe) = Self::read_and_parse(
             connection,
             Some(cursor),
             window,
@@ -626,6 +672,7 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
             rows_read,
             diagnostic: None,
             append_safe: true,
+            probe,
         })
     }
 

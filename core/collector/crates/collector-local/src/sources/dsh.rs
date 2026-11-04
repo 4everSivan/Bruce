@@ -25,7 +25,8 @@ use super::{
 };
 use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
 use crate::jsonl_cache::{
-    CachedFilePayload, JsonlAggregator, JsonlFileSignature, JsonlObservation,
+    file_drift_notice, CachedFilePayload, JsonlAggregator, JsonlFileSignature, JsonlObservation,
+    UsageProbe, FILE_DRIFT_STREAK,
 };
 use crate::{
     read_bounded_line, trim_line_end, ScanStats, MAX_DIRECTORY_SCAN_DEPTH, MAX_JSONL_RECORD_BYTES,
@@ -58,9 +59,10 @@ const DSH_SOURCE_ID: &str = "dsh";
 /// 去重键命名空间: 键 = SHA-256(域分隔 + 命名空间 + message id) 的前 128 位。
 const DSH_DEDUPE_NAMESPACE: &str = "dsh-message";
 
-/// 一条用量事件必须出现的字面量 (解析前预筛, C110): 用量行含 `"usage"`, 会话头含 `"cwd"`。
+/// 一条用量事件必须出现的字面量 (解析前预筛, C110): 用量行含 `"usage"`, 会话头含 `"cwd"`;
+/// C193 起助手消息即使不含 `"usage"` 也要解析 (计入口径哨兵, 防 usage 键改名后被预筛静默滤掉)。
 /// 其余事件 (step/tool/reasoning 流块) 不建 JSON DOM。
-const DSH_NEEDLES: &[&[u8]] = &[b"\"usage\"", b"\"cwd\""];
+const DSH_NEEDLES: &[&[u8]] = &[b"\"usage\"", b"\"cwd\"", b"assistant/message"];
 
 /// 单帧解压内容上限 (C189): dsh 常态一帧一条事件 (实测最大约 250 KiB), 8 MiB 留足余量;
 /// 多帧流式解码必须把整帧缓冲出来才能取出 (环形窗口保留的字节在帧尾前不可取), 该上限把
@@ -174,6 +176,7 @@ fn scan_dsh(
     let previous_count = previous.len();
 
     let mut aggregator = DedupedAggregator::new(window, DedupeRule::LargestTotal);
+    let mut drifted_files = 0_u64;
     let mut entries = BTreeMap::new();
     let mut changed = false;
     for candidate in &candidates {
@@ -213,6 +216,9 @@ fn scan_dsh(
                 }
             },
         };
+        if entry.payload.probe.drifted(FILE_DRIFT_STREAK) {
+            drifted_files = drifted_files.saturating_add(1);
+        }
         // C176: 逐文件并入聚合器后即丢弃载荷, 不把全部观测同时留在内存里。
         aggregator.absorb(&entry.payload);
         entries.insert(key, entry);
@@ -250,7 +256,7 @@ fn scan_dsh(
         contribution,
         stats,
         diagnostic,
-        notice: None,
+        notice: (drifted_files > 0).then(|| file_drift_notice(drifted_files)),
     })
 }
 
@@ -392,6 +398,7 @@ fn parse_dsh_file(
     let mut reader = open_dsh_reader(path)?;
     let mut project: Option<String> = None;
     let mut observations = Vec::new();
+    let mut probe = UsageProbe::default();
     let mut line_buffer = Vec::new();
     loop {
         cancellation.check()?;
@@ -431,9 +438,17 @@ fn parse_dsh_file(
             Some("assistant/message") => match dsh_event_observation(&value) {
                 DshLineOutcome::Usage(observation) => {
                     stats.usage_records = stats.usage_records.saturating_add(1);
+                    probe.observe(
+                        observation.input > 0
+                            || observation.output > 0
+                            || observation.cache_read > 0
+                            || observation.cache_creation > 0,
+                    );
                     observations.push(observation);
                 }
                 DshLineOutcome::Ignored => {
+                    // C193: 助手消息却取不到用量字段, 计入口径哨兵。
+                    probe.observe(false);
                     stats.ignored_lines = stats.ignored_lines.saturating_add(1);
                 }
                 DshLineOutcome::Malformed => {
@@ -448,6 +463,7 @@ fn parse_dsh_file(
     Ok(CachedFilePayload {
         project,
         observations,
+        probe,
     })
 }
 

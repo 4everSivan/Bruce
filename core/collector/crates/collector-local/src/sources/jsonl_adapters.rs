@@ -11,7 +11,7 @@ const CODEBUDDY_NEEDLES: &[&[u8]] = &[b"\"assistant\"", b"\"function_call\""];
 const GROK_NEEDLES: &[&[u8]] = &[b"\"user\"", b"\"assistant\""];
 use crate::jsonl_cache::{
     scan_cached_jsonl_tree, scan_jsonl_file_from_offset, CachedFilePayload, DedupeKey,
-    JsonlAggregator, JsonlCacheAdapter, JsonlCacheConfig, JsonlObservation,
+    JsonlAggregator, JsonlCacheAdapter, JsonlCacheConfig, JsonlObservation, UsageProbe,
 };
 use crate::ScanStats;
 use collector_domain::{
@@ -223,6 +223,26 @@ impl JsonlAggregator for DedupedAggregator {
     }
 }
 
+/// 一行对 usage 口径哨兵 (C193) 的意义: 不是应带用量的行 / 是但取不到用量 / 解析出的观测。
+pub(super) enum LineUsage {
+    Skip,
+    Missing,
+    Usage(JsonlObservation),
+}
+
+impl From<Option<JsonlObservation>> for LineUsage {
+    fn from(observation: Option<JsonlObservation>) -> Self {
+        observation.map_or(Self::Skip, Self::Usage)
+    }
+}
+
+fn observation_has_usage(observation: &JsonlObservation) -> bool {
+    observation.input > 0
+        || observation.output > 0
+        || observation.cache_read > 0
+        || observation.cache_creation > 0
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_cached_file<F>(
     path: &Path,
@@ -235,9 +255,10 @@ fn parse_cached_file<F>(
     mut parse: F,
 ) -> Result<CachedFilePayload, SourceScanError>
 where
-    F: FnMut(&Path, f64, Value, &mut ScanStats) -> Option<JsonlObservation>,
+    F: FnMut(&Path, f64, Value, &mut ScanStats) -> LineUsage,
 {
     let mut observations = Vec::new();
+    let mut probe = UsageProbe::default();
     scan_jsonl_file_from_offset(
         path,
         start_offset,
@@ -251,14 +272,20 @@ where
             let Some(value) = parse_json_line(line, stats) else {
                 return;
             };
-            if let Some(observation) = parse(path, modified, value, stats) {
-                observations.push(observation);
+            match parse(path, modified, value, stats) {
+                LineUsage::Skip => {}
+                LineUsage::Missing => probe.observe(false),
+                LineUsage::Usage(observation) => {
+                    probe.observe(observation_has_usage(&observation));
+                    observations.push(observation);
+                }
             }
         },
     )?;
     Ok(CachedFilePayload {
         project,
         observations,
+        probe,
     })
 }
 
@@ -295,15 +322,15 @@ impl JsonlCacheAdapter for KimiUsageJsonlAdapter {
             |_, _, value, stats| {
                 if value.get("type").and_then(Value::as_str) != Some("usage.record") {
                     stats.ignored_lines = stats.ignored_lines.saturating_add(1);
-                    return None;
+                    return LineUsage::Skip;
                 }
                 let Some(timestamp) = timestamp_number(value.get("time")) else {
                     stats.malformed_lines = stats.malformed_lines.saturating_add(1);
-                    return None;
+                    return LineUsage::Skip;
                 };
                 let usage = value.get("usage");
                 stats.usage_records = stats.usage_records.saturating_add(1);
-                Some(JsonlObservation {
+                LineUsage::Usage(JsonlObservation {
                     dedupe_key: None,
                     timestamp_millis: timestamp,
                     model: value
@@ -459,7 +486,7 @@ impl JsonlCacheAdapter for ClaudeJsonlAdapter {
                 if observation.is_some() {
                     stats.usage_records = stats.usage_records.saturating_add(1);
                 }
-                observation
+                observation.into()
             },
         )
     }
@@ -485,26 +512,26 @@ pub fn scan_claude_cached(
 
 struct CodeBuddyJsonlAdapter;
 
-fn codebuddy_observation(
-    path: &Path,
-    value: &Value,
-    stats: &mut ScanStats,
-) -> Option<JsonlObservation> {
+fn codebuddy_observation(path: &Path, value: &Value, stats: &mut ScanStats) -> LineUsage {
     let record_type = value.get("type").and_then(Value::as_str);
     if record_type != Some("message") && record_type != Some("function_call") {
-        return None;
+        return LineUsage::Skip;
     }
     if record_type == Some("message")
         && value.get("role").and_then(Value::as_str) != Some("assistant")
     {
-        return None;
+        return LineUsage::Skip;
     }
-    let timestamp = timestamp_number(value.get("timestamp"))?;
-    let (input, output, cache_read, cache_creation) = codebuddy_usage(value)?;
+    let Some(timestamp) = timestamp_number(value.get("timestamp")) else {
+        return LineUsage::Skip;
+    };
+    let Some((input, output, cache_read, cache_creation)) = codebuddy_usage(value) else {
+        return LineUsage::Missing;
+    };
     stats.usage_records = stats.usage_records.saturating_add(1);
     let raw_key =
         codebuddy_message_id(value).map(|id| format!("{}::{id}", codebuddy_scope(path, value),));
-    Some(JsonlObservation {
+    LineUsage::Usage(JsonlObservation {
         dedupe_key: raw_key
             .as_deref()
             .map(|key| dedupe_key("codebuddy-message", key)),
@@ -627,7 +654,7 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
                 if observation.is_some() {
                     stats.usage_records = stats.usage_records.saturating_add(1);
                 }
-                observation
+                observation.into()
             },
         )
     }
@@ -648,6 +675,7 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
         CachedFilePayload {
             project: appended.project,
             observations,
+            ..CachedFilePayload::default()
         }
     }
 
@@ -708,26 +736,28 @@ pub fn scan_grok_cached(
 
 struct PiJsonlAdapter;
 
-fn pi_observation(window: &CollectionWindow, value: &Value) -> Option<JsonlObservation> {
+fn pi_observation(window: &CollectionWindow, value: &Value) -> LineUsage {
     let kind = value.get("type").and_then(Value::as_str);
     if kind == Some("session") || kind != Some("message") {
-        return None;
+        return LineUsage::Skip;
     }
     let message = value.get("message").unwrap_or(&Value::Null);
     if message.get("role").and_then(Value::as_str) != Some("assistant") {
-        return None;
+        return LineUsage::Skip;
     }
     let usage = message.get("usage").unwrap_or(&Value::Null);
     if usage.is_null() {
-        return None;
+        return LineUsage::Missing;
     }
-    let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
+    let Some(timestamp) = timestamp_number(message.get("timestamp")).or_else(|| {
         value
             .get("timestamp")
             .and_then(Value::as_str)
             .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
-    })?;
-    Some(JsonlObservation {
+    }) else {
+        return LineUsage::Skip;
+    };
+    LineUsage::Usage(JsonlObservation {
         dedupe_key: None,
         timestamp_millis: if timestamp < 10_000_000_000 {
             timestamp * 1000
@@ -772,7 +802,7 @@ impl JsonlCacheAdapter for PiJsonlAdapter {
             project_from_parent(path),
             |_, _, value, stats| {
                 let observation = pi_observation(window, &value);
-                if observation.is_some() {
+                if matches!(observation, LineUsage::Usage(_)) {
                     stats.usage_records = stats.usage_records.saturating_add(1);
                 }
                 observation

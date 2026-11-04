@@ -3,7 +3,9 @@ use super::{
     SourceScanError,
 };
 use crate::cache_util::fingerprint_head_tail;
-use crate::jsonl_cache::CachedUsageObservation;
+use crate::jsonl_cache::{
+    file_drift_notice, CachedUsageObservation, UsageProbe, FILE_DRIFT_STREAK,
+};
 
 /// Codex rollout 中参与聚合的行类型 (C110 解析前预筛; C190 起含单次响应记录)。
 const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count", b"token_usage_record"];
@@ -26,9 +28,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct CodexTokenCounters {
+    /// 含缓存读取与缓存写入的总输入 (OpenAI usage 口径)。
     input: u64,
     cache_read: u64,
+    /// C193: Codex 0.164+ 的 `cache_write_input_tokens`, 同样包含在 input 内
+    /// (Codex 解析用例: input 100 = cached 40 + cache_write 60, total = input + output)。
+    cache_write: u64,
     output: u64,
+}
+
+impl CodexTokenCounters {
+    const ZERO: Self = Self {
+        input: 0,
+        cache_read: 0,
+        cache_write: 0,
+        output: 0,
+    };
+
+    fn is_zero(&self) -> bool {
+        *self == Self::ZERO
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -52,6 +71,7 @@ fn codex_token_counters(value: Option<&Value>) -> Option<CodexTokenCounters> {
         "input_tokens",
         "cached_input_tokens",
         "cache_read_input_tokens",
+        "cache_write_input_tokens",
         "output_tokens",
         "total_tokens",
     ]
@@ -63,6 +83,7 @@ fn codex_token_counters(value: Option<&Value>) -> Option<CodexTokenCounters> {
     Some(CodexTokenCounters {
         input: codex_counter(value, &["input_tokens"]),
         cache_read: codex_counter(value, &["cached_input_tokens", "cache_read_input_tokens"]),
+        cache_write: codex_counter(value, &["cache_write_input_tokens"]),
         output: codex_counter(value, &["output_tokens"]),
     })
 }
@@ -86,6 +107,7 @@ struct CodexRecordUsage {
     input_tokens: Option<u64>,
     cached_input_tokens: Option<u64>,
     cache_read_input_tokens: Option<u64>,
+    cache_write_input_tokens: Option<u64>,
     output_tokens: Option<u64>,
 }
 
@@ -102,6 +124,7 @@ impl CodexUsageRecord {
                     .cached_input_tokens
                     .or(usage.cache_read_input_tokens)
                     .unwrap_or(0),
+                cache_write: usage.cache_write_input_tokens.unwrap_or(0),
                 output: usage.output_tokens.unwrap_or(0),
             },
         ))
@@ -134,6 +157,7 @@ fn codex_delta(
     CodexTokenCounters {
         input: current.input.saturating_sub(previous.input),
         cache_read: current.cache_read.saturating_sub(previous.cache_read),
+        cache_write: current.cache_write.saturating_sub(previous.cache_write),
         output: current.output.saturating_sub(previous.output),
     }
 }
@@ -145,12 +169,14 @@ fn codex_counters_rolled_back(
 ) -> bool {
     current.input < high_water.input
         || current.cache_read < high_water.cache_read
+        || current.cache_write < high_water.cache_write
         || current.output < high_water.output
 }
 
 fn update_codex_high_water(high_water: &mut CodexTokenCounters, current: &CodexTokenCounters) {
     high_water.input = high_water.input.max(current.input);
     high_water.cache_read = high_water.cache_read.max(current.cache_read);
+    high_water.cache_write = high_water.cache_write.max(current.cache_write);
     high_water.output = high_water.output.max(current.output);
 }
 
@@ -527,8 +553,9 @@ pub(crate) fn scan_codex_with_cancellation(
 /// 观测值格式变化或 Codex 解析规则变化时必须升级, 令旧缓存整体重建。
 /// v1 (C117); v2 (C190): 每条观测带单次响应去重键 (`r:<response_id>` / `t:<毫秒时间戳>`),
 /// 供同会话副本取并集 —— 升版同时让 C197 前被写成空观测的条目整体重解析一次;
-/// v3 (C191): 仅含累计计数的事件在计数回退时按新基线计量, 条目记录回退次数。
-const CODEX_FILE_CACHE_SCHEMA: u32 = 3;
+/// v3 (C191): 仅含累计计数的事件在计数回退时按新基线计量, 条目记录回退次数;
+/// v4 (C193): 计入 `cache_write_input_tokens` (单列 cache_creation, 从 input 扣除), 条目带口径哨兵。
+const CODEX_FILE_CACHE_SCHEMA: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct CodexFileCache {
@@ -551,6 +578,9 @@ struct CodexFileEntry {
     /// 命中缓存的轮次说明同样可见。
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     counter_resets: u32,
+    /// C193: usage 口径哨兵, 命中缓存的轮次同样可见。
+    #[serde(default)]
+    usage_probe: UsageProbe,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -561,6 +591,7 @@ fn is_zero_u32(value: &u32) -> bool {
 struct CodexParse {
     observations: Vec<CachedUsageObservation>,
     counter_resets: u32,
+    probe: UsageProbe,
 }
 
 fn counter_reset_notice(sessions: u64) -> String {
@@ -667,6 +698,7 @@ fn parse_codex_file(
     // C191: 文件内见过的累计值 —— 回退到见过的值是重放快照, 不是重置。
     let mut seen_totals = std::collections::HashSet::<CodexTokenCounters>::new();
     let mut counter_resets = 0_u32;
+    let mut probe = UsageProbe::default();
     let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
     let mut previous_token_signature: Option<CodexTokenSignature> = None;
     // C190: 最近一条单次响应记录 (response_id + 用量), 由下一条用量相同的 token_count 认领。
@@ -740,9 +772,17 @@ fn parse_codex_file(
             if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
                 current_model = Some(model.to_owned());
             }
+            // C193: 带 info 的 token_count 都应带用量; 取不到计数字段 (改名 / 嵌套变化) 计入哨兵。
             let Some(signature) = codex_token_signature(info) else {
+                if info.is_object() {
+                    probe.observe(false);
+                }
                 return;
             };
+            probe.observe(
+                signature.last.is_some_and(|last| !last.is_zero())
+                    || signature.total.is_some_and(|total| !total.is_zero()),
+            );
             let snapshot_source = codex_snapshot_source(payload);
             let duplicate_snapshot = signature.total.is_some()
                 && (last_signature_by_source.get(&snapshot_source) == Some(&signature)
@@ -766,11 +806,7 @@ fn parse_codex_file(
                     .is_some_and(|(total, high_water)| {
                         codex_counters_rolled_back(high_water, total)
                     });
-            let zero = CodexTokenCounters {
-                input: 0,
-                cache_read: 0,
-                output: 0,
-            };
+            let zero = CodexTokenCounters::ZERO;
             let usage = if duplicate_snapshot {
                 zero
             } else if let Some(last) = signature.last {
@@ -795,7 +831,7 @@ fn parse_codex_file(
                     None => total_high_water = Some(total),
                 }
             }
-            if usage.input == 0 && usage.cache_read == 0 && usage.output == 0 {
+            if usage.is_zero() {
                 return;
             }
             // C190: 单次响应去重键 —— 前一条记录用量相同时取其 response_id, 否则 (旧版
@@ -811,10 +847,14 @@ fn parse_codex_file(
                 dedupe_key: Some(dedupe_key),
                 timestamp_millis: timestamp,
                 model: current_model.clone(),
-                input: usage.input.saturating_sub(usage.cache_read),
+                input: usage
+                    .input
+                    .saturating_sub(usage.cache_read)
+                    .saturating_sub(usage.cache_write),
                 output: usage.output,
                 cache_read: usage.cache_read,
-                cache_creation: 0,
+                // C193: 缓存写入单列为 cache_creation (OpenAI 不区分 TTL, 记 5 分钟档)。
+                cache_creation: usage.cache_write,
                 cache_creation_1h: 0,
                 project: None,
             });
@@ -827,6 +867,7 @@ fn parse_codex_file(
     Ok(CodexParse {
         observations,
         counter_resets,
+        probe,
     })
 }
 
@@ -927,6 +968,7 @@ pub fn scan_codex_cached_with_cancellation(
     let mut changed = false;
     let mut unreadable_files = 0_u64;
     let mut reset_sessions = 0_u64;
+    let mut drifted_files = 0_u64;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for group in &groups {
         let mut entries = Vec::with_capacity(group.len());
@@ -949,6 +991,7 @@ pub fn scan_codex_cached_with_cancellation(
                             inode: candidate.inode,
                             observations: parse.observations,
                             counter_resets: parse.counter_resets,
+                            usage_probe: parse.probe,
                         }
                     }
                     Err(SourceScanError::Runtime(error)) => return Err(error.into()),
@@ -971,6 +1014,12 @@ pub fn scan_codex_cached_with_cancellation(
         if entries.iter().any(|(_, entry)| entry.counter_resets > 0) {
             reset_sessions = reset_sessions.saturating_add(1);
         }
+        drifted_files = drifted_files.saturating_add(
+            entries
+                .iter()
+                .filter(|(_, entry)| entry.usage_probe.drifted(FILE_DRIFT_STREAK))
+                .count() as u64,
+        );
         // C190: 同会话各副本按单次响应去重键取并集后再并入聚合。
         let copies: Vec<&[CachedUsageObservation]> = entries
             .iter()
@@ -1009,6 +1058,9 @@ pub fn scan_codex_cached_with_cancellation(
     }
     if reset_sessions > 0 {
         notes.push(counter_reset_notice(reset_sessions));
+    }
+    if drifted_files > 0 {
+        notes.push(file_drift_notice(drifted_files));
     }
     if unreadable_files > 0 {
         notes.push(format!(
