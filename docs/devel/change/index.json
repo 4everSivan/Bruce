@@ -2059,7 +2059,7 @@
     "C201": {
       "title": "JSONL 与 dsh 会话文件读取失败时补信息级说明（与 Codex 同口径）",
       "type": "Enhancement",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C201-read-failure-notice",
       "topic": "TokenUsage",
       "version": "0.17.0",

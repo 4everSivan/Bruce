@@ -4,7 +4,7 @@
   "title": "JSONL 与 dsh 会话文件读取失败时补信息级说明（与 Codex 同口径）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C201-read-failure-notice",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "grep -n \"io_errors = state.stats.io_errors.saturating_add(1)\" core/collector/crates/collector-local/src/jsonl_cache.rs; grep -n \"notice:\" core/collector/crates/collector-local/src/jsonl_cache.rs core/collector/crates/collector-local/src/sources/dsh.rs",
     "expected": "读取失败只计 io_errors，notice 只含口径哨兵 / 超长行 / 坏帧说明，没有读取失败说明",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-04 fix/C200 分支@c565b6e 预检命中：jsonl_cache.rs process_file 的 stat 失败 / 追加段与整文件解析失败只计 io_errors（:675 / :731 / :756），dsh 整文件失败同样只计 io_errors；两者 notice 只含口径哨兵 / 超长行 / 坏帧说明。Codex 同场景已有「Codex 会话文件读取失败 N 个…」说明（C197）"
   },
   "callback": {
     "before": [
@@ -48,7 +48,7 @@
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
-    "modified": false,
+    "modified": true,
     "rule_diff": {
       "before": "JSONL / dsh 读取失败沿用旧条目或本轮不计入，不输出说明",
       "after": "JSONL / dsh 与 Codex 一样，本轮存在读取失败的会话文件时以信息级说明输出文件数（删除竞态与撕裂末帧除外）"
@@ -56,7 +56,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261104-14",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -64,36 +64,38 @@
         "item": "自动化测试",
         "true_if": "回归：JSONL 文件追加后不可读 → 说明含文件数且沿用旧载荷；列目录后被删除 → 无说明；dsh 首帧不可解 → 说明；撕裂末帧 → 无说明；全量测试 Exit 0",
         "false_if": "读取失败仍无说明、删除 / 撕裂误报，或存在测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c201-verify-local.log）：Rust 586 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。回归断言：unreadable_changed_file_keeps_stale_payload_and_other_files（已缓存会话追加后 chmod 000 → 沿用旧载荷 107，notice=「会话文件读取失败 1 个, 本轮沿用上次结果或暂未计入, 下次刷新重试」、diagnostic=None；恢复后说明消失）；file_deleted_between_listing_and_stat_skips_only_that_file（列目录后被删除 → 无说明）；dsh_skips_corrupt_compressed_files（4 个整文件损坏 → 说明「会话文件读取失败 4 个…」）；dsh_torn_tail_keeps_complete_frames_and_recovers（撕裂末帧 → 无说明，原断言不变）。变异检查：去掉 JSONL 说明 → unreadable 用例失败；去掉 dsh 说明 → corrupt 用例失败",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "临时 home 复现：Claude 会话追加后 chmod 000 → Claude note 附读取失败说明、status=ok；恢复后说明消失",
         "false_if": "无说明或状态被置 error",
-        "evidence": "",
-        "result": null
+        "evidence": "Bruce-collector 真实 BridgeRequest + 临时 home（local/c198/c201-behavior.log）：已缓存的 Claude 会话追加后 chmod 000 → Claude status=ok、today 1,380（沿用旧载荷）、note「额度见下方 Claude 服务 (会话文件读取失败 1 个, 本轮沿用上次结果或暂未计入, 下次刷新重试)」、仅 LOCAL_SOURCE_NOTICE@claude-code、envelope success；恢复权限后 1,900、说明消失、无诊断",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "本机全部真实来源冷 / 热各一轮无读取失败说明、用量不变；io_errors 计数口径不变",
         "false_if": "真实数据误报或数值变化",
-        "evidence": "",
-        "result": null
+        "evidence": "本机全部真实来源冷 / 热各一轮（local/c198/c201-behavior.log）：diagnostics 均为空，无读取失败说明；io_errors 计数口径不变（只新增说明计数），C196 / C192 / C197 既有用例全部通过。说明只经 SourceScan.notice（C198 通道），不改变 agent 状态，C200 起 mac partial 原因也不会取到它",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "ec7b215",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-04",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }
