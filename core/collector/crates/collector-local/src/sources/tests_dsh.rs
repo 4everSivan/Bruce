@@ -599,13 +599,11 @@ fn dsh_cache_hits_unchanged_files_and_rebuilds_appended_frames() {
     fs::remove_dir_all(root).ok();
 }
 
-/// 活写撕裂兜底 (C189): 正在写入的会话被抓到「帧未写完」时, 沿用上一轮的陈旧观测继续
-/// 本轮聚合 —— 数字不下降、found 保持 (app 层即 dsh 行仍为 ok), 文件写完后自动恢复真实值。
-///
-/// 统计口径: 这种兜底只计 io_errors —— 既不是 cache_hits (没有复用「已确认未变化」的条目),
-/// 也不是 cache_rebuilds (重建失败), 旧条目也不进 cache_deletions。
+/// 活写撕裂 (C189 / C192): 正在写入的会话被抓到「新追加的帧只落了一半」—— 之前的帧照常计入,
+/// 数字不下降; 撕裂末帧计一次 io_errors, 不算坏帧 (不产生说明)。部分解析照常缓存, 签名不变时
+/// 直接命中 (不再每轮重解压); 写完后签名变化, 重建为真实值。
 #[test]
-fn dsh_torn_write_falls_back_to_last_good_observations() {
+fn dsh_torn_tail_keeps_complete_frames_and_recovers() {
     let root = temp_root("dsh-torn-write");
     let cache_root = root.join("cache");
     let session = root.join("workspace-dir/session-a/session.v4.jsonl.zstd");
@@ -624,63 +622,131 @@ fn dsh_torn_write_falls_back_to_last_good_observations() {
     write_compressed(
         &root,
         "workspace-dir/session-a/session.v4.jsonl.zstd",
-        &[header.clone(), first.clone(), second.clone()],
+        &[header, first, second],
     );
-    let warm = scan_dsh_cached(&root, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    let scan =
+        || scan_dsh_cached(&root, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    let warm = scan();
     assert_eq!(today(&warm).total, 36);
     let complete = fs::read(&session).unwrap();
+    let third_line = assistant_message(
+        BASE + 2_000,
+        Some("m-3"),
+        Some("deepseek-flash"),
+        50,
+        10,
+        0,
+        0,
+        60,
+    );
+    let third = zstd_raw_frame(format!("{third_line}\n").as_bytes());
 
-    // 模拟活写撕读: 最后一帧只落了一半 (截断尾字节), 签名已变但解压必然失败。
-    fs::write(&session, &complete[..complete.len() - 6]).unwrap();
-    let torn = scan_dsh_cached(&root, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    // 第三帧只落了一半。
+    let mut torn_bytes = complete.clone();
+    torn_bytes.extend_from_slice(&third[..third.len() / 2]);
+    fs::write(&session, &torn_bytes).unwrap();
+    let torn = scan();
     assert_eq!(
         torn.contribution, warm.contribution,
-        "解析失败时沿用陈旧观测, 本轮数字不得下降"
+        "撕裂末帧之前的帧照常计入"
     );
-    assert!(torn.found, "会话仍在, app 层据此保持 ok");
-    assert_eq!(today(&torn).total, 36);
+    assert!(torn.found);
     assert_eq!(torn.stats.io_errors, 1);
-    assert_eq!(torn.stats.cache_hits, 0, "陈旧条目不得误计为命中");
-    assert_eq!(torn.stats.cache_rebuilds, 0, "重建失败不计重建");
-    assert_eq!(torn.stats.cache_deletions, 0, "陈旧条目不得被清理");
-    let cache_files = fs::read_dir(&cache_root)
-        .unwrap()
-        .filter(|entry| entry.as_ref().unwrap().file_name() != "dsh-sessions-v1.json")
-        .count();
-    assert_eq!(cache_files, 0, "缓存目录只应有 dsh 缓存文件");
-    // 旧条目以旧签名滞留: 下一轮签名仍不一致会再试重建 (而不是永久命中)。
-    let torn_again =
-        scan_dsh_cached(&root, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert_eq!(torn.stats.cache_rebuilds, 1, "部分解析照常缓存");
+    assert!(torn.notice.is_none(), "撕裂末帧不是坏帧, 不产生说明");
+    let torn_again = scan();
+    assert_eq!(
+        torn_again.stats.cache_hits, 1,
+        "签名不变直接命中, 不再每轮重解压"
+    );
     assert_eq!(torn_again.contribution, warm.contribution);
-    assert_eq!(torn_again.stats.io_errors, 1, "每轮都会重试重建");
-    assert_eq!(torn_again.stats.cache_hits, 0);
 
-    // 写入完成并追加新事件: 签名再次变化, 重建成功, 数字恢复为真实值。
-    let mut completed = complete.clone();
-    completed.extend_from_slice(&zstd_raw_frame(
-        format!(
-            "{}\n",
-            assistant_message(
-                BASE + 2_000,
-                Some("m-3"),
-                Some("deepseek-flash"),
-                50,
-                10,
-                0,
-                0,
-                60
-            )
-        )
-        .as_bytes(),
-    ));
+    let mut completed = complete;
+    completed.extend_from_slice(&third);
     fs::write(&session, completed).unwrap();
-    let recovered =
-        scan_dsh_cached(&root, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    let recovered = scan();
     assert_eq!(recovered.stats.cache_rebuilds, 1);
-    assert_eq!(recovered.stats.cache_hits, 0);
     assert_eq!(recovered.stats.io_errors, 0);
-    assert_eq!(today(&recovered).total, 36 + 60, "恢复为真实值");
+    assert_eq!(today(&recovered).total, 36 + 60, "写完后恢复为真实值");
     fs::remove_dir_all(root).ok();
+}
+
+/// 结构合法但压缩块内容损坏的帧 (单段, 声明 16 字节, 一个 8 字节的压缩块)。
+fn zstd_corrupt_compressed_frame() -> Vec<u8> {
+    let mut out = vec![0x28, 0xb5, 0x2f, 0xfd, 0b0010_0000, 16];
+    let header = (8u32 << 3) | (2 << 1) | 1;
+    out.extend_from_slice(&header.to_le_bytes()[..3]);
+    out.extend_from_slice(&[0xff; 8]);
+    out
+}
+
+/// 不声明内容长度、窗口 1 MiB 的帧, 由 65 个 128 KiB 的 RLE 块组成: 压缩后约 260 字节,
+/// 解出 8.125 MiB —— 只能在解码过程中发现超限。
+fn zstd_rle_bomb_frame() -> Vec<u8> {
+    let mut out = vec![0x28, 0xb5, 0x2f, 0xfd, 0b0000_0000, 10 << 3];
+    for index in 0..65u32 {
+        let last = u32::from(index == 64);
+        let header = ((128 * 1024) << 3) | (1 << 1) | last;
+        out.extend_from_slice(&header.to_le_bytes()[..3]);
+        out.push(b'x');
+    }
+    out
+}
+
+/// C192: 帧彼此独立 —— 中间一帧解码失败、帧间混入无法识别的字节 (按魔数重新同步)、
+/// 或一帧在解码中超过上限, 都只跳过该帧并计数; 其余帧用量完整, 坏帧数随缓存持久化,
+/// 经信息级说明可见。旧实现任一帧失败即整个会话本轮为 0。
+#[test]
+fn dsh_damaged_frames_are_isolated_and_counted() {
+    let message = |id: &str, offset: i64, input: u64| {
+        let line = assistant_message(
+            BASE + offset,
+            Some(id),
+            Some("deepseek-flash"),
+            input,
+            1,
+            0,
+            0,
+            input + 1,
+        );
+        zstd_raw_frame(format!("{line}\n").as_bytes())
+    };
+    let header_line = session_header("/Users/example/work/demo-project");
+    let header = zstd_raw_frame(format!("{header_line}\n").as_bytes());
+    let cases: [(&str, Vec<u8>); 3] = [
+        ("corrupt-block", zstd_corrupt_compressed_frame()),
+        (
+            "garbage-between-frames",
+            b"not a zstd frame at all".to_vec(),
+        ),
+        ("rle-bomb", zstd_rle_bomb_frame()),
+    ];
+    for (label, damaged) in cases {
+        let root = temp_root(&format!("dsh-damaged-{label}"));
+        let cache_root = root.join("cache");
+        let session = root.join("workspace-dir/session-a/session.v4.jsonl.zstd");
+        fs::create_dir_all(session.parent().unwrap()).unwrap();
+        let mut bytes = header.clone();
+        bytes.extend_from_slice(&message("m-1", 0, 10));
+        bytes.extend_from_slice(&damaged);
+        bytes.extend_from_slice(&message("m-2", 1_000, 20));
+        fs::write(&session, bytes).unwrap();
+
+        let scan =
+            || scan_dsh_cached(&root, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        let cold = scan();
+        assert_eq!(today(&cold).total, 11 + 21, "{label}: 坏帧前后的帧都计入");
+        assert_eq!(cold.stats.io_errors, 0, "{label}: 不再整文件失败");
+        assert_eq!(
+            cold.notice.as_deref(),
+            Some("1 个 dsh 压缩帧损坏或超过 8 MiB 上限, 已跳过这些帧"),
+            "{label}"
+        );
+        let warm = scan();
+        assert_eq!(warm.stats.cache_hits, 1, "{label}: 部分成功的解析照常缓存");
+        assert_eq!(warm.notice, cold.notice, "{label}: 坏帧数随缓存持久化");
+        fs::remove_dir_all(root).ok();
+    }
 }
 
 /// 缓存版本升级 (解析 / 聚合规则变化) 时旧条目整体失效重建, 不计为损坏。
