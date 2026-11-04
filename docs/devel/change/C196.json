@@ -4,7 +4,7 @@
   "title": "修复 JSONL 引擎单文件消失竞态中止整源扫描，并在解析失败时沿用陈旧条目",
   "version": "0.17.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C196-jsonl-file-race",
   "is_hotfix": false,
   "target": {
@@ -15,17 +15,18 @@
   },
   "why": "T26 审计发现，2026-11-04 复核修正范围。原卡关心的「读取失败被当作删除、回收缓存条目」机制确实存在（子目录 PermissionDenied 时其下文件不进 seen，`reconcile_deleted_cache` 删除条目），但复核实测其用户可见影响约为 0：临时 home 中 Claude 子目录不可读一轮，缓存条目 2 → 1，显示用量始终为 1,100（T26 台账按日取大保住），恢复后下一轮重建。原卡担心的「来源随后删除则不可回补」也不会因保留条目而改善——来源真被删除后，同一 manifest 差集照样回收。该项不再处理。同一引擎更实际的两个问题：① `process_file` 中 `fs::metadata(path)?`（`jsonl_cache.rs:514`）与 `append_is_safe` 的指纹读取以 `?` 上抛，文件在列目录与 stat / 读指纹之间被删除或截断（会话清理、日志轮转的竞态）时，整个来源以 Io 失败结束，本轮整体按 LOCAL_SOURCE_IO_DEGRADED 跳过，found=false 时还会被误标为 history「本机未发现会话来源」；② 解析失败时直接丢弃该文件（`Ok(None)`），即使磁盘上仍有它的旧条目。三套缓存口径不一致：dsh 沿用陈旧条目、JSONL 丢弃、Codex 写成空条目（见 C197）。",
   "precheck": {
-    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "description": "开工前确认单文件 IO 失败仍中止整源、解析失败仍丢弃旧条目（未被前序提交修复）",
     "command": "grep -n \"let metadata = fs::metadata(path)?\\|append_is_safe(path, &entry\\|return Ok(None)\" core/collector/crates/collector-local/src/jsonl_cache.rs",
     "expected": "单文件 metadata 与追加指纹失败以 ? 中止整源扫描；解析失败直接返回 None，不使用旧条目",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-04 fix/C195 分支@3d71e8f 预检命中：jsonl_cache.rs:622 let metadata = fs::metadata(path)?、:638 append_is_safe(..)? 上抛，:652/:689 解析失败 return Ok(None)。main 二进制复现（local/c198/c196-behavior.log）：已缓存 Claude 会话追加后 chmod 000 → 整源 LOCAL_SOURCE_IO_DEGRADED、Claude status=history（「本机未发现会话来源」）、envelope partial。缺陷存在，需修复"
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout -b fix/C196-jsonl-file-race main"
+      "git checkout -b fix/C196-jsonl-file-race fix/C195-scan-limit-diagnostics  # 叠在 C195 上：同改 jsonl_cache.rs process_file"
     ],
     "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
       "zsh scripts/verify-local.sh",
       "scripts/adflow-verify --card C196 --to verified --record"
     ]
@@ -34,13 +35,13 @@
     {
       "scope": "单文件竞态",
       "before": "单文件 metadata / 追加指纹读取失败上抛，整个来源本轮失败",
-      "after": "单文件 NotFound / UnexpectedEof 等 IO 失败只跳过该文件（计 io_errors），其余文件照常聚合",
+      "after": "单文件 stat 失败（NotFound 等）只跳过该文件、计 io_errors，其余文件照常聚合；追加指纹读取失败（截断 / 不可读）按「不可追加」走整文件重解析",
       "impact": "会话清理竞态不再让整个来源本轮丢量或被误标为 history"
     },
     {
       "scope": "解析失败兜底",
       "before": "解析失败的文件本轮不计，磁盘上的旧条目闲置",
-      "after": "解析失败时沿用该路径旧条目的陈旧载荷（与 dsh 同口径，不计 cache_hits），下一轮重试",
+      "after": "解析失败（追加段或整文件）时沿用该路径同身份旧条目的陈旧载荷（与 dsh / Codex 同口径，只计 io_errors，不计 cache_hits / cache_rebuilds），旧条目原样留在磁盘、下一轮重试；无旧条目时本轮不计入该文件",
       "impact": "活写或瞬时失败不再造成本轮骤降"
     },
     {
@@ -53,15 +54,15 @@
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
-    "modified": false,
+    "modified": true,
     "rule_diff": {
       "before": "JSONL 单文件 IO 失败可中止整源扫描；解析失败的文件本轮不计",
-      "after": "JSONL 单文件 IO 失败只跳过该文件；解析失败沿用陈旧条目，下一轮重试"
+      "after": "JSONL 单文件 IO 失败只跳过该文件；追加指纹失败按不可追加重解析；解析失败沿用同身份旧条目，下一轮重试——dsh / Codex / JSONL 三套缓存失败口径一致（design 01 规则 3「单文件失败不中止整源、三套缓存同口径 (C196)」）"
     }
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261104-09",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -69,36 +70,38 @@
         "item": "自动化测试",
         "true_if": "回归：扫描中途删除或截断一个文件 → 其余文件用量完整且不返回 Err；解析失败沿用旧条目；全量测试 Exit 0",
         "false_if": "单文件失败仍中止整源，或解析失败仍丢量，或存在测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c196-verify-local.log）：Rust 576 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。新增 tests_race（2 项）：file_deleted_between_listing_and_stat_skips_only_that_file（测试专用逐文件回调在处理前删除 b.jsonl → 扫描不返回 Err、其余文件 103 完整、found=true、io_errors=1，下一轮 cache_deletions=1）；unreadable_changed_file_keeps_stale_payload_and_other_files（unix：已缓存会话追加后 chmod 000 → 沿用旧载荷 107 不降、io_errors=1、另一文件命中，恢复后按追加计入 157）。变异检查：恢复 metadata ? 与 return Ok(None) 后两项均失败",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "临时 home 注入单文件消失 / 解析失败，Claude 用量与状态可解释（不出现 LOCAL_SOURCE_IO_DEGRADED，不误标 history）",
         "false_if": "整源仍被跳过或误标",
-        "evidence": "",
-        "result": null
+        "evidence": "Bruce-collector 真实 BridgeRequest + 临时 home，main@3595325 与本分支对照（local/c198/c196-behavior.log）：已缓存的 Claude 会话追加后 chmod 000 —— main：LOCAL_SOURCE_IO_DEGRADED@claude-code、status=history、note「本机未发现会话来源, 显示已保存的历史用量」、envelope partial；本分支：status=ok、today 1,380（沿用旧载荷）、无诊断、envelope success；恢复权限后两版均 1,900。列目录后文件消失的竞态无法用二进制稳定复现，由单测回调覆盖",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "真实删除的文件仍按差集回收；冷热对拍等价；Claude / CodeBuddy / Kimi / Pi / Grok 共用引擎行为一致",
         "false_if": "破坏删除回收或缓存语义",
-        "evidence": "",
-        "result": null
+        "evidence": "真实删除仍按 manifest 差集回收（tests_race 下一轮 cache_deletions=1、cached_jsonl_handles_append_rewrite_delete_and_corruption 照常通过）；冷热对拍与全部 JSONL 既有用例通过，Claude / CodeBuddy / Kimi / Pi / Grok 共用 process_file，行为一致。本机全部真实来源（local/c198/c196-real-all.log）：本分支冷 / 热无诊断，热轮与 main 逐项一致（冷轮 Claude 差值来自本会话正在写入，随运行先后变化）",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "2e4f49c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-04",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

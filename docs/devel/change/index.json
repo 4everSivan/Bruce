@@ -2012,7 +2012,7 @@
     "C196": {
       "title": "修复 JSONL 引擎单文件消失竞态中止整源扫描，并在解析失败时沿用陈旧条目",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C196-jsonl-file-race",
       "topic": "TokenUsage",
       "version": "0.17.0",
