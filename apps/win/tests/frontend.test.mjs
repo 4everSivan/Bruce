@@ -1082,6 +1082,28 @@ test("heatmap legend swatches carry level colors in both themes (C067)", () => {
   }
 });
 
+test("heatmap footer puts start date, legend and end date on one row (C202)", async () => {
+  const app = await boot();
+  const sec = app.node("heat-sec");
+  assert.equal(sec.querySelector(".heat-axis"), null, "原独立日期轴不得残留");
+  const footer = sec.querySelector(".heat-footer");
+  assert.ok(footer, "热力图底部为单行容器");
+  const kids = [...footer.children];
+  assert.deepEqual(kids.map((n) => n.getAttribute("class")), ["heat-start", "heat-legend", "heat-end"]);
+  assert.deepEqual(
+    [...kids[1].children].map((n) => n.getAttribute("class")),
+    [null, "sw", "sw l1", "sw l2", "sw l3", "sw l4", "sw l5", null],
+    "图例仍为「少」 + level 0-5 格 + 「多」",
+  );
+  const [start, end] = [kids[0].textContent, kids[2].textContent];
+  assert.match(start, /^\d{2}\/\d{2}\/\d{2}$/, "起始日期取自窗口首格");
+  assert.match(end, /^\d{2}\/\d{2}\/\d{2}$/, "截止日期取自窗口末格");
+  assert.ok(start < end, `起始日期应早于截止日期 (${start} / ${end})`);
+  // 1fr auto 1fr 网格: 图例恒居中于网格, 两侧日期各自贴边, 互不挤占
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.heat-footer\s*\{[^}]*grid-template-columns:\s*1fr auto 1fr;/);
+});
+
 test("classic daily bars scale by day total and stack segments by in-day share (C067)", async () => {
   const app = await boot();
   const bars = [...app.node("stack").querySelectorAll(".day-bars")];

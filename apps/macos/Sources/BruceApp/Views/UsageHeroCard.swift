@@ -113,9 +113,7 @@ struct UsageHeroCard: View {
                     .padding(.top, 12)
                 heatmapView
                     .padding(.top, 4)
-                heatmapDateAxis
-                    .padding(.top, 5)
-                heatmapLegend
+                heatmapFooter
                     .padding(.top, 5)
             }
         }
@@ -578,12 +576,16 @@ struct UsageHeroCard: View {
             .accessibilityLabel("用量热力图")
     }
 
-    /// 起止日期轴: 左窗口首日, 右今天, 与网格左右缘对齐.
-    private var heatmapDateAxis: some View {
-        HStack {
-            Text(heatmapBoundaryText(first: true))
-            Spacer()
-            Text(heatmapBoundaryText(first: false))
+    /// 底部单行: 起始日期居左 · 程度图例水平居中 · 截止日期居右 (C202);
+    /// 日期与网格左右缘对齐, 图例居中于整格宽度, 不再占据第二行.
+    private var heatmapFooter: some View {
+        ZStack {
+            HStack(spacing: 0) {
+                Text(heatmapBoundaryText(first: true))
+                Spacer(minLength: 8)
+                Text(heatmapBoundaryText(first: false))
+            }
+            heatmapLegend
         }
         .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
         .foregroundStyle(isNothing ? Self.nothingDisabled : Self.faint)
@@ -602,10 +604,9 @@ struct UsageHeroCard: View {
         return "\(parts[0].suffix(2))/\(parts[1])/\(parts[2])"
     }
 
-    /// 程度图例 (GitHub 风格): 「少」 + level 0-5 格子 + 「多」, 右对齐.
+    /// 程度图例 (GitHub 风格): 「少」 + level 0-5 格子 + 「多」, 居中于底部单行.
     private var heatmapLegend: some View {
         HStack(spacing: 3) {
-            Spacer()
             Text("少")
             heatmapLevelSwatch(0)
             ForEach(1...5, id: \.self) { level in
@@ -613,8 +614,6 @@ struct UsageHeroCard: View {
             }
             Text("多")
         }
-        .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
-        .foregroundStyle(isNothing ? Self.nothingDisabled : Self.faint)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("热力图程度图例: 颜色从少到多")
     }

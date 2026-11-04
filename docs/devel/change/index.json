@@ -51,7 +51,8 @@
         "C181",
         "C182",
         "C183",
-        "C200"
+        "C200",
+        "C202"
       ]
     },
     "PricingEngine": {
@@ -2064,6 +2065,15 @@
       "topic": "TokenUsage",
       "version": "0.17.0",
       "file": "docs/devel/change/C201.json"
+    },
+    "C202": {
+      "title": "用量热力图底部改为单行排布：起始日期 · 程度图例 · 截止日期（双端对齐）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C202-heatmap-footer-row",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C202.json"
     }
   }
 }

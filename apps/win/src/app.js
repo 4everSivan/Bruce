@@ -483,16 +483,17 @@ function usageCard(usage) {
       grid.append(col);
     });
     sec.append(grid);
-    const axis = el("div", "heat-axis");
+    // C202 底部单行: 起始日期居左 · 程度图例居中 · 截止日期居右
+    const footer = el("div", "heat-footer");
     const fmt = (value) => { const p = value.split("-"); return `${p[0].slice(2)}/${p[1]}/${p[2]}`; };
-    axis.append(el("span", null, first ? fmt(first) : ""), el("span", null, last ? fmt(last) : ""));
-    sec.append(axis);
+    footer.append(el("span", "heat-start", first ? fmt(first) : ""));
     const legend = el("div", "heat-legend");
     legend.setAttribute("aria-label", "热力图程度图例: 颜色从少到多");
     legend.append(el("span", null, "少"));
     for (let level = 0; level <= 5; level += 1) legend.append(el("span", `sw${level ? ` l${level}` : ""}`));
     legend.append(el("span", null, "多"));
-    sec.append(legend);
+    footer.append(legend, el("span", "heat-end", last ? fmt(last) : ""));
+    sec.append(footer);
     card.append(sec);
   }
   return card;
