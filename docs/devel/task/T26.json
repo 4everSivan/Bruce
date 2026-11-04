@@ -74,7 +74,7 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261104-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -123,7 +123,7 @@
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "f6103131561903f31637734412e0376bec9de429"
   },
   "gate": {
     "tool": "adflow-verify",
