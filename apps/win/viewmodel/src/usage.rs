@@ -86,8 +86,9 @@ impl PanelViewModelMapper {
         if artifact.agents.is_empty() {
             diagnostics.push(PanelDiagnostic::EmptyUsageAgents);
         }
+        // T26: history = 来源当前不可用但自有台账有历史量, 数据有效, 不作故障诊断 (对齐 mac)。
         for agent in &artifact.agents {
-            if agent.status != "ok" {
+            if agent.status != "ok" && agent.status != "history" {
                 diagnostics.push(PanelDiagnostic::AgentIssue {
                     agent_id: agent.id.clone(),
                     status: agent.status.clone(),

@@ -206,3 +206,35 @@ fn partial_fixture_produces_consistent_usage() {
         assert_eq!(week.cells.len(), 7);
     }
 }
+
+/// C198: history (T26 台账历史) 与 ok 一样不生成 agentIssue, 与 mac UsageMapping 一致;
+/// 其余非 ok 状态照常上报。
+#[test]
+fn history_status_is_not_an_agent_issue() {
+    let with_status = |id: &str, status: &str| {
+        let mut agent = agent_with_daily(&[(27, 10)]);
+        agent["id"] = json!(id);
+        agent["status"] = json!(status);
+        agent["note"] = json!(format!("{status} note"));
+        agent
+    };
+    let artifact = artifact_from(json!({"artifact": {
+        "generatedAt": "2026-07-28T12:00:00+08:00",
+        "agents": [
+            with_status("claude-code", "ok"),
+            with_status("codex", "history"),
+            with_status("opencode", "error"),
+        ],
+        "services": [],
+        "totalCostUsd": null
+    }}));
+    let panel = PanelViewModelMapper::default().make(Some(&artifact), fixed_now());
+    assert_eq!(
+        panel.diagnostics,
+        vec![bruce_win_viewmodel::models::PanelDiagnostic::AgentIssue {
+            agent_id: "opencode".to_owned(),
+            status: "error".to_owned(),
+            note: "error note".to_owned(),
+        }]
+    );
+}
