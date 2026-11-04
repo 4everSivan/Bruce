@@ -50,7 +50,8 @@
         "C180",
         "C181",
         "C182",
-        "C183"
+        "C183",
+        "C200"
       ]
     },
     "PricingEngine": {
@@ -221,7 +222,8 @@
         "C196",
         "C197",
         "C198",
-        "C199"
+        "C199",
+        "C201"
       ]
     },
     "AgentAnalytics": {
@@ -2044,6 +2046,24 @@
       "topic": "TokenUsage",
       "version": "0.17.0",
       "file": "docs/devel/change/C199.json"
+    },
+    "C200": {
+      "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C200-partial-detail-skips-notices",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C200.json"
+    },
+    "C201": {
+      "title": "JSONL 与 dsh 会话文件读取失败时补信息级说明（与 Codex 同口径）",
+      "type": "Enhancement",
+      "status": "pending",
+      "branch": "fix/C201-read-failure-notice",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C201.json"
     }
   }
 }
