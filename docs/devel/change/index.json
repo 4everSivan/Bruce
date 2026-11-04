@@ -1994,7 +1994,7 @@
     "C194": {
       "title": "修复 Grok 以文件 mtime 重打全部历史时间戳，追加后经台账造成跨日重复计数",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C194-grok-timestamp-estimate",
       "topic": "TokenUsage",
       "version": "0.17.0",
