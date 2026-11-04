@@ -19,6 +19,8 @@ mod tests_dsh;
 #[cfg(test)]
 mod tests_limits;
 #[cfg(test)]
+mod tests_race;
+#[cfg(test)]
 mod tests_sources;
 
 pub use codex::scan_codex_cached_with_cancellation;

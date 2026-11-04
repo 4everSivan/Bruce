@@ -498,6 +498,23 @@ impl JsonlCacheAdapter for ClaudeJsonlAdapter {
     }
 }
 
+/// 测试专用 (C196): 每个文件处理前回调, 用于模拟列目录后文件被删除的竞态。
+#[cfg(test)]
+pub(super) fn scan_claude_cached_with_hook(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    before_file: &mut dyn FnMut(&Path),
+) -> Result<SourceScan, SourceScanError> {
+    crate::jsonl_cache::scan_cached_jsonl_tree_with_hook(
+        root,
+        &jsonl_cache_config(cache_root, "claude-code", window),
+        &ClaudeJsonlAdapter,
+        &CancellationToken::new(),
+        before_file,
+    )
+}
+
 pub fn scan_claude_cached(
     root: &Path,
     window: &CollectionWindow,

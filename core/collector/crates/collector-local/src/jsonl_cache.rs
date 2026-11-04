@@ -466,6 +466,41 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
     adapter: &A,
     cancellation: &CancellationToken,
 ) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree_impl(
+        root,
+        config,
+        adapter,
+        cancellation,
+        #[cfg(test)]
+        None,
+    )
+}
+
+/// 测试专用: 每个文件处理前回调 (C196: 模拟「列目录后、stat 前文件被删除」的竞态)。
+#[cfg(test)]
+pub(crate) fn scan_cached_jsonl_tree_with_hook<A: JsonlCacheAdapter>(
+    root: &Path,
+    config: &JsonlCacheConfig,
+    adapter: &A,
+    cancellation: &CancellationToken,
+    before_file: &mut dyn FnMut(&Path),
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree_impl(
+        root,
+        config,
+        adapter,
+        cancellation,
+        Some(Box::new(|path: &Path| before_file(path))),
+    )
+}
+
+fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
+    root: &Path,
+    config: &JsonlCacheConfig,
+    adapter: &A,
+    cancellation: &CancellationToken,
+    #[cfg(test)] before_file: Option<FileHook<'_>>,
+) -> Result<SourceScan, SourceScanError> {
     cancellation.check()?;
     if config.source_id != adapter.source_id() {
         return Err(io::Error::new(
@@ -494,6 +529,8 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         truncated_usage: 0,
         seen: std::collections::BTreeSet::new(),
         visited_dirs: std::collections::BTreeSet::new(),
+        #[cfg(test)]
+        before_file,
     };
     let mut aggregator = adapter.aggregator(&config.window);
     visit_tree(root, &mut state, &mut aggregator, 0)?;
@@ -537,7 +574,13 @@ struct TreeState<'a, A> {
     seen: std::collections::BTreeSet<String>,
     /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
     visited_dirs: std::collections::BTreeSet<PathBuf>,
+    #[cfg(test)]
+    before_file: Option<FileHook<'a>>,
 }
+
+/// 测试专用的逐文件回调 (C196)。
+#[cfg(test)]
+type FileHook<'a> = Box<dyn FnMut(&Path) + 'a>;
 
 /// 递归遍历会话目录树。
 ///
@@ -597,6 +640,10 @@ fn visit_tree<A: JsonlCacheAdapter>(
             continue;
         }
         state.stats.files_scanned = state.stats.files_scanned.saturating_add(1);
+        #[cfg(test)]
+        if let Some(hook) = state.before_file.as_deref_mut() {
+            hook(&path);
+        }
         if let Some(payload) = process_file(&path, modified, state)? {
             if payload.probe.drifted(FILE_DRIFT_STREAK) {
                 state.drifted_files = state.drifted_files.saturating_add(1);
@@ -619,25 +666,39 @@ fn process_file<A: JsonlCacheAdapter>(
     let source_path_digest = digest_with_source(state.config.source_id.as_str(), path);
     state.seen.insert(source_path_digest.clone());
     let cache_path = entry_path(&state.config.cache_root, &source_path_digest);
-    let metadata = fs::metadata(path)?;
+    // C196: 文件在列目录与 stat 之间被删除 / 轮转 (会话清理竞态) 只跳过该文件, 不中止整个来源
+    // —— 否则本轮整源按 LOCAL_SOURCE_IO_DEGRADED 跳过, found=false 时还会被误标为 history。
+    // 已登记进 seen, 本轮不回收其缓存条目; 文件真被删除时下一轮按差集回收。
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            state.stats.io_errors = state.stats.io_errors.saturating_add(1);
+            return Ok(None);
+        }
+    };
     let current_file = JsonlFileSignature::from_metadata(&metadata);
     let loaded: CacheLoad<JsonlCacheEntry> = load_json_cache(&cache_path);
     if matches!(loaded, CacheLoad::Corrupt) {
         state.stats.cache_corruptions = state.stats.cache_corruptions.saturating_add(1);
     }
+    // C196: 同身份的旧条目即使签名已变, 也作为解析失败时的陈旧兜底 (与 dsh / Codex 同口径)。
+    let mut stale: Option<CachedFilePayload> = None;
     if let CacheLoad::Entry(mut entry) = loaded {
-        if cache_identity_matches(&entry, &source_path_digest, state.config)
-            && entry.file == current_file
-            && cache_payload_is_valid(&entry)
-        {
+        let reusable = cache_identity_matches(&entry, &source_path_digest, state.config)
+            && cache_payload_is_valid(&entry);
+        if reusable && entry.file == current_file {
             state.stats.cache_hits = state.stats.cache_hits.saturating_add(1);
             return Ok(Some(std::mem::take(&mut entry.payload)));
         }
-        if cache_identity_matches(&entry, &source_path_digest, state.config)
-            && cache_payload_is_valid(&entry)
-            && append_is_safe(path, &entry, &current_file, state.cancellation)?
-        {
-            let appended = match state.adapter.parse_file(
+        // 追加指纹读不到 (文件在 stat 后被截断 / 删除) 按「不可追加」处理, 走整文件重解析。
+        let append_safe = reusable
+            && match append_is_safe(path, &entry, &current_file, state.cancellation) {
+                Ok(safe) => safe,
+                Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+                Err(SourceScanError::Io(_)) => false,
+            };
+        if append_safe {
+            match state.adapter.parse_file(
                 path,
                 modified,
                 entry.safe_offset,
@@ -645,33 +706,37 @@ fn process_file<A: JsonlCacheAdapter>(
                 state.cancellation,
                 &mut state.stats,
             ) {
-                Ok(payload) => payload,
+                Ok(appended) => {
+                    let previous = std::mem::take(&mut entry.payload);
+                    // C193: 哨兵随追加段接续 (适配器的 merge_append 只管观测与项目)。
+                    let probe = previous.probe.then(appended.probe);
+                    let mut merged = state.adapter.merge_append(previous, appended, modified);
+                    merged.probe = probe;
+                    if let Err(error) = cache_payload_entry(
+                        path,
+                        &metadata,
+                        state.config,
+                        source_path_digest.as_str(),
+                        merged.clone(),
+                        &cache_path,
+                        state.cancellation,
+                    ) {
+                        record_cache_write_error(error, &mut state.stats)?;
+                    }
+                    state.stats.cache_appends = state.stats.cache_appends.saturating_add(1);
+                    return Ok(Some(merged));
+                }
                 Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                 Err(SourceScanError::Io(_)) => {
                     state.stats.io_errors = state.stats.io_errors.saturating_add(1);
-                    return Ok(None);
+                    return Ok(Some(std::mem::take(&mut entry.payload)));
                 }
-            };
-            let previous = std::mem::take(&mut entry.payload);
-            // C193: 哨兵随追加段接续 (适配器的 merge_append 只管观测与项目)。
-            let probe = previous.probe.then(appended.probe);
-            let mut merged = state.adapter.merge_append(previous, appended, modified);
-            merged.probe = probe;
-            if let Err(error) = cache_payload_entry(
-                path,
-                &metadata,
-                state.config,
-                source_path_digest.as_str(),
-                merged.clone(),
-                &cache_path,
-                state.cancellation,
-            ) {
-                record_cache_write_error(error, &mut state.stats)?;
             }
-            state.stats.cache_appends = state.stats.cache_appends.saturating_add(1);
-            return Ok(Some(merged));
         }
         state.stats.cache_invalidations = state.stats.cache_invalidations.saturating_add(1);
+        if reusable {
+            stale = Some(std::mem::take(&mut entry.payload));
+        }
     }
 
     let payload = match state.adapter.parse_file(
@@ -685,8 +750,11 @@ fn process_file<A: JsonlCacheAdapter>(
         Ok(payload) => payload,
         Err(SourceScanError::Runtime(error)) => return Err(error.into()),
         Err(SourceScanError::Io(_)) => {
+            // C196: 解析失败 (活写撕读 / 瞬时读错误) 沿用旧条目的陈旧载荷, 本轮数字不骤降;
+            // 只计 io_errors (不计 cache_hits / cache_rebuilds), 旧条目原样留在磁盘上,
+            // 签名仍不一致, 下一轮重试。没有旧条目时本轮不计入该文件。
             state.stats.io_errors = state.stats.io_errors.saturating_add(1);
-            return Ok(None);
+            return Ok(stale);
         }
     };
     if let Err(error) = cache_payload_entry(
