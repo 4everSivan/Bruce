@@ -13,7 +13,8 @@ extension PanelViewModelMapper {
         if artifact.agents.isEmpty {
             diagnostics.append(.emptyUsageAgents)
         }
-        for agent in artifact.agents where agent.status != "ok" {
+        // T26: history = 来源当前不可用但自有台账有历史量, 数据有效, 不作故障诊断。
+        for agent in artifact.agents where agent.status != "ok" && agent.status != "history" {
             diagnostics.append(.agentIssue(
                 agentID: agent.id,
                 status: agent.status,

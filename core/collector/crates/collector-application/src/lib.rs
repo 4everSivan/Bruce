@@ -21,8 +21,9 @@ use collector_credential::{
 use collector_domain::{
     AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
     ModelPricingOverride, PricingTable, WindowError, AGENT_USAGE_MODULE,
-    AGENT_USAGE_SCHEMA_VERSION, LOCAL_SOURCE_ROWS_CAPPED,
+    AGENT_USAGE_SCHEMA_VERSION, LOCAL_HISTORY_STORE_UNAVAILABLE,
 };
+use collector_history::HistoryStore;
 use collector_local::{
     default_cache_root, remove_legacy_kimi_cache, scan_claude_cached, scan_codebuddy_cached,
     scan_codex_cached_with_cancellation, scan_dsh_cached, scan_grok_cached, scan_kimi_cli_cached,
@@ -369,8 +370,8 @@ struct LocalAgentResult {
     found: bool,
     contribution: collector_domain::UsageContribution,
     diagnostic: Option<String>,
-    /// 行数截断 (C041): 信息级降级, agent 状态保持 ok 而非 error。
-    capped: bool,
+    /// 来源当前不可用但台账有历史量时的 note (T26); Some 时 artifact status=history。
+    history_note: Option<String>,
 }
 
 fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diagnostic> {
@@ -396,6 +397,26 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
     let cache_root = default_cache_root(&home);
     // C116: Kimi Code CLI 改用共享 JSONL 缓存引擎, 清理旧版引擎遗留的条目 (缓存可再生)。
     remove_legacy_kimi_cache(&cache_root);
+    // T26: 全量本机扫描轮将派生数值合并进 collector 自有台账; 台账失败只降级,
+    // 不影响本轮扫描结果 (回退为「仅扫描贡献」)。
+    let history_path = source_path(
+        context,
+        "history_db",
+        paths::resolve_usage_history_path(&home),
+    );
+    let mut history = match HistoryStore::open(&history_path) {
+        Ok(store) => Some(store),
+        Err(error) => {
+            collection.diagnostics.push(Diagnostic::new(
+                LOCAL_HISTORY_STORE_UNAVAILABLE,
+                "local",
+                "history",
+                format!("用量历史台账不可用, 本轮仅使用扫描结果: {error}"),
+                true,
+            ));
+            None
+        }
+    };
     let jobs = local_source_jobs(context, &home, &cache_root);
     // C110 / C116: 9 个本机源交给 local_workers 大小的工作池并行扫描, 结果按源序合并,
     // 诊断与指标顺序不变。
@@ -408,16 +429,34 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             collection.diagnostics.push(warning);
         }
         if let Some(message) = source.diagnostic.clone() {
-            // C041: 行数截断是计划内降级, 用信息级诊断码;
-            // 其余 (真实 schema/读取故障) 保留原故障码与 Partial 语义。
-            let code = if source.capped {
-                LOCAL_SOURCE_ROWS_CAPPED
-            } else {
-                "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE"
-            };
-            collection
-                .diagnostics
-                .push(Diagnostic::new(code, "local", &id, message, true));
+            // T26: 行数截断已移除; 任何源诊断都可能是真实 schema/读取故障,
+            // 保留原故障码与 Partial 语义。
+            collection.diagnostics.push(Diagnostic::new(
+                "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
+                "local",
+                &id,
+                message,
+                true,
+            ));
+        }
+        if let Some(store) = history.as_mut() {
+            let merged = store.merge(
+                &id,
+                &source.contribution,
+                source.found,
+                &context.window.today,
+                &context.captured_at,
+            );
+            if let Err(error) = merged {
+                collection.diagnostics.push(Diagnostic::new(
+                    LOCAL_HISTORY_STORE_UNAVAILABLE,
+                    "local",
+                    "history",
+                    format!("用量历史台账写入失败, 本轮仅使用扫描结果: {error}"),
+                    true,
+                ));
+                history = None;
+            }
         }
         collection.agents.insert(
             id,
@@ -425,9 +464,43 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 found: source.found,
                 contribution: source.contribution,
                 diagnostic: source.diagnostic,
-                capped: source.capped,
+                history_note: None,
             },
         );
+    }
+    if let Some(store) = history.as_ref() {
+        let mut load_error: Option<String> = None;
+        for (id, entry) in collection.agents.iter_mut() {
+            match store.load(id, &context.window) {
+                Ok(stored) if stored.has_data => {
+                    entry.contribution = stored.contribution;
+                    if !entry.found {
+                        entry.history_note = Some(match stored.last_found_at {
+                            Some(last) => {
+                                format!(
+                                    "本机未发现会话来源, 显示已保存的历史用量 (最后同步 {last})"
+                                )
+                            }
+                            None => "本机未发现会话来源, 显示已保存的历史用量".to_owned(),
+                        });
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    load_error = Some(format!("用量历史台账读取失败, 本轮仅使用扫描结果: {error}"));
+                    break;
+                }
+            }
+        }
+        if let Some(message) = load_error {
+            collection.diagnostics.push(Diagnostic::new(
+                LOCAL_HISTORY_STORE_UNAVAILABLE,
+                "local",
+                "history",
+                message,
+                true,
+            ));
+        }
     }
     Ok(collection)
 }
@@ -833,13 +906,15 @@ fn finalize_local_agent(
         agent.note = format!("{note} (本机用量合并失败, 数据不完整)");
     }
     if let Some(diagnostic) = &source.diagnostic {
-        if source.capped {
-            // C041: 行数截断为计划内降级, 数据有效 (保留最新), 不按故障处理。
-            agent.note = diagnostic.clone();
-        } else {
-            agent.status = "error".to_owned();
-            agent.note = diagnostic.clone();
-        }
+        agent.status = "error".to_owned();
+        agent.note = match &source.history_note {
+            Some(history_note) => format!("{diagnostic} ({history_note})"),
+            None => diagnostic.clone(),
+        };
+    } else if let Some(history_note) = &source.history_note {
+        // T26: 来源当前不可用但台账有历史量 —— 历史数据有效, 状态用 history 区分于 ok。
+        agent.status = "history".to_owned();
+        agent.note = history_note.clone();
     } else if source.found {
         if merged {
             agent.note = note.to_owned();
@@ -877,7 +952,7 @@ fn source_path(context: &RunContext<'_>, key: &str, default: PathBuf) -> PathBuf
 mod tests {
     use super::{
         collect_agent_usage, collect_agent_usage_with_dependencies, finalize_local_agent,
-        LocalAgentResult,
+        LocalAgentResult, LOCAL_HISTORY_STORE_UNAVAILABLE,
     };
     use collector_credential::{CredentialReadError, CredentialSource};
     use collector_domain::BridgeRequest;
@@ -888,59 +963,6 @@ mod tests {
     use serde_json::json;
     use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
-
-    /// C041: 行数截断为计划内降级 — agent 状态保持 ok 仅记 note; 真实故障仍为 error。
-    #[test]
-    fn local_agent_row_cap_keeps_status_ok_while_faults_stay_error() {
-        use collector_domain::{CollectionWindow, PricingTable};
-
-        let context: serde_json::Map<String, serde_json::Value> = serde_json::from_value(json!({
-            "now": "2026-07-28T12:00:00+08:00",
-            "timezone": "Asia/Shanghai",
-            "days": 3
-        }))
-        .unwrap();
-        let window = CollectionWindow::from_context(&context).unwrap();
-        let pricing = PricingTable::new(std::collections::HashMap::new());
-        let contribution =
-            collector_domain::UsageContributionBuilder::new(window.clone()).contribution();
-
-        let capped = LocalAgentResult {
-            found: true,
-            contribution: contribution.clone(),
-            diagnostic: Some("仅保留 zcode 最新 30000 条用量记录".to_owned()),
-            capped: true,
-        };
-        let agent = finalize_local_agent(
-            &window,
-            "zcode",
-            "ZCode",
-            &capped,
-            "本机会话聚合",
-            "unavailable",
-            "未发现会话记录",
-            &pricing,
-        );
-        assert_eq!(agent.status, "ok", "行数截断为计划内降级, 不得置为 error");
-        assert!(agent.note.contains("30000"), "降级说明应保留在 note");
-
-        let faulty = LocalAgentResult {
-            capped: false,
-            ..capped
-        };
-        let agent = finalize_local_agent(
-            &window,
-            "zcode",
-            "ZCode",
-            &faulty,
-            "本机会话聚合",
-            "unavailable",
-            "未发现会话记录",
-            &pricing,
-        );
-        assert_eq!(agent.status, "error", "非截断诊断仍按故障处理");
-        assert_eq!(agent.note, "仅保留 zcode 最新 30000 条用量记录");
-    }
 
     /// C046: 用量合并失败必须可见 —— agent 降级为 partial 且 note 说明缺失,
     /// 不得继续对外报 ok 而静默丢数据。
@@ -984,7 +1006,7 @@ mod tests {
             found: true,
             contribution: invalid,
             diagnostic: None,
-            capped: false,
+            history_note: None,
         };
         let agent = finalize_local_agent(
             &window,
@@ -1342,10 +1364,20 @@ mod tests {
     }
 
     fn local_or_skipped_request(context_extra: serde_json::Value) -> BridgeRequest {
+        static LOCAL_SEQ: AtomicUsize = AtomicUsize::new(0);
+        let home = std::env::temp_dir().join(format!(
+            "bruce-local-or-skipped-{}-{}",
+            std::process::id(),
+            LOCAL_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&home).unwrap();
         let mut request = request(&["localSessions", "externalQuotas"]);
+        request
+            .context
+            .insert("home".to_owned(), json!(home.to_string_lossy()));
         request.context.insert(
-            "home".to_owned(),
-            json!(std::env::temp_dir().to_string_lossy()),
+            "paths".to_owned(),
+            json!({"history_db": home.join("usage-history.sqlite").to_string_lossy()}),
         );
         request.credentials.insert(
             "claudeQuotaAccounts".to_owned(),
@@ -2317,7 +2349,7 @@ mod tests {
             found: true,
             contribution,
             diagnostic: None,
-            capped: false,
+            history_note: None,
         };
 
         // Construct dynamic catalog: dynamic-test-model @ $2 / $10
@@ -2371,5 +2403,189 @@ mod tests {
             &overridden_table,
         );
         assert_eq!(overridden_agent.today_cost_usd, Some(15.0));
+    }
+
+    // MARK: - T26: 用量历史台账
+
+    fn history_test_home(name: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!("bruce-t26-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        home
+    }
+
+    fn history_request(home: &std::path::Path, history_db: &std::path::Path) -> BridgeRequest {
+        let paths = json!({
+            "claude_projects": home.join("claude").to_string_lossy(),
+            "kimi_cli_sessions": home.join("kimi-cli").to_string_lossy(),
+            "daimon_kimi_sessions": home.join("kimi-work").to_string_lossy(),
+            "codex_sessions": home.join("codex").to_string_lossy(),
+            "orca_home": home.join("orca").to_string_lossy(),
+            "grok_home": home.join("grok").to_string_lossy(),
+            "pi_sessions": home.join("pi").to_string_lossy(),
+            "opencode_db": home.join("opencode.db").to_string_lossy(),
+            "zcode_db": home.join("zcode.db").to_string_lossy(),
+            "codebuddy_projects": home.join("codebuddy").to_string_lossy(),
+            "dsh_sessions": home.join("dsh").to_string_lossy(),
+            "history_db": history_db.to_string_lossy(),
+        });
+        let mut request = request(&["localSessions"]);
+        for (key, value) in [
+            ("home", json!(home.to_string_lossy())),
+            ("now", json!("2026-07-28T12:00:00+08:00")),
+            ("timezone", json!("Asia/Shanghai")),
+            ("days", json!(7)),
+            ("paths", paths),
+        ] {
+            request.context.insert(key.to_owned(), value);
+        }
+        request
+    }
+
+    fn claude_agent(artifact: &serde_json::Value) -> &serde_json::Value {
+        artifact["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|agent| agent["id"] == "claude-code")
+            .unwrap()
+    }
+
+    fn daily_total(agent: &serde_json::Value) -> u64 {
+        agent["daily"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|day| day["total"].as_u64().unwrap_or(0))
+            .sum()
+    }
+
+    fn write_claude_history(home: &std::path::Path) {
+        let claude = home.join("claude");
+        std::fs::create_dir_all(&claude).unwrap();
+        let lines = [
+            json!({
+                "type": "assistant",
+                "timestamp": "2026-07-28T03:00:00Z",
+                "message": {
+                    "id": "t26-history-today",
+                    "model": "claude-sonnet",
+                    "usage": {"input_tokens": 100, "output_tokens": 10}
+                }
+            })
+            .to_string(),
+            json!({
+                "type": "assistant",
+                "timestamp": "2026-07-27T03:00:00Z",
+                "message": {
+                    "id": "t26-history-yesterday",
+                    "model": "claude-sonnet",
+                    "usage": {"input_tokens": 200, "output_tokens": 20}
+                }
+            })
+            .to_string(),
+        ]
+        .join("\n")
+            + "\n";
+        std::fs::write(claude.join("session.jsonl"), lines).unwrap();
+    }
+
+    fn empty_http() -> FixtureHttp {
+        FixtureHttp {
+            calls: AtomicUsize::new(0),
+            body: b"{}".to_vec(),
+        }
+    }
+
+    /// T26: 来源被删除后, 该 agent 的历史用量必须从台账继续输出, 且状态区分于 ok。
+    #[test]
+    fn history_survives_source_removal() {
+        let home = history_test_home("source-removal");
+        let history_db = home.join("usage-history.sqlite");
+        write_claude_history(&home);
+        let request = history_request(&home, &history_db);
+
+        let first =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        let first_agent = claude_agent(&first.artifact);
+        assert_eq!(first_agent["status"], "ok");
+        let first_total = daily_total(first_agent);
+        assert_eq!(first_total, 330, "两次调用应完整计入: {first_total}");
+        assert!(!first
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == LOCAL_HISTORY_STORE_UNAVAILABLE));
+
+        // 清理来源 (卸载/删除会话目录)
+        std::fs::remove_dir_all(home.join("claude")).unwrap();
+        let second =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        let second_agent = claude_agent(&second.artifact);
+        assert_eq!(
+            second_agent["status"], "history",
+            "来源消失后应显示历史状态而非 not_found"
+        );
+        assert!(
+            second_agent["note"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("历史用量"),
+            "note 应说明来源未发现但展示历史: {}",
+            second_agent["note"]
+        );
+        assert_eq!(
+            daily_total(second_agent),
+            first_total,
+            "来源删除不得减少台账历史"
+        );
+        assert_eq!(second_agent["today"]["total"], 110, "今日历史仍应保留");
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// T26: 台账不可用时只降级为「仅扫描贡献」, artifact 与诊断码均可解释。
+    #[test]
+    fn history_store_unavailable_falls_back_to_scan() {
+        let home = history_test_home("store-unavailable");
+        write_claude_history(&home);
+        let blocked_path = home.join("history-as-directory");
+        std::fs::create_dir_all(&blocked_path).unwrap();
+        let request = history_request(&home, &blocked_path);
+
+        let output =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        assert!(
+            output
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == LOCAL_HISTORY_STORE_UNAVAILABLE),
+            "台账不可用必须输出信息级诊断"
+        );
+        let agent = claude_agent(&output.artifact);
+        assert_eq!(agent["status"], "ok", "台账故障不得影响扫描结果");
+        assert_eq!(daily_total(agent), 330, "回退路径仍应输出扫描贡献");
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// T26: 从未使用的 agent 不得因占位而写入 0 行或变成 history。
+    #[test]
+    fn empty_sources_keep_placeholder_status() {
+        let home = history_test_home("empty-sources");
+        let history_db = home.join("usage-history.sqlite");
+        let request = history_request(&home, &history_db);
+
+        let output =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        let agent = claude_agent(&output.artifact);
+        assert_eq!(agent["status"], "not_found");
+        assert_eq!(agent["note"], "未发现会话记录");
+        assert_eq!(daily_total(agent), 0);
+
+        std::fs::remove_dir_all(&home).ok();
     }
 }

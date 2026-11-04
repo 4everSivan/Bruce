@@ -275,6 +275,7 @@ struct PanelViewModelHarness {
         try chartBuilds14DaysWithStableSegments()
         try legendOnlyIncludesActiveAgents()
         try hourlyRowsFilterAndShape()
+        try historyStatusIsNotAnAgentIssue()
         try hourlyRowsHideAgentsWithoutUsage()
         try hourlyRowsSortByTodayTotalDesc()
         try hourlyDetailAggregatesTopAndOther()
@@ -1095,6 +1096,33 @@ struct PanelViewModelHarness {
                 note: "未发现会话记录"
             )),
             "缺少 agentIssue 诊断"
+        )
+    }
+
+    // T26: history = 来源消失但自有台账有历史量, 数据有效, 不得产出 agentIssue 诊断.
+    private static func historyStatusIsNotAnAgentIssue() throws {
+        let historical = makeAgent(
+            id: "claude-code",
+            name: "Claude Code",
+            status: "history",
+            note: "本机未发现会话来源, 显示已保存的历史用量",
+            dailyTotals: Array(repeating: 100, count: 14)
+        )
+        let artifact = makeAgentUsageArtifact(agents: [historical], services: [])
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses
+        )
+        let hasIssue = vm.diagnostics.contains { diagnostic in
+            if case .agentIssue(let agentID, _, _) = diagnostic {
+                return agentID == "claude-code"
+            }
+            return false
+        }
+        try expect(!hasIssue, "history 状态不得产出 agentIssue 诊断")
+        try expect(
+            (vm.usage?.legend.count ?? 0) == 1,
+            "有历史量的 agent 应出现在用量图例"
         )
     }
 

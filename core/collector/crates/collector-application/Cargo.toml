@@ -8,6 +8,7 @@ license.workspace = true
 collector-aggregate = { path = "../collector-aggregate" }
 collector-credential = { path = "../collector-credential" }
 collector-domain = { path = "../collector-domain" }
+collector-history = { path = "../collector-history" }
 collector-local = { path = "../collector-local" }
 collector-provider = { path = "../collector-provider" }
 collector-runtime = { path = "../collector-runtime" }

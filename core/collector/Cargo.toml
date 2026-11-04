@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/collector-domain",
+    "crates/collector-history",
     "crates/collector-local",
     "crates/collector-aggregate",
     "crates/collector-runtime",

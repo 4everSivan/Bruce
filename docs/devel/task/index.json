@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-11-03",
+  "updated_at": "2026-11-04",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -104,6 +104,13 @@
       "design_doc": "docs/devel/design/12-开机自启动.md",
       "tasks": [
         "T25"
+      ]
+    },
+    "M14-用量历史持久化": {
+      "title": "用量历史聚合台账与全量读取：collector 自有 SQLite 持久化、来源解耦、移除 30k 截断（覆盖全部 10 个 Agent）",
+      "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+      "tasks": [
+        "T26"
       ]
     }
   },
@@ -461,6 +468,16 @@
       "depends_on": [],
       "file": "docs/devel/task/T25.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T25-launch-at-login"
+    },
+    "T26": {
+      "title": "用量历史聚合台账与全量读取：自有 SQLite 持久化、来源解耦、移除 30k 截断（覆盖全部 10 个 Agent）",
+      "status": "in_progress",
+      "branch": "feat/T26-usage-history-persistence",
+      "topic": "TokenUsage",
+      "milestone": "M14-用量历史持久化",
+      "depends_on": [],
+      "file": "docs/devel/task/T26.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T26-usage-history-persistence"
     }
   }
 }

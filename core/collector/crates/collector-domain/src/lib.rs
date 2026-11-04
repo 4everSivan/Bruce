@@ -768,17 +768,21 @@ pub struct AgentUsageArtifact {
     pub total_cost_usd: Option<f64>,
 }
 
-/// 信息级诊断码 (C041): SQLite 源行数截断是「保留最新、丢最旧」的计划内降级,
-/// 可观测 (诊断与 agent note 保留) 但不把 envelope 打成 Partial —— 否则菜单栏
-/// 会把常态降级误报为故障 (红色警告环)。
-pub const LOCAL_SOURCE_ROWS_CAPPED: &str = "LOCAL_SOURCE_ROWS_CAPPED";
+/// 信息级诊断码 (T26): 用量历史台账不可用 (打开/迁移/读写失败) 属于新能力的
+/// 降级路径, 该轮回退为「仅扫描贡献」的旧行为; 不应把 envelope 打成 Partial
+/// (避免菜单栏把台账故障误报为采集故障)。
+pub const LOCAL_HISTORY_STORE_UNAVAILABLE: &str = "LOCAL_HISTORY_STORE_UNAVAILABLE";
+
+fn is_informational_diagnostic(code: &str) -> bool {
+    code == LOCAL_HISTORY_STORE_UNAVAILABLE
+}
 
 pub fn response_status(has_artifact: bool, diagnostics: &[Diagnostic]) -> ResponseStatus {
     if !has_artifact {
         ResponseStatus::Error
     } else if diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.code != LOCAL_SOURCE_ROWS_CAPPED)
+        .any(|diagnostic| !is_informational_diagnostic(&diagnostic.code))
     {
         ResponseStatus::Partial
     } else {
@@ -827,7 +831,7 @@ impl BridgeResponse {
 mod tests {
     use super::{
         response_status, AgentUsageArtifact, CollectionWindow, Diagnostic, ResponseStatus,
-        TokenBucket, UsageContributionBuilder, UsageSample, LOCAL_SOURCE_ROWS_CAPPED,
+        TokenBucket, UsageContributionBuilder, UsageSample, LOCAL_HISTORY_STORE_UNAVAILABLE,
     };
     use serde_json::{json, Map, Value};
 
@@ -860,20 +864,20 @@ mod tests {
             response_status(true, std::slice::from_ref(&degrading)),
             ResponseStatus::Partial
         );
-        // C041: 行数截断是信息级降级, 不把 envelope 打成 Partial。
-        let capped = Diagnostic::new(
-            LOCAL_SOURCE_ROWS_CAPPED,
+        // T26: 历史台账不可用是信息级降级, 不把 envelope 打成 Partial。
+        let store_degraded = Diagnostic::new(
+            LOCAL_HISTORY_STORE_UNAVAILABLE,
             "local",
-            "zcode",
-            "仅保留 zcode 最新 30000 条用量记录",
+            "history",
+            "用量历史台账不可用, 本轮仅使用扫描结果",
             true,
         );
         assert_eq!(
-            response_status(true, std::slice::from_ref(&capped)),
+            response_status(true, std::slice::from_ref(&store_degraded)),
             ResponseStatus::Success,
-            "行数截断不得触发 Partial"
+            "台账不可用不得触发 Partial"
         );
-        let mixed = [capped, degrading];
+        let mixed = [store_degraded, degrading];
         assert_eq!(
             response_status(true, &mixed),
             ResponseStatus::Partial,

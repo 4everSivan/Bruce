@@ -807,7 +807,7 @@
     const line = node("div", null, { class: "wb-row" });
     const meta = node("div", null, { class: "wb-row-meta" });
     const title = node("div", null, { class: "wb-name-line" });
-    title.append(node("span", agent.name, { class: "wb-name" }), node("span", agent.status, { class: "wb-tag strong" }));
+    title.append(node("span", agent.name, { class: "wb-name" }), node("span", agent.status === "history" ? "历史" : agent.status, { class: "wb-tag strong" }));
     meta.append(title);
     if (agent.note) meta.append(node("span", agent.note, { class: "wb-row-sub" }));
     // 构成比例条: 输入 (含缓存写入) 蓝 + 输出紫 + 缓存读取绿, 三段之和 = 总量
