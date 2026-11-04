@@ -4,7 +4,7 @@
   "title": "修复出口IP检查线路测试结果为不匹配时状态点与文案错误显示为绿色问题，修正为红色警示并持久化保留上次测试结果及地址",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C184-egress-mismatch-status-color",
   "is_hotfix": false,
   "target": {
@@ -86,8 +86,8 @@
     "version": "1.6.0",
     "ran_at": "2026-11-04",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "确认",
     "signed_rejection_count": 0
   }
