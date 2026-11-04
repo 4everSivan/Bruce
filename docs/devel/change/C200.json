@@ -4,7 +4,7 @@
   "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
   "version": "0.17.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C200-partial-detail-skips-notices",
   "is_hotfix": false,
   "target": {
@@ -19,14 +19,15 @@
     "command": "grep -n \"diagnostics.first?.message\" apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
     "expected": "partial 分支直接取诊断首条作为说明",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-04 fix/C199 分支@1d97f5a 预检命中：RefreshScheduler.swift:834 let detail = response.diagnostics.first?.message 作为 partial 说明；run.output.response 已含宿主追加的 CREDENTIAL_PERSIST_FAILED（排在 collector 诊断之后）。C198 实测 envelope（local/c198/branch-envelope.json）诊断顺序为 LOCAL_SOURCE_NOTICE@codex 在前、LOCAL_SOURCE_SCHEMA_INCOMPATIBLE@zcode 在后。Windows 以 runtime.error 机器码给原因，诊断码只在维护页列出，不受影响"
   },
   "callback": {
     "before": [
       "git checkout -b fix/C200-partial-detail-skips-notices fix/C199-history-downward-correction"
     ],
     "after": [
-      "swift build --package-path apps/macos",
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "apps/macos/.build/out/Products/Debug/RefreshSchedulerHarness \"$PWD\"",
       "zsh scripts/verify-local.sh",
       "scripts/adflow-verify --card C200 --to verified --record"
     ]
@@ -48,7 +49,7 @@
   "design": {
     "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "topic": "MenuBarIndicator",
-    "modified": false,
+    "modified": true,
     "rule_diff": {
       "before": "hover 原因在采集侧决定时取 ModuleStatus.detail（partial 时为 collector 诊断首条）",
       "after": "partial 时的 ModuleStatus.detail 取首条非信息级诊断（信息级清单由共享 fixture 双端锁定），说明不得盖住真实故障"
@@ -56,7 +57,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261104-13",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -64,36 +65,38 @@
         "item": "自动化测试",
         "true_if": "回归：partial 响应诊断为 [信息级说明, 真实故障] → detail 为故障文案；宿主追加 CREDENTIAL_PERSIST_FAILED 时 detail 为写回失败文案；全部为信息级时取第一条；共享 fixture 与 Rust / Swift 两侧清单一致；全量测试 Exit 0",
         "false_if": "说明仍盖住故障、清单两侧不一致，或存在测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c200-verify-local.log）：Rust 586 passed / 0 failed、全部 Swift Harness 通过（Refresh scheduler 118 → 119）、fixture 敏感扫描 0 命中（files=47）、变更总账一致 cards=199。新增 RefreshSchedulerHarness partialDetailSkipsInformationalDiagnostics：mac 信息级清单 = 共享 fixture、fixture 列出的故障码均非信息级；调度链路 partial 响应诊断为 [LOCAL_SOURCE_NOTICE@codex, LOCAL_SOURCE_SCHEMA_INCOMPATIBLE@zcode] → detail 为「本机 zcode 数据库schema 不兼容」；[说明, CREDENTIAL_PERSIST_FAILED] → 写回失败文案；全为说明 → 第一条；无诊断 → nil。collector-domain informational_codes_match_the_shared_fixture：INFORMATIONAL_DIAGNOSTIC_CODES 与 fixture 一致、故障码不在其中。变异检查：恢复 diagnostics.first?.message 后用例失败（got「Codex 会话副本内容冲突…」）",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "真实 collector 输出的诊断顺序（Codex 说明在前、ZCode 故障在后）经 mac 调度链路，模块状态 detail 为 ZCode 故障文案",
         "false_if": "detail 仍为说明文案",
-        "evidence": "",
-        "result": null
+        "evidence": "真实 collector 诊断顺序经 mac 调度链路验证：用例中的两条诊断逐字取自 C198 实测 envelope（local/c198/branch-envelope.json：Bruce-collector 对临时 home 的 Codex 副本冲突 + 损坏 zcode.db 的输出），经 PartialSuccessExecutor → RefreshScheduler → onStatusChange，detail 为 ZCode 故障文案（local/c198/c200-scheduler-harness.log）。未在已安装 App 中悬停状态灯实测",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "success / 鉴权 / 错误 / 退避分支与只有故障诊断的 partial 行为不变；Windows 不受影响",
         "false_if": "其他状态分支或双端口径被破坏",
-        "evidence": "",
-        "result": null
+        "evidence": "RefreshSchedulerHarness 其余 118 项（success / 鉴权 / 错误退避 / 离线 / 节流 / 只有故障诊断的 partial、credentialPersistFailureDemotesToPartial 等）全部通过；只改 partial 分支的说明选取，onStatusChange 状态值不变。collector 侧 is_informational_diagnostic 改为查表、语义不变（envelope 状态判定用例照常通过）。Windows 不取诊断首条（runtime.error 机器码 + 维护页列出全部码），不受影响",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "1f008de",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-04",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

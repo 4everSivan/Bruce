@@ -2050,7 +2050,7 @@
     "C200": {
       "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C200-partial-detail-skips-notices",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
