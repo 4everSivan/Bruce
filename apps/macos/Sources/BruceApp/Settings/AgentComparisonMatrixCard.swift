@@ -51,6 +51,11 @@ struct AgentComparisonMatrixCard: View {
 
     // MARK: - Agent 单行展示
 
+    /// T26: 来源消失但台账仍有历史量时 collector 输出 status=history, 界面显示「历史」。
+    private static func displayStatus(_ status: String) -> String {
+        status == "history" ? "历史" : status
+    }
+
     private func agentRow(_ agent: AnalyticsAgentCardItem) -> some View {
         let isExpanded = expandedAgentIDs.contains(agent.agentID)
         let hasDetails = !agent.topProjects.isEmpty || !agent.topModels.isEmpty
@@ -73,7 +78,7 @@ struct AgentComparisonMatrixCard: View {
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(SettingsDemoTokens.text)
 
-                        Text(agent.status)
+                        Text(Self.displayStatus(agent.status))
                             .font(.system(size: 10))
                             .foregroundStyle(SettingsDemoTokens.text2)
                             .padding(.horizontal, 4)

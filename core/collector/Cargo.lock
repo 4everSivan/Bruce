@@ -154,6 +154,7 @@ dependencies = [
  "collector-aggregate",
  "collector-credential",
  "collector-domain",
+ "collector-history",
  "collector-local",
  "collector-provider",
  "collector-runtime",
@@ -188,6 +189,15 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "collector-history"
+version = "0.1.0"
+dependencies = [
+ "collector-domain",
+ "rusqlite",
  "serde_json",
 ]
 

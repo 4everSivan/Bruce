@@ -56,20 +56,12 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::time::UNIX_EPOCH;
 
-/// SQLite 源单次扫描的行数上限 (C041: 1 万 → 3 万)。
-/// 上限语义为「保留最新、丢最旧」的计划内降级 (capped 标记 + 信息级诊断),
-/// 3 万覆盖 ZCode 自身修剪后的存量天花板 (~1.1 万行), 常态下不再触发。
-pub(super) const MAX_SOURCE_ROWS: i64 = 30_000;
-
 #[derive(Debug, Clone)]
 pub struct SourceScan {
     pub found: bool,
     pub contribution: UsageContribution,
     pub stats: ScanStats,
     pub diagnostic: Option<String>,
-    /// 行数截断 (C041): 计划内降级标记, 上游据此把诊断归为信息级
-    /// (LOCAL_SOURCE_ROWS_CAPPED), 不把采集 envelope 打成 Partial。
-    pub capped: bool,
 }
 
 #[derive(Debug)]
@@ -97,7 +89,6 @@ impl SourceScan {
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
             stats: ScanStats::default(),
             diagnostic: None,
-            capped: false,
         }
     }
 }
@@ -113,7 +104,6 @@ pub(super) fn finish(
         contribution: builder.contribution(),
         stats,
         diagnostic: None,
-        capped: false,
     }
 }
 

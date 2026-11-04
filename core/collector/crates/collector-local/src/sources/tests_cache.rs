@@ -917,10 +917,9 @@ fn sqlite_cache_reports_incompatible_schema_instead_of_empty_success() {
     fs::remove_dir_all(root).ok();
 }
 
-/// 行数超上限时必须保留最新记录: 10_010 行中最早的 10 行被截掉,
-/// 最新 10_000 行全部进入聚合 (7/26 归零, 7/28 完整).
+/// T26: 不再有行数上限 —— 全部 30_010 行都进入聚合 (7/26 与 7/28 均完整).
 #[test]
-fn zcode_row_cap_keeps_newest_rows() {
+fn zcode_reads_all_rows_without_cap() {
     use rusqlite::Connection;
     let root = temp_root("zcode-cap");
     let db_path = root.join("db.sqlite");
@@ -965,16 +964,18 @@ fn zcode_row_cap_keeps_newest_rows() {
     let scan = scan_zcode(&db_path, &window());
     assert!(scan.diagnostic.is_none(), "扫描不应报错");
     assert!(scan.found, "应识别到数据");
-    assert_eq!(scan.stats.sqlite_rows_read, 30_000, "应恰好读到上限行数");
-    assert!(scan.capped, "C041: 触顶必须携带截断标记");
+    assert_eq!(
+        scan.stats.sqlite_rows_read, 30_010,
+        "T26: 应读取全部行, 不得截断"
+    );
     let by_day = &scan.contribution.by_day;
     assert_eq!(
         by_day
             .get("2026-07-26")
             .map(|bucket| bucket.total)
             .unwrap_or(0),
-        0,
-        "被截断的最早 10 行不得计入 7/26"
+        10 * 1_000,
+        "最早的 10 行也必须计入 7/26"
     );
     assert_eq!(
         by_day
@@ -982,15 +983,14 @@ fn zcode_row_cap_keeps_newest_rows() {
             .map(|bucket| bucket.total)
             .unwrap_or(0),
         30_000 * 10,
-        "最新 10_000 行应完整计入 7/28"
+        "全部 30_000 行应完整计入 7/28"
     );
     fs::remove_dir_all(&root).ok();
 }
 
-/// 行数超上限时按 rowid DESC 保留最新消息: 最早的 10 行被截掉,
-/// 最新 10_000 行完整进入聚合.
+/// T26: OpenCode 同样不设行数上限 —— 30_010 行全部进入聚合.
 #[test]
-fn opencode_row_cap_keeps_newest_messages() {
+fn opencode_reads_all_messages_without_cap() {
     use rusqlite::Connection;
     let root = temp_root("opencode-cap");
     let db_path = root.join("opencode.db");
@@ -1032,16 +1032,18 @@ fn opencode_row_cap_keeps_newest_messages() {
 
     let scan = scan_opencode(&db_path, &window());
     assert!(scan.diagnostic.is_none(), "扫描不应报错");
-    assert_eq!(scan.stats.sqlite_rows_read, 30_000, "应恰好读到上限行数");
-    assert!(scan.capped, "C041: 触顶必须携带截断标记");
+    assert_eq!(
+        scan.stats.sqlite_rows_read, 30_010,
+        "T26: 应读取全部消息, 不得截断"
+    );
     let by_day = &scan.contribution.by_day;
     assert_eq!(
         by_day
             .get("2026-07-26")
             .map(|bucket| bucket.total)
             .unwrap_or(0),
-        0,
-        "被截断的最早 10 行不得计入 7/26"
+        10 * 1_000,
+        "最早的 10 行也必须计入 7/26"
     );
     assert_eq!(
         by_day

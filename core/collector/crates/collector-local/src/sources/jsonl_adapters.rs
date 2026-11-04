@@ -698,7 +698,6 @@ pub fn scan_grok_cached(
         contribution: builder.contribution(),
         stats,
         diagnostic,
-        capped: false,
     })
 }
 

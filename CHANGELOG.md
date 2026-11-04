@@ -6,6 +6,12 @@
 ## [Unreleased]
 
 ### Added
+- **用量历史聚合台账与全量读取：来源解耦、移除 30k 截断、覆盖全部 10 个 Agent (T26)**：
+  - **collector 自有 SQLite 台账**：新增 `collector-history` crate，在 `~/Library/Application Support/Bruce/usage-history-v1.sqlite`（Windows `%LOCALAPPDATA%\Bruce\`）按 agent / 日期 / 日×模型 / 月×模型 / 今日小时 / 今日工程保存**派生数值**（不存消息正文、路径、凭据）；每轮全量本机扫描单事务单调合并（新扫描 total ≥ 存量才替换、扫描未出现的日期保留），来源修剪、会话文件删除、换根或部分扫描失败都不再抹掉已有历史；
+  - **artifact 从台账投影**：`daily` / `today` / `hours` / `dailyModels` / `monthModels` / `hourModels` / `projects` 全部由台账窗口重建，成本仍按当前价表重算；App 侧数据来源不变（双端仍只读 artifact），`清理用量缓存` 仍只清快照与元数据、不删台账；
+  - **来源消失不再丢用量**：来源 `found=false` 但台账窗口内有量时输出 `status = "history"` 与「本机未发现会话来源，显示已保存的历史用量（最后同步 …）」note，mac / Windows 显示「历史」标签并视为非故障；此前「卸载或清理某个 Agent → 该 Agent 从 Agent 表现整段消失」在 10 个来源上统一修复；
+  - **移除 30000 行截断**：ZCode / OpenCode 全量与增量读取改为按 rowid / 时间游标流式逐行聚合（内存 O(1)、逐行取消检查，无 `LIMIT`），删除 `MAX_SOURCE_ROWS` / `SourceScan.capped` / `LOCAL_SOURCE_ROWS_CAPPED`，SQLite 缓存 schema 升至 v3；本机 ZCode 现有 39,719 行全部计入 182 天窗口，跨日全量重建不再丢历史，rowid 可用时增量缓存恢复；
+  - **降级可解释**：台账打开/迁移/读写失败仅输出信息级 `LOCAL_HISTORY_STORE_UNAVAILABLE`（不触发 envelope `Partial`），该轮回退为「仅扫描贡献」；台账损坏不删除既有数据。首次升级只能回补来源当前仍保留的数据，升级前已被修剪/删除的历史无法恢复。
 - **Agent 用量新增 dsh (DeepSeek Harness) 本机会话统计 (C189)**：
   - **第 10 个本机来源 `dsh`**：只读扫描 `~/.dsh/sessions`（`$DSH_HOME` 可覆盖家目录）下 `session.vN.jsonl.zstd`；dsh 每次追加事件各写一个独立 zstd 帧，引擎以多帧串接解码器读取并按 `assistant/message` 的 `data.usage` 采集四类 Token（`inputTokens` 非缓存输入、`outputTokens`、`cacheReadTokens` → 缓存读取、`cacheWriteTokens` → 缓存创建，派生 `totalTokens` 不重复计入）；模型取 `data.message.source.model` 原样入价卡归一化（`deepseek-flash`、`cline-pass/deepseek-v4.1-flash-1017` 等），项目取会话 `cwd` 末段；
   - **去重与增量缓存**：fork / seed 会话会继承历史消息，跨文件按 message id 摘要前 128 位去重（同键保留总量最大者）；zstd 帧边界与行不对应、解压字节偏移不可用于追加，故缓存按文件签名（设备 / inode / 大小 / 修改时间纳秒）整文件重建，未变更文件只读观测不解压；

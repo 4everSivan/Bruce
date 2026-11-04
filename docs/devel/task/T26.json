@@ -1,0 +1,136 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T26",
+  "title": "用量历史聚合台账与全量读取：自有 SQLite 持久化、来源解耦、移除 30k 截断（覆盖全部 10 个 Agent）",
+  "version": "0.17.0",
+  "milestone": "M14-用量历史持久化",
+  "status": "in_progress",
+  "branch": "feat/T26-usage-history-persistence",
+  "depends_on": [],
+  "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T26-usage-history-persistence",
+  "target": {
+    "module": "core/collector (collector-history 新 crate + collector-local SQLite 适配器 + collector-application 装配) + apps/macos / apps/win（仅 status=history 的展示映射） + docs",
+    "component": "本机用量采集历史持久化与读取路径",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "goal": "解决『来源消失/被清理/被截断 → Agent 历史用量整段消失』的结构性缺陷：collector 侧新增 Bruce 自有 SQLite 聚合台账（只存数值统计与日期，不存消息正文/路径/凭据），artifact 从台账投影；ZCode/OpenCode 移除 30000 行上限改为流式全量读取；全部 10 个 Agent 在来源被删除/清空/卸载后仍能展示已保存的历史用量；App 侧仍只读 artifact。",
+  "precheck": {
+    "description": "预检：确认当前无任何独立历史台账、ZCode 触顶 3 万行、且来源删除会令 artifact 归零（问题真实存在）",
+    "command": "grep -rn 'MAX_SOURCE_ROWS' core/collector/crates/collector-local/src/sources.rs; ls ~/Library/Application\\ Support/Bruce/ 2>/dev/null | grep -i history; sqlite3 \"file:$HOME/.zcode/cli/db/db.sqlite?mode=ro\" 'SELECT count(*) FROM model_usage;'",
+    "expected": "存在 MAX_SOURCE_ROWS = 30_000；Bruce Application Support 下无 usage-history 库；ZCode model_usage 行数 > 30000（当前 39719）",
+    "is_completed": true,
+    "evidence": "2026-11-04 预检：sources.rs 存在 MAX_SOURCE_ROWS=30_000；Bruce Application Support 无 usage-history 库；本机 ZCode model_usage=39,719 行 > 30,000，且 artifact 仅 7.86B tokens（被截断）→ 问题真实存在。"
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/T26-usage-history-persistence"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T26 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T26-1",
+      "title": "新增 collector-history crate：台账 schema、单调合并、窗口投影与迁移",
+      "capability": "rusqlite WAL 库（user_version=1）；表 agent_day / agent_day_model / agent_month_model / agent_today_model / agent_hour / agent_hour_model / agent_project / agent_state；merge(agent, contribution, found, now) 单调合并（新 total ≥ 存量才替换、缺失日期保留）；load(agent, window) 重建 UsageContribution；失败返回结构化错误；单测覆盖幂等、回退不抹、跨日/跨窗口、月/小时/工程、0 行过滤。",
+      "done": true
+    },
+    {
+      "id": "T26-2",
+      "title": "ZCode/OpenCode 移除 30k 截断：流式全量读取并删除 capped 链路",
+      "capability": "全量与增量读取按 rowid/时间游标逐行聚合、无 LIMIT、内存 O(1)、逐行取消检查；append_safe 在 rowid 可用时恢复为 true；删除 MAX_SOURCE_ROWS / SourceScan.capped / SqliteReadResult.capped / 缓存 capped / LOCAL_SOURCE_ROWS_CAPPED；SQLITE_CACHE_SCHEMA_VERSION=3；更新 30k 相关测试为『全量计入』。",
+      "done": true
+    },
+    {
+      "id": "T26-3",
+      "title": "collector-application 接入台账：路径解析、全量轮合并、窗口投影、history 状态与降级诊断",
+      "capability": "全量本机扫描轮单事务合并全部 agent；artifact agent 用量从台账窗口投影（失败回退扫描贡献）；来源 found=false 但台账有量 → status=history + note；台账故障输出信息级 LOCAL_HISTORY_STORE_UNAVAILABLE 且不参与 Partial；paths 支持 history_db 覆盖用于测试。",
+      "done": true
+    },
+    {
+      "id": "T26-4",
+      "title": "双端展示对齐：status=history 非故障、「历史」标签、Windows golden 重生",
+      "capability": "mac UsageMapping 不把 history 当 agentIssue；AgentComparisonMatrixCard 与 Windows settings-workbench 将 history 显示为「历史」；PanelParityHarness golden 重生成并同步 win analytics_parity/fixture_parity；其余 status 语义不变。",
+      "done": true
+    },
+    {
+      "id": "T26-5",
+      "title": "测试与质量门禁：来源消失保留历史、全量 39k 行、跨日重建、清理隔离",
+      "capability": "新增：删除/清空任一来源后 artifact 仍出历史、39,719 行全量计入、跨日全量重建不丢历史、占位 agent 不写 0 行、清理 App 快照不删台账、台账损坏回退扫描；verify-local.sh 退出码 0。",
+      "done": true
+    },
+    {
+      "id": "T26-6",
+      "title": "文档回写：design/01 §7.3 基线与 official/CHANGELOG/索引",
+      "capability": "design/01 新增 §7.3 并同步 §6.1/§7.1；docs/official 本地会话解析与计费更新；CHANGELOG Added；task/index.json 登记；卡片同步 commit 后收口。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "台账与来源解耦",
+        "true_if": "删除/清空任一 agent 来源后重跑 collector，artifact 该 agent 仍带窗口内历史用量，status=history 且 note 说明来源未发现",
+        "false_if": "任一来源消失后该 agent 用量归零或行被 UI 过滤",
+        "evidence": "collector-application 单测 history_survives_source_removal（删除 Claude 来源后 status=history、daily 总量 330 不变）；真实环境 e2e：10 源全部指向空目录后 claude-code/codex/zcode/codebuddy/dsh 均 status=history 且保留 1.29B/0.31B/10.58B/0.36B/0.27B tokens，envelope=success 无诊断。",
+        "result": true
+      },
+      {
+        "item": "全量读取（移除 30k 截断）",
+        "true_if": "ZCode 39,719 行全部计入 182 天窗口；冷扫与缓存结果逐字段一致；不再出现『仅保留最新 30000 条』诊断",
+        "false_if": "仍存在行数截断或冷热不一致",
+        "evidence": "collector-local zcode_reads_all_rows_without_cap / opencode_reads_all_messages_without_cap（30,010 行全量计入）；真实 ZCode 39.7k 行全量 e2e：daily_total=10,584,015,563、首个非零日 2026-10-06、无『仅保留…30000』诊断；cargo test --workspace 全绿（collector-local 63 / application 39 / domain 24 / history 9）。",
+        "result": true
+      },
+      {
+        "item": "单调合并与跨日重建",
+        "true_if": "来源回退/部分失败/跨零点全量重建均不减少台账历史；月/日/小时投影与扫描贡献一致",
+        "false_if": "任一路径导致历史减少",
+        "evidence": "collector-history 9 项单测：幂等、单调回退保留+kept_days、缺失日期保留、今日临时表替换+昨日清理、月桶增大替换/减小保留；真实环境首轮写入台账后二次扫描（更晚 now）总量不减少。",
+        "result": true
+      },
+      {
+        "item": "零占位与清理隔离",
+        "true_if": "从未使用的 agent 不写入 0 行；清理 App 快照后台账保留且刷新即恢复历史",
+        "false_if": "占位写库或清理删除台账",
+        "evidence": "empty_sources_keep_placeholder_status（空来源 not_found 且 daily=0、台账不写 0 行）；台账路径位于 Application Support/Bruce 根、App 清理仅删 snapshots/metadata（ArtifactStore.swift:365-378 / Win snapshot.json），与台账文件不相交。",
+        "result": true
+      },
+      {
+        "item": "双端一致性",
+        "true_if": "mac/Windows artifact 消费一致；history 在两端口径一致且不产生故障诊断；golden 对拍通过",
+        "false_if": "任一端把 history 当故障或显示不一致",
+        "evidence": "mac UsageMapping 对 history 不产 agentIssue（PanelViewModelHarness 新增 historyStatusIsNotAnAgentIssue，66 项通过）；AgentComparisonMatrixCard/Windows settings-workbench 显示「历史」；PanelParityHarness 5 项双端 golden 对拍通过。",
+        "result": true
+      },
+      {
+        "item": "质量门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0；scripts/adflow-verify Exit 0",
+        "false_if": "任一环节失败",
+        "evidence": "`zsh scripts/verify-local.sh` 实测退出码 **0**（日志 `local/t26-verify.log`，末行 Bruce 本地验证全部通过）；含 Rust fmt/test/clippy、fixture/敏感扫描、Swift build 与全部 Harness（PanelViewModel 66、ArtifactStore 7、CollectorRunner 28、LocalIntegration 2、PanelParity 5、AppModelCache 5、RefreshScheduler 118、Diagnostics 8 等），以及 Windows 前端 5 个 node --test 套件、价卡/品牌/变更总账一致性检查。",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "completed"
+  }
+}

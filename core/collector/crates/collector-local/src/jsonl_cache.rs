@@ -424,7 +424,6 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         contribution,
         stats: state.stats,
         diagnostic,
-        capped: false,
     })
 }
 

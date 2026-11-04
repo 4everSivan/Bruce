@@ -223,6 +223,30 @@ pub fn resolve_dsh_sessions_path(home: &Path) -> PathBuf {
     resolve_dsh_home_path(home).join("sessions")
 }
 
+/// Resolve the collector-owned usage history SQLite ledger (T26).
+///
+/// macOS/Linux keep the `~/Library/Application Support` layout; Windows uses
+/// `%LOCALAPPDATA%\Bruce\usage-history-v1.sqlite` (blank env falls back to
+/// `~/AppData/Local`) so the ledger never lands in the roaming profile.
+pub fn resolve_usage_history_path(home: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let local_app_data = env_non_empty("LOCALAPPDATA");
+        let root = match local_app_data {
+            Some(value) => PathBuf::from(value).join("Bruce"),
+            None => home.join("AppData").join("Local").join("Bruce"),
+        };
+        root.join("usage-history-v1.sqlite")
+    }
+    #[cfg(not(windows))]
+    {
+        home.join("Library")
+            .join("Application Support")
+            .join("Bruce")
+            .join("usage-history-v1.sqlite")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
