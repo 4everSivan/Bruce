@@ -54,6 +54,7 @@
   - 动态宽度计算与 capHeight 光学垂直居中公式自适应适配，上下保留约 4.5pt 舒适呼吸空间；设置中心实时预览条 1:1 同步对齐。
 
 ### Fixed
+- **来源说明不再被当成故障：Codex 缓存自愈与会话副本取舍不再显示错误 (C198)**：collector 此前把来源层的任何说明都按 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE` 输出并把 agent 置 `error`——Codex「缓存文件格式异常, 已整体重建」（用量完整、自愈）那一轮、以及 Orca 旧前缀副本触发的「会话副本内容冲突」每一轮，Codex 都显示错误、envelope 为 Partial。现在来源结果分故障（`diagnostic`：SQLite 库不可读 / schema 不兼容 / 查询失败，语义不变）与说明（`notice`）两个通道，说明以新的信息级诊断码 `LOCAL_SOURCE_NOTICE` 输出，不改变 agent 状态、不参与 Partial 判定，文字附在 agent note 后（如「额度见下方 Codex 账号 (实时查询) (Codex 缓存文件格式异常, 已整体重建)」）。Windows 用量卡同步修正：此前以 `status != "ok"` 判定，把 T26 的 `history`（台账历史）也报成故障，现与 mac 一致排除 `history`。实测（临时 home，Bruce-collector）：损坏 Codex 缓存后 Codex `ok`、1,050 不变、envelope success；ZCode 库损坏仍为 `error` + `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`。
 - **出口IP检查线路测试不匹配改为红色警示并保留上次结果 (C184)**：设置中心出口IP检查卡片此前用包含关系判断测试结果，导致「出口国家不匹配」也被当成「匹配」显示绿色；现在状态点与文案精确区分：探测匹配绿色、国家不匹配红色警示、探测失败/无法识别黄色。测试结论与脱敏地址持久化到国家组，重新进入设置可恢复，端口变更时自动重置。
 
 ## [0.16.0] - 2026-11-02
