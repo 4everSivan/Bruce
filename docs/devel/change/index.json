@@ -1976,7 +1976,7 @@
     "C192": {
       "title": "修复 dsh 单帧解码失败即整会话跳过：改为逐帧隔离，并让帧上限在解码中生效",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C192-dsh-frame-isolation",
       "topic": "TokenUsage",
       "version": "0.17.0",
