@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C196",
+  "title": "修复 JSONL 部分读取失败被当作文件删除而回收缓存条目",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C196-jsonl-partial-read-cache",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local JSONL 缓存与 manifest 回收",
+    "component": "JSONL manifest 差集与部分扫描失败的区分",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：子目录/文件读取失败（权限、移动、外部卷短暂不可用）时该文件不进入 seen 集合，manifest 差集把它当“已删除”回收缓存条目；本轮少计，且若来源随后修剪/删除则不可回补（T26 台账只能保住此前已捕获的历史）。需要区分“确认删除”和“本轮读取失败”，失败时保留条目。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"reconcile_deleted_cache\\|seen\\|PermissionDenied\\|io_errors\" core/collector/crates/collector-local/src/jsonl_cache.rs | head",
+    "expected": "读取失败的文件不进 seen，差集直接删除缓存条目，无保留分支",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C196-jsonl-partial-read-cache"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C196 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "JSONL 缓存回收",
+      "before": "部分读取失败被当作文件删除，缓存条目被回收，本轮少计",
+      "after": "读取失败与确认删除分开处理，失败保留条目并输出诊断",
+      "impact": "临时不可读不再造成历史丢失；真正删除仍按差集回收"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "manifest 差集视为删除，读取失败文件同样被回收",
+      "after": "读取失败与删除分离，失败保留缓存并可见"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C190",
+  "title": "修复 Codex 同名 rollout 仅按文件名分组去重、可能只计一份会话",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C190-codex-rollout-dedupe",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Codex 适配器",
+    "component": "Codex 多根 rollout 去重键（文件名 vs 路径/内容）",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：Codex 扫描把多个根（CLI / Orca 会话 / Orca 账号）的 rollout 按 `rollout:{file_name}` 分组，只保留 size/mtime 优先的一份；若不同根下存在同名但内容不同的 rollout（迁移、备份、副本），另一份会永久少计，仅在 `conflict_session_groups` 计数与 note 中提示，数字照常偏小。需要让去重键包含路径或内容身份，并在真冲突时保留两份。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"codex_path_key\\|conflict_session_groups\\|rollout:\" core/collector/crates/collector-local/src/sources/codex.rs | head",
+    "expected": "去重键仅由文件名构造，冲突只计 conflict_session_groups，未参与用量合并",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C190-codex-rollout-dedupe"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C190 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Codex 跨根去重键",
+      "before": "按文件名 `rollout:{file_name}` 分组，每组只取一份；不同内容同名副本静默少计",
+      "after": "去重键纳入根路径/文件身份；同名不同内容时分别计入并在 note/诊断中说明",
+      "impact": "Codex 用量在存在同名副本时不再少计；`conflict_session_groups` 语义收窄为真正重复"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "Codex 多根扫描按文件名去重，冲突只出诊断",
+      "after": "Codex 多根扫描按路径/内容身份去重，不同内容同名副本分别计入"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1944,6 +1944,69 @@
       "topic": "TokenUsage",
       "version": "0.16.1",
       "file": "docs/devel/change/C189.json"
+    },
+    "C190": {
+      "title": "修复 Codex 同名 rollout 仅按文件名分组去重、可能只计一份会话",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C190-codex-rollout-dedupe",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C190.json"
+    },
+    "C191": {
+      "title": "修复 Codex token 计数器回退区间用 saturating_sub 静默记 0",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C191-codex-counter-rollback",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C191.json"
+    },
+    "C192": {
+      "title": "修复 dsh 单帧解压内容 >8 MiB 的会话被永久跳过",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C192-dsh-oversize-frame",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C192.json"
+    },
+    "C193": {
+      "title": "为 9 个本机来源补充 usage 字段完整性校验，字段漂移不再静默记 0",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C193-usage-field-drift-guard",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C193.json"
+    },
+    "C194": {
+      "title": "修复 Grok 时间戳取文件 mtime 导致追加时历史跨日漂移，并标注 chars/4 估算口径",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C194-grok-timestamp-estimate",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C194.json"
+    },
+    "C195": {
+      "title": "为超长单行与超深目录的静默跳过补充诊断",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C195-scan-limit-diagnostics",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C195.json"
+    },
+    "C196": {
+      "title": "修复 JSONL 部分读取失败被当作文件删除而回收缓存条目",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C196-jsonl-partial-read-cache",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C196.json"
     }
   }
 }

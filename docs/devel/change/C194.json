@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C194",
+  "title": "修复 Grok 时间戳取文件 mtime 导致追加时历史跨日漂移，并标注 chars/4 估算口径",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C194-grok-timestamp-estimate",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Grok 适配器",
+    "component": "Grok 用量时间戳来源与 token 估算口径",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：Grok 适配器把文件 mtime 当作会话内所有观测的时间戳，每次追加都会把整段历史重打为新日期，造成历史跨日漂移、重复/错日；token 使用 `字符数/4` 估算且最小 1。需要改用消息级时间戳（若来源提供），并明确估算口径与不可回补限制。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"mtime\\|chars\\|/ 4\\|timestamp\" core/collector/crates/collector-local/src/sources/jsonl_adapters.rs | head",
+    "expected": "Grok 观测时间戳来自文件 mtime，token 为 chars/4 估算",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C194-grok-timestamp-estimate"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C194 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Grok 时间戳与估算口径",
+      "before": "整文件历史随 mtime 漂移；token 按 chars/4 估算，cache 恒 0",
+      "after": "优先使用消息级时间戳；无法获取时按文件首次观测固定；估算口径在 note 中明确",
+      "impact": "Grok 历史日期稳定；估算精度限制可见"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "Grok 以文件 mtime 作为使用时间，token 按字符数估算",
+      "after": "Grok 时间戳优先取消息级时间，估算口径显式标注"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

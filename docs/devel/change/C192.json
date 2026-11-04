@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C192",
+  "title": "修复 dsh 单帧解压内容 >8 MiB 的会话被永久跳过",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C192-dsh-oversize-frame",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local dsh 适配器",
+    "component": "dsh zstd 帧内容上限与损坏降级",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：dsh 解码器对单帧解压内容设 8 MiB 护栏，超限按 InvalidData 处理；无旧缓存条目时该会话文件被整体跳过且仅计 io_errors，artifact 无感，导致该会话用量永久缺失。需要区分“病态帧”和“合法大帧”，超限时诊断可见并保留可恢复路径（或提高上限/流式落盘）。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"DSH_MAX_FRAME_CONTENT_BYTES\\|frame limit\" core/collector/crates/collector-local/src/sources/dsh.rs | head",
+    "expected": "8 MiB 单帧上限存在，超限返回 InvalidData 并跳过该文件",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C192-dsh-oversize-frame"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C192 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "dsh 大帧处理",
+      "before": "单帧 >8 MiB 按损坏跳过整会话，用量永久缺失且 artifact 无提示",
+      "after": "合法大帧可解析（流式/提高上限），病态帧输出可见诊断并保留 stale 观测",
+      "impact": "dsh 大会话不再永久丢量；异常帧可解释"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "dsh 单帧内容上限 8 MiB，超限按损坏跳过",
+      "after": "dsh 大帧区分合法与病态，合法可解析、病态可见"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

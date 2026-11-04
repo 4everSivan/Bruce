@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C195",
+  "title": "为超长单行与超深目录的静默跳过补充诊断",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C195-scan-limit-diagnostics",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local 本机扫描引擎",
+    "component": "JSONL 单行上限与目录深度护栏的诊断可见性",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：单行 >1 MiB 与目录深度 >16 时扫描静默跳过，只累计 truncated_lines / 不扫描，artifact 无任何提示；用户无法知道少计原因。需要把这两类跳过升级为信息级诊断（含计数），并评估合理上限。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -rn \"MAX_JSONL_RECORD_BYTES\\|MAX_DIRECTORY_SCAN_DEPTH\\|truncated_lines\" core/collector/crates/collector-local/src | head",
+    "expected": "1 MiB/行与深度 16 护栏存在，触顶只计内部统计，artifact 无诊断",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C195-scan-limit-diagnostics"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C195 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "扫描护栏诊断",
+      "before": "超长行/超深目录静默跳过，artifact 无提示",
+      "after": "触顶计数进入 artifact 信息级诊断；必要时上调合理上限",
+      "impact": "少计原因可解释；正常扫描不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "超长行/超深目录静默跳过",
+      "after": "超长行/超深目录以信息级诊断暴露计数"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

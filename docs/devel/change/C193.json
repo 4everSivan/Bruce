@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C193",
+  "title": "为 9 个本机来源补充 usage 字段完整性校验，字段漂移不再静默记 0",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C193-usage-field-drift-guard",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local JSONL / Codex / OpenCode 适配器",
+    "component": "各来源 usage 字段完整性校验与降级诊断",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：除 ZCode 有表结构指纹校验外，其余 9 个来源在来源字段改名、嵌套位置变化时会静默解析为 0 或忽略该行，agent 仍显示 ok，用户只会看到数字骤降。需要为各来源补最小完整性校验（usage 键存在性/类型），异常时输出可见诊断。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -rn \"schema_fingerprint\\|usage\" core/collector/crates/collector-local/src/sources/sqlite_adapters.rs core/collector/crates/collector-local/src/sources/jsonl_adapters.rs | head",
+    "expected": "仅 ZCode 有 schema 指纹校验；其余来源缺字段时静默 0/忽略，无诊断",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C193-usage-field-drift-guard"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C193 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "本机来源字段校验",
+      "before": "9 个来源缺 usage 字段时静默记 0 或忽略，agent 仍 ok",
+      "after": "各来源校验必需字段，缺失时输出信息级诊断并保留可用部分",
+      "impact": "来源升级/字段漂移可被发现；正常来源解析不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "仅 ZCode 校验表结构，其余来源字段缺失静默处理",
+      "after": "全部本机来源校验 usage 必需字段，缺失输出可见诊断"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

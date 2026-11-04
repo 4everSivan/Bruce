@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C191",
+  "title": "修复 Codex token 计数器回退区间用 saturating_sub 静默记 0",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C191-codex-counter-rollback",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Codex 适配器",
+    "component": "Codex total_token_usage 增量计算与高水位",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现：Codex 用 `total_token_usage` 的增量（saturating_sub）计算每轮用量，高水位只升不降；若同一 rollout 内计数器回退（会话内重置/压缩等，触发条件未确认），回退后直到超过旧高水位之前的用量全部记 0。需要确认来源是否会回退，并在回退时按重置基线重新计算而非静默丢量。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"saturating_sub\\|high_water\\|total_token_usage\" core/collector/crates/collector-local/src/sources/codex.rs | head",
+    "expected": "增量使用 saturating_sub 且高水位只升不降，回退区间记 0，无诊断",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout fix/C191-codex-counter-rollback"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C191 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Codex 计数器回退处理",
+      "before": "计数器回退时 saturating_sub 归零，回退区间用量静默丢失",
+      "after": "检测到回退时以新基线重建高水位并保留可解释诊断/note",
+      "impact": "Codex 会话内重置场景不再少计；其余路径增量语义不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "Codex 用量按累计计数器增量计算，回退区间不计",
+      "after": "Codex 回退可检测并按新基线重算，回退不再静默丢量"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
+        "false_if": "存在测试失败或未覆盖回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
+        "false_if": "问题仍可复现或数值仍静默偏小",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余来源与缓存/artifact 行为不变",
+        "false_if": "破坏既有来源或缓存语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
