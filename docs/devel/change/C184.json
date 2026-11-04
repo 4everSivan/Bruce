@@ -4,7 +4,7 @@
   "title": "修复出口IP检查线路测试结果为不匹配时状态点与文案错误显示为绿色问题，修正为红色警示并持久化保留上次测试结果及地址",
   "version": "0.16.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C184-egress-mismatch-status-color",
   "is_hotfix": false,
   "target": {
@@ -53,40 +53,42 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261104-01",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试与本地全量门禁",
         "true_if": "BruceOnboardingCoreHarness 单元测试全绿通过，覆盖 lastTestResult 持久化与编解码、端口变更重置及 EgressChannelTile 状态分流，退出码为 0",
         "false_if": "测试失败或退出码非 0",
-        "evidence": "BruceOnboardingCoreHarness 180 项单测全部通过 (退出码 0)，包含 EgressCountryGroup 扩展字段持久化、端口变更清除及文案前缀契约断言；PanelViewModelHarness 64 项通过；PanelParityHarness 双端对拍通过",
+        "evidence": "zsh scripts/verify-local.sh Exit 0（2026-11-04 复核）：BruceOnboardingCoreHarness 180 项、PanelViewModelHarness 66 项、PanelParity 双端对拍全部通过；覆盖 lastTestResult 持久化与编解码、端口变更重置、statusLevel 前缀分流断言",
         "result": true
       },
       {
         "item": "线路测试不一致红色警示与持久化保留",
         "true_if": "线路测试返回出口国家不匹配时，状态圆点 Level 为 .danger 且显示红色 SettingsDemoTokens.danger，文字同样显示红色；页面重载或重启后保留上次测试结果及脱敏地址",
         "false_if": "出口国家不匹配仍显示为绿色或黄色，或测试结果重置丢失",
-        "evidence": "EgressSettingsCard 中 statusLevel 精确匹配前缀区分 .danger (红) 与 .ok (绿)，statusColor 与 Level 强绑定一致着色；EgressCountryGroup 新增 lastTestResult 并与 UI 双向绑定持久化，端口变更自动重置",
+        "evidence": "用户于 2026-11-04 在本机实测后以原话「确认」签收：线路测试出口国家不匹配时状态点与文案呈红色警示；重新进入设置中心保留上次测试结果与脱敏地址，端口变更后重置",
         "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "8dfad50",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "2026-11-03",
-    "exit_code": 4,
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
     "from_status": "in_progress",
-    "target_status": "verified"
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }
