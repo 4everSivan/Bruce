@@ -54,6 +54,7 @@
   - 动态宽度计算与 capHeight 光学垂直居中公式自适应适配，上下保留约 4.5pt 舒适呼吸空间；设置中心实时预览条 1:1 同步对齐。
 
 ### Fixed
+- **Codex 会话文件一次打不开即永久记 0 修复 (C197)**：Codex 按文件缓存此前把 rollout 打开失败（并行工作池 EMFILE、iCloud 已逐出、属主不同、瞬时 EINTR 等）当作「解析成功的空文件」，以当前文件身份写入空条目；文件恢复可读后身份不变、永久命中该空条目，已结束的会话再也不会重解析，且 artifact 仍为 `ok`、无任何诊断。现在打开 / 读取失败一律不写缓存条目：有旧条目时沿用其上次结果（与 dsh 活写兜底同口径），没有则本轮暂不计入，下一轮重试；本轮失败文件数以信息级说明附在 Codex note 后（「Codex 会话文件读取失败 N 个, 本轮沿用上次结果或暂未计入, 下次刷新重试」，经 C198 的 `LOCAL_SOURCE_NOTICE`，不把 Codex 置错误）。实测（临时 home，Bruce-collector）：rollout `chmod 000` 一轮后恢复权限，修复前连续两轮仍为 0、缓存条目 observations=0；修复后失败轮不写缓存，恢复后下一轮即回到 1,050。本机真实 `~/.codex`（41 个会话）182 天合计修复前后一致（310,202,004），冷 / 热扫描耗时不变。C197 之前已写成空条目的会话不会自愈（本机核查 0 例）。
 - **来源说明不再被当成故障：Codex 缓存自愈与会话副本取舍不再显示错误 (C198)**：collector 此前把来源层的任何说明都按 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE` 输出并把 agent 置 `error`——Codex「缓存文件格式异常, 已整体重建」（用量完整、自愈）那一轮、以及 Orca 旧前缀副本触发的「会话副本内容冲突」每一轮，Codex 都显示错误、envelope 为 Partial。现在来源结果分故障（`diagnostic`：SQLite 库不可读 / schema 不兼容 / 查询失败，语义不变）与说明（`notice`）两个通道，说明以新的信息级诊断码 `LOCAL_SOURCE_NOTICE` 输出，不改变 agent 状态、不参与 Partial 判定，文字附在 agent note 后（如「额度见下方 Codex 账号 (实时查询) (Codex 缓存文件格式异常, 已整体重建)」）。Windows 用量卡同步修正：此前以 `status != "ok"` 判定，把 T26 的 `history`（台账历史）也报成故障，现与 mac 一致排除 `history`。实测（临时 home，Bruce-collector）：损坏 Codex 缓存后 Codex `ok`、1,050 不变、envelope success；ZCode 库损坏仍为 `error` + `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`。
 - **出口IP检查线路测试不匹配改为红色警示并保留上次结果 (C184)**：设置中心出口IP检查卡片此前用包含关系判断测试结果，导致「出口国家不匹配」也被当成「匹配」显示绿色；现在状态点与文案精确区分：探测匹配绿色、国家不匹配红色警示、探测失败/无法识别黄色。测试结论与脱敏地址持久化到国家组，重新进入设置可恢复，端口变更时自动重置。
 
