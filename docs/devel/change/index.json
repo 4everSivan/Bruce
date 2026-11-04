@@ -1939,7 +1939,7 @@
     "C189": {
       "title": "Agent 用量新增 dsh (DeepSeek Harness) 会话统计：zstd JSONL 适配器、双端品牌配色与首次启动探测对齐",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C189-dsh-agent-usage",
       "topic": "TokenUsage",
       "version": "0.16.1",
