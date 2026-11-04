@@ -742,6 +742,44 @@ fn codex_uses_cumulative_total_when_last_usage_is_missing_across_model_switch() 
     fs::remove_dir_all(root).unwrap();
 }
 
+/// C191: 仅含累计计数的旧版 rollout —— 计数中途回退 (恢复会话后从 0 重计) 按新基线计入,
+/// 不再在超过旧高水位前一直记 0; 回退到文件内见过的值是重放快照, 记 0 且不动基线。
+/// 回退次数随按文件缓存持久化, 命中缓存的轮次说明不消失。
+#[test]
+fn codex_cumulative_counter_reset_uses_new_baseline() {
+    let root = temp_root("counter-reset");
+    let cache_dir = temp_root("counter-reset-cache");
+    write_codex_lines(
+        &root,
+        "rollout-reset.jsonl",
+        &[
+            codex_total_snapshot("2026-07-28T04:00:01Z", 100, 0, 10, "codex"),
+            codex_total_snapshot("2026-07-28T04:00:02Z", 150, 0, 15, "codex"),
+            // 恢复会话: 累计从 0 重计
+            codex_total_snapshot("2026-07-28T04:00:03Z", 30, 0, 3, "codex"),
+            // 重放重置前的快照: 见过的值, 记 0、不动基线
+            codex_total_snapshot("2026-07-28T04:00:04Z", 150, 0, 15, "codex"),
+            codex_total_snapshot("2026-07-28T04:00:05Z", 50, 0, 5, "codex"),
+        ],
+    );
+
+    let reference = scan_codex(std::slice::from_ref(&root), &window());
+    // 110 + 55 + 33 (重置后按新基线) + 0 (重放) + 22; C191 前为 110 + 55 = 165
+    assert_eq!(today_total(&reference), 220);
+    assert_eq!(reference.stats.usage_records, 4);
+
+    let notice = Some("Codex 1 个会话的累计用量计数中途回退, 已按新基线计入");
+    let cold = scan_codex_cached(std::slice::from_ref(&root), &window(), &cache_dir);
+    assert_eq!(cold.contribution, reference.contribution);
+    assert_eq!(cold.notice.as_deref(), notice);
+    let warm = scan_codex_cached(std::slice::from_ref(&root), &window(), &cache_dir);
+    assert_eq!(warm.stats.cache_hits, 1);
+    assert_eq!(warm.contribution, reference.contribution);
+    assert_eq!(warm.notice.as_deref(), notice, "命中缓存的轮次说明不消失");
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(cache_dir).ok();
+}
+
 #[test]
 fn codex_uses_unknown_model_when_no_model_context_exists() {
     let root = temp_root("unknown-model");

@@ -138,6 +138,16 @@ fn codex_delta(
     }
 }
 
+/// C191: 累计计数任一分量低于高水位即为回退。
+fn codex_counters_rolled_back(
+    high_water: &CodexTokenCounters,
+    current: &CodexTokenCounters,
+) -> bool {
+    current.input < high_water.input
+        || current.cache_read < high_water.cache_read
+        || current.output < high_water.output
+}
+
 fn update_codex_high_water(high_water: &mut CodexTokenCounters, current: &CodexTokenCounters) {
     high_water.input = high_water.input.max(current.input);
     high_water.cache_read = high_water.cache_read.max(current.cache_read);
@@ -516,8 +526,9 @@ pub(crate) fn scan_codex_with_cancellation(
 
 /// 观测值格式变化或 Codex 解析规则变化时必须升级, 令旧缓存整体重建。
 /// v1 (C117); v2 (C190): 每条观测带单次响应去重键 (`r:<response_id>` / `t:<毫秒时间戳>`),
-/// 供同会话副本取并集 —— 升版同时让 C197 前被写成空观测的条目整体重解析一次。
-const CODEX_FILE_CACHE_SCHEMA: u32 = 2;
+/// 供同会话副本取并集 —— 升版同时让 C197 前被写成空观测的条目整体重解析一次;
+/// v3 (C191): 仅含累计计数的事件在计数回退时按新基线计量, 条目记录回退次数。
+const CODEX_FILE_CACHE_SCHEMA: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct CodexFileCache {
@@ -536,6 +547,24 @@ struct CodexFileEntry {
     device: u64,
     inode: u64,
     observations: Vec<CachedUsageObservation>,
+    /// C191: 仅含累计计数的事件中累计值回退 (按新基线重置) 的次数; 随条目持久化,
+    /// 命中缓存的轮次说明同样可见。
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    counter_resets: u32,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
+/// 一个 rollout 的解析结果。
+struct CodexParse {
+    observations: Vec<CachedUsageObservation>,
+    counter_resets: u32,
+}
+
+fn counter_reset_notice(sessions: u64) -> String {
+    format!("Codex {sessions} 个会话的累计用量计数中途回退, 已按新基线计入")
 }
 
 impl CodexFileEntry {
@@ -631,10 +660,13 @@ fn parse_codex_file(
     window: &CollectionWindow,
     cancellation: &CancellationToken,
     stats: &mut ScanStats,
-) -> Result<Vec<CachedUsageObservation>, SourceScanError> {
+) -> Result<CodexParse, SourceScanError> {
     cancellation.check()?;
     let mut current_model: Option<String> = None;
     let mut total_high_water: Option<CodexTokenCounters> = None;
+    // C191: 文件内见过的累计值 —— 回退到见过的值是重放快照, 不是重置。
+    let mut seen_totals = std::collections::HashSet::<CodexTokenCounters>::new();
+    let mut counter_resets = 0_u32;
     let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
     let mut previous_token_signature: Option<CodexTokenSignature> = None;
     // C190: 最近一条单次响应记录 (response_id + 用量), 由下一条用量相同的 token_count 认领。
@@ -719,24 +751,48 @@ fn parse_codex_file(
                 last_signature_by_source.insert(snapshot_source, signature.clone());
             }
             previous_token_signature = Some(signature.clone());
+            // C191: 文件内出现过的累计值 = 重放旧快照 (记 0, 不动基线); 累计计数回退到从未
+            // 出现过的值 = 计数重置 (旧版 rollout 恢复会话后从 0 重计), 以当前累计值为新基线 ——
+            // 否则回退区间会一直按 saturating_sub 记 0, 直到超过旧高水位。
+            let replayed = signature
+                .total
+                .as_ref()
+                .is_some_and(|total| seen_totals.contains(total));
+            let reset = !replayed
+                && signature
+                    .total
+                    .as_ref()
+                    .zip(total_high_water.as_ref())
+                    .is_some_and(|(total, high_water)| {
+                        codex_counters_rolled_back(high_water, total)
+                    });
+            let zero = CodexTokenCounters {
+                input: 0,
+                cache_read: 0,
+                output: 0,
+            };
             let usage = if duplicate_snapshot {
-                CodexTokenCounters {
-                    input: 0,
-                    cache_read: 0,
-                    output: 0,
-                }
+                zero
             } else if let Some(last) = signature.last {
                 last
             } else if let Some(total) = signature.total {
-                codex_delta(total_high_water.as_ref(), &total)
+                if replayed {
+                    zero
+                } else if reset {
+                    counter_resets = counter_resets.saturating_add(1);
+                    total
+                } else {
+                    codex_delta(total_high_water.as_ref(), &total)
+                }
             } else {
                 return;
             };
-            if let Some(total) = signature.total.as_ref() {
-                if let Some(high_water) = total_high_water.as_mut() {
-                    update_codex_high_water(high_water, total);
-                } else {
-                    total_high_water = Some(*total);
+            if let Some(total) = signature.total.filter(|_| !replayed) {
+                seen_totals.insert(total);
+                match total_high_water.as_mut() {
+                    Some(high_water) if reset => *high_water = total,
+                    Some(high_water) => update_codex_high_water(high_water, &total),
+                    None => total_high_water = Some(total),
                 }
             }
             if usage.input == 0 && usage.cache_read == 0 && usage.output == 0 {
@@ -768,7 +824,10 @@ fn parse_codex_file(
         #[cfg(test)]
         &mut None,
     )?;
-    Ok(observations)
+    Ok(CodexParse {
+        observations,
+        counter_resets,
+    })
 }
 
 #[cfg(test)]
@@ -783,7 +842,7 @@ fn scan_selected_codex(
         let mut parsed = Vec::with_capacity(group.len());
         for candidate in &group {
             match parse_codex_file(candidate, window, cancellation, stats) {
-                Ok(observations) => parsed.push(observations),
+                Ok(parse) => parsed.push(parse.observations),
                 Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                 Err(SourceScanError::Io(_)) => {
                     stats.io_errors = stats.io_errors.saturating_add(1);
@@ -867,6 +926,7 @@ pub fn scan_codex_cached_with_cancellation(
     let mut files = BTreeMap::new();
     let mut changed = false;
     let mut unreadable_files = 0_u64;
+    let mut reset_sessions = 0_u64;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for group in &groups {
         let mut entries = Vec::with_capacity(group.len());
@@ -879,7 +939,7 @@ pub fn scan_codex_cached_with_cancellation(
                     entry
                 }
                 stale => match parse_codex_file(candidate, window, cancellation, &mut stats) {
-                    Ok(observations) => {
+                    Ok(parse) => {
                         stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
                         changed = true;
                         CodexFileEntry {
@@ -887,7 +947,8 @@ pub fn scan_codex_cached_with_cancellation(
                             modified_ns: candidate.modified_ns,
                             device: candidate.device,
                             inode: candidate.inode,
-                            observations,
+                            observations: parse.observations,
+                            counter_resets: parse.counter_resets,
                         }
                     }
                     Err(SourceScanError::Runtime(error)) => return Err(error.into()),
@@ -906,6 +967,9 @@ pub fn scan_codex_cached_with_cancellation(
                 },
             };
             entries.push((key, entry));
+        }
+        if entries.iter().any(|(_, entry)| entry.counter_resets > 0) {
+            reset_sessions = reset_sessions.saturating_add(1);
         }
         // C190: 同会话各副本按单次响应去重键取并集后再并入聚合。
         let copies: Vec<&[CachedUsageObservation]> = entries
@@ -942,6 +1006,9 @@ pub fn scan_codex_cached_with_cancellation(
     }
     if stats.conflict_session_groups > 0 {
         notes.push(diverged_copies_notice(stats.conflict_session_groups));
+    }
+    if reset_sessions > 0 {
+        notes.push(counter_reset_notice(reset_sessions));
     }
     if unreadable_files > 0 {
         notes.push(format!(
@@ -988,4 +1055,5 @@ pub(super) fn test_parse(
         &mut ScanStats::default(),
     )
     .unwrap()
+    .observations
 }
