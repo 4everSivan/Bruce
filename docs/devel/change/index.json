@@ -2030,7 +2030,7 @@
     "C198": {
       "title": "修复来源信息级说明一律升格为 agent error 并误用 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C198-source-note-severity",
       "topic": "TokenUsage",
       "version": "0.17.0",
