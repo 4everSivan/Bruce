@@ -245,7 +245,7 @@ fn collect_agent_usage_with_dependencies_inner(
         (
             "grok",
             "Grok",
-            "按消息内容估算, 非精确 token 计数",
+            "按消息内容估算 (不含每轮重发的上下文, 偏低), 非精确 token 计数",
             "未发现会话记录",
         ),
         ("pi", "Pi", "本机会话聚合", "未发现会话记录"),
@@ -2681,6 +2681,65 @@ mod tests {
             output.diagnostics
         );
 
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// C194: Grok 07-26 写入 300、07-27 追加 40 —— 旧实现追加时把已有观测重打为新 mtime,
+    /// 叠加台账按日取大得 07-26=300、07-27=340 (7 日合计 640, 月行 340); 现在日 / 月一致为 340。
+    #[test]
+    fn grok_cross_day_append_is_not_double_counted_by_the_ledger() {
+        let home = history_test_home("grok-cross-day");
+        let history_db = home.join("usage-history.sqlite");
+        let session = home.join("grok/sessions/project/session/conversation.jsonl");
+        std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+        let line = |kind: &str, chars: usize| {
+            json!({"type": kind, "content": "x".repeat(chars)}).to_string() + "\n"
+        };
+        let set_mtime = |epoch_seconds: u64| {
+            std::fs::File::options()
+                .write(true)
+                .open(&session)
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(epoch_seconds))
+                .unwrap();
+        };
+        let run = |now: &str| {
+            let mut request = history_request(&home, &history_db);
+            request.context.insert("now".to_owned(), json!(now));
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap()
+        };
+        std::fs::write(&session, line("user", 800) + &line("assistant", 400)).unwrap();
+        set_mtime(1_785_038_400); // 2026-07-26 12:00 +08
+        run("2026-07-26T18:00:00+08:00");
+        let mut content = std::fs::read_to_string(&session).unwrap();
+        content.push_str(&line("assistant", 160));
+        std::fs::write(&session, content).unwrap();
+        set_mtime(1_785_124_800); // 2026-07-27 12:00 +08
+        let output = run("2026-07-27T18:00:00+08:00");
+
+        let grok = agent(&output.artifact, "grok");
+        let daily: std::collections::BTreeMap<&str, u64> = grok["daily"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|day| {
+                (
+                    day["date"].as_str().unwrap(),
+                    day["total"].as_u64().unwrap_or(0),
+                )
+            })
+            .collect();
+        assert_eq!(daily.get("2026-07-26"), Some(&300));
+        assert_eq!(daily.get("2026-07-27"), Some(&40));
+        assert_eq!(daily_total(grok), 340, "7 日合计等于真实值");
+        let month: u64 = grok["modelMonths"]["2026-07"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|value| value.as_u64().unwrap_or(0))
+            .sum();
+        assert_eq!(month, 340, "日与月一致");
         std::fs::remove_dir_all(&home).ok();
     }
 

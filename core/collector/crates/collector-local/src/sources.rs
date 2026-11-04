@@ -17,6 +17,8 @@ mod tests_drift;
 #[cfg(test)]
 mod tests_dsh;
 #[cfg(test)]
+mod tests_grok;
+#[cfg(test)]
 mod tests_limits;
 #[cfg(test)]
 mod tests_race;
@@ -611,6 +613,24 @@ pub(crate) fn scan_claude_with_cancellation(
     ))
 }
 
+/// Grok 消息级时间 (毫秒, C194): 有 `timestamp` / `created_at` / `createdAt` (ISO 或秒 / 毫秒数值)
+/// 时优先使用; 没有时调用方退回文件 mtime。
+pub(super) fn grok_message_timestamp(value: &Value, window: &CollectionWindow) -> Option<i64> {
+    ["timestamp", "created_at", "createdAt"]
+        .iter()
+        .filter_map(|field| value.get(*field))
+        .find_map(|field| match field {
+            Value::String(text) => window.epoch_from_iso(text).map(|seconds| seconds * 1000),
+            _ => timestamp_number(Some(field)).map(|number| {
+                if number < 100_000_000_000 {
+                    number * 1000
+                } else {
+                    number
+                }
+            }),
+        })
+}
+
 pub(super) fn grok_content(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(value)) => value.clone(),
@@ -668,7 +688,7 @@ pub(crate) fn scan_grok_with_cancellation(
                     .and_then(|value| value.to_str());
                 record(
                     &mut builder,
-                    (modified * 1000.0) as i64,
+                    grok_message_timestamp(&value, window).unwrap_or((modified * 1000.0) as i64),
                     Some("grok"),
                     if kind == Some("user") { tokens } else { 0 },
                     if kind == Some("assistant") { tokens } else { 0 },

@@ -1,7 +1,7 @@
 use super::codebuddy::{codebuddy_message_id, codebuddy_model, codebuddy_scope, codebuddy_usage};
 use super::{
-    claude_cache_creation_1h, grok_content, line_may_match, number_u64, parse_json_line,
-    project_from_parent, timestamp_number, SourceScan, SourceScanError,
+    claude_cache_creation_1h, grok_content, grok_message_timestamp, line_may_match, number_u64,
+    parse_json_line, project_from_parent, timestamp_number, SourceScan, SourceScanError,
 };
 
 /// 各 JSONL 适配器的解析前预筛子串 (C110): 只含判定所需的字面量, 是产出用量的必要条件。
@@ -26,6 +26,9 @@ use std::path::{Path, PathBuf};
 
 /// v2 (C107): 观测值新增 Claude 1 小时 TTL 缓存写入份额; 旧条目按版本不匹配全量重建一次.
 const JSONL_CACHE_PARSER_VERSION: u32 = 2;
+/// Grok 独立的解析口径版本 (C194): Grok 口径变化只重建 Grok 条目, 不连带 Claude 等来源;
+/// v3 (C194): 优先取消息级时间, 追加时已有观测保留原时间。C199 据此修正台账已落库的多计。
+pub const GROK_PARSER_VERSION: u32 = 3;
 const JSONL_CACHE_AGGREGATION_VERSION: u32 = 2;
 
 pub(super) fn jsonl_cache_config(
@@ -36,7 +39,11 @@ pub(super) fn jsonl_cache_config(
     JsonlCacheConfig {
         cache_root: cache_root.to_owned(),
         source_id: source_id.to_owned(),
-        parser_version: JSONL_CACHE_PARSER_VERSION,
+        parser_version: if source_id == "grok" {
+            GROK_PARSER_VERSION
+        } else {
+            JSONL_CACHE_PARSER_VERSION
+        },
         aggregation_version: JSONL_CACHE_AGGREGATION_VERSION,
         window: window.clone(),
     }
@@ -622,7 +629,14 @@ fn grok_project(path: &Path) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn grok_observation(modified: f64, value: &Value) -> Option<JsonlObservation> {
+/// Grok 观测的时间 (C194): 来源带消息级时间时优先使用; 没有时取解析该行时的文件 mtime ——
+/// 追加段的新观测取当时的 mtime, 已缓存的观测保留首次记录的时间 (默认 `merge_append`),
+/// 不再随最后一次写入整体漂移到新日期 (叠加 T26 台账按日取大会变成跨日重复计数)。
+fn grok_observation(
+    window: &CollectionWindow,
+    modified: f64,
+    value: &Value,
+) -> Option<JsonlObservation> {
     let kind = value.get("type").and_then(Value::as_str);
     if kind != Some("user") && kind != Some("assistant") {
         return None;
@@ -634,7 +648,8 @@ fn grok_observation(modified: f64, value: &Value) -> Option<JsonlObservation> {
     let tokens = (content.chars().count() as u64 / 4).max(1);
     Some(JsonlObservation {
         dedupe_key: None,
-        timestamp_millis: (modified * 1000.0) as i64,
+        timestamp_millis: grok_message_timestamp(value, window)
+            .unwrap_or((modified * 1000.0) as i64),
         model: Some("grok".to_owned()),
         input: if kind == Some("user") { tokens } else { 0 },
         output: if kind == Some("assistant") { tokens } else { 0 },
@@ -656,7 +671,7 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
         path: &Path,
         modified: f64,
         start_offset: u64,
-        _window: &CollectionWindow,
+        window: &CollectionWindow,
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
     ) -> Result<CachedFilePayload, SourceScanError> {
@@ -669,33 +684,13 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
             GROK_NEEDLES,
             grok_project(path),
             |_, modified, value, stats| {
-                let observation = grok_observation(modified, &value);
+                let observation = grok_observation(window, modified, &value);
                 if observation.is_some() {
                     stats.usage_records = stats.usage_records.saturating_add(1);
                 }
                 observation.into()
             },
         )
-    }
-
-    fn merge_append(
-        &self,
-        previous: CachedFilePayload,
-        appended: CachedFilePayload,
-        modified: f64,
-    ) -> CachedFilePayload {
-        // Grok 以文件 mtime 作为全部消息的时间戳: 追加后整文件重打为新 mtime
-        let current_timestamp = (modified * 1000.0) as i64;
-        let mut observations = previous.observations;
-        observations.extend(appended.observations);
-        for observation in &mut observations {
-            observation.timestamp_millis = current_timestamp;
-        }
-        CachedFilePayload {
-            project: appended.project,
-            observations,
-            ..CachedFilePayload::default()
-        }
     }
 
     fn aggregator(&self, window: &CollectionWindow) -> Self::Aggregator {
