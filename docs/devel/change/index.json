@@ -2021,7 +2021,7 @@
     "C197": {
       "title": "修复 Codex rollout 打开失败被缓存为空观测、会话永久记 0 且无诊断",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C197-codex-open-failure-cache",
       "topic": "TokenUsage",
       "version": "0.17.0",
