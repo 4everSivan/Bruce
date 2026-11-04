@@ -17,6 +17,8 @@ mod tests_drift;
 #[cfg(test)]
 mod tests_dsh;
 #[cfg(test)]
+mod tests_limits;
+#[cfg(test)]
 mod tests_sources;
 
 pub use codex::scan_codex_cached_with_cancellation;
@@ -152,11 +154,7 @@ pub(super) fn number_u64(value: Option<&Value>) -> u64 {
 /// 解析前的字节级预筛 (C110): 行内不含任一 `needles` 子串时, 该行不可能产出用量
 /// (各适配器的判定字段必须以这些字面量出现), 直接计为 ignored 而不构建 JSON DOM。
 /// Claude Code 日志约 90% 字节在不含用量的 user / tool_result 行, 预筛可省去其全部解析。
-pub(super) fn line_may_match(line: &[u8], needles: &[&[u8]]) -> bool {
-    needles
-        .iter()
-        .any(|needle| memchr::memmem::find(line, needle).is_some())
-}
+pub(super) use crate::jsonl_cache::line_may_match;
 
 pub(super) fn parse_json_line(line: &[u8], stats: &mut ScanStats) -> Option<Value> {
     match serde_json::from_slice(line) {
@@ -399,6 +397,7 @@ where
             cancellation,
             callback,
             stats,
+            &[],
             #[cfg(test)]
             line_probe,
         )?;
@@ -412,13 +411,16 @@ pub(super) fn scan_jsonl_file<F>(
     cancellation: &CancellationToken,
     callback: &mut F,
     stats: &mut ScanStats,
+    usage_needles: &[&[u8]],
     #[cfg(test)] line_probe: &mut Option<&mut dyn FnMut()>,
-) -> Result<(), SourceScanError>
+) -> Result<u32, SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
     cancellation.check()?;
     stats.files_scanned = stats.files_scanned.saturating_add(1);
+    // C195: 超长且保留前缀命中 `usage_needles` 的行数 (疑似用量行)。
+    let mut truncated_usage = 0_u32;
     // C197: 打开失败与读取失败一样上抛, 由调用方计 io_errors 并决定口径 —— 吞成 Ok 会让
     // Codex 按文件缓存把「没读到」当成「空文件」按文件身份落盘, 恢复可读后永久记 0。
     let file = File::open(path)?;
@@ -435,6 +437,9 @@ where
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
             stats.truncated_lines = stats.truncated_lines.saturating_add(1);
+            if line_may_match(&line_buffer, usage_needles) {
+                truncated_usage = truncated_usage.saturating_add(1);
+            }
             continue;
         }
         let line = trim_line_end(&line_buffer);
@@ -447,7 +452,7 @@ where
             probe();
         }
     }
-    Ok(())
+    Ok(truncated_usage)
 }
 
 /// Scan a Kimi Work or Kimi Code JSONL tree without the Kimi-specific cache.

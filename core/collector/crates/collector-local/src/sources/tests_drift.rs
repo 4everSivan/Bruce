@@ -48,7 +48,8 @@ fn usage_probe_tracks_trailing_zero_streak_across_appends() {
         probe,
         UsageProbe {
             candidates: 3,
-            zero_streak: 2
+            zero_streak: 2,
+            truncated_usage: 0
         }
     );
     let mut all_zero = UsageProbe::default();

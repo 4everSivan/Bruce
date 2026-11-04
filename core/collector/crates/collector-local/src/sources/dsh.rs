@@ -25,8 +25,8 @@ use super::{
 };
 use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
 use crate::jsonl_cache::{
-    file_drift_notice, CachedFilePayload, JsonlAggregator, JsonlFileSignature, JsonlObservation,
-    UsageProbe, FILE_DRIFT_STREAK,
+    file_drift_notice, join_notices, truncated_usage_notice, CachedFilePayload, JsonlAggregator,
+    JsonlFileSignature, JsonlObservation, UsageProbe, FILE_DRIFT_STREAK,
 };
 use crate::{
     read_bounded_line, trim_line_end, ScanStats, MAX_DIRECTORY_SCAN_DEPTH, MAX_JSONL_RECORD_BYTES,
@@ -63,6 +63,9 @@ const DSH_DEDUPE_NAMESPACE: &str = "dsh-message";
 /// C193 起助手消息即使不含 `"usage"` 也要解析 (计入口径哨兵, 防 usage 键改名后被预筛静默滤掉)。
 /// 其余事件 (step/tool/reasoning 流块) 不建 JSON DOM。
 const DSH_NEEDLES: &[&[u8]] = &[b"\"usage\"", b"\"cwd\"", b"assistant/message"];
+
+/// C195: 超长行的保留前缀含这些结构化字面量即为疑似用量行 (会话头的 `"cwd"` 不算)。
+const DSH_USAGE_NEEDLES: &[&[u8]] = &[b"\"usage\"", b"\"assistant/message\""];
 
 /// 单帧解压内容上限 (C189): dsh 常态一帧一条事件 (实测最大约 250 KiB), 8 MiB 留足余量;
 /// 多帧流式解码必须把整帧缓冲出来才能取出 (环形窗口保留的字节在帧尾前不可取), 该上限把
@@ -177,6 +180,7 @@ fn scan_dsh(
 
     let mut aggregator = DedupedAggregator::new(window, DedupeRule::LargestTotal);
     let mut drifted_files = 0_u64;
+    let mut truncated_usage = 0_u64;
     let mut entries = BTreeMap::new();
     let mut changed = false;
     for candidate in &candidates {
@@ -219,6 +223,8 @@ fn scan_dsh(
         if entry.payload.probe.drifted(FILE_DRIFT_STREAK) {
             drifted_files = drifted_files.saturating_add(1);
         }
+        truncated_usage =
+            truncated_usage.saturating_add(u64::from(entry.payload.probe.truncated_usage));
         // C176: 逐文件并入聚合器后即丢弃载荷, 不把全部观测同时留在内存里。
         aggregator.absorb(&entry.payload);
         entries.insert(key, entry);
@@ -256,7 +262,15 @@ fn scan_dsh(
         contribution,
         stats,
         diagnostic,
-        notice: (drifted_files > 0).then(|| file_drift_notice(drifted_files)),
+        notice: join_notices(
+            [
+                (drifted_files > 0).then(|| file_drift_notice(drifted_files)),
+                (truncated_usage > 0).then(|| truncated_usage_notice(truncated_usage)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
     })
 }
 
@@ -411,6 +425,10 @@ fn parse_dsh_file(
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
             stats.truncated_lines = stats.truncated_lines.saturating_add(1);
+            // C195: 保留前缀含用量字面量的超长行是疑似用量行, 计入并持久化。
+            if line_may_match(&line_buffer, DSH_USAGE_NEEDLES) {
+                probe.truncated_usage = probe.truncated_usage.saturating_add(1);
+            }
             continue;
         }
         let line = trim_line_end(&line_buffer);

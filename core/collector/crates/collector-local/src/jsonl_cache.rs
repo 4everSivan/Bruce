@@ -164,6 +164,13 @@ pub(crate) struct UsageProbe {
     pub(crate) candidates: u32,
     #[serde(rename = "z", default)]
     pub(crate) zero_streak: u32,
+    /// C195: 超过单行上限被跳过、且保留下的前缀命中该来源用量字面量的行数 (疑似用量行)。
+    #[serde(rename = "t", default, skip_serializing_if = "is_zero_u32")]
+    pub(crate) truncated_usage: u32,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }
 
 /// 会话文件末尾连续这么多条候选行取不到用量即疑似口径变化 (本机真实数据: 0)。
@@ -192,6 +199,7 @@ impl UsageProbe {
             } else {
                 self.zero_streak.saturating_add(later.zero_streak)
             },
+            truncated_usage: self.truncated_usage.saturating_add(later.truncated_usage),
         }
     }
 
@@ -202,6 +210,19 @@ impl UsageProbe {
     fn is_empty(&self) -> bool {
         *self == Self::default()
     }
+}
+
+/// C195: 疑似用量行超过单行上限被跳过的说明 (文案引用常量, C050)。
+pub(crate) fn truncated_usage_notice(lines: u64) -> String {
+    format!(
+        "{lines} 条疑似用量记录超过 {} MiB 单行上限, 已跳过未计入",
+        MAX_JSONL_RECORD_BYTES / (1024 * 1024)
+    )
+}
+
+/// 一个来源的全部说明以「; 」连接; 没有说明时为 None。
+pub(crate) fn join_notices(notes: Vec<String>) -> Option<String> {
+    (!notes.is_empty()).then(|| notes.join("; "))
 }
 
 /// 文件级哨兵说明: 有 `files` 个会话文件末尾连续取不到用量。
@@ -470,6 +491,7 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         cancellation,
         stats: ScanStats::default(),
         drifted_files: 0,
+        truncated_usage: 0,
         seen: std::collections::BTreeSet::new(),
         visited_dirs: std::collections::BTreeSet::new(),
     };
@@ -490,8 +512,16 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         contribution,
         stats: state.stats,
         diagnostic,
-        // C193: 口径哨兵走信息级通道 (C198), 不把 agent 置 error。
-        notice: (state.drifted_files > 0).then(|| file_drift_notice(state.drifted_files)),
+        // C193 / C195: 口径哨兵与超长疑似用量行走信息级通道 (C198), 不把 agent 置 error。
+        notice: join_notices(
+            [
+                (state.drifted_files > 0).then(|| file_drift_notice(state.drifted_files)),
+                (state.truncated_usage > 0).then(|| truncated_usage_notice(state.truncated_usage)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
     })
 }
 
@@ -502,6 +532,8 @@ struct TreeState<'a, A> {
     stats: ScanStats,
     /// C193: 末尾连续取不到用量的会话文件数。
     drifted_files: u64,
+    /// C195: 疑似用量的超长行数。
+    truncated_usage: u64,
     seen: std::collections::BTreeSet<String>,
     /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
     visited_dirs: std::collections::BTreeSet<PathBuf>,
@@ -569,6 +601,9 @@ fn visit_tree<A: JsonlCacheAdapter>(
             if payload.probe.drifted(FILE_DRIFT_STREAK) {
                 state.drifted_files = state.drifted_files.saturating_add(1);
             }
+            state.truncated_usage = state
+                .truncated_usage
+                .saturating_add(u64::from(payload.probe.truncated_usage));
             aggregator.absorb(&payload);
         }
     }
@@ -854,16 +889,19 @@ fn digest_with_source(source_id: &str, path: &Path) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+/// 逐行回调; 返回超长且保留前缀命中 `usage_needles` 的行数 (C195: 疑似用量行)。
 pub(crate) fn scan_jsonl_file_from_offset<F>(
     path: &Path,
     start_offset: u64,
     cancellation: &CancellationToken,
     stats: &mut ScanStats,
+    usage_needles: &[&[u8]],
     mut callback: F,
-) -> Result<(), SourceScanError>
+) -> Result<u32, SourceScanError>
 where
     F: FnMut(&Path, &[u8], &mut ScanStats),
 {
+    let mut truncated_usage = 0_u32;
     cancellation.check()?;
     let mut file = File::open(path)?;
     file.seek(SeekFrom::Start(start_offset))?;
@@ -879,6 +917,9 @@ where
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
             stats.truncated_lines = stats.truncated_lines.saturating_add(1);
+            if line_may_match(&line_buffer, usage_needles) {
+                truncated_usage = truncated_usage.saturating_add(1);
+            }
             continue;
         }
         let line = trim_line_end(&line_buffer);
@@ -887,5 +928,12 @@ where
         }
         callback(path, line, stats);
     }
-    Ok(())
+    Ok(truncated_usage)
+}
+
+/// 行前缀是否含任一字面量 (与 `sources::line_may_match` 同口径)。
+pub(crate) fn line_may_match(line: &[u8], needles: &[&[u8]]) -> bool {
+    needles
+        .iter()
+        .any(|needle| memchr::memmem::find(line, needle).is_some())
 }

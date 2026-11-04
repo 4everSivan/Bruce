@@ -4,7 +4,8 @@ use super::{
 };
 use crate::cache_util::fingerprint_head_tail;
 use crate::jsonl_cache::{
-    file_drift_notice, CachedUsageObservation, UsageProbe, FILE_DRIFT_STREAK,
+    file_drift_notice, truncated_usage_notice, CachedUsageObservation, UsageProbe,
+    FILE_DRIFT_STREAK,
 };
 
 /// Codex rollout 中参与聚合的行类型 (C110 解析前预筛; C190 起含单次响应记录)。
@@ -704,7 +705,8 @@ fn parse_codex_file(
     // C190: 最近一条单次响应记录 (response_id + 用量), 由下一条用量相同的 token_count 认领。
     let mut pending_record: Option<(String, CodexTokenCounters)> = None;
     let mut observations = Vec::new();
-    scan_jsonl_file(
+    // C195: 超长行前缀含结构化的 "token_count" 即为疑似用量行 (裸字面量会命中转义文本)。
+    probe.truncated_usage = scan_jsonl_file(
         &candidate.path,
         candidate.modified,
         cancellation,
@@ -861,6 +863,7 @@ fn parse_codex_file(
             stats.usage_records = stats.usage_records.saturating_add(1);
         },
         stats,
+        &[b"\"token_count\""],
         #[cfg(test)]
         &mut None,
     )?;
@@ -969,6 +972,7 @@ pub fn scan_codex_cached_with_cancellation(
     let mut unreadable_files = 0_u64;
     let mut reset_sessions = 0_u64;
     let mut drifted_files = 0_u64;
+    let mut truncated_usage = 0_u64;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for group in &groups {
         let mut entries = Vec::with_capacity(group.len());
@@ -1020,6 +1024,14 @@ pub fn scan_codex_cached_with_cancellation(
                 .filter(|(_, entry)| entry.usage_probe.drifted(FILE_DRIFT_STREAK))
                 .count() as u64,
         );
+        // 同会话副本的超长行是同一批记录, 按组取最大值不重复计。
+        truncated_usage = truncated_usage.saturating_add(
+            entries
+                .iter()
+                .map(|(_, entry)| u64::from(entry.usage_probe.truncated_usage))
+                .max()
+                .unwrap_or(0),
+        );
         // C190: 同会话各副本按单次响应去重键取并集后再并入聚合。
         let copies: Vec<&[CachedUsageObservation]> = entries
             .iter()
@@ -1061,6 +1073,9 @@ pub fn scan_codex_cached_with_cancellation(
     }
     if drifted_files > 0 {
         notes.push(file_drift_notice(drifted_files));
+    }
+    if truncated_usage > 0 {
+        notes.push(truncated_usage_notice(truncated_usage));
     }
     if unreadable_files > 0 {
         notes.push(format!(

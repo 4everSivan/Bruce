@@ -259,11 +259,13 @@ where
 {
     let mut observations = Vec::new();
     let mut probe = UsageProbe::default();
-    scan_jsonl_file_from_offset(
+    // C195: 预筛字面量是产出用量的必要条件 (C110), 超长行的保留前缀命中即为疑似用量行。
+    probe.truncated_usage = scan_jsonl_file_from_offset(
         path,
         start_offset,
         cancellation,
         stats,
+        needles,
         |path, line, stats| {
             if !line_may_match(line, needles) {
                 stats.ignored_lines = stats.ignored_lines.saturating_add(1);
