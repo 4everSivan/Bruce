@@ -2003,7 +2003,7 @@
     "C195": {
       "title": "为可能携带用量的超长行补充持久化计数与信息级说明（目录深度护栏维持现状）",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C195-scan-limit-diagnostics",
       "topic": "TokenUsage",
       "version": "0.17.0",
