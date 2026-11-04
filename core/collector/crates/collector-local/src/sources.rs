@@ -417,13 +417,9 @@ where
 {
     cancellation.check()?;
     stats.files_scanned = stats.files_scanned.saturating_add(1);
-    let file = match File::open(path) {
-        Ok(file) => file,
-        Err(_) => {
-            stats.io_errors = stats.io_errors.saturating_add(1);
-            return Ok(());
-        }
-    };
+    // C197: 打开失败与读取失败一样上抛, 由调用方计 io_errors 并决定口径 —— 吞成 Ok 会让
+    // Codex 按文件缓存把「没读到」当成「空文件」按文件身份落盘, 恢复可读后永久记 0。
+    let file = File::open(path)?;
     let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
     let mut line_buffer = Vec::new();
     loop {

@@ -1072,6 +1072,149 @@ fn codex_file_cache_reparses_only_changed_files_and_survives_rollover() {
     fs::remove_dir_all(cache_dir).ok();
 }
 
+/// C197: 把 rollout 权限改为 000; 以 root 运行等权限不生效的环境返回 false (调用方跳过)。
+#[cfg(unix)]
+fn make_unreadable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::File::open(path).is_ok() {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+        return false;
+    }
+    true
+}
+
+#[cfg(unix)]
+fn make_readable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+}
+
+/// C197 回归: rollout 首次扫描时打不开 (EMFILE / 已逐出 / 属主不同) 不得被当成空文件按身份
+/// 缓存 —— 文件恢复可读后身份不变, 旧实现会永久命中空条目、该会话永久记 0 且无诊断。
+#[cfg(unix)]
+#[test]
+fn codex_unreadable_rollout_is_not_cached_as_empty() {
+    let root = temp_root("codex-unreadable");
+    let cache_dir = temp_root("codex-unreadable-cache");
+    let w = window();
+    write_codex_lines(
+        &root,
+        "rollout-unreadable.jsonl",
+        &[codex_token_count("2026-07-28T04:00:00Z", 10, 2, 3)],
+    );
+    write_codex_lines(
+        &root,
+        "rollout-readable.jsonl",
+        &[codex_token_count("2026-07-28T05:00:00Z", 20, 0, 5)],
+    );
+    let expected = scan_codex(std::slice::from_ref(&root), &w);
+    let path = root.join("2026/07/28/rollout-unreadable.jsonl");
+    if !make_unreadable(&path) {
+        fs::remove_dir_all(root).ok();
+        fs::remove_dir_all(cache_dir).ok();
+        return;
+    }
+
+    for round in ["失败轮", "仍不可读的下一轮"] {
+        let failed = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        assert_eq!(today_total(&failed), 25, "{round}: 只计入可读文件");
+        assert_eq!(failed.stats.io_errors, 1, "{round}");
+        assert_eq!(
+            failed.stats.cache_hits + failed.stats.cache_rebuilds,
+            1,
+            "{round}"
+        );
+        assert!(
+            failed.diagnostic.is_none(),
+            "{round}: 读取失败是说明而非故障"
+        );
+        assert_eq!(
+            failed.notice.as_deref(),
+            Some("Codex 会话文件读取失败 1 个, 本轮沿用上次结果或暂未计入, 下次刷新重试"),
+            "{round}"
+        );
+        let cache = fs::read_to_string(cache_dir.join("codex-files-v1.json")).unwrap();
+        let cache: Value = serde_json::from_str(&cache).unwrap();
+        assert_eq!(
+            cache["files"].as_object().unwrap().len(),
+            1,
+            "{round}: 失败文件不得写入缓存条目"
+        );
+    }
+
+    // 恢复可读 (文件身份不变): 下一轮重解析并计入完整用量, 再下一轮命中缓存。
+    make_readable(&path);
+    let recovered = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+    assert_eq!(recovered.contribution, expected.contribution);
+    assert_eq!(today_total(&recovered), 13 + 25);
+    assert_eq!(
+        (recovered.stats.cache_hits, recovered.stats.cache_rebuilds),
+        (1, 1)
+    );
+    assert_eq!(recovered.stats.io_errors, 0);
+    assert!(recovered.notice.is_none());
+    let warm = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+    assert_eq!(warm.contribution, expected.contribution);
+    assert_eq!(warm.stats.cache_hits, 2);
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(cache_dir).ok();
+}
+
+/// C197: 已缓存的 rollout 追加后打不开 —— 沿用旧条目的陈旧观测 (与 dsh 活写兜底同口径),
+/// 本轮数字不下降; 旧条目保留旧身份, 恢复可读后重解析为真实值。
+#[cfg(unix)]
+#[test]
+fn codex_unreadable_changed_rollout_keeps_stale_observations() {
+    let root = temp_root("codex-unreadable-stale");
+    let cache_dir = temp_root("codex-unreadable-stale-cache");
+    let w = window();
+    let first = codex_token_count("2026-07-28T04:00:00Z", 10, 2, 3);
+    write_codex_lines(&root, "rollout-live.jsonl", std::slice::from_ref(&first));
+    let warm = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+    assert_eq!(today_total(&warm), 13);
+
+    let path = root.join("2026/07/28/rollout-live.jsonl");
+    write_codex_lines(
+        &root,
+        "rollout-live.jsonl",
+        &[first, codex_token_count("2026-07-28T05:00:00Z", 20, 0, 5)],
+    );
+    let expected = scan_codex(std::slice::from_ref(&root), &w);
+    if !make_unreadable(&path) {
+        fs::remove_dir_all(root).ok();
+        fs::remove_dir_all(cache_dir).ok();
+        return;
+    }
+    for round in ["失败轮", "仍不可读的下一轮"] {
+        let stale = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        assert_eq!(
+            stale.contribution, warm.contribution,
+            "{round}: 沿用陈旧观测"
+        );
+        assert!(stale.found);
+        assert_eq!(stale.stats.io_errors, 1, "{round}");
+        assert_eq!(stale.stats.cache_hits, 0, "{round}: 陈旧条目不计命中");
+        assert_eq!(stale.stats.cache_rebuilds, 0, "{round}: 重建失败不计重建");
+        assert_eq!(
+            stale.stats.cache_deletions, 0,
+            "{round}: 陈旧条目不得被清理"
+        );
+        assert!(stale.notice.is_some(), "{round}");
+    }
+
+    make_readable(&path);
+    let recovered = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+    assert_eq!(recovered.contribution, expected.contribution);
+    assert_eq!(today_total(&recovered), 13 + 25);
+    assert_eq!(recovered.stats.cache_rebuilds, 1);
+    assert_eq!(recovered.stats.io_errors, 0);
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(cache_dir).ok();
+}
+
 /// C175 回归: Codex 按文件缓存 (自 C117 起即不 fsync) 为空或被截断时判 Corrupt 并全量重建。
 #[test]
 fn codex_file_cache_left_empty_or_truncated_is_rebuilt() {

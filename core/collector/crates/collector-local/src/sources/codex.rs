@@ -730,6 +730,7 @@ pub fn scan_codex_cached_with_cancellation(
     let previous_count = previous.len();
     let mut files = BTreeMap::new();
     let mut changed = false;
+    let mut unreadable_files = 0_u64;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for candidate in &selected {
         cancellation.check()?;
@@ -739,7 +740,7 @@ pub fn scan_codex_cached_with_cancellation(
                 stats.cache_hits = stats.cache_hits.saturating_add(1);
                 entry
             }
-            _ => match parse_codex_file(candidate, window, cancellation, &mut stats) {
+            stale => match parse_codex_file(candidate, window, cancellation, &mut stats) {
                 Ok(observations) => {
                     stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
                     changed = true;
@@ -753,8 +754,16 @@ pub fn scan_codex_cached_with_cancellation(
                 }
                 Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                 Err(SourceScanError::Io(_)) => {
+                    // C197: 打开 / 读取失败只缓存成功解析的结果 —— 不得以当前文件身份写入空条目
+                    // (文件恢复可读后身份不变, 会永久命中空条目)。与 dsh 活写兜底同口径: 该路径
+                    // 有旧条目时沿用其陈旧观测 (保留旧身份, 下一轮仍会重试), 没有则本轮不计入;
+                    // 只计 io_errors, 不计 cache_hits / cache_rebuilds / cache_deletions。
                     stats.io_errors = stats.io_errors.saturating_add(1);
-                    continue;
+                    unreadable_files = unreadable_files.saturating_add(1);
+                    match stale {
+                        Some(entry) => entry,
+                        None => continue,
+                    }
                 }
             },
         };
@@ -788,7 +797,13 @@ pub fn scan_codex_cached_with_cancellation(
             stats.conflict_session_groups
         ));
     }
-    // C198: 缓存重建与副本取舍都是说明, 不是故障 —— 走信息级 notice, 不把 Codex 置 error。
+    if unreadable_files > 0 {
+        notes.push(format!(
+            "Codex 会话文件读取失败 {unreadable_files} 个, 本轮沿用上次结果或暂未计入, 下次刷新重试"
+        ));
+    }
+    // C198: 缓存重建、副本取舍与读取失败计数都是说明, 不是故障 —— 走信息级 notice,
+    // 不把 Codex 置 error。
     if !notes.is_empty() {
         result.notice = Some(notes.join("; "));
     }
