@@ -4,7 +4,7 @@
   "create_status": "complete",
   "completed_stage": 4,
   "created_at": "2026-11-02T14:28:17+08:00",
-  "updated_at": "2026-11-02T06:34:38.813Z",
+  "updated_at": "2026-11-04T01:30:14.103Z",
   "stack": {
     "language": "javascript (Node.js 25, ESM)",
     "unit_runner": "TMPDIR=tests/tmp node --test tests/unit/*.test.mjs",
@@ -13,7 +13,7 @@
   "backup_ref": "_test_anything_backup/original_tests/tests",
   "sources": {
     "docs/devel/design/01-数据采集与多模型计费引擎.md": {
-      "sha256": "aac27c2307aae7f7bbe35458e4457c9277e6acffae85530f7a29c4d6fc01d96d"
+      "sha256": "314bc14799ef992ab282167b7ca864985453ce388762630c638c86da989ab3da"
     },
     "docs/devel/design/06-Agent用量分析与Token统计工作台.md": {
       "sha256": "285d44d2ae8703f8f6d7a4af9ad2c84f480202dad1eb1eb021363e884e75234d"
@@ -25,7 +25,7 @@
       "sha256": "14bc4ab67c754d56dbaf37445882bc9546c435253175b79521c34397220f80ce"
     },
     "docs/official/采集引擎与本地用量设计.md": {
-      "sha256": "57bef4c7ec25b5014d1231c127f97734ddd7c444b39812728a063cf137bc19f9"
+      "sha256": "37d1560c5937594c3f046aa9414d16c25703533357f05a65f15cb8a88382056a"
     },
     "docs/official/设置中心与价格校准设计.md": {
       "sha256": "47073dd07eb84de2d830c765a6007cbb99c8cdeac9f6fa16f170c35dc5bb185b"
@@ -43,7 +43,7 @@
       "sha256": "2512a3ad4a99f3336670befa3cf885d4ec2bae18a9b6685d1c0b5d090305aa1a"
     },
     "tests/fixtures/agent-brand-parity/cases.json": {
-      "sha256": "52211d74982713dd8a0611e58a1656d77fb6fb1d751cfb8097fd2f9e0d68d688"
+      "sha256": "28114325f0ed2b6db3250ccce06b2f4c23b5d58370f83cf8ed42ec3f6f5cc420"
     }
   },
   "modules": {
