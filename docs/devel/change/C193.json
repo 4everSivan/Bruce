@@ -4,7 +4,7 @@
   "title": "为本机来源补充 usage 口径漂移哨兵（按来源汇总），并接入 Codex 新增的 cache_write_input_tokens",
   "version": "0.17.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C193-usage-field-drift-guard",
   "is_hotfix": false,
   "target": {
@@ -15,17 +15,18 @@
   },
   "why": "T26 审计发现，2026-11-04 复核修正范围：来源字段改名或嵌套变化时，各适配器静默记 0 或忽略该行，agent 仍显示 ok，用户只会看到数字骤降。原卡前提有两处不准：① 不止 ZCode，OpenCode 也有表结构指纹（`sqlite_adapters.rs:267`，只校验 message 表，不校验 data JSON 内的字段）；② 逐行校验必需字段会产生大量噪声——各来源多数行本就不带 usage（Claude 的 user/tool 行、只有 rate_limits 的 Codex token_count、dsh 流块），需要的是按来源汇总的哨兵，而不是逐行告警。已经出现的真实漂移：Codex 0.164+ 的 token_count / token_usage_record 新增 `cache_write_input_tokens`（本机 1,409/1,409 条事件都带该键，当前值全为 0），而 `parse_codex_file` 写死 `cache_creation: 0`（`codex.rs:632`），一旦开始返回非零缓存写入，Bruce 会静默漏计或错价；同批新增的 `reasoning_output_tokens` 经实测 total = input + output，已含在 output 内，无需另加。哨兵说明须走 C198 的信息级通道，否则会把 agent 置 error。",
   "precheck": {
-    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "description": "开工前确认口径漂移仍静默、Codex 仍忽略缓存写入（未被前序提交修复）",
     "command": "grep -n \"cache_creation: 0\\|cache_write\" core/collector/crates/collector-local/src/sources/codex.rs; grep -n \"fn schema_fingerprint\" core/collector/crates/collector-local/src/sources/sqlite_adapters.rs",
     "expected": "Codex 写死 cache_creation 0 且未读取 cache_write_input_tokens；OpenCode / ZCode 各有表级指纹，其余来源无口径哨兵",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-04 fix/C191 分支@217b524 预检命中：codex.rs 观测写死 cache_creation: 0、全文件无 cache_write 读取；OpenCode / ZCode 各有 schema_fingerprint（sqlite_adapters.rs:267/552），其余来源无口径哨兵；OpenCode 查询以 LIKE '%tokens%' 过滤，tokens 改名的行在 SQL 层即被滤掉。本机 ~/.codex 1,411 条 token_count 均带 cache_write_input_tokens（值全 0）。缺陷存在，需修复"
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout -b fix/C193-usage-field-drift-guard main"
+      "git checkout -b fix/C193-usage-field-drift-guard fix/C191-codex-counter-rollback  # 叠在 C191 上：同改 codex.rs，哨兵依赖 C198 说明通道"
     ],
     "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
       "zsh scripts/verify-local.sh",
       "scripts/adflow-verify --card C193 --to verified --record"
     ]
@@ -34,28 +35,28 @@
     {
       "scope": "来源口径哨兵",
       "before": "字段改名或嵌套变化时静默记 0 或忽略，agent 仍 ok，无任何说明",
-      "after": "每个来源统计「候选用量行数 / 取到 usage 的行数 / usage 全零行数」；候选行非零而取到为零，或全零占比异常时，经信息级通道（C198）输出说明；计数随缓存条目持久化，命中缓存的轮次同样可见",
-      "impact": "来源升级导致的骤降可被发现；正常来源不输出说明，解析结果不变"
+      "after": "各引擎按缓存单元记录 UsageProbe（候选用量行数 / 末尾连续取不到非零用量的候选行数）：会话文件末尾 ≥5 条（JSONL 引擎 Claude / CodeBuddy / Kimi / Pi、Codex、dsh）、数据库按 rowid 末尾 ≥20 行（OpenCode / ZCode）即经信息级 LOCAL_SOURCE_NOTICE（C198）说明；计数随缓存条目持久化，追加 / 增量读取接续，命中缓存的轮次同样可见。dsh 预筛与 OpenCode 查询放行不含用量字段的助手消息，防止改名后的行在入口被滤掉",
+      "impact": "来源升级导致的骤降可被发现；正常来源不输出说明，解析结果不变；旧缓存条目哨兵缺省为空，不强制重建"
     },
     {
       "scope": "Codex 缓存写入",
       "before": "Codex 观测 cache_creation 恒为 0，忽略 cache_write_input_tokens",
-      "after": "读取 cache_write_input_tokens 计入 cache_creation；input 是否需扣减该值按 OpenAI usage 语义确认后定稿；CODEX_FILE_CACHE_SCHEMA 升版",
-      "impact": "缓存写入非零后 Codex 费用不再低估；当前真实数据值全为 0，数值不变"
+      "after": "读取 cache_write_input_tokens 计入 cache_creation；按 Codex 源码解析用例口径（input_tokens 100 = cached 40 + cache_write 60，total = input + output）从 input 扣除；CODEX_FILE_CACHE_SCHEMA 升 4",
+      "impact": "缓存写入非零后 Codex token 分类正确、总量不变；价卡未列 OpenAI 缓存写入价，费用按 1.0× 输入价计与之前相同；本机真实数据值全为 0，数值不变"
     }
   ],
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
-    "modified": false,
+    "modified": true,
     "rule_diff": {
       "before": "仅 SQLite 来源有表级指纹，JSONL 类来源字段缺失时静默处理；Codex 不计缓存写入",
-      "after": "全部本机来源按来源汇总 usage 口径异常并以信息级说明暴露；Codex 计入 cache_write_input_tokens"
+      "after": "全部本机来源（Grok 估算除外）按缓存单元的末尾连续取不到用量行数检测口径漂移，并以信息级说明暴露；Codex 计入 cache_write_input_tokens（含于 input_tokens，单列 cache_creation）（design 01 规则 3「usage 口径漂移哨兵 (C193)」「Codex 用量口径」）"
     }
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261104-07",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -63,36 +64,38 @@
         "item": "自动化测试",
         "true_if": "回归：模拟 Claude usage 键改名 → 输出信息级说明且 status 不为 error；Codex cache_write_input_tokens > 0 计入 cache_creation；正常夹具不输出说明；全量测试 Exit 0",
         "false_if": "漂移仍静默、正常来源误报，或存在测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c193-verify-local.log）：Rust 571 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。新增 tests_drift（7 项）：UsageProbe 末尾连续数与追加接续；Claude message.usage 改名 → 说明「疑似来源 usage 字段口径变化: 1 个会话文件末尾连续 5 条以上…」、diagnostic=None、热轮命中仍在、正常文件追加改名格式经追加路径触发；Codex cache_write_input_tokens 100/40/60/10 → input 0、cache_read 40、cache_creation 60、total 110；Codex last_token_usage 改名 → 说明且热轮仍在；dsh usage 键改名（旧预筛直接滤掉）→ 说明；OpenCode tokens 改名 → 增量读取接续至 29 行触发、热轮仍在；ZCode 末尾 20 行全零触发、零星零值不触发。collector-application usage_drift_sentinel_is_a_notice_not_an_error：Claude 仍 ok、note 附说明、LOCAL_SOURCE_NOTICE@claude-code、envelope Success。变异检查：哨兵不计零值后 7 项中 6 项失败（缓存写入用例不依赖哨兵）",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "本机全部真实来源冷、热各跑一轮：均不出现哨兵说明，用量与修复前一致",
         "false_if": "真实数据误报或数值变化",
-        "evidence": "",
-        "result": null
+        "evidence": "本机全部真实来源（只读；缓存与台账写临时 home，local/c198/c193-real-all.log）：Claude 27 个会话、Codex 42、ZCode 39,986 行、dsh 17、CodeBuddy 1，本分支冷 / 热两轮 diagnostics 为空、无任何哨兵说明、envelope success。与 main@3595325 对比：Codex 310,271,653、ZCode 10,631,791,018、dsh 320,249,258、CodeBuddy 0 冷 / 热逐项一致；Claude 因本会话正在写入，冷扫随运行先后此大彼小（main 先跑时分支多 500,675，分支先跑时 main 多 502,079），两版热轮一致。阈值依据实测：Claude / Codex / dsh 全部会话末尾连续零值 0 条、任意位置最长 1 条，ZCode 最长 5 行",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "缓存命中率与对拍不变；C198 合入前不得经 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 输出哨兵说明",
         "false_if": "破坏缓存语义，或哨兵说明把 agent 置 error",
-        "evidence": "",
-        "result": null
+        "evidence": "缓存语义：JSONL 载荷新增可缺省字段 u（空则不落盘）、Codex / SQLite 条目新增可缺省 usage_probe，旧条目照常命中（JSONL / dsh / SQLite 不升版），冷热对拍与全部既有缓存用例通过；Codex 因观测变化升 schema 4。哨兵说明只经 SourceScan.notice（C198 通道）输出，tests_drift 全部断言 diagnostic=None，collector-application 用例确认 agent 仍为 ok。OpenCode 查询多选出的「不含 tokens 的助手消息」只计入哨兵、不产生用量；参照实现 scan_opencode 查询不变，对拍一致",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "15fe376",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-04",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

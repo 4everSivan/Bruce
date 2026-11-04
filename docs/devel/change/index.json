@@ -1985,7 +1985,7 @@
     "C193": {
       "title": "为本机来源补充 usage 口径漂移哨兵（按来源汇总），并接入 Codex 新增的 cache_write_input_tokens",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C193-usage-field-drift-guard",
       "topic": "TokenUsage",
       "version": "0.17.0",
