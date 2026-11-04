@@ -1,29 +1,29 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C192",
-  "title": "修复 dsh 单帧解压内容 >8 MiB 的会话被永久跳过",
+  "title": "修复 dsh 单帧解码失败即整会话跳过：改为逐帧隔离，并让帧上限在解码中生效",
   "version": "0.17.0",
   "type": "BugFix",
   "status": "pending",
-  "branch": "fix/C192-dsh-oversize-frame",
+  "branch": "fix/C192-dsh-frame-isolation",
   "is_hotfix": false,
   "target": {
     "module": "core/collector-local dsh 适配器",
-    "component": "dsh zstd 帧内容上限与损坏降级",
+    "component": "dsh 多帧 zstd 解码的错误隔离与帧内容上限",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-  "why": "T26 审计发现：dsh 解码器对单帧解压内容设 8 MiB 护栏，超限按 InvalidData 处理；无旧缓存条目时该会话文件被整体跳过且仅计 io_errors，artifact 无感，导致该会话用量永久缺失。需要区分“病态帧”和“合法大帧”，超限时诊断可见并保留可恢复路径（或提高上限/流式落盘）。",
+  "why": "T26 审计发现，2026-11-04 复核修正范围：现状任一帧解码失败或超限即整文件返回 InvalidData（`dsh.rs:563-591`），无旧缓存条目时整会话本轮为 0（`:185-209`）。复核结论：① 本机 16 个会话、6,966 帧、1,629 条用量事件，最大单行 256 KiB，8 MiB 帧上限与 1 MiB 行上限均 0 触发——「合法大帧」在真实数据中未出现，单纯上调上限没有价值；② 帧上限护栏「钉住峰值内存」的前提不成立：抽样 16/16 帧头未声明 Frame_Content_Size，`content_size()` 返回 0，预检（`dsh.rs:569`）从不生效，整帧先解码进内存才在 `:585` 后检；③ 1 MiB 行上限先于 8 MiB 帧上限生效，1–8 MiB 的单行事件帧已按截断行丢弃（见 C195）；④ 真正的放大器是「一帧坏 → 整文件坏」：zstd 帧彼此独立，活写时被撕裂的尾帧或单个损坏帧会让首次扫描（无旧条目）的整会话本轮为 0，永久损坏的文件则每轮整文件重解压后再失败。",
   "precheck": {
     "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
-    "command": "grep -n \"DSH_MAX_FRAME_CONTENT_BYTES\\|frame limit\" core/collector/crates/collector-local/src/sources/dsh.rs | head",
-    "expected": "8 MiB 单帧上限存在，超限返回 InvalidData 并跳过该文件",
+    "command": "grep -n \"DSH_MAX_FRAME_CONTENT_BYTES\\|content_size()\\|exceeds the frame limit\\|None => continue\" core/collector/crates/collector-local/src/sources/dsh.rs",
+    "expected": "帧上限只在帧头声明长度时预检、否则整帧解码后再检；任一帧错误使整文件 InvalidData，无旧条目时跳过该会话",
     "is_completed": false,
     "evidence": ""
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout fix/C192-dsh-oversize-frame"
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C192-dsh-frame-isolation main"
     ],
     "after": [
       "zsh scripts/verify-local.sh",
@@ -32,10 +32,22 @@
   },
   "changes": [
     {
-      "scope": "dsh 大帧处理",
-      "before": "单帧 >8 MiB 按损坏跳过整会话，用量永久缺失且 artifact 无提示",
-      "after": "合法大帧可解析（流式/提高上限），病态帧输出可见诊断并保留 stale 观测",
-      "impact": "dsh 大会话不再永久丢量；异常帧可解释"
+      "scope": "dsh 帧级容错",
+      "before": "任一帧失败即整文件失败；有旧条目沿用陈旧观测，无旧条目则整会话为 0",
+      "after": "逐帧隔离：损坏帧与超限帧跳过并计数，撕裂尾帧之前的帧照常产出用量；只有首帧不可解时整文件失败",
+      "impact": "活写首扫与单帧损坏不再让整个会话丢量"
+    },
+    {
+      "scope": "帧上限护栏",
+      "before": "仅在帧头声明长度时预检，未声明时整帧解码进内存后再检",
+      "after": "解码过程中逐块累计已解出字节，超限即中止该帧并流式丢弃至帧尾，峰值内存受上限约束",
+      "impact": "病态帧不再先占满内存"
+    },
+    {
+      "scope": "永久损坏文件",
+      "before": "签名不变也每轮整文件重解压后再失败",
+      "after": "部分成功的解析结果（含坏帧计数）正常缓存，签名不变时直接命中；坏帧计数经信息级通道（C198）可见",
+      "impact": "消除每轮重复的解压开销；损坏可解释"
     }
   ],
   "design": {
@@ -43,8 +55,8 @@
     "topic": "TokenUsage",
     "modified": false,
     "rule_diff": {
-      "before": "dsh 单帧内容上限 8 MiB，超限按损坏跳过",
-      "after": "dsh 大帧区分合法与病态，合法可解析、病态可见"
+      "before": "dsh 任一帧解码失败或超过 8 MiB 即按损坏跳过整个文件",
+      "after": "dsh 逐帧隔离：坏帧跳过计数，撕裂尾帧之前的帧照常计入，帧上限在解码过程中强制执行"
     }
   },
   "verification": {
@@ -55,22 +67,22 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
-        "false_if": "存在测试失败或未覆盖回归",
+        "true_if": "回归覆盖：多帧文件中间一帧损坏或超限 → 其余帧用量计入且坏帧计数可见；撕裂尾帧 → 前序帧计入；未声明 Frame_Content_Size 的超限帧在解码中途中止；全量测试 Exit 0",
+        "false_if": "任一场景整会话丢量、内存不受控，或存在测试失败",
         "evidence": "",
         "result": null
       },
       {
         "item": "行为实测",
-        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
-        "false_if": "问题仍可复现或数值仍静默偏小",
+        "true_if": "本机 ~/.dsh 16 个会话用量与修复前逐项一致；人工构造的坏帧 / 撕裂尾帧夹具数值可解释",
+        "false_if": "真实数据数值变化，或夹具数值不可解释",
         "evidence": "",
         "result": null
       },
       {
         "item": "反向影响排查",
-        "true_if": "其余来源与缓存/artifact 行为不变",
-        "false_if": "破坏既有来源或缓存语义",
+        "true_if": "未压缩 .jsonl 夹具、跨文件按消息 id 去重、缓存命中路径不变",
+        "false_if": "破坏既有解析、去重或缓存语义",
         "evidence": "",
         "result": null
       }

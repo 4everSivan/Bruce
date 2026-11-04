@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C190",
-  "title": "修复 Codex 同名 rollout 仅按文件名分组去重、可能只计一份会话",
+  "title": "修复 Codex 跨根同名副本整份择一：分叉副本少计、前缀副本误报冲突",
   "version": "0.17.0",
   "type": "BugFix",
   "status": "pending",
@@ -9,21 +9,21 @@
   "is_hotfix": false,
   "target": {
     "module": "core/collector-local Codex 适配器",
-    "component": "Codex 多根 rollout 去重键（文件名 vs 路径/内容）",
+    "component": "Codex 多根 rollout 副本合并与冲突判定",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-  "why": "T26 审计发现：Codex 扫描把多个根（CLI / Orca 会话 / Orca 账号）的 rollout 按 `rollout:{file_name}` 分组，只保留 size/mtime 优先的一份；若不同根下存在同名但内容不同的 rollout（迁移、备份、副本），另一份会永久少计，仅在 `conflict_session_groups` 计数与 note 中提示，数字照常偏小。需要让去重键包含路径或内容身份，并在真冲突时保留两份。",
+  "why": "T26 审计发现，2026-11-04 复核修正范围：Codex 扫描把多个根（CLI / Orca 会话 / Orca 账号）的 rollout 按 `rollout:{file_name}` 分组，整份只保留 size/mtime 最优的一份（`codex.rs:210-212/246-293`），其余副本整体丢弃。复核实测（Bruce-collector + 临时 home，CLI 根与 Orca 根各放一份同名 rollout）：① 分叉副本（共享前缀 330、CLI 独有 330、Orca 独有 12,100）报 12,430，真值 12,760，少计 330；② 前缀副本（Orca 为 CLI 的旧前缀）用量 660 正确，但因 size 不同被判冲突（`codex.rs:275-277`），Codex 每轮显示 error（经 C198 所述通道）。原卡方案「同名不同内容分别计入」会得 13,090，把共享前缀重复计入，且 T26 台账单调取大，多计将永久落库（见 C199）——不可采用。rollout 文件名含会话 UUID，同名即同一会话，正确做法是按单次响应身份跨副本取并集：Codex 0.164+ 在每个 token_count 旁写一行 `token_usage_record`，带全局唯一 `response_id`（本机 1,405 条，跨文件 0 重复）；更早的 rollout 回退为 (timestamp, last_token_usage) 签名。本机无 Orca 根，真实数据未触发。",
   "precheck": {
     "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
-    "command": "grep -n \"codex_path_key\\|conflict_session_groups\\|rollout:\" core/collector/crates/collector-local/src/sources/codex.rs | head",
-    "expected": "去重键仅由文件名构造，冲突只计 conflict_session_groups，未参与用量合并",
+    "command": "grep -n \"rollout:\\|candidate.size != winner.size\\|conflict_session_groups\\|token_usage_record\" core/collector/crates/collector-local/src/sources/codex.rs | head",
+    "expected": "按文件名分组整份择一；size 不同即计 conflict_session_groups；未读取 token_usage_record",
     "is_completed": false,
     "evidence": ""
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout fix/C190-codex-rollout-dedupe"
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C190-codex-rollout-dedupe main"
     ],
     "after": [
       "zsh scripts/verify-local.sh",
@@ -32,10 +32,16 @@
   },
   "changes": [
     {
-      "scope": "Codex 跨根去重键",
-      "before": "按文件名 `rollout:{file_name}` 分组，每组只取一份；不同内容同名副本静默少计",
-      "after": "去重键纳入根路径/文件身份；同名不同内容时分别计入并在 note/诊断中说明",
-      "impact": "Codex 用量在存在同名副本时不再少计；`conflict_session_groups` 语义收窄为真正重复"
+      "scope": "Codex 跨根副本合并",
+      "before": "同名 rollout 整份取 size/mtime 最优，其余副本整体丢弃，分叉部分静默少计",
+      "after": "同一会话的各副本逐份解析（硬链接副本仍零 IO 跳过），观测写入单次响应去重键（response_id 优先，旧格式回退 timestamp + last_token_usage 签名），跨副本按键去重后取并集；CODEX_FILE_CACHE_SCHEMA 升版",
+      "impact": "分叉副本不再少计，共享前缀不重复计入；有副本的 Orca 用户冷扫描解析量增加，热扫描仍按文件缓存命中"
+    },
+    {
+      "scope": "冲突判定与说明",
+      "before": "副本 size 不同即计 conflict_session_groups，并输出「已保守选择单份文件」说明",
+      "after": "前缀副本（短副本为长副本前缀）不算冲突；真正分叉时经信息级通道（C198）说明合并的会话组数",
+      "impact": "Orca 旧副本不再让 Codex 显示 error；conflict_session_groups 语义收窄为真实分叉"
     }
   ],
   "design": {
@@ -43,8 +49,8 @@
     "topic": "TokenUsage",
     "modified": false,
     "rule_diff": {
-      "before": "Codex 多根扫描按文件名去重，冲突只出诊断",
-      "after": "Codex 多根扫描按路径/内容身份去重，不同内容同名副本分别计入"
+      "before": "Codex 多根扫描按文件名去重、整份择一，size 不同即判冲突",
+      "after": "Codex 多根扫描按单次响应身份跨副本去重取并集，前缀副本不视为冲突"
     }
   },
   "verification": {
@@ -55,22 +61,22 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
-        "false_if": "存在测试失败或未覆盖回归",
+        "true_if": "回归覆盖：前缀副本 = 长副本用量且无冲突说明；分叉副本 = 并集 12,760（不是 12,430 或 13,090）；硬链接副本零重复读；无 token_usage_record 的旧格式回退签名去重；全量测试 Exit 0",
+        "false_if": "任一场景少计或重复计入，或存在测试失败",
         "evidence": "",
         "result": null
       },
       {
         "item": "行为实测",
-        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
-        "false_if": "问题仍可复现或数值仍静默偏小",
+        "true_if": "临时 home 双根复现两种场景，数值与上述一致；本机真实 ~/.codex 用量与修复前一致",
+        "false_if": "数值与预期不符，或真实数据发生变化",
         "evidence": "",
         "result": null
       },
       {
         "item": "反向影响排查",
-        "true_if": "其余来源与缓存/artifact 行为不变",
-        "false_if": "破坏既有来源或缓存语义",
+        "true_if": "单根无副本场景、按文件缓存（C117）冷热对拍不变；任何场景不产生多计（台账单调，多计不可回退）",
+        "false_if": "破坏既有缓存语义或出现多计",
         "evidence": "",
         "result": null
       }

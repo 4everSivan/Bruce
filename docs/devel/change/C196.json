@@ -1,29 +1,29 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C196",
-  "title": "修复 JSONL 部分读取失败被当作文件删除而回收缓存条目",
+  "title": "修复 JSONL 引擎单文件消失竞态中止整源扫描，并在解析失败时沿用陈旧条目",
   "version": "0.17.0",
   "type": "BugFix",
   "status": "pending",
-  "branch": "fix/C196-jsonl-partial-read-cache",
+  "branch": "fix/C196-jsonl-file-race",
   "is_hotfix": false,
   "target": {
-    "module": "core/collector-local JSONL 缓存与 manifest 回收",
-    "component": "JSONL manifest 差集与部分扫描失败的区分",
+    "module": "core/collector-local JSONL 缓存引擎",
+    "component": "process_file 单文件失败处理与陈旧条目兜底",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-  "why": "T26 审计发现：子目录/文件读取失败（权限、移动、外部卷短暂不可用）时该文件不进入 seen 集合，manifest 差集把它当“已删除”回收缓存条目；本轮少计，且若来源随后修剪/删除则不可回补（T26 台账只能保住此前已捕获的历史）。需要区分“确认删除”和“本轮读取失败”，失败时保留条目。",
+  "why": "T26 审计发现，2026-11-04 复核修正范围。原卡关心的「读取失败被当作删除、回收缓存条目」机制确实存在（子目录 PermissionDenied 时其下文件不进 seen，`reconcile_deleted_cache` 删除条目），但复核实测其用户可见影响约为 0：临时 home 中 Claude 子目录不可读一轮，缓存条目 2 → 1，显示用量始终为 1,100（T26 台账按日取大保住），恢复后下一轮重建。原卡担心的「来源随后删除则不可回补」也不会因保留条目而改善——来源真被删除后，同一 manifest 差集照样回收。该项不再处理。同一引擎更实际的两个问题：① `process_file` 中 `fs::metadata(path)?`（`jsonl_cache.rs:514`）与 `append_is_safe` 的指纹读取以 `?` 上抛，文件在列目录与 stat / 读指纹之间被删除或截断（会话清理、日志轮转的竞态）时，整个来源以 Io 失败结束，本轮整体按 LOCAL_SOURCE_IO_DEGRADED 跳过，found=false 时还会被误标为 history「本机未发现会话来源」；② 解析失败时直接丢弃该文件（`Ok(None)`），即使磁盘上仍有它的旧条目。三套缓存口径不一致：dsh 沿用陈旧条目、JSONL 丢弃、Codex 写成空条目（见 C197）。",
   "precheck": {
     "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
-    "command": "grep -n \"reconcile_deleted_cache\\|seen\\|PermissionDenied\\|io_errors\" core/collector/crates/collector-local/src/jsonl_cache.rs | head",
-    "expected": "读取失败的文件不进 seen，差集直接删除缓存条目，无保留分支",
+    "command": "grep -n \"let metadata = fs::metadata(path)?\\|append_is_safe(path, &entry\\|return Ok(None)\" core/collector/crates/collector-local/src/jsonl_cache.rs",
+    "expected": "单文件 metadata 与追加指纹失败以 ? 中止整源扫描；解析失败直接返回 None，不使用旧条目",
     "is_completed": false,
     "evidence": ""
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout fix/C196-jsonl-partial-read-cache"
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C196-jsonl-file-race main"
     ],
     "after": [
       "zsh scripts/verify-local.sh",
@@ -32,10 +32,22 @@
   },
   "changes": [
     {
-      "scope": "JSONL 缓存回收",
-      "before": "部分读取失败被当作文件删除，缓存条目被回收，本轮少计",
-      "after": "读取失败与确认删除分开处理，失败保留条目并输出诊断",
-      "impact": "临时不可读不再造成历史丢失；真正删除仍按差集回收"
+      "scope": "单文件竞态",
+      "before": "单文件 metadata / 追加指纹读取失败上抛，整个来源本轮失败",
+      "after": "单文件 NotFound / UnexpectedEof 等 IO 失败只跳过该文件（计 io_errors），其余文件照常聚合",
+      "impact": "会话清理竞态不再让整个来源本轮丢量或被误标为 history"
+    },
+    {
+      "scope": "解析失败兜底",
+      "before": "解析失败的文件本轮不计，磁盘上的旧条目闲置",
+      "after": "解析失败时沿用该路径旧条目的陈旧载荷（与 dsh 同口径，不计 cache_hits），下一轮重试",
+      "impact": "活写或瞬时失败不再造成本轮骤降"
+    },
+    {
+      "scope": "manifest 差集回收",
+      "before": "读取失败子目录下的条目按差集回收",
+      "after": "维持现状（台账已保护历史，缓存条目可再生）",
+      "impact": "无"
     }
   ],
   "design": {
@@ -43,8 +55,8 @@
     "topic": "TokenUsage",
     "modified": false,
     "rule_diff": {
-      "before": "manifest 差集视为删除，读取失败文件同样被回收",
-      "after": "读取失败与删除分离，失败保留缓存并可见"
+      "before": "JSONL 单文件 IO 失败可中止整源扫描；解析失败的文件本轮不计",
+      "after": "JSONL 单文件 IO 失败只跳过该文件；解析失败沿用陈旧条目，下一轮重试"
     }
   },
   "verification": {
@@ -55,22 +67,22 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
-        "false_if": "存在测试失败或未覆盖回归",
+        "true_if": "回归：扫描中途删除或截断一个文件 → 其余文件用量完整且不返回 Err；解析失败沿用旧条目；全量测试 Exit 0",
+        "false_if": "单文件失败仍中止整源，或解析失败仍丢量，或存在测试失败",
         "evidence": "",
         "result": null
       },
       {
         "item": "行为实测",
-        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
-        "false_if": "问题仍可复现或数值仍静默偏小",
+        "true_if": "临时 home 注入单文件消失 / 解析失败，Claude 用量与状态可解释（不出现 LOCAL_SOURCE_IO_DEGRADED，不误标 history）",
+        "false_if": "整源仍被跳过或误标",
         "evidence": "",
         "result": null
       },
       {
         "item": "反向影响排查",
-        "true_if": "其余来源与缓存/artifact 行为不变",
-        "false_if": "破坏既有来源或缓存语义",
+        "true_if": "真实删除的文件仍按差集回收；冷热对拍等价；Claude / CodeBuddy / Kimi / Pi / Grok 共用引擎行为一致",
+        "false_if": "破坏删除回收或缓存语义",
         "evidence": "",
         "result": null
       }

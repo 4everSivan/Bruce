@@ -1,29 +1,29 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C193",
-  "title": "为 9 个本机来源补充 usage 字段完整性校验，字段漂移不再静默记 0",
+  "title": "为本机来源补充 usage 口径漂移哨兵（按来源汇总），并接入 Codex 新增的 cache_write_input_tokens",
   "version": "0.17.0",
   "type": "BugFix",
   "status": "pending",
   "branch": "fix/C193-usage-field-drift-guard",
   "is_hotfix": false,
   "target": {
-    "module": "core/collector-local JSONL / Codex / OpenCode 适配器",
-    "component": "各来源 usage 字段完整性校验与降级诊断",
+    "module": "core/collector-local JSONL / Codex / dsh 适配器",
+    "component": "来源级 usage 口径哨兵与 Codex 缓存写入字段",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-  "why": "T26 审计发现：除 ZCode 有表结构指纹校验外，其余 9 个来源在来源字段改名、嵌套位置变化时会静默解析为 0 或忽略该行，agent 仍显示 ok，用户只会看到数字骤降。需要为各来源补最小完整性校验（usage 键存在性/类型），异常时输出可见诊断。",
+  "why": "T26 审计发现，2026-11-04 复核修正范围：来源字段改名或嵌套变化时，各适配器静默记 0 或忽略该行，agent 仍显示 ok，用户只会看到数字骤降。原卡前提有两处不准：① 不止 ZCode，OpenCode 也有表结构指纹（`sqlite_adapters.rs:267`，只校验 message 表，不校验 data JSON 内的字段）；② 逐行校验必需字段会产生大量噪声——各来源多数行本就不带 usage（Claude 的 user/tool 行、只有 rate_limits 的 Codex token_count、dsh 流块），需要的是按来源汇总的哨兵，而不是逐行告警。已经出现的真实漂移：Codex 0.164+ 的 token_count / token_usage_record 新增 `cache_write_input_tokens`（本机 1,409/1,409 条事件都带该键，当前值全为 0），而 `parse_codex_file` 写死 `cache_creation: 0`（`codex.rs:632`），一旦开始返回非零缓存写入，Bruce 会静默漏计或错价；同批新增的 `reasoning_output_tokens` 经实测 total = input + output，已含在 output 内，无需另加。哨兵说明须走 C198 的信息级通道，否则会把 agent 置 error。",
   "precheck": {
     "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
-    "command": "grep -rn \"schema_fingerprint\\|usage\" core/collector/crates/collector-local/src/sources/sqlite_adapters.rs core/collector/crates/collector-local/src/sources/jsonl_adapters.rs | head",
-    "expected": "仅 ZCode 有 schema 指纹校验；其余来源缺字段时静默 0/忽略，无诊断",
+    "command": "grep -n \"cache_creation: 0\\|cache_write\" core/collector/crates/collector-local/src/sources/codex.rs; grep -n \"fn schema_fingerprint\" core/collector/crates/collector-local/src/sources/sqlite_adapters.rs",
+    "expected": "Codex 写死 cache_creation 0 且未读取 cache_write_input_tokens；OpenCode / ZCode 各有表级指纹，其余来源无口径哨兵",
     "is_completed": false,
     "evidence": ""
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout fix/C193-usage-field-drift-guard"
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C193-usage-field-drift-guard main"
     ],
     "after": [
       "zsh scripts/verify-local.sh",
@@ -32,10 +32,16 @@
   },
   "changes": [
     {
-      "scope": "本机来源字段校验",
-      "before": "9 个来源缺 usage 字段时静默记 0 或忽略，agent 仍 ok",
-      "after": "各来源校验必需字段，缺失时输出信息级诊断并保留可用部分",
-      "impact": "来源升级/字段漂移可被发现；正常来源解析不变"
+      "scope": "来源口径哨兵",
+      "before": "字段改名或嵌套变化时静默记 0 或忽略，agent 仍 ok，无任何说明",
+      "after": "每个来源统计「候选用量行数 / 取到 usage 的行数 / usage 全零行数」；候选行非零而取到为零，或全零占比异常时，经信息级通道（C198）输出说明；计数随缓存条目持久化，命中缓存的轮次同样可见",
+      "impact": "来源升级导致的骤降可被发现；正常来源不输出说明，解析结果不变"
+    },
+    {
+      "scope": "Codex 缓存写入",
+      "before": "Codex 观测 cache_creation 恒为 0，忽略 cache_write_input_tokens",
+      "after": "读取 cache_write_input_tokens 计入 cache_creation；input 是否需扣减该值按 OpenAI usage 语义确认后定稿；CODEX_FILE_CACHE_SCHEMA 升版",
+      "impact": "缓存写入非零后 Codex 费用不再低估；当前真实数据值全为 0，数值不变"
     }
   ],
   "design": {
@@ -43,8 +49,8 @@
     "topic": "TokenUsage",
     "modified": false,
     "rule_diff": {
-      "before": "仅 ZCode 校验表结构，其余来源字段缺失静默处理",
-      "after": "全部本机来源校验 usage 必需字段，缺失输出可见诊断"
+      "before": "仅 SQLite 来源有表级指纹，JSONL 类来源字段缺失时静默处理；Codex 不计缓存写入",
+      "after": "全部本机来源按来源汇总 usage 口径异常并以信息级说明暴露；Codex 计入 cache_write_input_tokens"
     }
   },
   "verification": {
@@ -55,22 +61,22 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
-        "false_if": "存在测试失败或未覆盖回归",
+        "true_if": "回归：模拟 Claude usage 键改名 → 输出信息级说明且 status 不为 error；Codex cache_write_input_tokens > 0 计入 cache_creation；正常夹具不输出说明；全量测试 Exit 0",
+        "false_if": "漂移仍静默、正常来源误报，或存在测试失败",
         "evidence": "",
         "result": null
       },
       {
         "item": "行为实测",
-        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
-        "false_if": "问题仍可复现或数值仍静默偏小",
+        "true_if": "本机全部真实来源冷、热各跑一轮：均不出现哨兵说明，用量与修复前一致",
+        "false_if": "真实数据误报或数值变化",
         "evidence": "",
         "result": null
       },
       {
         "item": "反向影响排查",
-        "true_if": "其余来源与缓存/artifact 行为不变",
-        "false_if": "破坏既有来源或缓存语义",
+        "true_if": "缓存命中率与对拍不变；C198 合入前不得经 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 输出哨兵说明",
+        "false_if": "破坏缓存语义，或哨兵说明把 agent 置 error",
         "evidence": "",
         "result": null
       }

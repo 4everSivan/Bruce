@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C197",
+  "title": "修复 Codex rollout 打开失败被缓存为空观测、会话永久记 0 且无诊断",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C197-codex-open-failure-cache",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Codex 适配器",
+    "component": "Codex 按文件观测缓存的解析失败路径（parse_codex_file / scan_jsonl_file）",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-11-04 复核 C190–C196 时发现（原批次未覆盖）：`parse_codex_file` 复用 `scan_jsonl_file`，后者在 `File::open` 失败时只计 `io_errors` 并返回 `Ok(())`（`sources.rs:413-418`）；`scan_codex_cached_with_cancellation` 把这个空结果当作成功解析，以当前 size/mtime/dev/inode 身份写入 `codex-files-v1.json`（`codex.rs:742-753`）。文件恢复可读后身份不变 → 缓存命中 → 该会话永久记 0；已结束的 rollout 不再追加，永远不会重解析；artifact 仍为 status=ok，无任何诊断。实测（Bruce-collector + 临时 home）：对照 1,050 token；rollout `chmod 000` 跑一轮后为 0，恢复权限后连续两轮仍为 0，缓存条目 observations=0。JSONL 引擎（`scan_jsonl_file_from_offset` 以 `?` 传播）与 dsh（`open_dsh_reader` 传播）均无此问题，仅 Codex 有。可能的触发：并行工作池下 EMFILE、iCloud 已逐出文件、属主不同的 rollout、瞬时 EINTR。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"File::open\" -A 4 core/collector/crates/collector-local/src/sources.rs | head; grep -n \"_ => match parse_codex_file\" -A 12 core/collector/crates/collector-local/src/sources/codex.rs",
+    "expected": "scan_jsonl_file 打开失败返回 Ok(())；Codex 缓存路径把 Ok 的空观测按文件身份写入条目",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C197-codex-open-failure-cache main"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C197 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Codex 文件解析失败语义",
+      "before": "打开失败被吞为 Ok(空观测) 并按文件身份缓存，恢复可读后仍命中空条目",
+      "after": "打开/读取失败一律返回 Err(Io) 且不写缓存条目；该路径有旧条目时沿用其陈旧观测（与 dsh 活写兜底同口径，不计 cache_hits），下一轮重试",
+      "impact": "瞬时打开失败不再造成会话永久记 0；正常解析与缓存命中路径不变"
+    },
+    {
+      "scope": "失败可见性",
+      "before": "仅内部 io_errors 计数，agent 显示 ok",
+      "after": "本轮存在解析失败的 rollout 时经信息级通道（C198）输出文件数，不把 agent 置 error",
+      "impact": "少计可解释；可见性部分依赖 C198"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "Codex 按文件缓存按文件身份复用条目，解析结果无论成败均写入",
+      "after": "Codex 只缓存成功解析的结果；解析失败不落盘，沿用陈旧条目并在下一轮重试"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "新增回归：rollout 首轮不可打开 → 失败轮不写缓存条目，恢复可读后同一文件身份下计入完整用量；全量测试 Exit 0",
+        "false_if": "失败轮写入空条目，或恢复后仍记 0，或存在测试失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 复现：chmod 000 跑一轮后恢复权限，下一轮 Codex 用量回到对照值 1,050",
+        "false_if": "恢复后仍记 0 或数值与对照不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "冷/热缓存对拍等价、命中率不下降；真实删除的 rollout 仍从缓存移除；本机 ~/.codex 用量与修复前一致",
+        "false_if": "缓存命中语义或删除回收被破坏，或真实数据数值变化",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C194",
-  "title": "修复 Grok 时间戳取文件 mtime 导致追加时历史跨日漂移，并标注 chars/4 估算口径",
+  "title": "修复 Grok 以文件 mtime 重打全部历史时间戳，追加后经台账造成跨日重复计数",
   "version": "0.17.0",
   "type": "BugFix",
   "status": "pending",
@@ -9,21 +9,21 @@
   "is_hotfix": false,
   "target": {
     "module": "core/collector-local Grok 适配器",
-    "component": "Grok 用量时间戳来源与 token 估算口径",
+    "component": "Grok 观测时间戳来源与追加合并（grok_observation / merge_append）",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-  "why": "T26 审计发现：Grok 适配器把文件 mtime 当作会话内所有观测的时间戳，每次追加都会把整段历史重打为新日期，造成历史跨日漂移、重复/错日；token 使用 `字符数/4` 估算且最小 1。需要改用消息级时间戳（若来源提供），并明确估算口径与不可回补限制。",
+  "why": "T26 审计发现，2026-11-04 复核确认比原卡描述更严重。Grok 适配器把文件 mtime 当作该文件全部观测的时间戳（`jsonl_adapters.rs:591`），追加时 `merge_append` 把已有观测整体重打为新 mtime（`:635-652`），整段历史随最后一次写入漂移到新日期。叠加 T26 台账按日取大（`collector-history/src/lib.rs:247`），漂移变成永久重复计数：实测（Bruce-collector + 临时 home）07-26 写入 300 token，07-27 追加 40 token，台账 07-26=300、07-27=340，7 日视图合计 640（真实 340），月行却为 340，日与月不一致。原卡第二项「标注 chars/4 估算口径」已存在：Grok agent note 为「按消息内容估算, 非精确 token 计数」（`collector-application/src/lib.rs:248`），不再处理；另据代码推断（本机无 Grok，未实测），该估算每条消息只计一次，不含每轮重发的上下文与系统提示，相对实际计费输入系统性偏低，可在 note 中补一句说明。修复只能阻止新的重复，用户台账里已落库的重复值需 C199 的向下修正路径才能清除。",
   "precheck": {
     "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
-    "command": "grep -n \"mtime\\|chars\\|/ 4\\|timestamp\" core/collector/crates/collector-local/src/sources/jsonl_adapters.rs | head",
-    "expected": "Grok 观测时间戳来自文件 mtime，token 为 chars/4 估算",
+    "command": "grep -n \"timestamp_millis: (modified\\|let current_timestamp\\|fn merge_append\" core/collector/crates/collector-local/src/sources/jsonl_adapters.rs; grep -rc '\"timestamp\"' ~/.grok/sessions 2>/dev/null | head -3",
+    "expected": "Grok 观测时间戳来自文件 mtime，追加时全部观测重打为新 mtime；顺带确认真实 Grok 会话是否带消息级时间戳",
     "is_completed": false,
     "evidence": ""
   },
   "callback": {
     "before": [
-      "# 本卡暂不处理；开工时执行 git checkout fix/C194-grok-timestamp-estimate"
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C194-grok-timestamp-estimate main"
     ],
     "after": [
       "zsh scripts/verify-local.sh",
@@ -32,10 +32,22 @@
   },
   "changes": [
     {
-      "scope": "Grok 时间戳与估算口径",
-      "before": "整文件历史随 mtime 漂移；token 按 chars/4 估算，cache 恒 0",
-      "after": "优先使用消息级时间戳；无法获取时按文件首次观测固定；估算口径在 note 中明确",
-      "impact": "Grok 历史日期稳定；估算精度限制可见"
+      "scope": "Grok 时间戳来源",
+      "before": "全部观测取文件当前 mtime，追加时整体重打为新 mtime",
+      "after": "来源带消息级时间戳时优先使用；没有时追加段只给新观测打当前 mtime，已有观测保留原时间戳（缓存重建后退回 mtime 的限制在设计中写明）",
+      "impact": "Grok 历史日期稳定，台账不再跨日重复计数"
+    },
+    {
+      "scope": "解析口径版本",
+      "before": "Grok 与其余 JSONL 来源共用 JSONL_CACHE_PARSER_VERSION，口径变化只能整体升版",
+      "after": "Grok 声明独立的解析口径版本并升版，供 C199 在首个全量扫描轮修正台账中已落库的重复值",
+      "impact": "Claude 等其他 JSONL 来源不因 Grok 修复而整体重建"
+    },
+    {
+      "scope": "估算说明",
+      "before": "note 只说明「按消息内容估算」",
+      "after": "可选补充「不含每轮重发的上下文」，提示估算偏低方向",
+      "impact": "仅文案"
     }
   ],
   "design": {
@@ -43,8 +55,8 @@
     "topic": "TokenUsage",
     "modified": false,
     "rule_diff": {
-      "before": "Grok 以文件 mtime 作为使用时间，token 按字符数估算",
-      "after": "Grok 时间戳优先取消息级时间，估算口径显式标注"
+      "before": "Grok 以文件 mtime 作为全部消息的使用时间，追加时整体重打",
+      "after": "Grok 优先取消息级时间；没有时已有观测保留首次记录的时间，只有新追加的观测取当前 mtime"
     }
   },
   "verification": {
@@ -55,22 +67,22 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "修复含针对性回归用例且全量测试绿、退出码 0",
-        "false_if": "存在测试失败或未覆盖回归",
+        "true_if": "回归：跨日追加后已有观测仍在原日期、新观测在新日期；台账日合计等于真实值且与月一致；全量测试 Exit 0",
+        "false_if": "已有观测仍漂移到新日期，或日与月不一致，或存在测试失败",
         "evidence": "",
         "result": null
       },
       {
         "item": "行为实测",
-        "true_if": "真实来源场景下少计/丢失不再发生且数值可解释",
-        "false_if": "问题仍可复现或数值仍静默偏小",
+        "true_if": "临时 home 复现：07-26 写入 300、07-27 追加 40 → 7 日合计 340（07-26=300、07-27=40），月行 340；配合 C199 时已落库的 640 修正为 340",
+        "false_if": "合计仍为 640 或日 / 月不一致",
         "evidence": "",
         "result": null
       },
       {
         "item": "反向影响排查",
-        "true_if": "其余来源与缓存/artifact 行为不变",
-        "false_if": "破坏既有来源或缓存语义",
+        "true_if": "其余 JSONL 来源的解析、缓存命中与对拍不变；Grok 多根（sessions / archived_sessions）合并不变",
+        "false_if": "破坏其他来源或缓存语义",
         "evidence": "",
         "result": null
       }

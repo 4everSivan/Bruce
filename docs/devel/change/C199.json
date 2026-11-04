@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C199",
+  "title": "为用量历史台账补充按来源口径版本向下修正的路径，修复已落库的多计",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C199-history-downward-correction",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-history 用量历史台账",
+    "component": "台账单调合并语义与来源口径版本",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-11-04 复核 C190–C196 时发现：T26 台账按日 / 按月比较 total，新值小于存量即保留存量（`collector-history/src/lib.rs:247/329`），设计 §7.3「已知限制」已写明「来源数据向下修正不会回退」。该取舍在少计场景下保护了历史，但让任何多计一旦写入就永久保留：实测 Grok 跨日追加（C194 场景）真实 340 token，台账写入 07-26=300、07-27=340，7 日视图显示 640，月行却为 340；C194 修复解析后，用户台账里已落库的重复值仍不会消失。同理，C190 若误用「同名副本分别计入」造成多计，也将永久落库。需要一个受控的向下修正口子：只在来源口径（解析规则）为修复多计而升级时生效，其余时刻维持单调。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"new_total < value\\|saturating_i64(new_total) < stored\\|user_version\" core/collector/crates/collector-history/src/lib.rs | head",
+    "expected": "日与月均按 total 取大，台账无来源口径版本，无任何向下替换路径",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C199-history-downward-correction main"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C199 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "来源口径版本",
+      "before": "台账不记录写入时的来源解析口径",
+      "after": "agent_state 记录每个 agent 的派生口径版本（由适配器声明，修复多计的解析规则变更时升版）；台账 user_version 升级并迁移",
+      "impact": "台账 schema 升级；需迁移脚本与旧库兼容测试"
+    },
+    {
+      "scope": "向下修正",
+      "before": "新值小于存量一律保留存量",
+      "after": "某 agent 口径版本升级后的首个全量扫描轮（来源 found），对本轮扫描覆盖到的日期与月份以新值替换（允许向下），未覆盖的日期保留；替换后记录新口径版本，之后恢复单调合并",
+      "impact": "已落库多计可修正；代价是该轮已被来源修剪的日期会降到当前可见值，须在设计 §7.3 写明取舍"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "台账合并单调只增不减，来源数据向下修正不会回退（已知限制）",
+      "after": "台账默认单调；仅在来源口径版本升级后的首个全量扫描轮，对扫描覆盖日期允许向下替换"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：先写入多计值 → 口径升版后首轮全量扫描把覆盖日期改为新值、未覆盖日期保留；口径未变的 agent 与后续轮次保持单调；旧库迁移通过；全量测试 Exit 0",
+        "false_if": "口径未变时出现向下替换，或升版后多计未修正，或迁移破坏既有数据",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 复现 Grok 跨日追加：C194 修复 + 口径升版后 7 日合计从 640 回到 340，日与月一致",
+        "false_if": "合计仍为 640 或日 / 月不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "来源消失（status=history）、修剪、部分扫描失败场景历史不丢；台账失败降级语义不变",
+        "false_if": "非升版轮次丢失历史或台账降级行为改变",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

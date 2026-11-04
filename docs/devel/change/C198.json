@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C198",
+  "title": "修复来源信息级说明一律升格为 agent error 并误用 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C198-source-note-severity",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-application 本机采集汇总",
+    "component": "SourceScan.diagnostic → artifact 诊断码与 agent.status 映射",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-11-04 复核 C190–C196 时发现（原批次未覆盖）：`collect_local_usage` 把所有 `SourceScan.diagnostic` 映射为 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`（`collector-application/src/lib.rs:431-438`），`finalize_local_agent` 只要存在 diagnostic 就置 `status=error`（`:908-913`），macOS 端随即生成 `.agentIssue`（`UsageMapping.swift:17-23`）。而来源层的 diagnostic 既有真实故障（SQLite schema 不兼容），也有信息级说明：Codex「缓存文件格式异常, 已整体重建」（自愈，数字完整）、Codex「会话副本内容冲突」（含 Orca 旧前缀副本这种正常形态，见 C190）。这与设计 01 §6.1「`LOCAL_SOURCE_SCHEMA_INCOMPATIBLE` 仍只用于真实 schema/读取故障」相悖。实测（临时 home）：损坏可再生的 codex-files-v1.json 后，Codex 用量 1,050 完整，但 status=error、note=重建说明；Orca 前缀副本场景每轮都显示 error。C190/C193/C195/C197 计划新增的信息级说明若沿用该通道，会让 Claude 等来源几乎每轮显示 error——本卡是它们的前置。",
+  "precheck": {
+    "description": "开工时确认问题仍存在（本卡仅登记，暂不处理）",
+    "command": "grep -n \"LOCAL_SOURCE_SCHEMA_INCOMPATIBLE\\|agent.status = \\\"error\\\"\" core/collector/crates/collector-application/src/lib.rs | head",
+    "expected": "source.diagnostic 无条件映射为 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE，且任何 diagnostic 都把 agent 置 status=error",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 本卡暂不处理；开工时执行 git checkout -b fix/C198-source-note-severity main"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C198 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "来源诊断分级",
+      "before": "SourceScan 只有单一 diagnostic 字段，无严重度；全部按故障输出",
+      "after": "区分故障（schema/读取不可用：保留 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 与 status=error）与说明（缓存重建、副本取舍、截断/解析失败计数等：新信息级诊断码，不改 agent.status、不参与 envelope Partial 判定）",
+      "impact": "Codex 缓存自愈与副本取舍不再显示 error；为 C190/C193/C195/C197 提供可见性通道"
+    },
+    {
+      "scope": "双端消费",
+      "before": "agent.status=error 时 macOS / Windows 生成 agentIssue；Windows viewmodel 以 `status != \"ok\"` 判定（`apps/win/viewmodel/src/usage.rs:90`），T26 的 history 状态也被当作故障，与 macOS（排除 history）及设计 §7.3 不一致",
+      "after": "信息级诊断码不生成 agentIssue，呈现口径与 ok/history 一致；agent.note 保留来源原有说明；Windows 与 macOS 同样排除 history",
+      "impact": "macOS 与 Windows artifact 消费同步调整，Windows golden 重生"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "来源任何说明均以 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 输出并把 agent 置 error",
+      "after": "来源说明按严重度分流：故障 → LOCAL_SOURCE_SCHEMA_INCOMPATIBLE + error；信息级说明 → 独立诊断码，不改变 agent 状态"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：Codex 缓存损坏重建 → status=ok 且输出信息级诊断码；SQLite schema 不兼容仍为 error + LOCAL_SOURCE_SCHEMA_INCOMPATIBLE；全量测试 Exit 0",
+        "false_if": "自愈说明仍置 error，或真实故障被降级，或存在测试失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 损坏 codex 缓存 → Codex status=ok、用量完整、artifact 含信息级诊断；macOS 面板不出现 agentIssue",
+        "false_if": "Codex 仍显示 error 或面板仍出现故障提示",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "envelope Partial 判定与 LOCAL_SOURCE_IO_DEGRADED / LOCAL_HISTORY_STORE_UNAVAILABLE 语义不变；Windows 端消费一致",
+        "false_if": "其他诊断码或双端呈现语义被破坏",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

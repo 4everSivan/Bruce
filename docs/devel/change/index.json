@@ -218,7 +218,10 @@
         "C193",
         "C194",
         "C195",
-        "C196"
+        "C196",
+        "C197",
+        "C198",
+        "C199"
       ]
     },
     "AgentAnalytics": {
@@ -1953,7 +1956,7 @@
       "file": "docs/devel/change/C189.json"
     },
     "C190": {
-      "title": "修复 Codex 同名 rollout 仅按文件名分组去重、可能只计一份会话",
+      "title": "修复 Codex 跨根同名副本整份择一：分叉副本少计、前缀副本误报冲突",
       "type": "BugFix",
       "status": "pending",
       "branch": "fix/C190-codex-rollout-dedupe",
@@ -1962,7 +1965,7 @@
       "file": "docs/devel/change/C190.json"
     },
     "C191": {
-      "title": "修复 Codex token 计数器回退区间用 saturating_sub 静默记 0",
+      "title": "Codex 仅含累计计数的事件在计数回退时按重置基线计量（低优先级防御）",
       "type": "BugFix",
       "status": "pending",
       "branch": "fix/C191-codex-counter-rollback",
@@ -1971,16 +1974,16 @@
       "file": "docs/devel/change/C191.json"
     },
     "C192": {
-      "title": "修复 dsh 单帧解压内容 >8 MiB 的会话被永久跳过",
+      "title": "修复 dsh 单帧解码失败即整会话跳过：改为逐帧隔离，并让帧上限在解码中生效",
       "type": "BugFix",
       "status": "pending",
-      "branch": "fix/C192-dsh-oversize-frame",
+      "branch": "fix/C192-dsh-frame-isolation",
       "topic": "TokenUsage",
       "version": "0.17.0",
       "file": "docs/devel/change/C192.json"
     },
     "C193": {
-      "title": "为 9 个本机来源补充 usage 字段完整性校验，字段漂移不再静默记 0",
+      "title": "为本机来源补充 usage 口径漂移哨兵（按来源汇总），并接入 Codex 新增的 cache_write_input_tokens",
       "type": "BugFix",
       "status": "pending",
       "branch": "fix/C193-usage-field-drift-guard",
@@ -1989,7 +1992,7 @@
       "file": "docs/devel/change/C193.json"
     },
     "C194": {
-      "title": "修复 Grok 时间戳取文件 mtime 导致追加时历史跨日漂移，并标注 chars/4 估算口径",
+      "title": "修复 Grok 以文件 mtime 重打全部历史时间戳，追加后经台账造成跨日重复计数",
       "type": "BugFix",
       "status": "pending",
       "branch": "fix/C194-grok-timestamp-estimate",
@@ -1998,7 +2001,7 @@
       "file": "docs/devel/change/C194.json"
     },
     "C195": {
-      "title": "为超长单行与超深目录的静默跳过补充诊断",
+      "title": "为可能携带用量的超长行补充持久化计数与信息级说明（目录深度护栏维持现状）",
       "type": "BugFix",
       "status": "pending",
       "branch": "fix/C195-scan-limit-diagnostics",
@@ -2007,13 +2010,40 @@
       "file": "docs/devel/change/C195.json"
     },
     "C196": {
-      "title": "修复 JSONL 部分读取失败被当作文件删除而回收缓存条目",
+      "title": "修复 JSONL 引擎单文件消失竞态中止整源扫描，并在解析失败时沿用陈旧条目",
       "type": "BugFix",
       "status": "pending",
-      "branch": "fix/C196-jsonl-partial-read-cache",
+      "branch": "fix/C196-jsonl-file-race",
       "topic": "TokenUsage",
       "version": "0.17.0",
       "file": "docs/devel/change/C196.json"
+    },
+    "C197": {
+      "title": "修复 Codex rollout 打开失败被缓存为空观测、会话永久记 0 且无诊断",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C197-codex-open-failure-cache",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C197.json"
+    },
+    "C198": {
+      "title": "修复来源信息级说明一律升格为 agent error 并误用 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
+      "type": "BugFix",
+      "status": "pending",
+      "branch": "fix/C198-source-note-severity",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C198.json"
+    },
+    "C199": {
+      "title": "为用量历史台账补充按来源口径版本向下修正的路径，修复已落库的多计",
+      "type": "Enhancement",
+      "status": "pending",
+      "branch": "fix/C199-history-downward-correction",
+      "topic": "TokenUsage",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C199.json"
     }
   }
 }
