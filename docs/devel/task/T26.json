@@ -129,7 +129,7 @@
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-04",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "in_progress",
     "target_status": "completed"
   }
