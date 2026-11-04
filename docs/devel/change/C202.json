@@ -4,7 +4,7 @@
   "title": "用量热力图底部改为单行排布：起始日期 · 程度图例 · 截止日期（双端对齐）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C202-heatmap-footer-row",
   "is_hotfix": false,
   "target": {
@@ -96,8 +96,10 @@
     "tool": "adflow-verify",
     "version": "1.6.0",
     "ran_at": "2026-11-04",
-    "exit_code": 4,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

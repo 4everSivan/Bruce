@@ -2069,7 +2069,7 @@
     "C202": {
       "title": "用量热力图底部改为单行排布：起始日期 · 程度图例 · 截止日期（双端对齐）",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C202-heatmap-footer-row",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
