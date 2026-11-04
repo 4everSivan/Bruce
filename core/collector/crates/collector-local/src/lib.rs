@@ -22,6 +22,17 @@ pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 /// 小时 × 模型 token 桶。格式演进必须升级本常量令旧条目整体重建 (C072)。
 pub const AGGREGATION_VERSION: u32 = 4;
 
+/// 来源的派生口径版本 (C199): 只在**修复多计**的解析规则变更时升版, 升版后的首个来源可见
+/// 全量扫描轮允许用量历史台账向下修正扫描窗口内的日期 (见 `collector-history`)。修复少计 /
+/// 只改分类的变更不升 (台账单调合并会自行向上纠正)。未列出的来源为基线版本 1。
+/// - grok 2 (C194): 追加时整体重打 mtime 造成的跨日重复计数。
+pub fn source_derivation_version(source_id: &str) -> u32 {
+    match source_id {
+        "grok" => 2,
+        _ => 1,
+    }
+}
+
 pub use sources::{
     scan_claude_cached, scan_codebuddy_cached, scan_codex_cached_with_cancellation,
     scan_dsh_cached, scan_grok_cached, scan_kimi_cli_cached, scan_kimi_tree_cached,

@@ -4,7 +4,8 @@
 //!
 //! 该 crate 只持久化派生数值 (日 / 日×模型 / 月×模型 / 今日小时与工程) 与日期键,
 //! 不存消息正文、路径或凭据。合并语义单调只增不减: 来源回退、会话修剪或部分
-//! 扫描失败都不得抹掉既有历史。
+//! 扫描失败都不得抹掉既有历史。唯一例外 (C199): 来源声明的派生口径版本升级后的首个
+//! 来源可见的全量扫描轮, 扫描窗口内的日期按新值替换 (允许向下), 用于清除已落库的多计。
 
 use collector_domain::{
     CollectionWindow, ModelDelta, ProjectDelta, TokenBucket, UsageContribution,
@@ -16,7 +17,10 @@ use std::path::Path;
 use std::time::Duration;
 
 /// 台账 schema 版本, 写入 SQLite 的 `PRAGMA user_version`。
-const SCHEMA_VERSION: i64 = 1;
+/// v1 (T26); v2 (C199): `agent_state.derivation_version` 记录各 agent 写入时的派生口径版本。
+const SCHEMA_VERSION: i64 = 2;
+/// C199 之前的口径视为版本 1: v1 → v2 迁移把既有 agent 记为 1, 升级本身不触发修正。
+pub const BASELINE_DERIVATION_VERSION: u32 = 1;
 /// SQLITE_BUSY 等待上限 (design §7.3: `SQLITE_BUSY` 超时不得阻塞刷新)。
 const BUSY_TIMEOUT: Duration = Duration::from_secs(3);
 const HOURS_PER_DAY: usize = 24;
@@ -85,7 +89,8 @@ CREATE TABLE IF NOT EXISTS agent_project (
 CREATE TABLE IF NOT EXISTS agent_state (
     agent_id TEXT PRIMARY KEY,
     last_scan_at TEXT,
-    last_found_at TEXT
+    last_found_at TEXT,
+    derivation_version INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_agent_day_date ON agent_day (date);
 CREATE INDEX IF NOT EXISTS idx_agent_day_model_date ON agent_day_model (date);
@@ -165,6 +170,8 @@ pub struct MergeStats {
     pub kept_days: usize,
     pub written_months: usize,
     pub kept_months: usize,
+    /// C199: 本轮因派生口径版本升级而按新值替换 (可能向下) 的日期数; 0 表示单调合并。
+    pub corrected_days: usize,
 }
 
 /// 按窗口从台账投影出的读数。`contribution` 直接交给既有 `UsageAccumulator`
@@ -212,7 +219,7 @@ impl HistoryStore {
         Ok(store)
     }
 
-    /// 单调合并一轮扫描贡献 (单事务 IMMEDIATE)。
+    /// 单调合并一轮扫描贡献 (单事务 IMMEDIATE), 派生口径按基线版本、不做修正。
     ///
     /// `today` 为本地日期 (`YYYY-MM-DD`), 用于判定今日临时表的整体替换与
     /// 昨日清理; 它是显式参数, 不从 contribution 形状反推。
@@ -224,13 +231,123 @@ impl HistoryStore {
         today: &str,
         now: &str,
     ) -> Result<MergeStats, HistoryError> {
+        self.merge_versioned(
+            agent_id,
+            contribution,
+            found,
+            today,
+            now,
+            BASELINE_DERIVATION_VERSION,
+            &[],
+        )
+    }
+
+    /// 合并一轮扫描贡献并声明来源的派生口径版本 (C199)。
+    ///
+    /// 默认单调合并。来源可见 (`found`) 且 `derivation_version` 高于台账记录的版本时为
+    /// 修正轮: `window_days` (本轮扫描窗口, 升序) 内的每一天以扫描值替换, 扫描没有的日期
+    /// 删除; 这些日期的日×模型行与今日临时表随之重写; 起始日在窗口内的整月按扫描值替换,
+    /// 跨窗口起点的月份仍按单调规则 (窗口外的日子不在本轮扫描里)。随后记录新版本, 之后的
+    /// 轮次恢复单调。代价: 修正轮之前已被来源修剪 / 删除的窗口内日期降到当前可见值。
+    #[allow(clippy::too_many_arguments)]
+    pub fn merge_versioned(
+        &mut self,
+        agent_id: &str,
+        contribution: &UsageContribution,
+        found: bool,
+        today: &str,
+        now: &str,
+        derivation_version: u32,
+        window_days: &[String],
+    ) -> Result<MergeStats, HistoryError> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut stats = MergeStats::default();
         let mut wrote_today = false;
+        let stored_version: Option<i64> = transaction
+            .query_row(
+                "SELECT derivation_version FROM agent_state WHERE agent_id = ?1",
+                params![agent_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let correcting = found
+            && !window_days.is_empty()
+            && stored_version.is_some_and(|stored| stored < i64::from(derivation_version));
 
-        for (date, bucket) in &contribution.by_day {
+        if correcting {
+            for date in window_days {
+                let date = date.as_str();
+                let stored: Option<i64> = transaction
+                    .query_row(
+                        "SELECT total FROM agent_day WHERE agent_id = ?1 AND date = ?2",
+                        params![agent_id, date],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                let bucket = contribution
+                    .by_day
+                    .get(date)
+                    .filter(|bucket| bucket.total > 0);
+                match bucket {
+                    Some(bucket) => {
+                        transaction.execute(
+                            "INSERT INTO agent_day (agent_id, date, total, bucket_json, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5)
+                             ON CONFLICT (agent_id, date) DO UPDATE SET
+                                 total = excluded.total,
+                                 bucket_json = excluded.bucket_json,
+                                 updated_at = excluded.updated_at",
+                            params![
+                                agent_id,
+                                date,
+                                saturating_i64(bucket.total),
+                                encode_bucket(bucket)?,
+                                now
+                            ],
+                        )?;
+                        stats.written_days += 1;
+                    }
+                    None => {
+                        transaction.execute(
+                            "DELETE FROM agent_day WHERE agent_id = ?1 AND date = ?2",
+                            params![agent_id, date],
+                        )?;
+                    }
+                }
+                if stored != bucket.map(|bucket| saturating_i64(bucket.total)) {
+                    stats.corrected_days += 1;
+                }
+                transaction.execute(
+                    "DELETE FROM agent_day_model WHERE agent_id = ?1 AND date = ?2",
+                    params![agent_id, date],
+                )?;
+                if let Some(models) = contribution.models_by_day.get(date) {
+                    for (ordinal, (model, model_bucket)) in
+                        ordered_models(models).iter().enumerate()
+                    {
+                        transaction.execute(
+                            "INSERT INTO agent_day_model
+                                 (agent_id, date, model, ordinal, total, bucket_json)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                            params![
+                                agent_id,
+                                date,
+                                model.as_str(),
+                                ordinal as i64,
+                                saturating_i64(model_bucket.total),
+                                encode_bucket(model_bucket)?,
+                            ],
+                        )?;
+                    }
+                }
+            }
+            // 今日临时表按扫描值整体重写 (扫描今日无量时清空)。
+            wrote_today = true;
+        }
+
+        for (date, bucket) in contribution.by_day.iter().filter(|_| !correcting) {
             let date = date.as_str();
             // 过滤空桶: 绝不写占位 0 行。
             if bucket.total == 0 {
@@ -306,9 +423,29 @@ impl HistoryStore {
             write_today_tables(&transaction, agent_id, contribution, today)?;
         }
 
-        // 月×模型: 新月份总量 >= 存量 SUM(total) 才整月替换。
+        // C199: 修正轮中起始日在窗口内的整月按扫描值替换 (扫描没有的月份删除)。
+        let covered_months: BTreeSet<&str> = if correcting {
+            window_days
+                .iter()
+                .filter(|date| date.ends_with("-01"))
+                .filter_map(|date| date.get(..7))
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
+        for month in &covered_months {
+            if !contribution.models_by_month.contains_key(*month) {
+                transaction.execute(
+                    "DELETE FROM agent_month_model WHERE agent_id = ?1 AND month = ?2",
+                    params![agent_id, month],
+                )?;
+            }
+        }
+
+        // 月×模型: 新月份总量 >= 存量 SUM(total) 才整月替换 (修正轮的整月覆盖除外)。
         for (month, models) in &contribution.models_by_month {
             let month = month.as_str();
+            let replace = covered_months.contains(month);
             let ordered = ordered_models(models);
             let new_total = ordered
                 .iter()
@@ -320,13 +457,20 @@ impl HistoryStore {
                 |row| row.get(0),
             )?;
             if ordered.is_empty() {
+                if replace {
+                    transaction.execute(
+                        "DELETE FROM agent_month_model WHERE agent_id = ?1 AND month = ?2",
+                        params![agent_id, month],
+                    )?;
+                    continue;
+                }
                 // 过滤空桶后无内容: 不写 0 行; 存量非空时按「新小于存量」保留。
                 if stored > 0 {
                     stats.kept_months += 1;
                 }
                 continue;
             }
-            if saturating_i64(new_total) < stored {
+            if !replace && saturating_i64(new_total) < stored {
                 stats.kept_months += 1;
                 continue;
             }
@@ -353,22 +497,26 @@ impl HistoryStore {
         }
 
         // 来源探测状态: last_scan_at 每轮更新, last_found_at 仅在 found 时更新。
+        // C199: 派生口径版本只在来源可见时前进 (取大, 降级运行旧版本不回退); 来源不可见时
+        // 不修正、不改版本, 等来源重新出现后再修正。新 agent 直接记当前版本 (无可修正数据)。
+        let version = i64::from(derivation_version);
         if found {
             transaction.execute(
-                "INSERT INTO agent_state (agent_id, last_scan_at, last_found_at)
-                 VALUES (?1, ?2, ?2)
+                "INSERT INTO agent_state (agent_id, last_scan_at, last_found_at, derivation_version)
+                 VALUES (?1, ?2, ?2, ?3)
                  ON CONFLICT (agent_id) DO UPDATE SET
                      last_scan_at = excluded.last_scan_at,
-                     last_found_at = excluded.last_found_at",
-                params![agent_id, now],
+                     last_found_at = excluded.last_found_at,
+                     derivation_version = MAX(agent_state.derivation_version, excluded.derivation_version)",
+                params![agent_id, now, version],
             )?;
         } else {
             transaction.execute(
-                "INSERT INTO agent_state (agent_id, last_scan_at, last_found_at)
-                 VALUES (?1, ?2, NULL)
+                "INSERT INTO agent_state (agent_id, last_scan_at, last_found_at, derivation_version)
+                 VALUES (?1, ?2, NULL, ?3)
                  ON CONFLICT (agent_id) DO UPDATE SET
                      last_scan_at = excluded.last_scan_at",
-                params![agent_id, now],
+                params![agent_id, now, version],
             )?;
         }
 
@@ -484,6 +632,15 @@ impl HistoryStore {
             self.connection.execute_batch(SCHEMA_SQL)?;
             self.connection
                 .pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            Ok(())
+        } else if version == 1 {
+            // C199: v1 → v2 只加列; 既有 agent 记为基线版本 1, 升级本身不触发修正。
+            self.connection.execute_batch(
+                "BEGIN IMMEDIATE;
+                 ALTER TABLE agent_state ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 1;
+                 PRAGMA user_version = 2;
+                 COMMIT;",
+            )?;
             Ok(())
         } else if version == SCHEMA_VERSION {
             Ok(())
@@ -1257,5 +1414,265 @@ mod tests {
         // 另一 agent 互不影响。
         assert!(!store.has_any_data("other").expect("other agent"));
         assert_eq!(store.last_found_at("other").expect("other state"), None);
+    }
+
+    // MARK: - C199: 派生口径版本与向下修正
+
+    /// 只有逐日 / 逐日×模型 / 月×模型的贡献 (模型名固定为 grok)。
+    fn day_contribution(days: &[(&str, u64)]) -> UsageContribution {
+        let mut contribution = empty_contribution();
+        for (date, input) in days {
+            let value = bucket(*input, 0, 0, 0);
+            contribution
+                .by_day
+                .insert((*date).to_owned(), value.clone());
+            contribution.models_by_day.insert(
+                (*date).to_owned(),
+                BTreeMap::from([("grok".to_owned(), value.clone())]),
+            );
+            let month = contribution
+                .models_by_month
+                .entry(date[..7].to_owned())
+                .or_default()
+                .entry("grok".to_owned())
+                .or_default();
+            month.add(*input, 0, 0, 0);
+        }
+        contribution
+    }
+
+    fn stored_days(store: &HistoryStore) -> BTreeMap<String, i64> {
+        let mut statement = store
+            .connection
+            .prepare("SELECT date, total FROM agent_day WHERE agent_id = ?1 ORDER BY date")
+            .unwrap();
+        statement
+            .query_map(params![AGENT], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    fn stored_month(store: &HistoryStore, month: &str) -> i64 {
+        store
+            .connection
+            .query_row(
+                "SELECT COALESCE(SUM(total), 0) FROM agent_month_model
+                 WHERE agent_id = ?1 AND month = ?2",
+                params![AGENT, month],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    fn stored_version(store: &HistoryStore) -> i64 {
+        store
+            .connection
+            .query_row(
+                "SELECT derivation_version FROM agent_state WHERE agent_id = ?1",
+                params![AGENT],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    /// 口径升版后的首个来源可见轮: 窗口内日期按扫描值替换 (扫描没有的删除、允许向下),
+    /// 窗口外日期与跨窗口起点的月份保留; 整月在窗口内的月份按扫描值替换。之后恢复单调。
+    #[test]
+    fn version_bump_corrects_window_days_downward_once() {
+        let mut store = HistoryStore::open_in_memory().unwrap();
+        let window = window();
+        // 旧口径落库: 10-20 在窗口外, 10-30 / 11-03 在窗口内 (11-03 为重复计数后的 640)。
+        let inflated = day_contribution(&[
+            ("2026-10-20", 500),
+            ("2026-10-30", 300),
+            ("2026-11-03", 640),
+        ]);
+        store.merge(AGENT, &inflated, true, TODAY, NOW).unwrap();
+        assert_eq!(stored_version(&store), 1);
+
+        let corrected = day_contribution(&[("2026-11-03", 340)]);
+        let stats = store
+            .merge_versioned(AGENT, &corrected, true, TODAY, NOW, 2, &window.day_list)
+            .unwrap();
+        assert_eq!(stats.corrected_days, 2, "10-30 删除、11-03 640 → 340");
+        assert_eq!(
+            stored_days(&store),
+            BTreeMap::from([
+                ("2026-10-20".to_owned(), 500),
+                ("2026-11-03".to_owned(), 340)
+            ]),
+            "窗口外日期保留"
+        );
+        assert_eq!(
+            stored_month(&store, "2026-11"),
+            340,
+            "整月在窗口内: 按扫描值替换"
+        );
+        assert_eq!(
+            stored_month(&store, "2026-10"),
+            800,
+            "跨窗口起点的月份按单调规则保留"
+        );
+        assert_eq!(stored_version(&store), 2);
+        let loaded = store.load(AGENT, &window).unwrap();
+        assert_eq!(loaded.contribution.by_day.len(), 1);
+        assert_eq!(
+            loaded.contribution.models_by_day["2026-11-03"]["grok"].total, 340,
+            "日×模型行随之重写"
+        );
+
+        // 版本已记录: 之后的轮次恢复单调, 更小的值不再覆盖。
+        let smaller = day_contribution(&[("2026-11-03", 100)]);
+        let stats = store
+            .merge_versioned(AGENT, &smaller, true, TODAY, NOW, 2, &window.day_list)
+            .unwrap();
+        assert_eq!(stats.corrected_days, 0);
+        assert_eq!(stats.kept_days, 1);
+        assert_eq!(stored_days(&store)["2026-11-03"], 340);
+    }
+
+    /// 来源不可见 (found=false) 的轮次不修正、不推进版本; 来源重新出现后再修正。
+    #[test]
+    fn version_bump_waits_for_the_source_to_be_found() {
+        let mut store = HistoryStore::open_in_memory().unwrap();
+        let window = window();
+        store
+            .merge(
+                AGENT,
+                &day_contribution(&[("2026-11-03", 640)]),
+                true,
+                TODAY,
+                NOW,
+            )
+            .unwrap();
+        let stats = store
+            .merge_versioned(
+                AGENT,
+                &empty_contribution(),
+                false,
+                TODAY,
+                NOW,
+                2,
+                &window.day_list,
+            )
+            .unwrap();
+        assert_eq!(stats.corrected_days, 0);
+        assert_eq!(stored_days(&store)["2026-11-03"], 640, "来源消失不抹历史");
+        assert_eq!(stored_version(&store), 1, "版本不前进");
+
+        let stats = store
+            .merge_versioned(
+                AGENT,
+                &day_contribution(&[("2026-11-03", 340)]),
+                true,
+                TODAY,
+                NOW,
+                2,
+                &window.day_list,
+            )
+            .unwrap();
+        assert_eq!(stats.corrected_days, 1);
+        assert_eq!(stored_days(&store)["2026-11-03"], 340);
+    }
+
+    /// 口径版本未变的 agent 永远单调; 新 agent 直接记当前版本。
+    #[test]
+    fn unchanged_version_never_corrects() {
+        let mut store = HistoryStore::open_in_memory().unwrap();
+        let window = window();
+        store
+            .merge_versioned(
+                AGENT,
+                &day_contribution(&[("2026-11-03", 640)]),
+                true,
+                TODAY,
+                NOW,
+                3,
+                &window.day_list,
+            )
+            .unwrap();
+        assert_eq!(stored_version(&store), 3, "新 agent 直接记当前版本");
+        let stats = store
+            .merge_versioned(
+                AGENT,
+                &day_contribution(&[("2026-11-03", 340)]),
+                true,
+                TODAY,
+                NOW,
+                3,
+                &window.day_list,
+            )
+            .unwrap();
+        assert_eq!(stats.corrected_days, 0);
+        assert_eq!(stored_days(&store)["2026-11-03"], 640);
+    }
+
+    /// v1 台账 (T26) 迁移到 v2: 只加列, 数据原样保留, 既有 agent 记基线版本 1 ——
+    /// 升级本身不触发修正, 只有来源声明更高版本时才修正。
+    #[test]
+    fn v1_ledger_migrates_to_baseline_version() {
+        let directory = std::env::temp_dir().join(format!(
+            "bruce-c199-migrate-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("usage-history-v1.sqlite");
+        {
+            let connection = Connection::open(&path).unwrap();
+            let v1_schema =
+                SCHEMA_SQL.replace(",\n    derivation_version INTEGER NOT NULL DEFAULT 1", "");
+            assert_ne!(v1_schema, SCHEMA_SQL, "构造出不带新列的 v1 schema");
+            connection.execute_batch(&v1_schema).unwrap();
+            connection.pragma_update(None, "user_version", 1).unwrap();
+            connection
+                .execute(
+                    "INSERT INTO agent_day (agent_id, date, total, bucket_json, updated_at)
+                     VALUES (?1, '2026-11-03', 640, ?2, ?3)",
+                    params![AGENT, encode_bucket(&bucket(640, 0, 0, 0)).unwrap(), NOW],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO agent_state (agent_id, last_scan_at, last_found_at)
+                     VALUES (?1, ?2, ?2)",
+                    params![AGENT, NOW],
+                )
+                .unwrap();
+        }
+        let mut store = HistoryStore::open(&path).unwrap();
+        let version: i64 = store
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        assert_eq!(stored_version(&store), 1);
+        assert_eq!(stored_days(&store)["2026-11-03"], 640, "迁移不动数据");
+        assert_eq!(store.last_found_at(AGENT).unwrap().as_deref(), Some(NOW));
+
+        let window = window();
+        let stats = store
+            .merge_versioned(
+                AGENT,
+                &day_contribution(&[("2026-11-03", 340)]),
+                true,
+                TODAY,
+                NOW,
+                BASELINE_DERIVATION_VERSION,
+                &window.day_list,
+            )
+            .unwrap();
+        assert_eq!(stats.corrected_days, 0, "基线版本不修正");
+        assert_eq!(stored_days(&store)["2026-11-03"], 640);
+        drop(store);
+        // 再次打开不重复迁移。
+        let reopened = HistoryStore::open(&path).unwrap();
+        assert_eq!(stored_version(&reopened), 1);
+        drop(reopened);
+        std::fs::remove_dir_all(&directory).ok();
     }
 }

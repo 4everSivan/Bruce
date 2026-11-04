@@ -451,12 +451,15 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             ));
         }
         if let Some(store) = history.as_mut() {
-            let merged = store.merge(
+            // C199: 声明来源的派生口径版本; 版本升级后的首个来源可见轮按扫描窗口向下修正台账。
+            let merged = store.merge_versioned(
                 &id,
                 &source.contribution,
                 source.found,
                 &context.window.today,
                 &context.captured_at,
+                collector_local::source_derivation_version(&id),
+                &context.window.day_list,
             );
             if let Err(error) = merged {
                 collection.diagnostics.push(Diagnostic::new(
@@ -2740,6 +2743,97 @@ mod tests {
             .map(|value| value.as_u64().unwrap_or(0))
             .sum();
         assert_eq!(month, 340, "日与月一致");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// C199: 旧口径 (C194 前) 已把 Grok 跨日追加写成 07-26=300、07-27=340 (7 日合计 640);
+    /// Grok 声明派生口径版本 2 后的首个来源可见轮按扫描窗口修正为 340, 之后恢复单调。
+    #[test]
+    fn grok_inflated_history_is_corrected_once_after_version_bump() {
+        let home = history_test_home("grok-correction");
+        let history_db = home.join("usage-history.sqlite");
+        let session = home.join("grok/sessions/project/session/conversation.jsonl");
+        std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+        let line = |kind: &str, chars: usize| {
+            json!({"type": kind, "content": "x".repeat(chars)}).to_string() + "\n"
+        };
+        std::fs::write(
+            &session,
+            line("user", 800) + &line("assistant", 400) + &line("assistant", 160),
+        )
+        .unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&session)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_785_124_800))
+            .unwrap(); // 2026-07-27 12:00 +08
+        {
+            // 按旧实现逐轮写入 (基线口径版本 1): 07-26 一轮 300, 07-27 追加后整体漂到 07-27 记 340。
+            let mut store = collector_history::HistoryStore::open(&history_db).unwrap();
+            for (now, today, millis, input) in [
+                (
+                    "2026-07-26T18:00:00+08:00",
+                    "2026-07-26",
+                    1_785_038_400_000_i64,
+                    300,
+                ),
+                (
+                    "2026-07-27T18:00:00+08:00",
+                    "2026-07-27",
+                    1_785_124_800_000,
+                    340,
+                ),
+            ] {
+                let window_context: serde_json::Map<String, serde_json::Value> =
+                    serde_json::from_value(json!({
+                        "now": now,
+                        "timezone": "Asia/Shanghai",
+                        "days": 7
+                    }))
+                    .unwrap();
+                let window =
+                    collector_domain::CollectionWindow::from_context(&window_context).unwrap();
+                let mut builder = collector_domain::UsageContributionBuilder::new(window);
+                builder.record(collector_domain::UsageSample {
+                    timestamp_millis: millis,
+                    model: Some("grok"),
+                    project: None,
+                    input,
+                    output: 0,
+                    cache_read: 0,
+                    cache_creation: 0,
+                    cache_creation_1h: 0,
+                });
+                store
+                    .merge("grok", &builder.contribution(), true, today, now)
+                    .unwrap();
+            }
+        }
+        let mut request = history_request(&home, &history_db);
+        request
+            .context
+            .insert("now".to_owned(), json!("2026-07-27T18:00:00+08:00"));
+        let run = || {
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap()
+        };
+        let corrected = run();
+        let grok = agent(&corrected.artifact, "grok");
+        assert_eq!(daily_total(grok), 340, "已落库的重复值被修正: 640 → 340");
+        let month: u64 = grok["modelMonths"]["2026-07"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|value| value.as_u64().unwrap_or(0))
+            .sum();
+        assert_eq!(month, 340, "日与月一致");
+        // 修正只发生一次: 之后恢复单调 (来源被删除也不抹历史)。
+        std::fs::remove_dir_all(home.join("grok")).unwrap();
+        let after = run();
+        let grok = agent(&after.artifact, "grok");
+        assert_eq!(grok["status"], "history");
+        assert_eq!(daily_total(grok), 340);
         std::fs::remove_dir_all(&home).ok();
     }
 
