@@ -4,7 +4,7 @@
   "title": "用量历史聚合台账与全量读取：自有 SQLite 持久化、来源解耦、移除 30k 截断（覆盖全部 10 个 Agent）",
   "version": "0.17.0",
   "milestone": "M14-用量历史持久化",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T26-usage-history-persistence",
   "depends_on": [],
   "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T26-usage-history-persistence",
@@ -73,10 +73,10 @@
     }
   ],
   "acceptance": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261104-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "台账与来源解耦",
