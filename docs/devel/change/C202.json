@@ -4,7 +4,7 @@
   "title": "用量热力图底部改为单行排布：起始日期 · 程度图例 · 截止日期（双端对齐）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C202-heatmap-footer-row",
   "is_hotfix": false,
   "target": {
@@ -57,10 +57,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261104-14",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
