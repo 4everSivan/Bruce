@@ -122,6 +122,8 @@
     { id: "pi", name: "Pi", sub: "本机会话目录" },
     { id: "zcode", name: "ZCode", sub: "本机会话目录" },
     { id: "codebuddy", name: "CodeBuddy", sub: "本机会话目录" },
+    // DSH (DeepSeek Harness, C189): zstd JSONL 会话目录。
+    { id: "dsh", name: "DSH", sub: "本机会话目录 (~/.dsh/sessions)" },
   ];
 
   // 界面风格 (Fluent / Nothing) 只作用于看板: mac SettingsView 恒用 SettingsDemoTokens

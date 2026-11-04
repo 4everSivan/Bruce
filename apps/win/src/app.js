@@ -93,6 +93,8 @@ const NOTHING_RAMP = ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"];
 const NOTHING_AGENT_TIER = {
   "kimi-code-cli": 0, "claude-code": 1, "codex": 2, "zcode": 3, "opencode": 4,
   "codebuddy": 2, "kimi-work": 4, grok: 2, pi: 4,
+  // dsh (DeepSeek Harness, C189) 固定 1 档, 与 mac 同档位。
+  "dsh": 1,
 };
 function nothingRampHex(agentID) {
   const known = NOTHING_AGENT_TIER[agentID];

@@ -512,4 +512,16 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// C189: DSH (DeepSeek Harness) 会话树是第 10 个 agent 用量来源。
+    static func standardPathsIncludeDshSessions() throws {
+        let home = URL(fileURLWithPath: "/Users/example")
+        let paths = LocalDependencyScanPaths.standard(home: home)
+        let dsh = paths.sessionDirectories.first { $0.displayName == "DSH" }
+        try coreExpect(dsh != nil, "standard paths 应包含 DSH 会话目录")
+        try coreExpect(
+            dsh?.url.path == "/Users/example/.dsh/sessions",
+            "DSH 会话目录 URL 错误: \(String(describing: dsh?.url))"
+        )
+    }
+
 }

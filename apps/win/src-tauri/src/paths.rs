@@ -24,7 +24,7 @@ pub fn collector_cache_root() -> PathBuf {
 /// 欢迎向导 Step 1 本机只读环境扫描 (T22, 对齐 mac `LocalDependencyScanPaths.standard`)。
 /// 仅执行本地目录/文件存在性检查, 零写入、零网络请求。
 pub fn probe_local_agents(home: &std::path::Path) -> Vec<serde_json::Value> {
-    let items: [(&str, &str, &str, bool); 9] = [
+    let items: [(&str, &str, &str, bool); 10] = [
         (
             "claude",
             "Claude Code",
@@ -95,6 +95,13 @@ pub fn probe_local_agents(home: &std::path::Path) -> Vec<serde_json::Value> {
             "~/.codebuddy/projects",
             home.join(".codebuddy").join("projects").is_dir(),
         ),
+        // DSH (DeepSeek Harness, C189): zstd JSONL 会话树, 与 mac LocalDependencyScanner 同口径。
+        (
+            "dsh",
+            "DSH",
+            "~/.dsh/sessions",
+            home.join(".dsh").join("sessions").is_dir(),
+        ),
         (
             "ccSwitch",
             "CC Switch",
@@ -113,4 +120,61 @@ pub fn probe_local_agents(home: &std::path::Path) -> Vec<serde_json::Value> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::probe_local_agents;
+
+    /// 临时 home (与 settings/credentials 用例同法, 收尾自清理)。
+    fn temp_home(tag: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!("bruce-paths-{tag}-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&home).unwrap();
+        home
+    }
+
+    #[test]
+    fn probe_local_agents_lists_ten_sources_including_dsh() {
+        // C189: 本机探测清单 9→10, dsh (DeepSeek Harness) 落在 codebuddy 与 ccSwitch 之间。
+        let home = temp_home("dsh-missing");
+        let probes = probe_local_agents(&home);
+        let ids: Vec<&str> = probes
+            .iter()
+            .map(|item| item["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids.len(), 10, "本机探测共 10 项");
+        assert_eq!(
+            ids,
+            [
+                "claude",
+                "codex",
+                "kimiCli",
+                "kimiWork",
+                "opencode",
+                "pi",
+                "zcode",
+                "codebuddy",
+                "dsh",
+                "ccSwitch",
+            ]
+        );
+        let dsh = probes.iter().find(|item| item["id"] == "dsh").unwrap();
+        assert_eq!(dsh["name"], "DSH");
+        assert_eq!(dsh["pathHint"], "~/.dsh/sessions");
+        assert_eq!(dsh["status"], "missing", "无 ~/.dsh/sessions 时未就绪");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn probe_local_agents_marks_dsh_available_when_sessions_dir_exists() {
+        // 与 mac LocalDependencyScanner 同口径: 只看 ~/.dsh/sessions 是否为目录。
+        let home = temp_home("dsh-ready");
+        fs::create_dir_all(home.join(".dsh").join("sessions")).unwrap();
+        let probes = probe_local_agents(&home);
+        let dsh = probes.iter().find(|item| item["id"] == "dsh").unwrap();
+        assert_eq!(dsh["status"], "available");
+        let _ = fs::remove_dir_all(&home);
+    }
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-03",
+  "updated_at": "2026-11-04",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -210,7 +210,8 @@
         "C139",
         "C175",
         "C176",
-        "C177"
+        "C177",
+        "C189"
       ]
     },
     "AgentAnalytics": {
@@ -1934,6 +1935,15 @@
       "topic": "NetworkEgressCountry",
       "version": "0.16.1",
       "file": "docs/devel/change/C188.json"
+    },
+    "C189": {
+      "title": "Agent 用量新增 dsh (DeepSeek Harness) 会话统计：zstd JSONL 适配器、双端品牌配色与首次启动探测对齐",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C189-dsh-agent-usage",
+      "topic": "TokenUsage",
+      "version": "0.16.1",
+      "file": "docs/devel/change/C189.json"
     }
   }
 }

@@ -74,6 +74,11 @@ package enum AgentBrandPalette {
                 imageName: "agent-codebuddy",
                 tileHex: "#5B3DF5", markHex: "#FFFFFF", monogram: "C"
             )
+        case "dsh":
+            // DeepSeek Harness 无独立桌面 App 位图: 复用 DeepSeek 图形 + 官方蓝 (C189)。
+            return AgentBrandAsset(
+                glyphID: "deepseek", tileHex: "#FFFFFF", markHex: "#4D6BFE", monogram: "D"
+            )
         case "grok":
             return AgentBrandAsset(
                 glyphID: "grok", tileHex: "#0B0B0B", markHex: "#FFFFFF", monogram: "G"

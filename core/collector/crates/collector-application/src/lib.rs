@@ -25,7 +25,7 @@ use collector_domain::{
 };
 use collector_local::{
     default_cache_root, remove_legacy_kimi_cache, scan_claude_cached, scan_codebuddy_cached,
-    scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_cli_cached,
+    scan_codex_cached_with_cancellation, scan_dsh_cached, scan_grok_cached, scan_kimi_cli_cached,
     scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached, scan_zcode_cached, ScanStats,
     SourceScan, SourceScanError,
 };
@@ -251,6 +251,7 @@ fn collect_agent_usage_with_dependencies_inner(
         ("zcode", "ZCode", "本机会话聚合", "未发现会话记录"),
         ("codebuddy", "CodeBuddy", "本机会话聚合", "未发现会话记录"),
         ("opencode", "OpenCode", "本机会话聚合", "未发现会话记录"),
+        ("dsh", "DSH", "本机会话聚合", "未发现会话记录"),
     ];
     let mut agents = Vec::with_capacity(agent_specs.len());
     for (id, name, note, not_found_note) in agent_specs {
@@ -514,6 +515,11 @@ fn local_source_jobs<'a>(
         "codebuddy_projects",
         paths::resolve_codebuddy_projects_path(home),
     );
+    let dsh = source_path(
+        context,
+        "dsh_sessions",
+        paths::resolve_dsh_sessions_path(home),
+    );
     vec![
         LocalSourceJob {
             source_id: "kimi-code-cli",
@@ -560,6 +566,10 @@ fn local_source_jobs<'a>(
         LocalSourceJob {
             source_id: "zcode",
             scan: Box::new(move || scan_zcode_cached(&zcode, window, cache_root, cancellation)),
+        },
+        LocalSourceJob {
+            source_id: "dsh",
+            scan: Box::new(move || scan_dsh_cached(&dsh, window, cache_root, cancellation)),
         },
     ]
 }
@@ -1516,6 +1526,11 @@ mod tests {
             "home".to_owned(),
             serde_json::Value::String(home.to_string_lossy().into_owned()),
         );
+        // 隔离 dsh: $DSH_HOME 会让默认路径指向开发者的真实 ~/.dsh, 用例必须显式覆盖。
+        request.context.insert(
+            "paths".to_owned(),
+            json!({"dsh_sessions": home.join("dsh/sessions")}),
+        );
 
         let output = collect_agent_usage_with_dependencies(
             &request,
@@ -1543,6 +1558,7 @@ mod tests {
                 "opencode",
                 "pi",
                 "zcode",
+                "dsh",
             ]
         );
         assert!(output.artifact.get("sources").is_none());
@@ -1561,7 +1577,8 @@ mod tests {
         let codebuddy = home.join("codebuddy/project");
         let grok = home.join("grok/sessions/project/session");
         let pi = home.join("pi");
-        for path in [&kimi_work, &claude, &codebuddy, &grok, &pi] {
+        let dsh = home.join("dsh/sessions/workspace-dir/session-a");
+        for path in [&kimi_work, &claude, &codebuddy, &grok, &pi, &dsh] {
             std::fs::create_dir_all(path).unwrap();
         }
         std::fs::write(
@@ -1620,6 +1637,26 @@ mod tests {
             .to_string(),
         )
         .unwrap();
+        // C189: dsh 夹具用未压缩 .jsonl (生产环境为 .jsonl.zstd), 同样走按文件签名缓存。
+        std::fs::write(
+            dsh.join("session.v4.jsonl"),
+            [
+                json!({"type": "session", "version": 4, "cwd": "/workspace/warm-dsh-project"})
+                    .to_string(),
+                json!({
+                    "type": "assistant/message",
+                    "time": 1_788_912_000_000_i64,
+                    "data": {
+                        "message": {"id": "warm-dsh-message", "source": {"model": "deepseek-flash"}},
+                        "usage": {"inputTokens": 14, "outputTokens": 6, "cacheReadTokens": 2}
+                    }
+                })
+                .to_string(),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
 
         let mut request = request(&["localSessions"]);
         request.context.insert(
@@ -1645,7 +1682,8 @@ mod tests {
                 "pi_sessions": pi,
                 "opencode_db": home.join("opencode.db"),
                 "zcode_db": home.join("zcode.db"),
-                "codebuddy_projects": home.join("codebuddy")
+                "codebuddy_projects": home.join("codebuddy"),
+                "dsh_sessions": home.join("dsh/sessions")
             }),
         );
 
@@ -1671,7 +1709,7 @@ mod tests {
         assert_eq!(first.artifact["agents"], second.artifact["agents"]);
         assert!(second.scan_stats.cache_hits > 0);
         assert_eq!(second.scan_stats.json_lines_parsed, 0);
-        for source_id in ["kimi-work", "claude-code", "codebuddy", "grok", "pi"] {
+        for source_id in ["kimi-work", "claude-code", "codebuddy", "grok", "pi", "dsh"] {
             let metric = second
                 .source_metrics
                 .iter()
@@ -1683,6 +1721,14 @@ mod tests {
                 "{source_id} should not parse JSONL"
             );
         }
+        let dsh_agent = second.artifact["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|agent| agent["id"] == "dsh")
+            .unwrap();
+        assert_ne!(dsh_agent["status"], "not_found", "dsh 行应产出用量");
+        assert_eq!(dsh_agent["today"]["total"], 22, "14 + 6 + 2");
         let _ = std::fs::remove_dir_all(home);
     }
 
@@ -1715,6 +1761,7 @@ mod tests {
             ("opencode_db", empty.join("opencode.db")),
             ("zcode_db", empty.join("zcode.db")),
             ("codebuddy_projects", empty.join("codebuddy")),
+            ("dsh_sessions", empty.join("dsh")),
         ];
         let paths = empty_paths
             .into_iter()
@@ -1819,6 +1866,7 @@ mod tests {
             ("opencode_db", empty.join("opencode.db")),
             ("zcode_db", empty.join("zcode.db")),
             ("codebuddy_projects", empty.join("codebuddy")),
+            ("dsh_sessions", empty.join("dsh")),
             ("codex_sessions", codex_root),
             ("orca_home", orca_home),
             ("orca_codex_sessions", orca_sessions),

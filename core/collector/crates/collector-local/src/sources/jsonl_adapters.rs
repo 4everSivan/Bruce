@@ -120,15 +120,15 @@ impl CompactUsage {
 
 /// 同一去重键多次出现时的取舍口径 (与参照实现一致)。
 #[derive(Clone, Copy)]
-enum DedupeRule {
+pub(super) enum DedupeRule {
     /// Claude: 逐字段取最大 (流式写入的 usage 逐步增长), 时间戳 / 模型 / 项目取最后一次出现。
     FieldMaxLastSeen,
     /// CodeBuddy: 保留总量最大者, 总量相同取时间戳更晚者。
     LargestTotal,
 }
 
-/// 跨文件按消息 id 去重的来源 (Claude / CodeBuddy)。去重表须看完全部文件才能定稿, 但只保留
-/// 定长键 + 紧凑用量; 产出顺序同旧实现: 去重表按键序, 其后为无 id 的观测 (按遍历顺序)。
+/// 跨文件按消息 id 去重的来源 (Claude / CodeBuddy / dsh)。去重表须看完全部文件才能定稿, 但
+/// 只保留定长键 + 紧凑用量; 产出顺序同旧实现: 去重表按键序, 其后为无 id 的观测 (按遍历顺序)。
 pub(super) struct DedupedAggregator {
     window: CollectionWindow,
     rule: DedupeRule,
@@ -139,7 +139,7 @@ pub(super) struct DedupedAggregator {
 }
 
 impl DedupedAggregator {
-    fn new(window: &CollectionWindow, rule: DedupeRule) -> Self {
+    pub(super) fn new(window: &CollectionWindow, rule: DedupeRule) -> Self {
         Self {
             window: window.clone(),
             rule,

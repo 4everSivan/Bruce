@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- **Agent 用量新增 dsh (DeepSeek Harness) 本机会话统计 (C189)**：
+  - **第 10 个本机来源 `dsh`**：只读扫描 `~/.dsh/sessions`（`$DSH_HOME` 可覆盖家目录）下 `session.vN.jsonl.zstd`；dsh 每次追加事件各写一个独立 zstd 帧，引擎以多帧串接解码器读取并按 `assistant/message` 的 `data.usage` 采集四类 Token（`inputTokens` 非缓存输入、`outputTokens`、`cacheReadTokens` → 缓存读取、`cacheWriteTokens` → 缓存创建，派生 `totalTokens` 不重复计入）；模型取 `data.message.source.model` 原样入价卡归一化（`deepseek-flash`、`cline-pass/deepseek-v4.1-flash-1017` 等），项目取会话 `cwd` 末段；
+  - **去重与增量缓存**：fork / seed 会话会继承历史消息，跨文件按 message id 摘要前 128 位去重（同键保留总量最大者）；zstd 帧边界与行不对应、解压字节偏移不可用于追加，故缓存按文件签名（设备 / inode / 大小 / 修改时间纳秒）整文件重建，未变更文件只读观测不解压；
+  - **双端呈现对齐**：新增 `DSH` 品牌徽章（DeepSeek 官方图形 / 白底品牌蓝）与第 10 档系列色 azure `#4d6bfe`（含 4 档占比色阶，Nothing 绿阶固定第 1 档）；设置中心与首次启动欢迎向导的本机探测新增 `~/.dsh/sessions`（mac 9 → 10 个探测项、Windows 9 → 10 项），双端品牌身份对拍 fixture 同步新增 dsh 条目；调色板扩至 10 档后未知 agent（如 cline）的 FNV 散列落点一次性移位，双端同序仍保持一致，共享 golden 快照随之刷新 4 处 colorHex。
 - **订阅额度网络出口国家校验（出口IP检查 · 双卡分立 + 两级熔断 + 极简磁贴）(T23)**：
   - **核心校验与两级熔断**：在发起云端订阅额度查询前，经本机专用代理端口（如 Clash Verge 7897）执行 Cloudflare Trace 出口探测；国内出口（CN）快速短路熔断，目标国家不匹配或探测失败时严格阻断查额并保护合格历史快照，绝不误标失效或回退直连；
   - **仪表盘纯净国旗呈现**：订阅用量卡片标题右侧彻底去除深灰胶囊包裹底框，采用纯净裸国旗 Emoji 自然流排版（如 `Claude 🇺🇸`）；阻断态以轻量 `⚠️ 🇺🇸` 警示并提供 40px 紧凑问题小卡片；

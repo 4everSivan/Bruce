@@ -12,9 +12,11 @@ pub enum PanelAgentColor {
     Rose,
     Green,
     Orange,
+    /// DSH (DeepSeek Harness) — 品牌蓝 #4d6bfe (第 10 个已知 agent; C189)
+    Azure,
 }
 
-pub const PANEL_AGENT_COLORS: [PanelAgentColor; 9] = [
+pub const PANEL_AGENT_COLORS: [PanelAgentColor; 10] = [
     PanelAgentColor::Cyan,
     PanelAgentColor::Blue,
     PanelAgentColor::Indigo,
@@ -24,6 +26,7 @@ pub const PANEL_AGENT_COLORS: [PanelAgentColor; 9] = [
     PanelAgentColor::Rose,
     PanelAgentColor::Green,
     PanelAgentColor::Orange,
+    PanelAgentColor::Azure,
 ];
 
 impl PanelAgentColor {
@@ -38,6 +41,7 @@ impl PanelAgentColor {
             PanelAgentColor::Rose => "rose",
             PanelAgentColor::Green => "green",
             PanelAgentColor::Orange => "orange",
+            PanelAgentColor::Azure => "azure",
         }
     }
 
@@ -52,6 +56,7 @@ impl PanelAgentColor {
             PanelAgentColor::Rose => "#ff6482",
             PanelAgentColor::Green => "#30d158",
             PanelAgentColor::Orange => "#ff9f0a",
+            PanelAgentColor::Azure => "#4d6bfe",
         }
     }
 
@@ -67,6 +72,7 @@ impl PanelAgentColor {
             PanelAgentColor::Rose => &["#ff6482", "#ff839c", "#ffa2b6", "#ffc1d0"],
             PanelAgentColor::Green => &["#30d158", "#5bda7f", "#8ae6a6", "#b8f1cc"],
             PanelAgentColor::Orange => &["#ff9f0a", "#ffb340", "#ffcc7a", "#ffe5b3"],
+            PanelAgentColor::Azure => &["#4d6bfe", "#7089ff", "#9aabff", "#c3ccff"],
         };
         let clamped = index.min(shades.len() - 1);
         shades[clamped]
@@ -84,6 +90,8 @@ impl PanelAgentColor {
             "zcode" => PanelAgentColor::Mint,
             "opencode" => PanelAgentColor::Green,
             "codebuddy" => PanelAgentColor::Orange,
+            // DSH (DeepSeek Harness) 品牌蓝; C189 第 10 个已知 agent。
+            "dsh" => PanelAgentColor::Azure,
             other => {
                 let hash = fnv1a64(other);
                 PANEL_AGENT_COLORS[(hash % PANEL_AGENT_COLORS.len() as u64) as usize]
@@ -112,6 +120,8 @@ impl PanelAgentColor {
             "kimi-work" => 4,
             "grok" => 2,
             "pi" => 4,
+            // DSH (DeepSeek Harness) 固定 1 档, 与 mac 同档位 (C189)。
+            "dsh" => 1,
             other => (fnv1a64(other) % ramp.len() as u64) as usize,
         };
         ramp[index]
@@ -144,6 +154,24 @@ mod tests {
         );
         assert_eq!(PanelAgentColor::resolve("codex"), PanelAgentColor::Purple);
         assert_eq!(PanelAgentColor::resolve("opencode"), PanelAgentColor::Green);
+        // C189: dsh 落到新增的 Azure 系列色, 且 hex 与 mac 口径逐字一致。
+        assert_eq!(PanelAgentColor::resolve("dsh"), PanelAgentColor::Azure);
+        assert_eq!(PanelAgentColor::Azure.name(), "azure");
+        assert_eq!(PanelAgentColor::Azure.hex(), "#4d6bfe");
+        assert_eq!(
+            PanelAgentColor::Azure.distribution_hex(0),
+            "#4d6bfe",
+            "index 0 即主色"
+        );
+        assert_eq!(PanelAgentColor::Azure.distribution_hex(3), "#c3ccff");
+        assert_eq!(PANEL_AGENT_COLORS.len(), 10, "第 10 档系列色已登记");
+    }
+
+    #[test]
+    fn nothing_ramp_pins_dsh_to_tier_one() {
+        // dsh 固定 1 档, 深色亮→暗与浅色反转两侧均与 mac 一致。
+        assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", true), "#5FAF6E");
+        assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", false), "#35854A");
     }
 
     #[test]

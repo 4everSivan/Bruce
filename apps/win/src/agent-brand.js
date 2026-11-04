@@ -20,6 +20,8 @@
     codebuddy: { image: "agent-codebuddy", tile: "#5B3DF5", mark: "#FFFFFF", mono: "C" },
     grok: { glyph: "grok", tile: "#0B0B0B", mark: "#FFFFFF", mono: "G" },
     pi: { tile: "", mark: "", mono: "π" },
+    // DSH (DeepSeek Harness, C189): 无官方位图, 复用 deepseek 矢量图形与品牌蓝。
+    dsh: { glyph: "deepseek", tile: "#FFFFFF", mark: "#4D6BFE", mono: "D" },
   };
 
   // 模型厂商: 按规范键/显示名子串匹配, 顺序与 mac AgentBrandPalette 一致

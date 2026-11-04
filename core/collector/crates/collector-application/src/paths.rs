@@ -207,9 +207,35 @@ pub fn resolve_codebuddy_projects_path(home: &Path) -> PathBuf {
     home.join(".codebuddy").join("projects")
 }
 
+/// Resolve dsh (DeepSeek Harness) home directory.
+/// Priority:
+/// 1. $DSH_HOME (if env set)
+/// 2. $HOME/.dsh (default)
+pub fn resolve_dsh_home_path(home: &Path) -> PathBuf {
+    if let Some(dsh_home) = env_non_empty("DSH_HOME") {
+        return PathBuf::from(dsh_home);
+    }
+    home.join(".dsh")
+}
+
+/// Resolve dsh sessions directory: `<dsh home>/sessions`.
+pub fn resolve_dsh_sessions_path(home: &Path) -> PathBuf {
+    resolve_dsh_home_path(home).join("sessions")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// DSH_HOME 是进程级环境变量, 放在同一个用例里设置 / 断言 / 清理,
+    /// 避免与 `default_paths_resolve_under_home` 并行竞争。
+    struct DshHomeGuard;
+
+    impl Drop for DshHomeGuard {
+        fn drop(&mut self) {
+            env::remove_var("DSH_HOME");
+        }
+    }
 
     #[test]
     fn default_paths_resolve_under_home() {
@@ -237,6 +263,40 @@ mod tests {
         assert_eq!(
             resolve_codebuddy_projects_path(home),
             PathBuf::from("/custom/home/.codebuddy/projects")
+        );
+    }
+
+    /// C189: dsh 默认 `~/.dsh/sessions`, `$DSH_HOME` 覆盖家目录 (空白值视为未设置)。
+    #[test]
+    fn dsh_paths_follow_home_and_dsh_home_env() {
+        let _guard = DshHomeGuard;
+        let home = Path::new("/custom/home");
+        env::remove_var("DSH_HOME");
+        assert_eq!(
+            resolve_dsh_home_path(home),
+            PathBuf::from("/custom/home/.dsh")
+        );
+        assert_eq!(
+            resolve_dsh_sessions_path(home),
+            PathBuf::from("/custom/home/.dsh/sessions")
+        );
+
+        env::set_var("DSH_HOME", "/srv/dsh-home");
+        assert_eq!(
+            resolve_dsh_home_path(home),
+            PathBuf::from("/srv/dsh-home"),
+            "$DSH_HOME 优先于 ~/.dsh"
+        );
+        assert_eq!(
+            resolve_dsh_sessions_path(home),
+            PathBuf::from("/srv/dsh-home/sessions")
+        );
+
+        env::set_var("DSH_HOME", "   ");
+        assert_eq!(
+            resolve_dsh_home_path(home),
+            PathBuf::from("/custom/home/.dsh"),
+            "空白 $DSH_HOME 视为未设置"
         );
     }
 }
