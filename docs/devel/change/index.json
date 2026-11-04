@@ -2039,7 +2039,7 @@
     "C199": {
       "title": "为用量历史台账补充按来源口径版本向下修正的路径，修复已落库的多计",
       "type": "Enhancement",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C199-history-downward-correction",
       "topic": "TokenUsage",
       "version": "0.17.0",
