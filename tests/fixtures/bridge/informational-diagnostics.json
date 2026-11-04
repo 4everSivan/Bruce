@@ -1,0 +1,13 @@
+{
+  "description": "信息级诊断码清单 (C200): collector-domain INFORMATIONAL_DIAGNOSTIC_CODES 与 mac BridgeDiagnostic.informationalCodes 必须与 informational 一致。信息级诊断不参与 envelope Partial 判定, 宿主取 partial 状态说明时跳过; faults 列出不得被视为信息级的代表性故障码。",
+  "informational": [
+    "LOCAL_HISTORY_STORE_UNAVAILABLE",
+    "LOCAL_SOURCE_NOTICE"
+  ],
+  "faults": [
+    "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
+    "LOCAL_SOURCE_IO_DEGRADED",
+    "COLLECTOR_PARTIAL_RESULT",
+    "CREDENTIAL_PERSIST_FAILED"
+  ]
+}

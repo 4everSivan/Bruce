@@ -778,8 +778,13 @@ pub const LOCAL_HISTORY_STORE_UNAVAILABLE: &str = "LOCAL_HISTORY_STORE_UNAVAILAB
 /// 真实 schema/读取故障仍为 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`。
 pub const LOCAL_SOURCE_NOTICE: &str = "LOCAL_SOURCE_NOTICE";
 
+/// 全部信息级诊断码 (C200): 宿主 (mac `BridgeDiagnostic.informationalCodes`) 取 partial 状态说明时
+/// 跳过这些码; 两侧清单由 `tests/fixtures/bridge/informational-diagnostics.json` 锁定。
+pub const INFORMATIONAL_DIAGNOSTIC_CODES: &[&str] =
+    &[LOCAL_HISTORY_STORE_UNAVAILABLE, LOCAL_SOURCE_NOTICE];
+
 fn is_informational_diagnostic(code: &str) -> bool {
-    code == LOCAL_HISTORY_STORE_UNAVAILABLE || code == LOCAL_SOURCE_NOTICE
+    INFORMATIONAL_DIAGNOSTIC_CODES.contains(&code)
 }
 
 pub fn response_status(has_artifact: bool, diagnostics: &[Diagnostic]) -> ResponseStatus {
@@ -853,6 +858,34 @@ mod tests {
         assert_eq!(window.today, "2026-07-28");
         assert_eq!(window.day_list, ["2026-07-27", "2026-07-28"]);
         assert_eq!(window.hour_of_millis(1_785_198_600_000), Some(8));
+    }
+
+    /// C200: 信息级诊断码清单与共享 fixture 一致 (mac 侧以同一 fixture 校验), 代表性故障码不在其中。
+    #[test]
+    fn informational_codes_match_the_shared_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../../tests/fixtures/bridge/informational-diagnostics.json"
+        ))
+        .unwrap();
+        let listed = |key: &str| -> Vec<String> {
+            fixture[key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|code| code.as_str().unwrap().to_owned())
+                .collect()
+        };
+        let mut expected = listed("informational");
+        expected.sort();
+        let mut actual: Vec<String> = super::INFORMATIONAL_DIAGNOSTIC_CODES
+            .iter()
+            .map(|code| (*code).to_owned())
+            .collect();
+        actual.sort();
+        assert_eq!(actual, expected);
+        for code in listed("faults") {
+            assert!(!super::is_informational_diagnostic(&code), "{code}");
+        }
     }
 
     #[test]
