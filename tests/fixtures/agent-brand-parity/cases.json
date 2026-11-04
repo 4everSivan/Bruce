@@ -66,6 +66,14 @@
       "monogram": "G"
     },
     {
+      "id": "dsh",
+      "image": null,
+      "glyph": "deepseek",
+      "tile": "#FFFFFF",
+      "mark": "#4D6BFE",
+      "monogram": "D"
+    },
+    {
       "id": "pi",
       "image": null,
       "glyph": null,

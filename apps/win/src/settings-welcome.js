@@ -16,6 +16,8 @@
     { id: "pi", name: "Pi", pathHint: "~/.pi/agent/sessions", status: "missing" },
     { id: "zcode", name: "ZCode", pathHint: "~/.zcode/cli/db/db.sqlite", status: "missing" },
     { id: "codebuddy", name: "CodeBuddy", pathHint: "~/.codebuddy/projects", status: "missing" },
+    // DSH (DeepSeek Harness, C189): zstd JSONL 会话目录。
+    { id: "dsh", name: "DSH", pathHint: "~/.dsh/sessions", status: "missing" },
     { id: "ccSwitch", name: "CC Switch", pathHint: "~/.cc-switch/cc-switch.db", status: "missing" },
   ];
 
@@ -28,6 +30,7 @@
     pi: "#f59e0b",
     zcode: "#3b82f6",
     codebuddy: "#06b6d4",
+    dsh: "#4D6BFE",
     ccSwitch: "#10b981",
   };
 
