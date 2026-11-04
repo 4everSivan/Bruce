@@ -61,7 +61,12 @@ pub struct SourceScan {
     pub found: bool,
     pub contribution: UsageContribution,
     pub stats: ScanStats,
+    /// 真实 schema / 读取故障 (artifact 中 agent 置 error, 诊断码
+    /// `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`, envelope Partial)。
     pub diagnostic: Option<String>,
+    /// 信息级说明 (C198): 缓存自愈重建、会话副本取舍等, 用量完整或少计可解释;
+    /// 以 `LOCAL_SOURCE_NOTICE` 输出并附在 agent note 后, 不改变 agent 状态。
+    pub notice: Option<String>,
 }
 
 #[derive(Debug)]
@@ -89,6 +94,7 @@ impl SourceScan {
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
             stats: ScanStats::default(),
             diagnostic: None,
+            notice: None,
         }
     }
 }
@@ -104,6 +110,7 @@ pub(super) fn finish(
         contribution: builder.contribution(),
         stats,
         diagnostic: None,
+        notice: None,
     }
 }
 

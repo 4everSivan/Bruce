@@ -255,6 +255,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                     contribution,
                     stats,
                     diagnostic: entry.diagnostic.clone(),
+                    notice: None,
                 });
             }
             stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
@@ -330,6 +331,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         contribution,
                         stats,
                         diagnostic: delta.diagnostic,
+                        notice: None,
                     });
                 }
                 Ok(_) | Err(SourceScanError::Io(_)) => {
@@ -391,6 +393,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         contribution,
         stats,
         diagnostic: result.diagnostic,
+        notice: None,
     })
 }
 

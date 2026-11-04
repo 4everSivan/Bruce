@@ -666,6 +666,7 @@ pub fn scan_grok_cached(
     let mut stats = ScanStats::default();
     let mut found = false;
     let mut diagnostic = None;
+    let mut notice = None;
     for root in roots {
         let current = scan_cached_jsonl_tree(
             root,
@@ -679,6 +680,9 @@ pub fn scan_grok_cached(
                 stats.merge(current.stats);
                 if diagnostic.is_none() {
                     diagnostic = current.diagnostic;
+                }
+                if notice.is_none() {
+                    notice = current.notice;
                 }
                 if !builder.merge_contribution(&current.contribution) {
                     return Err(SourceScanError::Io(io::Error::new(
@@ -698,6 +702,7 @@ pub fn scan_grok_cached(
         contribution: builder.contribution(),
         stats,
         diagnostic,
+        notice,
     })
 }
 

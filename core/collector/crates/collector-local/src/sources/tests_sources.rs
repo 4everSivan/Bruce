@@ -464,7 +464,9 @@ fn conflicting_rollout_copies_are_not_added_twice() {
     assert_eq!(result.stats.duplicate_files_skipped, 1);
     assert_eq!(result.stats.duplicate_session_groups, 1);
     assert_eq!(result.stats.conflict_session_groups, 1);
-    assert!(result.diagnostic.is_some());
+    // C198: 副本取舍是说明而非故障。
+    assert!(result.notice.is_some());
+    assert!(result.diagnostic.is_none());
     fs::remove_dir_all(first).unwrap();
     fs::remove_dir_all(second).unwrap();
 }
@@ -1093,10 +1095,17 @@ fn codex_file_cache_left_empty_or_truncated_is_rebuilt() {
         assert_eq!(repaired.contribution, expected.contribution);
         assert_eq!(repaired.stats.cache_corruptions, 1);
         assert_eq!(repaired.stats.cache_hits, 0);
+        // C198: 自愈重建只是说明, 用量完整, 不得以故障 diagnostic 输出。
+        assert!(repaired.diagnostic.is_none(), "缓存自愈不是故障");
+        assert_eq!(
+            repaired.notice.as_deref(),
+            Some("Codex 缓存文件格式异常, 已整体重建")
+        );
 
         let warm = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
         assert_eq!(warm.contribution, expected.contribution);
         assert_eq!(warm.stats.cache_hits, 1, "重建后的缓存下一轮应命中");
+        assert!(warm.notice.is_none(), "重建完成后说明随之消失");
     }
     super::tests_cache::assert_cache_files_private_without_temporaries(&cache_dir);
 

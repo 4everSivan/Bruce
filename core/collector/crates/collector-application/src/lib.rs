@@ -21,7 +21,7 @@ use collector_credential::{
 use collector_domain::{
     AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
     ModelPricingOverride, PricingTable, WindowError, AGENT_USAGE_MODULE,
-    AGENT_USAGE_SCHEMA_VERSION, LOCAL_HISTORY_STORE_UNAVAILABLE,
+    AGENT_USAGE_SCHEMA_VERSION, LOCAL_HISTORY_STORE_UNAVAILABLE, LOCAL_SOURCE_NOTICE,
 };
 use collector_history::HistoryStore;
 use collector_local::{
@@ -370,6 +370,8 @@ struct LocalAgentResult {
     found: bool,
     contribution: collector_domain::UsageContribution,
     diagnostic: Option<String>,
+    /// 来源信息级说明 (C198): 附在 note 后, 不改变 status。
+    notice: Option<String>,
     /// 来源当前不可用但台账有历史量时的 note (T26); Some 时 artifact status=history。
     history_note: Option<String>,
 }
@@ -429,14 +431,23 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             collection.diagnostics.push(warning);
         }
         if let Some(message) = source.diagnostic.clone() {
-            // T26: 行数截断已移除; 任何源诊断都可能是真实 schema/读取故障,
-            // 保留原故障码与 Partial 语义。
+            // C198: diagnostic 只承载真实 schema/读取故障, 保留原故障码与 Partial 语义;
+            // 说明性信息走下方 notice。
             collection.diagnostics.push(Diagnostic::new(
                 "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
                 "local",
                 &id,
                 message,
                 true,
+            ));
+        }
+        if let Some(message) = source.notice.clone() {
+            collection.diagnostics.push(Diagnostic::new(
+                LOCAL_SOURCE_NOTICE,
+                "local",
+                &id,
+                message,
+                false,
             ));
         }
         if let Some(store) = history.as_mut() {
@@ -464,6 +475,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 found: source.found,
                 contribution: source.contribution,
                 diagnostic: source.diagnostic,
+                notice: source.notice,
                 history_note: None,
             },
         );
@@ -923,6 +935,10 @@ fn finalize_local_agent(
         agent.status = placeholder_status.to_owned();
         agent.note = placeholder_note.to_owned();
     }
+    // C198: 信息级说明只附在 note 后, 不改变上面定下的状态; 故障时 note 已是故障说明。
+    if let (None, Some(notice)) = (&source.diagnostic, &source.notice) {
+        agent.note = format!("{} ({notice})", agent.note);
+    }
     agent
 }
 
@@ -952,7 +968,7 @@ fn source_path(context: &RunContext<'_>, key: &str, default: PathBuf) -> PathBuf
 mod tests {
     use super::{
         collect_agent_usage, collect_agent_usage_with_dependencies, finalize_local_agent,
-        LocalAgentResult, LOCAL_HISTORY_STORE_UNAVAILABLE,
+        LocalAgentResult, LOCAL_HISTORY_STORE_UNAVAILABLE, LOCAL_SOURCE_NOTICE,
     };
     use collector_credential::{CredentialReadError, CredentialSource};
     use collector_domain::BridgeRequest;
@@ -1006,6 +1022,7 @@ mod tests {
             found: true,
             contribution: invalid,
             diagnostic: None,
+            notice: None,
             history_note: None,
         };
         let agent = finalize_local_agent(
@@ -2349,6 +2366,7 @@ mod tests {
             found: true,
             contribution,
             diagnostic: None,
+            notice: None,
             history_note: None,
         };
 
@@ -2569,6 +2587,147 @@ mod tests {
         assert_eq!(daily_total(agent), 330, "回退路径仍应输出扫描贡献");
 
         std::fs::remove_dir_all(&home).ok();
+    }
+
+    fn has_diagnostic(
+        diagnostics: &[collector_domain::Diagnostic],
+        code: &str,
+        stage: &str,
+    ) -> bool {
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == code && diagnostic.stage == stage)
+    }
+
+    fn agent<'a>(artifact: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+        artifact["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|agent| agent["id"] == id)
+            .unwrap()
+    }
+
+    /// C198: 来源说明 (Codex 会话副本取舍) 只输出信息级 LOCAL_SOURCE_NOTICE —— agent 保持 ok、
+    /// note 附说明、envelope 不升级为 Partial; 同一轮的真实读取故障 (OpenCode 库不可解析)
+    /// 仍为 error + LOCAL_SOURCE_SCHEMA_INCOMPATIBLE。
+    #[test]
+    fn source_notice_stays_informational_while_source_fault_stays_error() {
+        let home = history_test_home("source-notice");
+        let history_db = home.join("usage-history.sqlite");
+        for (copy, input) in [("a", 100_u64), ("b", 1_000)] {
+            let dir = home.join("codex").join(copy);
+            std::fs::create_dir_all(&dir).unwrap();
+            let line = json!({
+                "timestamp": "2026-07-28T03:00:00Z",
+                "type": "event_msg",
+                "payload": {"type": "token_count", "info": {"last_token_usage": {
+                    "input_tokens": input, "cached_input_tokens": 0, "output_tokens": 5
+                }}}
+            });
+            std::fs::write(dir.join("rollout-c198.jsonl"), format!("{line}\n")).unwrap();
+        }
+        std::fs::write(home.join("opencode.db"), b"not a sqlite database").unwrap();
+        let request = history_request(&home, &history_db);
+
+        let output =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        let codex = agent(&output.artifact, "codex");
+        assert_eq!(
+            codex["status"], "ok",
+            "副本取舍是说明, 不得把 Codex 置 error"
+        );
+        let note = codex["note"].as_str().unwrap_or_default();
+        assert!(
+            note.starts_with("额度见下方 Codex 账号") && note.contains("会话副本内容冲突"),
+            "note 保留来源原说明并附上副本说明: {note}"
+        );
+        assert!(codex["today"]["total"].as_u64().unwrap_or(0) > 0);
+        assert!(
+            has_diagnostic(&output.diagnostics, LOCAL_SOURCE_NOTICE, "codex"),
+            "副本取舍须以信息级诊断输出"
+        );
+        let schema_fault = "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE";
+        assert!(!has_diagnostic(&output.diagnostics, schema_fault, "codex"));
+
+        let opencode = agent(&output.artifact, "opencode");
+        assert_eq!(opencode["status"], "error", "真实读取故障不得被降级");
+        assert!(has_diagnostic(
+            &output.diagnostics,
+            schema_fault,
+            "opencode"
+        ));
+        assert_eq!(
+            collector_domain::response_status(true, &output.diagnostics),
+            collector_domain::ResponseStatus::Partial,
+            "故障仍使 envelope 为 Partial"
+        );
+
+        // 只剩说明时 envelope 为 Success。
+        std::fs::remove_file(home.join("opencode.db")).unwrap();
+        let output =
+            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
+                .unwrap();
+        assert!(has_diagnostic(
+            &output.diagnostics,
+            LOCAL_SOURCE_NOTICE,
+            "codex"
+        ));
+        assert_eq!(
+            collector_domain::response_status(true, &output.diagnostics),
+            collector_domain::ResponseStatus::Success,
+            "信息级说明不得触发 Partial: {:?}",
+            output.diagnostics
+        );
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// C198: 说明附在 note 后且不改变状态; 故障优先, 说明不覆盖故障说明。
+    #[test]
+    fn finalize_local_agent_appends_notice_without_changing_status() {
+        use collector_domain::{CollectionWindow, PricingTable, UsageContributionBuilder};
+
+        let context: serde_json::Map<String, serde_json::Value> = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "days": 3
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let pricing = PricingTable::new(std::collections::HashMap::new());
+        let finalize = |diagnostic: Option<&str>, history_note: Option<&str>| {
+            let source = LocalAgentResult {
+                found: history_note.is_none(),
+                contribution: UsageContributionBuilder::new(window.clone()).contribution(),
+                diagnostic: diagnostic.map(str::to_owned),
+                notice: Some("缓存已重建".to_owned()),
+                history_note: history_note.map(str::to_owned),
+            };
+            finalize_local_agent(
+                &window,
+                "codex",
+                "Codex",
+                &source,
+                "本机会话聚合",
+                "not_found",
+                "未发现会话记录",
+                &pricing,
+            )
+        };
+
+        let ok = finalize(None, None);
+        assert_eq!(ok.status, "ok");
+        assert_eq!(ok.note, "本机会话聚合 (缓存已重建)");
+
+        let history = finalize(None, Some("显示已保存的历史用量"));
+        assert_eq!(history.status, "history");
+        assert_eq!(history.note, "显示已保存的历史用量 (缓存已重建)");
+
+        let fault = finalize(Some("本机 codex 数据库schema 不兼容"), None);
+        assert_eq!(fault.status, "error");
+        assert_eq!(fault.note, "本机 codex 数据库schema 不兼容");
     }
 
     /// T26: 从未使用的 agent 不得因占位而写入 0 行或变成 history。

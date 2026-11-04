@@ -394,7 +394,7 @@ pub(crate) fn scan_codex_with_cancellation(
     scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
-        result.diagnostic = Some(format!(
+        result.notice = Some(format!(
             "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
             stats.conflict_session_groups
         ));
@@ -788,8 +788,9 @@ pub fn scan_codex_cached_with_cancellation(
             stats.conflict_session_groups
         ));
     }
+    // C198: 缓存重建与副本取舍都是说明, 不是故障 —— 走信息级 notice, 不把 Codex 置 error。
     if !notes.is_empty() {
-        result.diagnostic = Some(notes.join("; "));
+        result.notice = Some(notes.join("; "));
     }
     Ok(result)
 }

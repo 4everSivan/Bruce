@@ -773,8 +773,13 @@ pub struct AgentUsageArtifact {
 /// (避免菜单栏把台账故障误报为采集故障)。
 pub const LOCAL_HISTORY_STORE_UNAVAILABLE: &str = "LOCAL_HISTORY_STORE_UNAVAILABLE";
 
+/// 信息级诊断码 (C198): 本机来源的说明性信息 (缓存自愈重建、会话副本取舍等),
+/// 用量完整或少计可解释; 不改变 agent 状态, 不把 envelope 打成 Partial。
+/// 真实 schema/读取故障仍为 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`。
+pub const LOCAL_SOURCE_NOTICE: &str = "LOCAL_SOURCE_NOTICE";
+
 fn is_informational_diagnostic(code: &str) -> bool {
-    code == LOCAL_HISTORY_STORE_UNAVAILABLE
+    code == LOCAL_HISTORY_STORE_UNAVAILABLE || code == LOCAL_SOURCE_NOTICE
 }
 
 pub fn response_status(has_artifact: bool, diagnostics: &[Diagnostic]) -> ResponseStatus {
@@ -832,6 +837,7 @@ mod tests {
     use super::{
         response_status, AgentUsageArtifact, CollectionWindow, Diagnostic, ResponseStatus,
         TokenBucket, UsageContributionBuilder, UsageSample, LOCAL_HISTORY_STORE_UNAVAILABLE,
+        LOCAL_SOURCE_NOTICE,
     };
     use serde_json::{json, Map, Value};
 
@@ -876,6 +882,31 @@ mod tests {
             response_status(true, std::slice::from_ref(&store_degraded)),
             ResponseStatus::Success,
             "台账不可用不得触发 Partial"
+        );
+        // C198: 来源说明 (缓存自愈 / 副本取舍) 同为信息级, 不触发 Partial。
+        let source_notice = Diagnostic::new(
+            LOCAL_SOURCE_NOTICE,
+            "local",
+            "codex",
+            "Codex 缓存文件格式异常, 已整体重建",
+            false,
+        );
+        assert_eq!(
+            response_status(true, std::slice::from_ref(&source_notice)),
+            ResponseStatus::Success,
+            "来源说明不得触发 Partial"
+        );
+        // 读取失败跳过整源不是说明: 仍为 Partial (C046 语义不随 C198 改变)。
+        let io_degraded = Diagnostic::new(
+            "LOCAL_SOURCE_IO_DEGRADED",
+            "local",
+            "grok",
+            "本机 grok 会话读取失败, 已跳过该源",
+            true,
+        );
+        assert_eq!(
+            response_status(true, std::slice::from_ref(&io_degraded)),
+            ResponseStatus::Partial
         );
         let mixed = [store_degraded, degrading];
         assert_eq!(

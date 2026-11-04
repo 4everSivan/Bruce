@@ -250,6 +250,7 @@ fn scan_dsh(
         contribution,
         stats,
         diagnostic,
+        notice: None,
     })
 }
 
