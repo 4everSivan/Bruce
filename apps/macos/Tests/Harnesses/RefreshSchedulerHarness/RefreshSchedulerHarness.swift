@@ -32,6 +32,8 @@ struct RefreshSchedulerHarness {
         try await wakeCompensationAtMostOnce(repository: repository)
         print("Refresh scheduler: partial")
         try await partialResultPublishesArtifact(repository: repository)
+        print("Refresh scheduler: partial detail skips informational diagnostics")
+        try await partialDetailSkipsInformationalDiagnostics(repository: repository)
         print("Refresh scheduler: stop")
         try await stopCancelsRunningTasks(repository: repository)
         print("Refresh scheduler: manual refresh after stop recovers")
@@ -261,6 +263,6 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 118")
+        print("Refresh scheduler tests passed: 119")
     }
 }

@@ -817,9 +817,22 @@ final class AuthFailingExecutor: CollectorExecuting {
 @MainActor
 final class PartialSuccessExecutor: CollectorExecuting {
     let artifact: JSONValue
+    let diagnostics: [BridgeDiagnostic]
     private(set) var runCount: [CollectorModule: Int] = [:]
 
-    init(artifact: JSONValue) { self.artifact = artifact }
+    init(
+        artifact: JSONValue,
+        diagnostics: [BridgeDiagnostic] = [BridgeDiagnostic(
+            code: "COLLECTOR_PARTIAL_RESULT",
+            category: "collector",
+            stage: "collect",
+            message: "部分数据源采集失败",
+            retryable: true
+        )]
+    ) {
+        self.artifact = artifact
+        self.diagnostics = diagnostics
+    }
 
     func run(
         module: CollectorModule,
@@ -835,13 +848,7 @@ final class PartialSuccessExecutor: CollectorExecuting {
                 status: .partial,
                 artifact: artifact,
                 credentialUpdates: [],
-                diagnostics: [BridgeDiagnostic(
-                    code: "COLLECTOR_PARTIAL_RESULT",
-                    category: "collector",
-                    stage: "collect",
-                    message: "部分数据源采集失败",
-                    retryable: true
-                )],
+                diagnostics: diagnostics,
             credentialChallenges: []
             ),
             stderrDiagnostic: nil

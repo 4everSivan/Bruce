@@ -831,7 +831,8 @@ package final class RefreshScheduler {
             }
 
             if response.status == .partial {
-                let detail = response.diagnostics.first?.message
+                // C200: 信息级说明不得盖住真实故障原因。
+                let detail = response.diagnostics.partialDetail
                 onStatusChange?(module, .partial, detail)
             } else {
                 onStatusChange?(module, .fresh, nil)

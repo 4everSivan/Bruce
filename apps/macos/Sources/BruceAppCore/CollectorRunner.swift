@@ -108,6 +108,27 @@ package struct BridgeDiagnostic: Codable, Equatable, Sendable {
     let retryable: Bool
 }
 
+extension BridgeDiagnostic {
+    /// 信息级诊断码 (C200): 与 collector-domain `INFORMATIONAL_DIAGNOSTIC_CODES` 同一清单, 由
+    /// tests/fixtures/bridge/informational-diagnostics.json 双端锁定。这类诊断只是说明 (缓存自愈、
+    /// 副本合并、台账降级等), 不参与 envelope Partial 判定, 也不得充当故障原因。
+    package static let informationalCodes: Set<String> = [
+        "LOCAL_HISTORY_STORE_UNAVAILABLE",
+        "LOCAL_SOURCE_NOTICE",
+    ]
+
+    package var isInformational: Bool { Self.informationalCodes.contains(code) }
+}
+
+extension Array where Element == BridgeDiagnostic {
+    /// partial 状态的说明 (状态灯 hover 原因, design 03 FR-7): 取第一条非信息级诊断 —— collector
+    /// 按来源顺序输出诊断, 宿主追加的 CREDENTIAL_PERSIST_FAILED 排在最后, 信息级说明可能排在
+    /// 真实故障之前 (C200)。全部为信息级时退回第一条。
+    package var partialDetail: String? {
+        (first { !$0.isInformational } ?? first)?.message
+    }
+}
+
 package struct BridgeResponse: Codable, Equatable, Sendable {
     let schemaVersion: Int
     let runId: String

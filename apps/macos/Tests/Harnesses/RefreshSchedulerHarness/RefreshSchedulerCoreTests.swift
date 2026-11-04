@@ -629,6 +629,87 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    // C200: partial 状态说明 (状态灯 hover 原因) 取第一条非信息级诊断, 信息级说明不得盖住故障。
+    static func partialDetailSkipsInformationalDiagnostics(
+        repository: URL
+    ) async throws {
+        // 信息级清单与 collector-domain 由同一 fixture 锁定。
+        struct InformationalFixture: Decodable {
+            let informational: [String]
+            let faults: [String]
+        }
+        let fixture = try JSONDecoder().decode(
+            InformationalFixture.self,
+            from: Data(contentsOf: repository.appendingPathComponent(
+                "tests/fixtures/bridge/informational-diagnostics.json"
+            ))
+        )
+        try refreshExpect(
+            Set(fixture.informational) == BridgeDiagnostic.informationalCodes,
+            "mac 信息级清单应与共享 fixture 一致, got \(BridgeDiagnostic.informationalCodes.sorted())"
+        )
+        for code in fixture.faults {
+            let diagnostic = BridgeDiagnostic(
+                code: code, category: "x", stage: "x", message: code, retryable: true
+            )
+            try refreshExpect(!diagnostic.isInformational, "\(code) 不得视为信息级")
+        }
+
+        // 真实 collector 输出的诊断顺序 (C198 实测 envelope): Codex 说明在前、ZCode 故障在后。
+        let notice = BridgeDiagnostic(
+            code: "LOCAL_SOURCE_NOTICE", category: "local", stage: "codex",
+            message: "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: 1)", retryable: false
+        )
+        let fault = BridgeDiagnostic(
+            code: "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE", category: "local", stage: "zcode",
+            message: "本机 zcode 数据库schema 不兼容", retryable: true
+        )
+        let artifact = try loadFixture(
+            repository: repository, module: .agentUsage, variant: "partial"
+        )
+        let executor = PartialSuccessExecutor(artifact: artifact, diagnostics: [notice, fault])
+        let clock = ManualClock()
+        let timers = FakeTimerScheduler()
+        let (scheduler, _, root) = try makeSchedulerWithError(
+            repository: repository,
+            executor: executor,
+            clock: clock,
+            timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        var receivedStatus: ModuleRunState?
+        var receivedDetail: String?
+        scheduler.onStatusChange = { _, status, detail in
+            receivedStatus = status
+            receivedDetail = detail
+        }
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(receivedStatus == .partial, "应为 partial")
+        try refreshExpect(
+            receivedDetail == fault.message,
+            "partial 说明应为 ZCode 故障而非 Codex 说明, got \(receivedDetail ?? "nil")"
+        )
+
+        // 宿主追加的写回失败排在 collector 诊断之后, 同样不被说明盖住; 全为信息级时取第一条。
+        let persist = BridgeDiagnostic(
+            code: "CREDENTIAL_PERSIST_FAILED", category: "storage", stage: "credentialUpdate",
+            message: "claude 凭证写回失败", retryable: true
+        )
+        try refreshExpect(
+            [notice, persist].partialDetail == persist.message,
+            "宿主追加的故障应优先于前面的说明"
+        )
+        try refreshExpect(
+            [notice].partialDetail == notice.message,
+            "全为信息级时退回第一条"
+        )
+        try refreshExpect([BridgeDiagnostic]().partialDetail == nil, "无诊断时为 nil")
+    }
+
     // 10.6: credentialUpdates 写回失败 → partial + CREDENTIAL_PERSIST_FAILED, artifact 仍发布
     static func credentialPersistFailureDemotesToPartial(
         repository: URL
