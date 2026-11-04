@@ -1,0 +1,18 @@
+{
+  "candidate": "docs/official/.staging/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/模型价格表远端同步设计.md",
+  "method": "Node 扫描页内目录锚点；手工对照 macOS 和 Windows 源码的触发、校验、落盘和生效顺序",
+  "anchor_references": 6,
+  "anchor_missing": [],
+  "reviewed_source_paths": [
+    "apps/macos/Sources/BruceAppCore/PricingCatalogSyncService.swift",
+    "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+    "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+    "apps/win/src-tauri/src/pricing_sync.rs"
+  ],
+  "limitations": [
+    "尚未完成独立表达编辑和全文事实复核。",
+    "总体设计和功能点映射未完整核对。",
+    "必要流程图、时序图及可视预览尚未制作。",
+    "Windows 下实际行为和网络请求未运行。"
+  ]
+}

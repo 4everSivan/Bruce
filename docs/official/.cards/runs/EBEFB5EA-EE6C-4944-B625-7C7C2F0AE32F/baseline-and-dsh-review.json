@@ -1,0 +1,93 @@
+{
+  "observed_at": "2026-11-04T02:00:43.965Z",
+  "commit": "359a9652860cea72d368ee4bc02a3978d6e7395b",
+  "conflicts": [
+    {
+      "path": "docs/official/本地会话解析与计费.md",
+      "prior_user_confirmed_sha256": "4fcc6430c707a41b4d547e56fa437461fb5a138e48b9365cf8c37df5650c99c0",
+      "current_sha256": "d2eb32c9b63ec5cedbfd2e10a2d584aaf1dc1baafd1679c37227b005226d014b",
+      "status": "C189 已提交修改，未覆盖，工作基线待确认"
+    },
+    {
+      "path": "docs/official/采集引擎与本地用量设计.md",
+      "prior_user_confirmed_sha256": "57bef4c7ec25b5014d1231c127f97734ddd7c444b39812728a063cf137bc19f9",
+      "current_sha256": "37d1560c5937594c3f046aa9414d16c25703533357f05a65f15cb8a88382056a",
+      "status": "C189 已提交修改，未覆盖，工作基线待确认"
+    }
+  ],
+  "dsh_source_review": {
+    "paths": [
+      "core/collector/crates/collector-local/src/sources/dsh.rs",
+      "core/collector/crates/collector-local/src/sources/jsonl_adapters.rs",
+      "core/collector/crates/collector-application/src/paths.rs",
+      "core/collector/crates/collector-application/src/lib.rs",
+      "core/collector/crates/collector-local/src/sources/tests_dsh.rs"
+    ],
+    "findings": [
+      "旧文章标题称四种缓存，现有表格已有五种；候选已更正。",
+      "源码实现 dsh 多帧解压、8 MiB 帧限制、按消息 ID 跨文件去重、签名匹配复用和变动后整文件重建。",
+      "解析失败存在旧条目时保留陈旧观察并在下一轮重试；缓存写入 I/O 失败不改变当轮聚合结果。"
+    ],
+    "limits": "仅静态检查所列实现；未执行测试，未完成整篇独立阅读及图形覆盖。"
+  },
+  "cleanup_preflight": {
+    "tracked_old_run_files": 181,
+    "other_surviving_file_references": [
+      "docs/official/.cards/last_attempt.json"
+    ],
+    "note": "已校验并复制继续工作所需的候选图语义及历史工作基线；历史运行记录可按用户要求清理。",
+    "transferred_semantics": [
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
+        "sha256": "a0c13ef86fee641e755d3da44753a55f55fda96b8ff75313312ba6992eda3cf9",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_1e8a0a65-7224-4f09-bbd1-7da1f468bbc7.json",
+        "sha256": "a4e86e8f3e3271e3736ccd881c8110a87ec57067928176555d0ef67d96a3fd47",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_2873df93-a3b4-4c39-afb2-e65f8aeee860.json",
+        "sha256": "6431e9828836d3e6a2bbeb36816a5fd7c81990e3388ab8fc7370c57eeec87012",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_382e629e-29bd-42b3-acc8-7c33c123b340.json",
+        "sha256": "70abdca6f66a25f238cd665f3faf2225ac6a8a3b393d88897e21cb63429caa46",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_60d22960-cfaa-43ce-9088-123463dc90ff.json",
+        "sha256": "5e016a07009de6c4ff4cc190893ade19f4401e309c4986929d74add51826dd46",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_a316352d-4834-406a-b2de-85a87dec47ce.json",
+        "sha256": "32c58a906fc64977c70d24837eb150b4a1c951def89cb309391fb24f77b0abb9",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3.json",
+        "sha256": "00ad228bce2725105780ed155b58a7bb3b71009c3ef4faaf75654365016aa9c8",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_cbbda8c9-188a-4f71-9dc7-152a77890a10.json",
+        "sha256": "6bd1465831175a57740adc41ec23245e1ac7a1f12880d8d0b227ea2fa3888054",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_d297e50d-170e-4fc9-99e1-e52f41fd8a16.json",
+        "sha256": "d77c77fa815f91defa8db788f40175ea659be29f0b2ecfc9c40a0b684b70d7b4",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      },
+      {
+        "to": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F/diagrams/d_ef3a4739-f224-4a72-b833-2253075f4e26.json",
+        "sha256": "29ae6082ea2992da55b7903ee9d75c7716d672dfbc560fb0ed7ddf66c830136b",
+        "source_run": "c7c1f200-8c56-4b3b-af79-fe107d3e1208"
+      }
+    ]
+  },
+  "user_decision": "2026-11-04：暂时保留冲突，不更新这两篇。"
+}

@@ -1,0 +1,29 @@
+{
+  "retained": "docs/official/.cards/runs/EBEFB5EA-EE6C-4944-B625-7C7C2F0AE32F",
+  "targets": [
+    "docs/official/.cards/runs/17d94bab-876e-492c-961f-11d4c1d345c0",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53",
+    "docs/official/.cards/runs/33958ec0-ab52-4495-a221-86dc9f778c35",
+    "docs/official/.cards/runs/39A70D1D-6418-44D0-80A5-1310F7A007D9",
+    "docs/official/.cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+    "docs/official/.cards/runs/7a682a9a-3ef8-45f8-b095-7ce903e71818",
+    "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208",
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f"
+  ],
+  "file_count": 188,
+  "reason": "用户明确要求只保留最近一次；继续工作所需图语义、基线和候选路径已转入最近一次记录。",
+  "status": "completed",
+  "removed": [
+    "docs/official/.cards/runs/17d94bab-876e-492c-961f-11d4c1d345c0",
+    "docs/official/.cards/runs/27d11369-e05c-4065-9142-1fe0a0ef7f53",
+    "docs/official/.cards/runs/33958ec0-ab52-4495-a221-86dc9f778c35",
+    "docs/official/.cards/runs/39A70D1D-6418-44D0-80A5-1310F7A007D9",
+    "docs/official/.cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+    "docs/official/.cards/runs/7a682a9a-3ef8-45f8-b095-7ce903e71818",
+    "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761",
+    "docs/official/.cards/runs/c7c1f200-8c56-4b3b-af79-fe107d3e1208",
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f"
+  ],
+  "completed_at": "2026-11-04T02:27:52.876Z"
+}
