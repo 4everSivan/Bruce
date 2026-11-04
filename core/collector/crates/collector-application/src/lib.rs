@@ -2608,7 +2608,7 @@ mod tests {
             .unwrap()
     }
 
-    /// C198: 来源说明 (Codex 会话副本取舍) 只输出信息级 LOCAL_SOURCE_NOTICE —— agent 保持 ok、
+    /// C198: 来源说明 (Codex 会话副本分叉合并, C190) 只输出信息级 LOCAL_SOURCE_NOTICE —— agent 保持 ok、
     /// note 附说明、envelope 不升级为 Partial; 同一轮的真实读取故障 (OpenCode 库不可解析)
     /// 仍为 error + LOCAL_SOURCE_SCHEMA_INCOMPATIBLE。
     #[test]
@@ -2640,7 +2640,7 @@ mod tests {
         );
         let note = codex["note"].as_str().unwrap_or_default();
         assert!(
-            note.starts_with("额度见下方 Codex 账号") && note.contains("会话副本内容冲突"),
+            note.starts_with("额度见下方 Codex 账号") && note.contains("会话副本已分叉"),
             "note 保留来源原说明并附上副本说明: {note}"
         );
         assert!(codex["today"]["total"].as_u64().unwrap_or(0) > 0);

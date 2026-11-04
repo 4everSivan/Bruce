@@ -5,8 +5,8 @@ use super::{
 use crate::cache_util::fingerprint_head_tail;
 use crate::jsonl_cache::CachedUsageObservation;
 
-/// Codex rollout 中参与聚合的行类型 (C110 解析前预筛)。
-const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count"];
+/// Codex rollout 中参与聚合的行类型 (C110 解析前预筛; C190 起含单次响应记录)。
+const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count", b"token_usage_record"];
 
 /// 头尾指纹只读的定长块 (C117): 与 jsonl 缓存的头部/尾部段大小一致。
 const CODEX_FINGERPRINT_CHUNK_BYTES: u64 = 64 * 1024;
@@ -16,8 +16,9 @@ use collector_runtime::CancellationToken;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -64,6 +65,47 @@ fn codex_token_counters(value: Option<&Value>) -> Option<CodexTokenCounters> {
         cache_read: codex_counter(value, &["cached_input_tokens", "cache_read_input_tokens"]),
         output: codex_counter(value, &["output_tokens"]),
     })
+}
+
+/// C190: 单次响应记录行 (`type = token_usage_record`) 只取 response_id 与 usage。
+#[derive(Deserialize)]
+struct CodexUsageRecordLine {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    payload: Option<CodexUsageRecord>,
+}
+
+#[derive(Deserialize)]
+struct CodexUsageRecord {
+    response_id: Option<String>,
+    usage: Option<CodexRecordUsage>,
+}
+
+#[derive(Deserialize)]
+struct CodexRecordUsage {
+    input_tokens: Option<u64>,
+    cached_input_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+}
+
+impl CodexUsageRecord {
+    /// 与 `codex_token_counters` 同口径的计数; 缺 response_id 或 usage 时不登记。
+    fn into_pending(self) -> Option<(String, CodexTokenCounters)> {
+        let response_id = self.response_id.filter(|id| !id.is_empty())?;
+        let usage = self.usage?;
+        Some((
+            response_id,
+            CodexTokenCounters {
+                input: usage.input_tokens.unwrap_or(0),
+                cache_read: usage
+                    .cached_input_tokens
+                    .or(usage.cache_read_input_tokens)
+                    .unwrap_or(0),
+                output: usage.output_tokens.unwrap_or(0),
+            },
+        ))
+    }
 }
 
 fn codex_token_signature(info: &Value) -> Option<CodexTokenSignature> {
@@ -243,53 +285,135 @@ pub(super) fn collect_codex_files(
     Ok(())
 }
 
+/// 同名 rollout 即同一会话 (文件名含会话 UUID)。组内按偏好排序 (size 大者优先); 与首份
+/// 物理相同 (硬链接) 或内容相同 (同 size + 头尾指纹) 的副本零解析跳过, 其余副本保留,
+/// 逐份解析后由 `merge_codex_copies` 按单次响应去重键取并集 (C190)。组按首份路径排序。
 fn resolve_codex_files(
     groups: BTreeMap<String, Vec<CodexFileCandidate>>,
     cancellation: &CancellationToken,
     stats: &mut ScanStats,
-) -> Result<Vec<CodexFileCandidate>, SourceScanError> {
-    let mut selected = Vec::new();
+) -> Result<Vec<Vec<CodexFileCandidate>>, SourceScanError> {
+    let mut resolved = Vec::new();
     for (_, mut group) in groups {
         cancellation.check()?;
         sort_codex_candidates(&mut group, cancellation)?;
         let winner = group.remove(0);
+        let mut members = Vec::with_capacity(1 + group.len());
         if !group.is_empty() {
             stats.duplicate_session_groups = stats.duplicate_session_groups.saturating_add(1);
-            stats.duplicate_files_skipped = stats
-                .duplicate_files_skipped
-                .saturating_add(group.len() as u64);
-
-            let winner_digest = candidate_digest(&winner, cancellation);
-            let mut conflict = winner_digest.is_err();
-            let winner_digest = winner_digest.ok();
-            for candidate in &group {
+            let winner_digest = match candidate_digest(&winner, cancellation) {
+                Ok(digest) => Some(digest),
+                Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+                Err(SourceScanError::Io(_)) => None,
+            };
+            for candidate in group {
                 cancellation.check()?;
                 // 硬链接副本 (同 dev+inode) 是同一物理文件, 零 IO 判等;
                 // Orca 的 codex-accounts 与 runtime-home 即此形态, 免去 GB 级重读.
-                if winner.inode != 0
+                let hard_link = winner.inode != 0
                     && candidate.inode == winner.inode
-                    && candidate.device == winner.device
-                {
-                    continue;
+                    && candidate.device == winner.device;
+                let identical = hard_link
+                    || (candidate.size == winner.size
+                        && match (&winner_digest, candidate_digest(&candidate, cancellation)) {
+                            (_, Err(SourceScanError::Runtime(error))) => return Err(error.into()),
+                            (Some(winner), Ok(digest)) => winner == &digest,
+                            _ => false,
+                        });
+                if identical {
+                    stats.duplicate_files_skipped = stats.duplicate_files_skipped.saturating_add(1);
+                } else {
+                    members.push(candidate);
                 }
-                if candidate.size != winner.size {
-                    conflict = true;
-                    continue;
-                }
-                let digest = candidate_digest(candidate, cancellation);
-                match (&winner_digest, digest) {
-                    (Some(winner), Ok(candidate)) if winner == &candidate => {}
-                    _ => conflict = true,
-                }
-            }
-            if conflict {
-                stats.conflict_session_groups = stats.conflict_session_groups.saturating_add(1);
             }
         }
-        selected.push(winner);
+        members.insert(0, winner);
+        resolved.push(members);
     }
-    sort_codex_candidates_by_path(&mut selected, cancellation)?;
-    Ok(selected)
+    cancellation.check()?;
+    resolved.sort_by(|left, right| left[0].path.cmp(&right[0].path));
+    Ok(resolved)
+}
+
+fn observation_total(observation: &CachedUsageObservation) -> u64 {
+    observation
+        .input
+        .saturating_add(observation.output)
+        .saturating_add(observation.cache_read)
+        .saturating_add(observation.cache_creation)
+}
+
+/// 旧版 rollout (无单次响应记录) 的回退去重键: token_count 毫秒时间戳 + 本次用量。
+fn codex_signature_key(timestamp_millis: i64, input: u64, cache_read: u64, output: u64) -> String {
+    format!("t:{timestamp_millis}:{input}:{cache_read}:{output}")
+}
+
+fn observation_dedupe_key(observation: &CachedUsageObservation) -> Cow<'_, str> {
+    match observation.dedupe_key.as_deref() {
+        Some(key) => Cow::Borrowed(key),
+        None => Cow::Owned(codex_signature_key(
+            observation.timestamp_millis,
+            observation.input.saturating_add(observation.cache_read),
+            observation.cache_read,
+            observation.output,
+        )),
+    }
+}
+
+/// 同一会话各副本的观测按单次响应去重键取并集 (C190)。副本的共享前缀逐字节相同, 同一次
+/// 响应在各副本中得到同一个键; 每个键保留该键下总量最大的那份副本的观测 —— 值一致时取
+/// 偏好靠前的副本, 同一 response_id 取值不一致时取大, 不会把同一次响应计两次。
+/// 返回合并后的观测 (按副本偏好、文件内原顺序) 与是否分叉: 只要有键来自首份以外的副本,
+/// 或同一键在副本间取值不一致, 即为分叉; 短副本是长副本前缀时不算分叉。
+fn merge_codex_copies<'a>(
+    copies: &[&'a [CachedUsageObservation]],
+) -> (Vec<&'a CachedUsageObservation>, bool) {
+    if let [only] = copies {
+        return (only.iter().collect(), false);
+    }
+    let mut chosen: HashMap<Cow<'a, str>, (usize, u64)> = HashMap::new();
+    let mut disagreement = false;
+    for (index, copy) in copies.iter().enumerate() {
+        let mut totals: HashMap<Cow<'a, str>, u64> = HashMap::new();
+        for observation in copy.iter() {
+            let total = totals
+                .entry(observation_dedupe_key(observation))
+                .or_default();
+            *total = total.saturating_add(observation_total(observation));
+        }
+        for (key, total) in totals {
+            match chosen.entry(key) {
+                Entry::Vacant(entry) => {
+                    entry.insert((index, total));
+                }
+                Entry::Occupied(mut entry) => {
+                    let best = entry.get().1;
+                    disagreement |= best != total;
+                    if total > best {
+                        entry.insert((index, total));
+                    }
+                }
+            }
+        }
+    }
+    let diverged = disagreement || chosen.values().any(|(index, _)| *index != 0);
+    let merged = copies
+        .iter()
+        .enumerate()
+        .flat_map(|(index, copy)| {
+            let chosen = &chosen;
+            copy.iter().filter(move |observation| {
+                chosen
+                    .get(&observation_dedupe_key(observation))
+                    .is_some_and(|(owner, _)| *owner == index)
+            })
+        })
+        .collect();
+    (merged, diverged)
+}
+
+fn diverged_copies_notice(groups: u64) -> String {
+    format!("Codex 会话副本已分叉, 已按单次响应合并 (会话组: {groups})")
 }
 
 fn sort_codex_candidates(
@@ -299,23 +423,6 @@ fn sort_codex_candidates(
     let cancellation_error = std::cell::Cell::new(None);
     candidates.sort_by(|left, right| match cancellation.check() {
         Ok(()) => candidate_preference(left, right),
-        Err(error) => {
-            cancellation_error.set(Some(error));
-            Ordering::Equal
-        }
-    });
-    cancellation_error
-        .get()
-        .map_or(Ok(()), |error| Err(error.into()))
-}
-
-fn sort_codex_candidates_by_path(
-    candidates: &mut [CodexFileCandidate],
-    cancellation: &CancellationToken,
-) -> Result<(), SourceScanError> {
-    let cancellation_error = std::cell::Cell::new(None);
-    candidates.sort_by(|left, right| match cancellation.check() {
-        Ok(()) => left.path.cmp(&right.path),
         Err(error) => {
             cancellation_error.set(Some(error));
             Ordering::Equal
@@ -389,15 +496,12 @@ pub(crate) fn scan_codex_with_cancellation(
             }
         }
     }
-    let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
+    let groups = resolve_codex_files(groups, cancellation, &mut stats)?;
     let mut builder = UsageContributionBuilder::new(window.clone());
-    scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
+    scan_selected_codex(groups, window, cancellation, &mut builder, &mut stats)?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
-        result.notice = Some(format!(
-            "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
-            stats.conflict_session_groups
-        ));
+        result.notice = Some(diverged_copies_notice(stats.conflict_session_groups));
     }
     Ok(result)
 }
@@ -410,8 +514,10 @@ pub(crate) fn scan_codex_with_cancellation(
 // 旧实现以整树身份签名 + 按窗口聚合的快照为缓存: 任一文件追加、跨日或改窗口长度都会
 // 让整树重读, 且每轮都要为全部候选文件读取头尾指纹来计算签名。
 
-/// v1 (C117): 观测值格式变化或 Codex 解析规则变化时必须升级, 令旧缓存整体重建。
-const CODEX_FILE_CACHE_SCHEMA: u32 = 1;
+/// 观测值格式变化或 Codex 解析规则变化时必须升级, 令旧缓存整体重建。
+/// v1 (C117); v2 (C190): 每条观测带单次响应去重键 (`r:<response_id>` / `t:<毫秒时间戳>`),
+/// 供同会话副本取并集 —— 升版同时让 C197 前被写成空观测的条目整体重解析一次。
+const CODEX_FILE_CACHE_SCHEMA: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct CodexFileCache {
@@ -531,6 +637,8 @@ fn parse_codex_file(
     let mut total_high_water: Option<CodexTokenCounters> = None;
     let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
     let mut previous_token_signature: Option<CodexTokenSignature> = None;
+    // C190: 最近一条单次响应记录 (response_id + 用量), 由下一条用量相同的 token_count 认领。
+    let mut pending_record: Option<(String, CodexTokenCounters)> = None;
     let mut observations = Vec::new();
     scan_jsonl_file(
         &candidate.path,
@@ -541,6 +649,18 @@ fn parse_codex_file(
             if !line_may_match(line, CODEX_NEEDLES) {
                 stats.ignored_lines = stats.ignored_lines.saturating_add(1);
                 return;
+            }
+            if line_may_match(line, &[b"token_usage_record"]) {
+                // C190: Codex 0.164+ 在每个 token_count 前写一行单次响应记录, 带全局唯一的
+                // response_id; 只记下, 用量仍以 token_count 为准。按需字段反序列化, 不为
+                // 这类行 (每次响应一行) 构建 JSON DOM。
+                if let Ok(record) = serde_json::from_slice::<CodexUsageRecordLine>(line) {
+                    if record.kind.as_deref() == Some("token_usage_record") {
+                        stats.json_lines_parsed = stats.json_lines_parsed.saturating_add(1);
+                        pending_record = record.payload.and_then(CodexUsageRecord::into_pending);
+                        return;
+                    }
+                }
             }
             let Some(value) = parse_json_line(line, stats) else {
                 return;
@@ -622,8 +742,17 @@ fn parse_codex_file(
             if usage.input == 0 && usage.cache_read == 0 && usage.output == 0 {
                 return;
             }
+            // C190: 单次响应去重键 —— 前一条记录用量相同时取其 response_id, 否则 (旧版
+            // rollout) 取本条 token_count 的毫秒时间戳 + 本次用量; 同会话副本据此取并集。
+            let dedupe_key = match pending_record.take() {
+                Some((response_id, record)) if record == usage => format!("r:{response_id}"),
+                other => {
+                    pending_record = other;
+                    codex_signature_key(timestamp, usage.input, usage.cache_read, usage.output)
+                }
+            };
             observations.push(CachedUsageObservation {
-                dedupe_key: None,
+                dedupe_key: Some(dedupe_key),
                 timestamp_millis: timestamp,
                 model: current_model.clone(),
                 input: usage.input.saturating_sub(usage.cache_read),
@@ -644,23 +773,30 @@ fn parse_codex_file(
 
 #[cfg(test)]
 fn scan_selected_codex(
-    selected: Vec<CodexFileCandidate>,
+    groups: Vec<Vec<CodexFileCandidate>>,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
     builder: &mut UsageContributionBuilder,
     stats: &mut ScanStats,
 ) -> Result<(), SourceScanError> {
-    for candidate in selected {
-        match parse_codex_file(&candidate, window, cancellation, stats) {
-            Ok(observations) => {
-                for observation in &observations {
-                    let _ = builder.record(observation.sample());
+    for group in groups {
+        let mut parsed = Vec::with_capacity(group.len());
+        for candidate in &group {
+            match parse_codex_file(candidate, window, cancellation, stats) {
+                Ok(observations) => parsed.push(observations),
+                Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+                Err(SourceScanError::Io(_)) => {
+                    stats.io_errors = stats.io_errors.saturating_add(1);
                 }
             }
-            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
-            Err(SourceScanError::Io(_)) => {
-                stats.io_errors = stats.io_errors.saturating_add(1);
-            }
+        }
+        let copies: Vec<&[CachedUsageObservation]> = parsed.iter().map(Vec::as_slice).collect();
+        let (merged, diverged) = merge_codex_copies(&copies);
+        if diverged {
+            stats.conflict_session_groups = stats.conflict_session_groups.saturating_add(1);
+        }
+        for observation in merged {
+            let _ = builder.record(observation.sample());
         }
     }
     Ok(())
@@ -707,7 +843,7 @@ pub fn scan_codex_cached_with_cancellation(
     }
     cancellation.check()?;
     let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
-    let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
+    let groups = resolve_codex_files(groups, cancellation, &mut stats)?;
 
     let cache_path = codex_file_cache_path(cache_root);
     let mut previous = match load_codex_file_cache(&cache_path) {
@@ -732,45 +868,58 @@ pub fn scan_codex_cached_with_cancellation(
     let mut changed = false;
     let mut unreadable_files = 0_u64;
     let mut builder = UsageContributionBuilder::new(window.clone());
-    for candidate in &selected {
-        cancellation.check()?;
-        let key = codex_path_key(&candidate.path);
-        let entry = match previous.remove(&key) {
-            Some(entry) if entry.matches(candidate) => {
-                stats.cache_hits = stats.cache_hits.saturating_add(1);
-                entry
-            }
-            stale => match parse_codex_file(candidate, window, cancellation, &mut stats) {
-                Ok(observations) => {
-                    stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
-                    changed = true;
-                    CodexFileEntry {
-                        size: candidate.size,
-                        modified_ns: candidate.modified_ns,
-                        device: candidate.device,
-                        inode: candidate.inode,
-                        observations,
-                    }
+    for group in &groups {
+        let mut entries = Vec::with_capacity(group.len());
+        for candidate in group {
+            cancellation.check()?;
+            let key = codex_path_key(&candidate.path);
+            let entry = match previous.remove(&key) {
+                Some(entry) if entry.matches(candidate) => {
+                    stats.cache_hits = stats.cache_hits.saturating_add(1);
+                    entry
                 }
-                Err(SourceScanError::Runtime(error)) => return Err(error.into()),
-                Err(SourceScanError::Io(_)) => {
-                    // C197: 打开 / 读取失败只缓存成功解析的结果 —— 不得以当前文件身份写入空条目
-                    // (文件恢复可读后身份不变, 会永久命中空条目)。与 dsh 活写兜底同口径: 该路径
-                    // 有旧条目时沿用其陈旧观测 (保留旧身份, 下一轮仍会重试), 没有则本轮不计入;
-                    // 只计 io_errors, 不计 cache_hits / cache_rebuilds / cache_deletions。
-                    stats.io_errors = stats.io_errors.saturating_add(1);
-                    unreadable_files = unreadable_files.saturating_add(1);
-                    match stale {
-                        Some(entry) => entry,
-                        None => continue,
+                stale => match parse_codex_file(candidate, window, cancellation, &mut stats) {
+                    Ok(observations) => {
+                        stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
+                        changed = true;
+                        CodexFileEntry {
+                            size: candidate.size,
+                            modified_ns: candidate.modified_ns,
+                            device: candidate.device,
+                            inode: candidate.inode,
+                            observations,
+                        }
                     }
-                }
-            },
-        };
-        for observation in &entry.observations {
+                    Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+                    Err(SourceScanError::Io(_)) => {
+                        // C197: 打开 / 读取失败只缓存成功解析的结果 —— 不得以当前文件身份写入空条目
+                        // (文件恢复可读后身份不变, 会永久命中空条目)。与 dsh 活写兜底同口径: 该路径
+                        // 有旧条目时沿用其陈旧观测 (保留旧身份, 下一轮仍会重试), 没有则本轮不计入;
+                        // 只计 io_errors, 不计 cache_hits / cache_rebuilds / cache_deletions。
+                        stats.io_errors = stats.io_errors.saturating_add(1);
+                        unreadable_files = unreadable_files.saturating_add(1);
+                        match stale {
+                            Some(entry) => entry,
+                            None => continue,
+                        }
+                    }
+                },
+            };
+            entries.push((key, entry));
+        }
+        // C190: 同会话各副本按单次响应去重键取并集后再并入聚合。
+        let copies: Vec<&[CachedUsageObservation]> = entries
+            .iter()
+            .map(|(_, entry)| entry.observations.as_slice())
+            .collect();
+        let (merged, diverged) = merge_codex_copies(&copies);
+        if diverged {
+            stats.conflict_session_groups = stats.conflict_session_groups.saturating_add(1);
+        }
+        for observation in merged {
             let _ = builder.record(observation.sample());
         }
-        files.insert(key, entry);
+        files.extend(entries);
     }
     // 未再被选中的文件 (删除 / 移出窗口 / 副本落选) 从缓存移除
     let removed = previous.len() as u64;
@@ -792,10 +941,7 @@ pub fn scan_codex_cached_with_cancellation(
         notes.push("Codex 缓存文件格式异常, 已整体重建".to_owned());
     }
     if stats.conflict_session_groups > 0 {
-        notes.push(format!(
-            "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
-            stats.conflict_session_groups
-        ));
+        notes.push(diverged_copies_notice(stats.conflict_session_groups));
     }
     if unreadable_files > 0 {
         notes.push(format!(
@@ -808,4 +954,38 @@ pub fn scan_codex_cached_with_cancellation(
         result.notice = Some(notes.join("; "));
     }
     Ok(result)
+}
+
+#[cfg(test)]
+pub(super) fn test_candidate(path: &Path) -> CodexFileCandidate {
+    let metadata = fs::metadata(path).unwrap();
+    let since_epoch = metadata
+        .modified()
+        .unwrap()
+        .duration_since(UNIX_EPOCH)
+        .unwrap();
+    let (device, inode) = file_identity(&metadata);
+    CodexFileCandidate {
+        path: path.to_owned(),
+        modified: since_epoch.as_secs_f64(),
+        modified_ns: since_epoch.as_nanos() as u64,
+        size: metadata.len(),
+        digest: None,
+        device,
+        inode,
+    }
+}
+
+#[cfg(test)]
+pub(super) fn test_parse(
+    candidate: &CodexFileCandidate,
+    window: &CollectionWindow,
+) -> Vec<CachedUsageObservation> {
+    parse_codex_file(
+        candidate,
+        window,
+        &CancellationToken::new(),
+        &mut ScanStats::default(),
+    )
+    .unwrap()
 }

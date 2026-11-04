@@ -443,8 +443,10 @@ fn distinct_rollout_sessions_are_both_counted() {
     fs::remove_dir_all(second).unwrap();
 }
 
+/// C190: 同名副本在同一时间戳各有一次用量不同的响应 —— 按单次响应模型是两次响应,
+/// 取并集; 组记为分叉并输出说明。(C190 前整份择一、只计 23。)
 #[test]
-fn conflicting_rollout_copies_are_not_added_twice() {
+fn diverged_rollout_copies_with_distinct_responses_are_unioned() {
     let first = temp_root("conflict-first");
     let second = temp_root("conflict-second");
     write_token_file(&first, "rollout-conflict.jsonl", 10, 2, 100, "short");
@@ -459,9 +461,9 @@ fn conflicting_rollout_copies_are_not_added_twice() {
 
     let result = scan_codex(&[first.clone(), second.clone()], &window());
 
-    assert_eq!(today_total(&result), 23);
-    assert_eq!(result.stats.files_scanned, 1);
-    assert_eq!(result.stats.duplicate_files_skipped, 1);
+    assert_eq!(today_total(&result), 12 + 23);
+    assert_eq!(result.stats.files_scanned, 2);
+    assert_eq!(result.stats.duplicate_files_skipped, 0);
     assert_eq!(result.stats.duplicate_session_groups, 1);
     assert_eq!(result.stats.conflict_session_groups, 1);
     // C198: 副本取舍是说明而非故障。
@@ -469,6 +471,137 @@ fn conflicting_rollout_copies_are_not_added_twice() {
     assert!(result.diagnostic.is_none());
     fs::remove_dir_all(first).unwrap();
     fs::remove_dir_all(second).unwrap();
+}
+
+/// C190 夹具: 一次响应 = 单次响应记录 (可选, Codex 0.164+) + token_count。
+fn codex_response(
+    timestamp: &str,
+    response_id: Option<&str>,
+    input: u64,
+    output: u64,
+) -> Vec<Value> {
+    let usage = json!({"input_tokens": input, "cached_input_tokens": 0, "output_tokens": output});
+    let mut lines = Vec::new();
+    if let Some(response_id) = response_id {
+        lines.push(json!({
+            "timestamp": timestamp,
+            "type": "token_usage_record",
+            "payload": {"response_id": response_id, "usage": usage}
+        }));
+    }
+    lines.push(json!({
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {"type": "token_count", "info": {"last_token_usage": usage}}
+    }));
+    lines
+}
+
+/// C190 夹具: CLI 根与 Orca 根各一份同名 rollout。shared 为两份共有的前缀响应。
+fn write_codex_copies(
+    cli: &Path,
+    orca: &Path,
+    shared: &[Vec<Value>],
+    cli_only: &[Vec<Value>],
+    orca_only: &[Vec<Value>],
+) {
+    let name = "rollout-2026-07-28T10-00-00-same.jsonl";
+    let lines = |own: &[Vec<Value>]| -> Vec<Value> {
+        shared.iter().chain(own).flatten().cloned().collect()
+    };
+    write_codex_lines(cli, name, &lines(cli_only));
+    write_codex_lines(orca, name, &lines(orca_only));
+}
+
+/// (标签, CLI 独有响应, Orca 独有响应, 期望今日合计, 期望分叉组数)
+type CopyCase<'a> = (&'a str, &'a [Vec<Value>], &'a [Vec<Value>], u64, u64);
+
+/// C190: 同名副本按单次响应取并集 —— 前缀副本等于长副本、不算冲突; 分叉副本为并集
+/// 12,760 (旧实现整份择一得 12,430, 「两份都计」得 13,090); 新旧两种 rollout 格式一致;
+/// 带缓存与不带缓存结果相同, 热轮全部命中。
+#[test]
+fn codex_copies_merge_by_response_without_double_counting() {
+    for with_records in [true, false] {
+        let id = |value: &'static str| with_records.then_some(value);
+        let shared = vec![codex_response(
+            "2026-07-28T02:00:00Z",
+            id("resp_shared"),
+            300,
+            30,
+        )];
+        let cli_only = vec![codex_response(
+            "2026-07-28T02:05:00Z",
+            id("resp_cli"),
+            300,
+            30,
+        )];
+        let orca_only = vec![codex_response(
+            "2026-07-28T02:06:00Z",
+            id("resp_orca"),
+            12_000,
+            100,
+        )];
+        let cases: [CopyCase; 2] = [
+            ("prefix", &cli_only, &[], 660, 0),
+            ("diverged", &cli_only, &orca_only, 12_760, 1),
+        ];
+        for (label, cli_part, orca_part, expected, conflicts) in cases {
+            let label = format!("{label}/records={with_records}");
+            let cli = temp_root(&format!("c190-cli-{label}").replace('/', "-"));
+            let orca = temp_root(&format!("c190-orca-{label}").replace('/', "-"));
+            let cache_dir = temp_root(&format!("c190-cache-{label}").replace('/', "-"));
+            write_codex_copies(&cli, &orca, &shared, cli_part, orca_part);
+            let roots = [cli.clone(), orca.clone()];
+
+            let reference = scan_codex(&roots, &window());
+            assert_eq!(today_total(&reference), expected, "{label}");
+            assert_eq!(
+                reference.stats.conflict_session_groups, conflicts,
+                "{label}"
+            );
+            assert_eq!(reference.notice.is_some(), conflicts > 0, "{label}");
+            assert_eq!(reference.stats.files_scanned, 2, "{label}: 两份都解析");
+
+            let cold = scan_codex_cached(&roots, &window(), &cache_dir);
+            assert_eq!(cold.contribution, reference.contribution, "{label}");
+            assert_eq!(cold.stats.conflict_session_groups, conflicts, "{label}");
+            let warm = scan_codex_cached(&roots, &window(), &cache_dir);
+            assert_eq!(warm.contribution, reference.contribution, "{label}");
+            assert_eq!(
+                (warm.stats.cache_hits, warm.stats.cache_rebuilds),
+                (2, 0),
+                "{label}: 两份副本各自按文件缓存命中"
+            );
+            assert_eq!(warm.notice, cold.notice, "{label}: 命中缓存的轮次说明不变");
+            for root in [cli, orca, cache_dir] {
+                fs::remove_dir_all(root).ok();
+            }
+        }
+    }
+}
+
+/// C190: 去重键 —— 记录与 token_count 用量一致时取 response_id, 否则回退为时间戳;
+/// 记录只被下一条用量相同的 token_count 认领一次。
+#[test]
+fn codex_dedupe_key_prefers_matching_response_record() {
+    let root = temp_root("c190-keys");
+    let mut lines = codex_response("2026-07-28T02:00:00Z", Some("resp_a"), 10, 1);
+    // 用量不同的记录不被认领, 下一条 token_count 回退为时间戳键
+    lines.push(json!({
+        "timestamp": "2026-07-28T02:01:00Z",
+        "type": "token_usage_record",
+        "payload": {"response_id": "resp_other", "usage": {"input_tokens": 99, "output_tokens": 9}}
+    }));
+    lines.extend(codex_response("2026-07-28T02:02:00Z", None, 20, 2));
+    write_codex_lines(&root, "rollout-keys.jsonl", &lines);
+    let candidate = super::codex::test_candidate(&root.join("2026/07/28/rollout-keys.jsonl"));
+    let observations = super::codex::test_parse(&candidate, &window());
+    let keys: Vec<_> = observations
+        .iter()
+        .map(|observation| observation.dedupe_key.clone().unwrap())
+        .collect();
+    assert_eq!(keys, ["r:resp_a", "t:1785204120000:20:0:2"]);
+    fs::remove_dir_all(root).ok();
 }
 
 /// 硬链接副本 (Orca 双根形态) 与大文件 (>64KB, 走头尾指纹 seek 路径)
