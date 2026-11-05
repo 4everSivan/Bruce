@@ -63,7 +63,12 @@
         "C214",
         "C216",
         "C217",
-        "C218"
+        "C218",
+        "C219",
+        "C220",
+        "C221",
+        "C222",
+        "C223"
       ]
     },
     "PricingEngine": {
@@ -2234,6 +2239,51 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
       "file": "docs/devel/change/C218.json"
+    },
+    "C219": {
+      "title": "Token 用量热力图首尾列铺满（完整 7 天块，双端）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C219-C223-dashboard-polish",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C219.json"
+    },
+    "C220": {
+      "title": "经典 / 液态玻璃主题强调色对齐 Nothing 杏色 / 绿色（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C219-C223-dashboard-polish",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C220.json"
+    },
+    "C221": {
+      "title": "Nothing 浅色 Agent 用量卡图表改用杏色阶（macOS）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C219-C223-dashboard-polish",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C221.json"
+    },
+    "C222": {
+      "title": "经典 / 液态玻璃 Agent 卡 14 日柱总量改为悬停显示（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C219-C223-dashboard-polish",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C222.json"
+    },
+    "C223": {
+      "title": "热力图改为连续 7 天块、末格为今天（双端）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C219-C223-dashboard-polish",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C223.json"
     }
   }
 }

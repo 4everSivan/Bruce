@@ -94,7 +94,7 @@ extension PanelViewModelMapper {
             days: days,
             legend: legend,
             isLive: isLive,
-            heatmap: makeUsageHeatmap(artifact),
+            heatmap: makeUsageHeatmap(artifact, now: now),
             monthly: monthly.months,
             halfYear: monthly.summary,
             models: makeUsageModels(artifact)
@@ -210,11 +210,12 @@ extension PanelViewModelMapper {
 
     // MARK: 用量热力图
 
-    /// 全量 daily 窗口 (不 suffix 14) 按周列 × 周日行 (周一起) 组织;
-    /// level 按当日绝对总量以 100M 步进分 0-5 档 (与 UsageTier 一致),
-    /// 窗口外与未来格为 nil.
+    /// 全量 daily 窗口按「连续 7 天块」组织, 末格为今天 (C223);
+    /// level 按当日绝对总量以 100M 步进分 0-5 档 (与 UsageTier 一致).
+    /// 首块可早于首个数据日 (补 level 0), 网格恒为完整矩形, 无缺口、无未来格;
+    /// 仅统计近 182 天内的数据.
     /// 日期解析与网格使用 mapper 注入的 calendar 时区, 保证测试可替换.
-    func makeUsageHeatmap(_ artifact: AgentUsageArtifact) -> [UsageHeatmapWeek] {
+    func makeUsageHeatmap(_ artifact: AgentUsageArtifact, now: Date) -> [UsageHeatmapWeek] {
         var totalsByDate: [String: Int] = [:]
         for agent in artifact.agents {
             for day in agent.daily {
@@ -222,31 +223,37 @@ extension PanelViewModelMapper {
             }
         }
         let dates = totalsByDate.keys.sorted()
-        var gridCalendar = calendar
-        gridCalendar.firstWeekday = 2 // 周一
+        let gridCalendar = calendar
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = gridCalendar.timeZone
-        guard let first = dates.first, let last = dates.last,
-              let firstDate = formatter.date(from: first),
-              let lastDate = formatter.date(from: last) else {
+        guard let first = dates.first,
+              let firstDataDate = formatter.date(from: first) else {
             return []
         }
-        // 首日所在周的周一作为网格起点.
-        guard let gridStart = gridCalendar.dateInterval(
-            of: .weekOfYear, for: firstDate
-        )?.start else {
+        let today = gridCalendar.startOfDay(for: now)
+        guard firstDataDate <= today else {
+            return []
+        }
+        // 只取近 182 天; 首块向前扩展成完整 7 天, 缺失日补 level 0.
+        let windowStart = gridCalendar.date(byAdding: .day, value: -181, to: today) ?? firstDataDate
+        let effectiveFirst = max(firstDataDate, windowStart)
+        let spanDays = gridCalendar.dateComponents([.day], from: effectiveFirst, to: today).day ?? 0
+        let blockCount = max(1, spanDays / 7 + 1)
+        guard let startDate = gridCalendar.date(
+            byAdding: .day, value: -(blockCount * 7 - 1), to: today
+        ) else {
             return []
         }
         var weeks: [UsageHeatmapWeek] = []
-        var weekStart = gridStart
-        while weekStart <= lastDate {
+        var blockStart = startDate
+        while blockStart <= today {
             var cells: [UsageHeatmapCell?] = []
             for offset in 0..<7 {
                 guard let date = gridCalendar.date(
-                    byAdding: .day, value: offset, to: weekStart
-                ), date >= firstDate, date <= lastDate else {
+                    byAdding: .day, value: offset, to: blockStart
+                ) else {
                     cells.append(nil)
                     continue
                 }
@@ -259,10 +266,10 @@ extension PanelViewModelMapper {
                 ))
             }
             weeks.append(UsageHeatmapWeek(cells: cells))
-            guard let next = gridCalendar.date(byAdding: .day, value: 7, to: weekStart) else {
+            guard let next = gridCalendar.date(byAdding: .day, value: 7, to: blockStart) else {
                 break
             }
-            weekStart = next
+            blockStart = next
         }
         return weeks
     }

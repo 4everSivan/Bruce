@@ -278,6 +278,11 @@ Windows Tauri 后端 (Rust)
 | C214 | 界面对齐 | 顶栏 Tab 切换器去底色（双端） | 删除 #tab-active-pill 与 translateX；.segmented-track 仅 1px 发丝描边 + 透明底，Nothing 选中图标 #4A9E5C，经典 --ink |
 | C215 | 文案对齐 | 订阅 Provider 展示名统一为 OpenCode（双端） | settings-state providers 显示名改为 OpenCode；provider ID / 存储键 / 配置字段不变 |
 | C216 | 界面对齐 | Agent 明细统一为紧凑条形（双端） | 删除 stackedShareBar/detailGroup/nothingProjectConsole 与 share-bar/prj-console；新增 .detail-compact / .dc-*，内容与 mac 方案 C 同构 |
+| C219 | 缺陷修复 | 热力图首尾列铺满（双端） | 删除 `.heatmap .cell.empty` 的 transparent 覆写；C223 起模型输出完整 7 天块（无 nil），首尾列自然铺满，`.empty` 仅作异常兜底 |
+| C220 | 界面对齐 | 经典 / 液态玻璃强调色对齐 Nothing 杏 / 绿（双端） | 新增 `--panel-accent #4A9E5C` 与 hero 渐变 token；成本 / chip / drop-target / 代码流 tint 改用面板 accent；热力图 l1-l5 改绿色透明度档；设置页 --accent 蓝色不变 |
+| C221 | 界面对齐 | Nothing 浅色 Agent 卡图表改杏色（macOS） | Windows 恒深色，不涉及；深色绿阶与 Windows NOTHING_RAMP 保持 |
+| C222 | 界面对齐 | 14 日柱总量改为悬停显示（双端） | `.daily-chart .day-total` 全主题默认 opacity 0 + `.day:hover` 显示；标注行高保留，柱高公式不变 |
+| C223 | 缺陷修复 | 热力图改为连续 7 天块、末格为今天（双端） | `make_usage_heatmap(artifact, today)` 以今天为最后一格向前每 7 天切块；首块可早于数据首日补 level 0，无 nil/未来格，网格恒为完整矩形；仅统计近 182 天 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -433,6 +438,12 @@ Windows Tauri 后端 (Rust)
     - **命令授权**：`build.rs` 以 `tauri_build::AppManifest::commands` 声明 `generate_handler!` 的全部应用命令，声明后每个命令只对 `capabilities/commands-<窗口>.json` 中显式授予 `allow-<command>` 的窗口开放、未授予即被 ACL 拒绝；各窗口只授予其页面及外链脚本实际调用的命令（dashboard 8、settings 51、preview 5、quota-alert 2）。未被任何窗口调用的已注册命令（`import_codex_auth`、`save_credentials_command`）不授予任何窗口，IPC 不可达。远程页面（StepFun 网页登录窗）本就无法调用应用命令（Tauri 2.11 对非本地源一律校验 ACL），不得为其配置 `remote` capability。
     - **转义**：预警气泡把服务名 / 窗口标签 / 重置文案写入 innerHTML 前一律转义（CSP 之外的第二道防线）。
     - **门禁**：`scripts/check-win-frontend.mjs` 断言 CSP 满足上述基线、页面无内联脚本与事件属性、AppManifest 与 `generate_handler!` 逐一相同、每个窗口的授权恰为其调用集合（漏授 / 多授 / remote 均红灯）；构建期 tauri-build 校验 capability 引用的权限必须存在。CSP 下真实 WebView2 的表现仍须 Windows 实机确认。
+37. **看板配色与 14 日柱交互对齐 mac C219–C223**：
+    - **热力图完整块（C219/C223）**：模型按连续 7 天块输出（末格今天），每列 7 格均为有效 cell，不产生 nil/未来格；`.heatmap .cell` 的基础空槽底色供 level 0 使用，**禁止** `.cell.empty { background: transparent }`（`.empty` 仅作异常兜底）。首块可早于数据首日并渲染 level 0，网格恒为完整矩形、无缺口。
+    - **面板强调色（C220）**：仪表盘使用 `--panel-accent`（`#4A9E5C`）/ `--panel-accent-deep`（`#2A6B3C`）/ `--panel-accent-soft`（`#8CCB98`）；hero 变量固定为深阶 → 浅阶，`.hero-cost`、`.chip.current/.selected`、`.card.drop-target` 与代码流 tint 消费面板 accent。设置页继续使用 `--accent` 蓝色，两者不得互相改写。热力图 l1-l5 为 `rgba(74,158,92,.2/.4/.6/.8/1)`。
+    - **14 日柱总量（C222）**：`.daily-chart .day-total` 默认 `opacity: 0`，`.daily-chart .day:hover .day-total` 为 1；标注仍占 10px 行高，柱高公式 `calc((100% - 10px) × ratio)` 不变，悬停不得引起柱体位移。Nothing 点阵柱同用该规则，删除 theme-nothing 重复覆写。
+    - **热力图分块与末日（C223）**：`make_usage_heatmap(artifact, today)` 以今天为最后一格向前每 7 天切块，`块数 = floor(spanDays/7)+1`、`首块首日 = today − (块数×7−1)`；`today` 取 `make_usage` 注入的 `now.date_naive()`；首块可早于数据首日（补 level 0），末格固定为今天，footer 起始/截止与网格首尾一致；仅统计近 182 天。
+    - **测试**：`frontend.test.mjs` 断言 empty 非透明、`--panel-accent` 存在且设置页 `--accent` 未变、`HERO_GRADIENT` 固定值、`.day-total` 默认隐藏与 hover 显示；真实渲染用 render-harness 截图核对。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

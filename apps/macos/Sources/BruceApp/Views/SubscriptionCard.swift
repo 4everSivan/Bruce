@@ -1164,12 +1164,17 @@ private struct BalanceChip: View {
 
 /// 账号属性标签 (例如多账号场景下的 "国际" 站点标记):
 /// Nothing 主题: 3pt 方角, 1px 加强边框, NothingFont.mono(8.5);
-/// Classic / Liquid Glass 主题: 微型圆角胶囊, 科技蓝色调, 直观醒目.
+/// Classic / Liquid Glass 主题: 微型圆角胶囊, 主题 accent 色调 (C220 对齐 Nothing 杏 / 绿).
 private struct AccountTagChip: View {
     let text: String
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+
+    /// 面板主题 accent (C220): 浅色杏 #D4A843 / 深色绿 #4A9E5C.
+    private var accent: Color {
+        Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
+    }
 
     private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
@@ -1187,16 +1192,16 @@ private struct AccountTagChip: View {
         } else {
             Text(text)
                 .font(.system(size: 8.5, weight: .medium))
-                .foregroundStyle(Color(hex: "#0a84ff"))
+                .foregroundStyle(accent)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
                 .background(
-                    Color(hex: "#0a84ff").opacity(colorScheme == .dark ? 0.22 : 0.12),
+                    accent.opacity(colorScheme == .dark ? 0.22 : 0.12),
                     in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .strokeBorder(Color(hex: "#0a84ff").opacity(0.3), lineWidth: 0.5)
+                        .strokeBorder(accent.opacity(0.3), lineWidth: 0.5)
                 )
         }
     }

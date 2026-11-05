@@ -123,13 +123,14 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
         }
     }
 
-    /// Nothing 主题系列色: 呼吸灯绿 (#4A9E5C) 基色的 5 档绿阶.
+    /// Nothing 主题系列色: 深色为呼吸灯绿 (#4A9E5C) 基色的 5 档绿阶,
+    /// 浅色为同序杏色阶 (#D4A843 基色, C221), 与浅色 hero / 热力图同源;
     /// 深色模式亮→暗 (高频 agent 更亮, 黑底可读), 浅色模式反转保证白底可读;
     /// 已知 agent 固定档位 (5 个高频 agent 各占一档, 其余按约定复用; dsh 复用第 1 档), 未知 agent 沿用 FNV-1a 散列稳定落档.
     package static func nothingRampHex(agentID: String, darkMode: Bool) -> String {
         let ramp = darkMode
             ? ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]
-            : ["#2A6B3C", "#35854A", "#4A9E5C", "#5FAF6E", "#8CCB98"]
+            : ["#946A08", "#B8860B", "#D4A843", "#E3BE6B", "#F0D69A"]
         let index: Int
         switch agentID {
         case "kimi-code-cli":

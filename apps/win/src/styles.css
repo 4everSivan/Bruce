@@ -53,6 +53,10 @@
   --card-border: rgba(255,255,255,.12);
   --accent: #0a84ff;
   --accent-soft: rgba(10,132,255,.14);
+  /* C220: 仪表盘强调色对齐 Nothing 深色绿 (Windows 恒深色). 设置页仍用 --accent 蓝色. */
+  --panel-accent: #4A9E5C;
+  --panel-accent-deep: #2A6B3C;
+  --panel-accent-soft: #8CCB98;
   --badge-bg: rgba(255,255,255,.06);
   --meter-track: rgba(255,255,255,.12);
   /* mac .system(design: .monospaced) 等价栈: Windows 走 Cascadia / Consolas */
@@ -412,7 +416,7 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .drag-handle:hover { background: rgba(255,255,255,.08); }
 .drag-handle:hover i { background: var(--ink); }
 .card.dragging { opacity: .45; }
-.card.drop-target { outline: 1px dashed var(--accent); outline-offset: 2px; }
+.card.drop-target { outline: 1px dashed var(--panel-accent); outline-offset: 2px; }
 
 /* ---------- Token 用量卡 (mac UsageHeroCard) ---------- */
 .card.usage-card { isolation: isolate; }
@@ -441,7 +445,7 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  background: linear-gradient(135deg, var(--hero-grad-start, #63885E) 30%, var(--hero-grad-end, #82A57C) 100%);
+  background: linear-gradient(135deg, var(--hero-grad-start, #2A6B3C) 30%, var(--hero-grad-end, #8CCB98) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -452,7 +456,7 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   font-size: 15px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
+  color: var(--panel-accent);
   white-space: nowrap;
 }
 .divider { height: 1px; background: var(--hairline); margin-top: 12px; }
@@ -491,9 +495,9 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 }
 .chip[role="button"] { cursor: pointer; }
 .chip.current { background: rgba(255,255,255,.14); }
-.chip.selected { border-color: rgba(10,132,255,.85); }
+.chip.selected { border-color: rgba(74,158,92,.85); }
 .chip .m { font-size: 8.5px; letter-spacing: .5px; color: var(--faint); margin-bottom: 1px; }
-.chip.current .m, .chip.selected .m { color: var(--accent); font-weight: 600; }
+.chip.current .m, .chip.selected .m { color: var(--panel-accent); font-weight: 600; }
 .chip .t {
   font-size: 13px; font-weight: 600; color: var(--ink); opacity: .85;
   font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -534,18 +538,19 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .models-empty { font-size: 10px; color: var(--faint); padding: 6px 0; }
 
 /* 热力图 (mac heatmapView): 周列 × 7 行, 列等宽撑满整卡 (maxWidth: .infinity), 格子正方形
-   随列宽缩放; level 0 淡槽, 1-5 为 UsageTier 绿阶。数据只覆盖数周时 mac 同样把少数列
-   拉满整卡 (格子随之变大), 双端一致, 不设列宽上限。 */
+   随列宽缩放; level 0 淡槽, 1-5 为主题 accent 透明度档 (C220)。窗口外 / 未来格 (empty)
+   同样绘制空槽, 首尾周列铺满 (C219)。数据只覆盖数周时 mac 同样把少数列拉满整卡
+   (格子随之变大), 双端一致, 不设列宽上限。 */
 #heat-sec { margin-top: 12px; }
 .heatmap { display: flex; gap: 3px; margin-top: 4px; }
 .heatmap .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .heatmap .cell { aspect-ratio: 1 / 1; border-radius: 2px; background: rgba(255,255,255,.07); }
-.heatmap .cell.empty { background: transparent; }
-.heatmap .cell.l1, .heat-legend .sw.l1, .mini-week i.l1 { background: #7D9B76; }
-.heatmap .cell.l2, .heat-legend .sw.l2, .mini-week i.l2 { background: #63885E; }
-.heatmap .cell.l3, .heat-legend .sw.l3, .mini-week i.l3 { background: #4C7249; }
-.heatmap .cell.l4, .heat-legend .sw.l4, .mini-week i.l4 { background: #385B38; }
-.heatmap .cell.l5, .heat-legend .sw.l5, .mini-week i.l5 { background: #26452A; }
+.heatmap .cell.empty { background: rgba(255,255,255,.07); }
+.heatmap .cell.l1, .heat-legend .sw.l1, .mini-week i.l1 { background: rgba(74,158,92,.2); }
+.heatmap .cell.l2, .heat-legend .sw.l2, .mini-week i.l2 { background: rgba(74,158,92,.4); }
+.heatmap .cell.l3, .heat-legend .sw.l3, .mini-week i.l3 { background: rgba(74,158,92,.6); }
+.heatmap .cell.l4, .heat-legend .sw.l4, .mini-week i.l4 { background: rgba(74,158,92,.8); }
+.heatmap .cell.l5, .heat-legend .sw.l5, .mini-week i.l5 { background: #4A9E5C; }
 /* C202 热力图底部单行: 起始日期 | 程度图例 | 截止日期 (图例始终居中于网格) */
 .heat-footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; font-size: 9px; color: var(--faint); margin-top: 5px; }
 .heat-footer .heat-start { justify-self: start; }
@@ -559,7 +564,7 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .collapsed-summary .mini-num {
   flex: none;
   font-size: 17px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums;
-  background: linear-gradient(135deg, var(--hero-grad-start, #63885E) 30%, var(--hero-grad-end, #82A57C) 100%);
+  background: linear-gradient(135deg, var(--hero-grad-start, #2A6B3C) 30%, var(--hero-grad-end, #8CCB98) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .mini-week { display: flex; gap: 3px; flex: 1; min-width: 0; }
@@ -692,10 +697,14 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   flex: 1 1 0; min-width: 0; height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
 }
+/* C222: 14 日柱当日总量默认隐藏, 悬停该日列才显示; 标注仍占 10px 行高,
+   显隐不改变柱高与布局 (与 mac hoveredDayDate 同语义). */
 .daily-chart .day-total {
   flex: none; font-size: 7.5px; line-height: 10px; color: var(--secondary);
   font-variant-numeric: tabular-nums; white-space: nowrap;
+  opacity: 0; transition: opacity .15s;
 }
+.daily-chart .day:hover .day-total { opacity: 1; }
 /* --ratio = 当日总量 / 14 日峰值 (app.js 注入); 扣除柱顶标注行高后按比例取高 */
 .daily-chart .day-bars {
   flex: none; width: 72%;
@@ -783,9 +792,6 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   gap: 2px; align-content: end; justify-content: center;
 }
 .day-dots i { background: #1A1A1A; border-radius: 0; }
-/* Nothing 日总量改为 hover 显示 (mac 点阵分支仅悬停该列才显示) */
-.theme-nothing .daily-chart .day-total { opacity: 0; transition: opacity .15s; }
-.theme-nothing .daily-chart .day:hover .day-total { opacity: 1; }
 /* Nothing 量条: 24 段方角, 段间 2pt, 高 10 (mac NothingSegmentedMeter) */
 .meter.segmented {
   display: flex; gap: 2px; height: 10px;
@@ -1928,10 +1934,10 @@ details summary {
 }
 .theme-nothing .model-row .track, .theme-nothing .model-row .track > div { border-radius: 0; }
 
-/* 热力图: 全方角; level 0 surface-raised, 1-5 为 accent 绿 20/40/60/80/100% 透明度阶.
-   C213 起全主题静态: 填充格、图例色样与收起态迷你周格均不挂呼吸/相位动画. */
+/* 热力图: 全方角; level 0 / 窗口外空槽 surface-raised, 1-5 为 accent 绿 20/40/60/80/100% 透明度阶.
+   C213 起全主题静态: 填充格、图例色样与收起态迷你周格均不挂呼吸/相位动画.
+   C219: empty 与 level 0 同为空槽, 首尾周列铺满. */
 .theme-nothing .heatmap .cell, .theme-nothing .heat-legend .sw, .theme-nothing .mini-week i { border-radius: 0; background: #1A1A1A; }
-.theme-nothing .heatmap .cell.empty { background: transparent; }
 .theme-nothing .heatmap .cell.l1, .theme-nothing .heat-legend .sw.l1, .theme-nothing .mini-week i.l1 { background: rgba(74,158,92,.2); }
 .theme-nothing .heatmap .cell.l2, .theme-nothing .heat-legend .sw.l2, .theme-nothing .mini-week i.l2 { background: rgba(74,158,92,.4); }
 .theme-nothing .heatmap .cell.l3, .theme-nothing .heat-legend .sw.l3, .theme-nothing .mini-week i.l3 { background: rgba(74,158,92,.6); }

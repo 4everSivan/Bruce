@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate};
+use chrono::{DateTime, Duration, NaiveDate};
 use collector_domain::AgentUsageArtifact;
 
 use crate::color::PanelAgentColor;
@@ -193,7 +193,7 @@ impl PanelViewModelMapper {
             days,
             legend,
             is_live,
-            heatmap: make_usage_heatmap(artifact),
+            heatmap: make_usage_heatmap(artifact, now.date_naive()),
             monthly,
             half_year,
             models: make_usage_models(artifact),
@@ -370,11 +370,14 @@ pub fn make_usage_models(artifact: &AgentUsageArtifact) -> Option<UsageModelUsag
 
 // MARK: 用量热力图
 
-/// 全量 daily 窗口 (不做 14 日截断) 按周列 × 周日行 (周一起) 组织;
-/// level 按当日绝对总量以 100M 步进分 0-5 档 (与 UsageTier 一致),
-/// 窗口外与未来格为 None。日期为纯 "yyyy-MM-dd" 字符串, 周一网格起点
-/// 与 Swift 端 firstWeekday=2 的周区间语义等价。
-pub fn make_usage_heatmap(artifact: &AgentUsageArtifact) -> Vec<UsageHeatmapWeek> {
+/// 全量 daily 窗口按「连续 7 天块」组织, 末格为今天 (C223);
+/// level 按当日绝对总量以 100M 步进分 0-5 档 (与 UsageTier 一致)。
+/// 首块可早于首个数据日 (补 level 0), 网格恒为完整矩形, 无缺口、无未来格;
+/// 仅统计近 182 天内的数据。日期为纯 "yyyy-MM-dd" 字符串, 与 Swift 端同语义。
+pub fn make_usage_heatmap(
+    artifact: &AgentUsageArtifact,
+    today: NaiveDate,
+) -> Vec<UsageHeatmapWeek> {
     let mut totals_by_date: BTreeMap<String, i64> = BTreeMap::new();
     for agent in &artifact.agents {
         for day in &agent.daily {
@@ -385,27 +388,22 @@ pub fn make_usage_heatmap(artifact: &AgentUsageArtifact) -> Vec<UsageHeatmapWeek
     let Some(first_date) = totals_by_date.keys().next().and_then(|key| parse_date(key)) else {
         return Vec::new();
     };
-    let Some(last_date) = totals_by_date
-        .keys()
-        .next_back()
-        .and_then(|key| parse_date(key))
-    else {
+    if first_date > today {
         return Vec::new();
-    };
-    // 首日所在周的周一作为网格起点。
-    let grid_start =
-        first_date - Duration::days(first_date.weekday().num_days_from_monday() as i64);
+    }
+    // 只取近 182 天; 首块向前扩展成完整 7 天, 缺失日补 level 0。
+    let window_start = today - Duration::days(181);
+    let effective_first = first_date.max(window_start);
+    let span_days = (today - effective_first).num_days();
+    let block_count = (span_days / 7 + 1).max(1);
+    let start_date = today - Duration::days(block_count * 7 - 1);
 
     let mut weeks: Vec<UsageHeatmapWeek> = Vec::new();
-    let mut week_start = grid_start;
-    while week_start <= last_date {
+    let mut block_start = start_date;
+    while block_start <= today {
         let mut cells: Vec<Option<UsageHeatmapCell>> = Vec::with_capacity(7);
         for offset in 0..7 {
-            let date = week_start + Duration::days(offset);
-            if date < first_date || date > last_date {
-                cells.push(None);
-                continue;
-            }
+            let date = block_start + Duration::days(offset);
             let key = date.format("%Y-%m-%d").to_string();
             let total = totals_by_date.get(&key).copied().unwrap_or(0);
             cells.push(Some(UsageHeatmapCell {
@@ -415,7 +413,7 @@ pub fn make_usage_heatmap(artifact: &AgentUsageArtifact) -> Vec<UsageHeatmapWeek
             }));
         }
         weeks.push(UsageHeatmapWeek { cells });
-        week_start += Duration::days(7);
+        block_start += Duration::days(7);
     }
     weeks
 }

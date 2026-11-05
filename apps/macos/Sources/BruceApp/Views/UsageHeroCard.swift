@@ -84,7 +84,7 @@ struct UsageHeroCard: View {
                 // Nothing: 16pt 点阵网格替代代码流字符背景, 底部渐隐.
                 NothingDotGridBackground(color: Self.nothingSecondary)
             } else {
-                CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+                CodeStreamBackground(tint: Self.accentSoft)
             }
         }
     }
@@ -119,8 +119,8 @@ struct UsageHeroCard: View {
 
     // MARK: 收起态迷你摘要
 
-    /// 收起态: 小号总量数字 (沿用 hero 绿阶渐变 / Nothing Doto 点阵纯色)
-    /// + 近 7 天迷你热力图 (绿阶与展开态热力图同源), flex 铺满.
+    /// 收起态: 小号总量数字 (沿用 hero accent 渐变 / Nothing Doto 点阵纯色)
+    /// + 近 7 天迷你热力图 (accent 档位与展开态热力图同源), flex 铺满.
     private var collapsedMini: some View {
         HStack(spacing: 15) {
             Text(viewModel.totalTokensText)
@@ -130,8 +130,8 @@ struct UsageHeroCard: View {
                 .tracking(isNothing ? 0 : -0.5)
                 .monospacedDigit()
                 .foregroundStyle(isNothing
-                    ? AnyShapeStyle(Self.nothingHeroAccent)
-                    : AnyShapeStyle(Self.heroGradient(for: viewModel.usageTier)))
+                    ? AnyShapeStyle(Self.accent)
+                    : AnyShapeStyle(Self.heroGradient))
                 .fixedSize()
             HStack(spacing: 3) {
                 ForEach(
@@ -148,23 +148,12 @@ struct UsageHeroCard: View {
     }
 
     /// 迷你热力格配色: 与 HeatmapGridView.baseColor 同一语义
-    /// (level 0 淡槽, 1-5 绿阶; Nothing 为 accent 透明度阶).
+    /// (level 0 淡槽, 1-5 主题 accent 透明度阶; 浅色杏 / 深色绿).
     private func miniHeatColor(_ level: Int) -> Color {
-        if isNothing {
-            guard level > 0 else { return Self.nothingSurfaceRaised }
-            let op = [0.2, 0.4, 0.6, 0.8, 1.0][min(level, 5) - 1]
-            return Self.nothingHeroAccent.opacity(op)
+        guard level > 0 else {
+            return isNothing ? Self.nothingSurfaceRaised : Self.emptySlot
         }
-        guard level > 0 else { return Color.primary.opacity(0.07) }
-        let tier: UsageTier
-        switch level {
-        case 1: tier = .sage
-        case 2: tier = .moss
-        case 3: tier = .fern
-        case 4: tier = .pine
-        default: tier = .forest
-        }
-        return Self.tierColors(for: tier).0
+        return Self.accent.opacity(Self.heatmapOpacity(level))
     }
 
     // MARK: Hero 行
@@ -205,7 +194,7 @@ struct UsageHeroCard: View {
                 .font(.system(size: 40, weight: .bold))
                 .tracking(-1.2)
                 .monospacedDigit()
-                .foregroundStyle(Self.heroGradient(for: viewModel.usageTier))
+                .foregroundStyle(Self.heroGradient)
         }
     }
 
@@ -215,7 +204,7 @@ struct UsageHeroCard: View {
             if let dotIndex = viewModel.totalTokensText.firstIndex(of: ".") {
                 Text(String(viewModel.totalTokensText[..<dotIndex]))
                 Rectangle()
-                    .fill(Self.nothingHeroAccent)
+                    .fill(Self.accent)
                     .frame(width: 4, height: 4)
                     .padding(.horizontal, 4)
                 Text(String(viewModel.totalTokensText[viewModel.totalTokensText.index(after: dotIndex)...]))
@@ -226,7 +215,7 @@ struct UsageHeroCard: View {
         .font(NothingFont.display(52, weight: .bold))
         .tracking(-1.04)
         .monospacedDigit()
-        .foregroundStyle(Self.nothingHeroAccent)
+        .foregroundStyle(Self.accent)
     }
 
     /// The hidden/reduced-motion branch contains no repeatForever animation.
@@ -234,14 +223,14 @@ struct UsageHeroCard: View {
         nothingHeroContent
             .opacity(motionSuppressed ? 1 : 0.86)
             .scaleEffect(1)
-            .shadow(color: Self.nothingHeroAccent, radius: motionSuppressed ? 0 : 3)
+            .shadow(color: Self.accent, radius: motionSuppressed ? 0 : 3)
     }
 
     private var animatedNothingHeroNumber: some View {
         nothingHeroContent
             .opacity(heroBreathing ? 1 : 0.86)
             .scaleEffect(heroBreathing ? 1.015 : 1)
-            .shadow(color: Self.nothingHeroAccent, radius: heroBreathing ? 15 : 3)
+            .shadow(color: Self.accent, radius: heroBreathing ? 15 : 3)
             .onAppear {
                 restartHeroBreathing()
             }
@@ -376,7 +365,7 @@ struct UsageHeroCard: View {
                     : .system(size: 8.5, weight: month.isCurrent || isSelected ? .semibold : .regular))
                 .tracking(isNothing ? 0.81 : 0.5)
                 .foregroundStyle(isNothing
-                    ? ((month.isCurrent || isSelected) ? Self.nothingHeroAccent : Self.nothingSecondary)
+                    ? ((month.isCurrent || isSelected) ? Self.accent : Self.nothingSecondary)
                     : ((month.isCurrent || isSelected) ? Self.accent : Self.faint))
             Text(month.totalText)
                 .font(isNothing ? NothingFont.mono(13) : .system(size: 13, weight: .semibold))
@@ -399,7 +388,7 @@ struct UsageHeroCard: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
                     isSelected && !isNothing ? Self.accent.opacity(0.85) :
-                    isSelected ? Self.nothingHeroAccent :
+                    isSelected ? Self.accent :
                     (isNothing
                         ? (month.isCurrent ? Self.nothingBorderVisible : Self.nothingBorder)
                         : Color.adaptive(
@@ -497,7 +486,7 @@ struct UsageHeroCard: View {
                         .background(
                             RoundedRectangle(cornerRadius: isNothing ? 2 : 6, style: .continuous)
                                 .fill(isActiveTier(index)
-                                      ? (isNothing ? Self.nothingHeroAccent : Color.primary.opacity(0.12))
+                                      ? (isNothing ? Self.accent : Color.primary.opacity(0.12))
                                       : Color.clear)
                         )
                         .foregroundStyle(
@@ -566,8 +555,8 @@ struct UsageHeroCard: View {
     // MARK: 用量热力图
 
     /// 周列 × 周日行 (周一起) 网格: 列等宽撑满卡片, 格子正方形随列宽缩放;
-    /// level 0 淡槽, 1-5 沿用 UsageTier 绿色阶 (sage..forest), 窗口外与未来格透明.
-    /// Nothing 下全方角, level 0 用 surface-raised, 1-5 为 display 白阶 5 档透明度.
+    /// level 0 淡槽, 1-5 为主题 accent 透明度档; 窗口外与未来格同样绘制空槽 (C219).
+    /// Nothing 下全方角, level 0 用 surface-raised; 经典 / 液态玻璃 round-2 圆角.
     private var heatmapView: some View {
         HeatmapGridView(weeks: viewModel.heatmap, isNothing: isNothing)
             .accessibilityElement(children: .ignore)
@@ -622,15 +611,8 @@ struct UsageHeroCard: View {
             .frame(width: 9, height: 9)
     }
 
-    private func heatmapCellColor(_ cell: UsageHeatmapCell?) -> Color {
-        guard let cell else {
-            return .clear
-        }
-        return heatmapLevelColor(cell.level)
-    }
-
-    /// 热力图网格: Nothing 填充格按 accent 绿阶透明度分档 (绿/橙仅用于 Hero,
-    /// 热力图保持 display 白阶); C213 起全主题静态, 不挂呼吸或相位动画.
+    /// 热力图网格: 全主题统一取主题 accent 透明度档 (浅色杏 / 深色绿);
+    /// C213 起全主题静态, 不挂呼吸或相位动画.
     /// C179: 整张网格由一个 CALayer 宿主视图承载 (每格一个纯色子层), 避免逐格
     /// SwiftUI 视图在展开首帧集中建树; 图层只承载颜色与几何, 不承载动画.
     private struct HeatmapGridView: View {
@@ -649,23 +631,12 @@ struct UsageHeroCard: View {
         }
 
         static func baseColor(cell: UsageHeatmapCell?, isNothing: Bool) -> Color {
-            guard let cell else { return .clear }
-            if isNothing {
-                guard cell.level > 0 else { return UsageHeroCard.nothingSurfaceRaised }
-                // 填充格与 hero 呼吸灯同 accent (深绿 #4A9E5C / 浅橘 #D4A843), 透明度分档.
-                let op = [0.2, 0.4, 0.6, 0.8, 1.0][min(cell.level, 5) - 1]
-                return UsageHeroCard.nothingHeroAccent.opacity(op)
+            // C219: 首尾周列的窗口外 / 未来格同样绘制空槽, 网格恒为 7×N 完整矩形.
+            guard let cell, cell.level > 0 else {
+                return isNothing ? UsageHeroCard.nothingSurfaceRaised : UsageHeroCard.emptySlot
             }
-            guard cell.level > 0 else { return Color.primary.opacity(0.07) }
-            let tier: UsageTier
-            switch cell.level {
-            case 1: tier = .sage
-            case 2: tier = .moss
-            case 3: tier = .fern
-            case 4: tier = .pine
-            default: tier = .forest
-            }
-            return UsageHeroCard.tierColors(for: tier).0
+            // C220: 填充格统一取主题 accent 透明度档 (浅色 #D4A843 / 深色 #4A9E5C).
+            return UsageHeroCard.accent.opacity(UsageHeroCard.heatmapOpacity(cell.level))
         }
     }
 
@@ -684,7 +655,7 @@ struct UsageHeroCard: View {
             var cells: [HeatmapLayerView.Cell] = []
             for (column, week) in weeks.enumerated() {
                 for (row, cell) in week.cells.enumerated() {
-                    guard let cell else { continue }
+                    // C223 起模型按完整 7 天块输出, 正常不会有 nil; 保留空槽兜底.
                     cells.append(HeatmapLayerView.Cell(
                         column: column,
                         row: row,
@@ -701,40 +672,39 @@ struct UsageHeroCard: View {
         }
     }
 
+    /// 热力图 level 0-5 的透明度档: 0 由调用方按主题取空槽色, 1-5 固定 20/40/60/80/100%.
+    private static func heatmapOpacity(_ level: Int) -> Double {
+        [0.2, 0.4, 0.6, 0.8, 1.0][min(max(level, 1), 5) - 1]
+    }
+
     private func heatmapLevelColor(_ level: Int) -> Color {
-        if isNothing {
-            guard level > 0 else {
-                return Self.nothingSurfaceRaised
-            }
-            let opacities: [Double] = [0.2, 0.4, 0.6, 0.8, 1.0]
-            // 图例与填充格同 accent (深绿/浅橘), 与 hero 呼吸灯一致.
-            return Self.nothingHeroAccent.opacity(opacities[min(level, 5) - 1])
-        }
         guard level > 0 else {
-            return Color.primary.opacity(0.07)
+            return isNothing ? Self.nothingSurfaceRaised : Self.emptySlot
         }
-        let tier: UsageTier
-        switch level {
-        case 1:
-            tier = .sage
-        case 2:
-            tier = .moss
-        case 3:
-            tier = .fern
-        case 4:
-            tier = .pine
-        default:
-            tier = .forest
-        }
-        return Self.tierColors(for: tier).0
+        // 图例与填充格同源: 主题 accent 透明度阶.
+        return Self.accent.opacity(Self.heatmapOpacity(level))
     }
 
     // MARK: 颜色常量 (浅色方案 A 苹果纯净白, 深色自适应)
 
+    /// 主题强调色 (C220): 与 Nothing 同源 —— 浅色杏 `#D4A843`, 深色绿 `#4A9E5C`.
+    /// 经典 / 液态玻璃 / Nothing 的 hero、成本、heatmap、chip 选中态统一取此 token.
     private static let accent = Color.adaptive(
-        light: Color(hex: "#0284C7"),
-        dark: Color(hex: "#0a84ff")
+        light: Color(hex: "#D4A843"),
+        dark: Color(hex: "#4A9E5C")
     )
+    /// hero 渐变起点 (accent 深阶).
+    private static let accentDeep = Color.adaptive(
+        light: Color(hex: "#B8860B"),
+        dark: Color(hex: "#2A6B3C")
+    )
+    /// hero 渐变终点 / 背景代码流 tint (accent 浅阶).
+    private static let accentSoft = Color.adaptive(
+        light: Color(hex: "#E3BE6B"),
+        dark: Color(hex: "#8CCB98")
+    )
+    /// 经典 / 液态玻璃热力图空槽 (level 0 与窗口外 / 未来格同色; C219).
+    private static let emptySlot = Color.primary.opacity(0.07)
     private static let ink = Color.primary
     private static let subdued = Color.primary.opacity(0.5)
     private static let faint = Color.primary.opacity(0.55)
@@ -774,62 +744,17 @@ struct UsageHeroCard: View {
         dark: Color(hex: "#1A1A1A")
     )
 
-    /// Nothing hero 强调色: Dark=success 绿, Light=warning 橙 (复用定稿阈值色值, 不新创).
-    private static let nothingHeroAccent = Color.adaptive(
-        light: Color(hex: "#D4A843"),
-        dark: Color(hex: "#4A9E5C")
-    )
-
-    /// hero 渐变按今日总量档位在统一绿色阶内变化 (源自 logo 底色):
-    /// <100M sage #7D9B76, 此后每 100M 加深一档, >=400M forest #26452A.
+    /// hero 渐变: 主题 accent 深阶 → 浅阶, 全主题同一配色语言 (C220).
     /// 结构沿用 mockup (135deg, 起点 30%, 终点收敛 1.0).
-    private static func heroGradient(for tier: UsageTier) -> LinearGradient {
-        let (start, end) = tierColors(for: tier)
-        return LinearGradient(
+    private static var heroGradient: LinearGradient {
+        LinearGradient(
             stops: [
-                .init(color: start, location: 0.3),
-                .init(color: end, location: 1.0),
+                .init(color: accentDeep, location: 0.3),
+                .init(color: accentSoft, location: 1.0),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-    }
-
-    /// 档位配色: 返回 (档位基色, 同族浅色); 基色同时用于热力图格子,
-    /// 浅色作为 hero 渐变末端与背景字符 tint. 方案 A 浅色采用深邃森林墨绿, 深色沿用经典绿色阶.
-    private static func tierColors(for tier: UsageTier) -> (Color, Color) {
-        switch tier {
-        case .sage:
-            return (
-                Color.adaptive(light: Color(hex: "#047857"), dark: Color(hex: "#7D9B76")),
-                Color.adaptive(light: Color(hex: "#059669"), dark: Color(hex: "#9DB597"))
-            )
-        case .moss:
-            return (
-                Color.adaptive(light: Color(hex: "#059669"), dark: Color(hex: "#63885E")),
-                Color.adaptive(light: Color(hex: "#10B981"), dark: Color(hex: "#82A57C"))
-            )
-        case .fern:
-            return (
-                Color.adaptive(light: Color(hex: "#047857"), dark: Color(hex: "#4C7249")),
-                Color.adaptive(light: Color(hex: "#059669"), dark: Color(hex: "#6A9064"))
-            )
-        case .pine:
-            return (
-                Color.adaptive(light: Color(hex: "#065F46"), dark: Color(hex: "#385B38")),
-                Color.adaptive(light: Color(hex: "#047857"), dark: Color(hex: "#557B52"))
-            )
-        case .forest:
-            return (
-                Color.adaptive(light: Color(hex: "#064E3B"), dark: Color(hex: "#26452A")),
-                Color.adaptive(light: Color(hex: "#065F46"), dark: Color(hex: "#456B42"))
-            )
-        }
-    }
-
-    /// 背景字符 tint: 档位浅色阶, 低透明度下呼应 hero 渐变.
-    private static func tierTint(_ tier: UsageTier) -> Color {
-        tierColors(for: tier).1
     }
 }
 

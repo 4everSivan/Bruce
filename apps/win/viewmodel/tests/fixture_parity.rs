@@ -83,16 +83,19 @@ fn usage_hero_matches_mac_semantics_on_valid_fixture() {
     assert_eq!(usage.legend[0].name, "Kimi Code CLI");
     assert_eq!(usage.legend[1].agent_id, "codex");
 
-    // 热力图: 2026-07-27 是周一, 网格恰好 1 周, 周三起为窗口外 null。
+    // 热力图 (C223): 连续 7 天块, 末格为今天 07-28, 块首 07-22 (前 5 天补 level 0)。
     assert_eq!(usage.heatmap.len(), 1);
     let cells = &usage.heatmap[0].cells;
     assert_eq!(cells.len(), 7);
-    assert_eq!(cells[0].as_ref().unwrap().date, "2026-07-27");
-    assert_eq!(cells[0].as_ref().unwrap().total, 127_000);
-    assert_eq!(cells[0].as_ref().unwrap().level, 1);
-    assert_eq!(cells[1].as_ref().unwrap().total, 184_000);
-    assert!(cells[2].is_none());
-    assert!(cells[6].is_none());
+    assert!(cells.iter().all(|cell| cell.is_some()), "不得有 nil 缺口");
+    assert_eq!(cells[0].as_ref().unwrap().date, "2026-07-22");
+    assert_eq!(cells[0].as_ref().unwrap().level, 0);
+    assert_eq!(cells[5].as_ref().unwrap().date, "2026-07-27");
+    assert_eq!(cells[5].as_ref().unwrap().total, 127_000);
+    assert_eq!(cells[5].as_ref().unwrap().level, 1);
+    assert_eq!(cells[6].as_ref().unwrap().date, "2026-07-28");
+    assert_eq!(cells[6].as_ref().unwrap().total, 184_000);
+    assert_eq!(cells[6].as_ref().unwrap().level, 1);
 
     // 按月聚合: 单月, 当月标记, 半年汇总月均整除。
     assert_eq!(usage.monthly.len(), 1);

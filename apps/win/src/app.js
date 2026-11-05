@@ -11,25 +11,16 @@ const svgEl = (tag, attrs) => {
   return node;
 };
 
-/* ---------- 用量档位色阶 (唯一事实源: mac PanelModels.UsageTier.tierColors) ---------- */
-// 五档绿色阶 sage/moss/fern/pine/forest: 基色用于热力图与收起态迷你条 (styles.css
-// .l1-.l5 同值), 浅色作为 hero 渐变末端. mac heroGradient 为 topLeading→bottomTrailing、
-// 基色 30% → 浅色 100%; 档位由视图模型下发的 usageTier 决定 (今日总量 100M 步进),
-// 前端不得写死单档.
-const TIER_COLORS = {
-  sage: ["#7D9B76", "#9DB597"],
-  moss: ["#63885E", "#82A57C"],
-  fern: ["#4C7249", "#6A9064"],
-  pine: ["#385B38", "#557B52"],
-  forest: ["#26452A", "#456B42"],
-};
-// 档位色只以 CSS 自定义属性下发, 由 styles.css 的 .hero-num / .mini-num 消费;
+/* ---------- 主题强调色 (C220: 对齐 Nothing 深色绿, Windows 恒深色) ---------- */
+// hero 渐变、成本、月度 chip、代码流 tint 统一取 #4A9E5C 绿色系; 不再按 usageTier
+// 五档换色 (mac C220 同步退役 tier 彩色)。设置页仍使用全局 --accent 蓝色。
+const HERO_GRADIENT = ["#2A6B3C", "#8CCB98"];
+// 色值只以 CSS 自定义属性下发, 由 styles.css 的 .hero-num / .mini-num 消费;
 // 严禁在此写内联背景 —— 内联 background-image 会压过 Nothing 主题的纯色
 // 覆写 (C027 实测回归, 见 C029)。
-function applyTierVars(node, tier) {
-  const [start, end] = TIER_COLORS[tier] || TIER_COLORS.sage;
-  node.style.setProperty("--hero-grad-start", start);
-  node.style.setProperty("--hero-grad-end", end);
+function applyAccentVars(node) {
+  node.style.setProperty("--hero-grad-start", HERO_GRADIENT[0]);
+  node.style.setProperty("--hero-grad-end", HERO_GRADIENT[1]);
 }
 
 /* ---------- 份额文案与色阶 (对齐 mac sharePercentText / distributionGroup) ---------- */
@@ -302,11 +293,11 @@ function makeCollapsible(card, summary, onExpand = null) {
 /* ---------- Token 用量卡 (mac UsageHeroCard) ---------- */
 function usageCard(usage) {
   const card = el("div", "card usage-card");
-  // 档位色注入卡片容器, .hero-num 与 .mini-num 经 CSS 变量继承取色
-  applyTierVars(card, usage.usageTier);
-  // 背景纹样层: classic 字符流 tint 取档位浅色 (mac CodeStreamBackground tint = tierColors.1);
-  // Nothing 由 CSS 改为点阵。独立成层以便只对纹样做底部渐隐 mask。
-  const tint = (TIER_COLORS[usage.usageTier] || TIER_COLORS.sage)[1];
+  // 主题 accent 注入卡片容器, .hero-num 与 .mini-num 经 CSS 变量继承取色
+  applyAccentVars(card);
+  // 背景纹样层: classic 字符流 tint 取 accent 浅阶 (C220); Nothing 由 CSS 改为点阵。
+  // 独立成层以便只对纹样做底部渐隐 mask。
+  const tint = HERO_GRADIENT[1];
   card.style.setProperty("--code-stream", codeStreamImage(tint));
   const background = el("div", "usage-bg");
   background.setAttribute("aria-hidden", "true");
@@ -468,8 +459,10 @@ function usageCard(usage) {
       const col = el("div", "col");
       week.cells.forEach((cell, row) => {
         const box = el("div", "cell");
-        if (!cell) { box.classList.add("empty"); }
-        else {
+        // C223 起模型按完整 7 天块输出, 正常不会有 null; 保留空槽兜底.
+        if (!cell) {
+          box.classList.add("empty");
+        } else {
           if (cell.level > 0) box.classList.add(`l${Math.min(cell.level, 5)}`);
           box.title = `${cell.date}  ${cell.total.toLocaleString()}`;
           if (!first) first = cell.date;

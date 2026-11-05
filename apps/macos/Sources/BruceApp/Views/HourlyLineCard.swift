@@ -24,7 +24,7 @@ struct HourlyLineCard: View {
     var onRefresh: () -> Void = {}
     /// C212: 刷新中禁用并旋转图标.
     var isRefreshing: Bool = false
-    /// Nothing 点阵柱状图当前悬停的日期列 (触碰列顶才显示当日总量).
+    /// 14 日柱当前悬停的日期列 (经典 / 液态玻璃柱顶总量与 Nothing 点阵柱共用).
     @State private var hoveredDayDate: String?
     /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
     @State private var grownColumns: Set<String> = []
@@ -298,6 +298,32 @@ struct HourlyLineCard: View {
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .frame(height: 68)
+        // C222: 总量标注默认隐藏, 悬停该日期列才显示 (与 Nothing 点阵柱同语义).
+        // chartOverlay 用 plotFrame + value(atX:) 精确映射日期, 不受图表内边距影响.
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let plotFrame = proxy.plotFrame else {
+                                hoveredDayDate = nil
+                                return
+                            }
+                            let frame = geometry[plotFrame]
+                            guard frame.contains(location) else {
+                                hoveredDayDate = nil
+                                return
+                            }
+                            hoveredDayDate = proxy.value(atX: location.x - frame.minX, as: String.self)
+                        case .ended:
+                            hoveredDayDate = nil
+                        }
+                    }
+            }
+        }
         // 面板 hosting view 常驻 (orderOut 不销毁视图层级), 日期轴每天右移一列;
         // 裸 .task 只在首次出现跑一次, 新日期永远进不了 grownColumns,
         // 柱体会停在 0 而标注照常显示 ("有数字无柱状"). 按 日期轴 为 id,
@@ -417,6 +443,9 @@ struct HourlyLineCard: View {
             .font(.system(size: 7.5))
             .monospacedDigit()
             .foregroundStyle(.secondary)
+            // C222: 默认隐藏, 悬停该日期列才显示; 标注仍参与布局, 显隐不改变柱高.
+            .opacity(hoveredDayDate == day.date ? 1 : 0)
+            .animation(motionSuppressed ? nil : .easeOut(duration: 0.12), value: hoveredDayDate)
     }
 
     /// 逐列延迟 0.03 秒把列值从 0 推到真实值, 形成自下而上的生长动画;
@@ -671,18 +700,18 @@ struct HourlyLineCard: View {
     }
 
     /// 24 点折线 (0-23 时): agent 色 1.5pt 线 + 淡渐变面积;
-    /// Nothing 采用翡翠呼吸微光线 (Emerald Glow Line), 与下方项目统计及绿调同频共振.
+    /// Nothing 主题取外观 accent (深色 #30D158 / 浅色 #D4A843, C221), 与明细条同源.
     private func hourlyChart(_ row: HourlyAgentRow, index: Int) -> some View {
         let color = agentColor(row)
         let maxPoint = max(row.points.max() ?? 0, 1)
-        let heroGreen = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
+        let heroAccent = Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#30D158"))
         return Chart(Array(row.points.enumerated()), id: \.offset) { point in
             if isNothing {
                 LineMark(
                     x: .value("时", point.offset),
                     y: .value("量", point.element)
                 )
-                .foregroundStyle(heroGreen)
+                .foregroundStyle(heroAccent)
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
                 AreaMark(
                     x: .value("时", point.offset),
@@ -691,7 +720,7 @@ struct HourlyLineCard: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            heroGreen.opacity(colorScheme == .dark ? 0.16 : 0.12),
+                            heroAccent.opacity(colorScheme == .dark ? 0.16 : 0.12),
                             Color.clear
                         ],
                         startPoint: .top,
@@ -883,15 +912,15 @@ struct HourlyLineCard: View {
         return Color(hex: Self.projectBarShades[min(index, Self.projectBarShades.count - 1)])
     }
 
-    /// Nothing 绿阶 (与 hero accent / agent ramp 同源): 深色亮绿→暗绿, 浅色深绿三档.
+    /// Nothing 档位色 (与 hero accent / agent ramp 同源): 深色亮绿→暗绿, 浅色杏色三档 (C221).
     private func nothingTierColor(index: Int) -> Color {
         switch index {
         case 0:
-            return Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
+            return Color.adaptive(light: Color(hex: "#B8860B"), dark: Color(hex: "#30D158"))
         case 1:
-            return Color.adaptive(light: Color(hex: "#2E9E4F"), dark: Color(hex: "#4A9E5C"))
+            return Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
         default:
-            return Color.adaptive(light: Color(hex: "#185E2B"), dark: Color(hex: "#2B7A42"))
+            return Color.adaptive(light: Color(hex: "#E3BE6B"), dark: Color(hex: "#2B7A42"))
         }
     }
 
@@ -931,7 +960,7 @@ private struct NothingTokens {
     let raised: Color
     /// 1px 分隔线 border.
     let border: Color
-    /// 呼吸灯 accent (深绿 #4A9E5C / 浅橘 #D4A843), 与 Token 用量卡 nothingHeroAccent 同源.
+    /// 呼吸灯 accent (深绿 #4A9E5C / 浅橘 #D4A843), 与 Token 用量卡 accent 同源.
     let accent: Color
 
     init(colorScheme: ColorScheme) {

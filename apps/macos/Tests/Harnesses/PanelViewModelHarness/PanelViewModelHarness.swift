@@ -70,6 +70,7 @@ private func makeAgent(
         input: 0, output: 0, cacheRead: 0, cacheCreation: 0, total: 0
     ),
     dailyTotals: [Int]? = nil,
+    dailyEntries: [AgentDailyUsage]? = nil,
     hours: [Int] = Array(repeating: 0, count: 24),
     todayCostUsd: Double? = nil,
     models: [String: Int]? = nil,
@@ -77,7 +78,7 @@ private func makeAgent(
     projects: [AgentProjectUsage]? = nil
 ) -> AgentUsageItem {
     let totals = dailyTotals ?? Array(repeating: 0, count: 14)
-    let daily = zip(dayList, totals).map { date, total in
+    let daily = dailyEntries ?? zip(dayList, totals).map { date, total in
         AgentDailyUsage(date: date, input: total, output: 0, total: total)
     }
     return AgentUsageItem(
@@ -270,6 +271,7 @@ struct PanelViewModelHarness {
         try usageHeroAggregatesTotalsAndFormatting()
         try usageTierFollowsTotalThresholds()
         try usageHeatmapBuildsWeekGrid()
+        try usageHeatmapEndsTodayWithoutData()
         try usageMonthlyAggregatesCalendarMonths()
         try liveStateFollowsFreshnessThreshold()
         try chartBuilds14DaysWithStableSegments()
@@ -320,7 +322,7 @@ struct PanelViewModelHarness {
         try meterMotionPolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 66")
+        print("PanelViewModel tests passed: 67")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -841,9 +843,8 @@ struct PanelViewModelHarness {
         try expect(tier(for: 900_000_000) == .forest, "900M 应为 forest")
     }
 
-    // 热力图: 全量 daily 按周列 × 周日行 (周一起), level 按当日绝对总量
-    // 100M 步进分 0-5 档, 窗口外与未来格为 nil, 柱状图仍固定 14 天.
-    // 固定时钟 2026-07-30 (周四), 窗口 2026-07-17 (周五) 至 07-30 -> 3 周列.
+    // 热力图: 连续 7 天块, 末格为今天; level 按当日绝对总量 100M 步进分 0-5 档.
+    // 固定时钟 2026-07-30, 数据 07-17..07-30 (14 天) -> 2 块: 07-17..23, 07-24..30.
     private static func usageHeatmapBuildsWeekGrid() throws {
         var totals = Array(repeating: 0, count: 14)
         totals[13] = 450_000_000 // 07-30 今天, >=400M -> level 5
@@ -859,54 +860,80 @@ struct PanelViewModelHarness {
             moduleStatuses: readyStatuses
         )
         let heatmap = vm.usage?.heatmap ?? []
-        try expect(heatmap.count == 3, "14 天窗口应覆盖 3 周列: \(heatmap.count)")
-        // 首周: 07-17 是周五, 周一到周四为 nil 占位.
-        let firstWeek = heatmap[0].cells
-        try expect(firstWeek.count == 7, "周列必须 7 格")
+        try expect(heatmap.count == 2, "14 天应覆盖 2 个完整 7 天块: \(heatmap.count)")
+        let firstBlock = heatmap[0].cells
+        try expect(firstBlock.count == 7, "每块必须 7 格")
         try expect(
-            firstWeek[0] == nil && firstWeek[3] == nil,
-            "首周窗口前应为 nil 占位"
+            firstBlock.allSatisfy { $0 != nil },
+            "连续 7 天块不应有 nil 缺口"
         )
         try expect(
-            firstWeek[4]?.date == "2026-07-17",
-            "首周周五应为窗口首日: \(firstWeek[4]?.date ?? "nil")"
+            firstBlock[0]?.date == "2026-07-17",
+            "首块首日应为数据首日: \(firstBlock[0]?.date ?? "nil")"
         )
         try expect(
-            firstWeek[4]?.level == 2,
-            "150M 应为 level 2: \(firstWeek[4]?.level ?? -1)"
+            firstBlock[0]?.level == 2,
+            "150M 应为 level 2: \(firstBlock[0]?.level ?? -1)"
         )
         try expect(
-            firstWeek[5]?.level == 1,
-            "50M 应为 level 1: \(firstWeek[5]?.level ?? -1)"
-        )
-        // 第二周: 07-23 周四 250M -> level 3; 07-20 周一无量 -> level 0.
-        let midWeek = heatmap[1].cells
-        try expect(
-            midWeek[3]?.level == 3,
-            "250M 应为 level 3: \(midWeek[3]?.level ?? -1)"
+            firstBlock[1]?.level == 1,
+            "50M 应为 level 1: \(firstBlock[1]?.level ?? -1)"
         )
         try expect(
-            midWeek[0]?.level == 0,
-            "无量日应为 level 0: \(midWeek[0]?.level ?? -1)"
+            firstBlock[6]?.date == "2026-07-23" && firstBlock[6]?.level == 3,
+            "首块末日 07-23 应为 level 3: \(firstBlock[6]?.date ?? "nil")"
         )
-        // 末周: 今天 07-30 周四 450M -> level 5, 周五起为 nil (未来).
-        let lastWeek = heatmap[2].cells
+        let lastBlock = heatmap[1].cells
         try expect(
-            lastWeek[3]?.date == "2026-07-30",
-            "末周周四应为今天: \(lastWeek[3]?.date ?? "nil")"
-        )
-        try expect(
-            lastWeek[3]?.level == 5,
-            "450M 应为 level 5: \(lastWeek[3]?.level ?? -1)"
+            lastBlock[0]?.date == "2026-07-24" && lastBlock[0]?.level == 0,
+            "末块首日 07-24 无量应为 level 0"
         )
         try expect(
-            lastWeek[4] == nil && lastWeek[5] == nil && lastWeek[6] == nil,
-            "未来格应为 nil"
+            lastBlock[6]?.date == "2026-07-30",
+            "末块末格应为今天: \(lastBlock[6]?.date ?? "nil")"
+        )
+        try expect(
+            lastBlock[6]?.level == 5,
+            "450M 应为 level 5: \(lastBlock[6]?.level ?? -1)"
         )
         // 柱状图窗口不受热力图影响, 仍为 14 天.
         try expect(
             vm.usage?.days.count == 14,
             "柱状图应仍为 14 天: \(vm.usage?.days.count ?? -1)"
+        )
+    }
+
+    /// C223: 今天无 daily 数据时也生成完整 7 天块, 末格为今天 (level 0), 无未来格.
+    private static func usageHeatmapEndsTodayWithoutData() throws {
+        // 固定时钟 2026-07-30; 数据只到 07-29, 不含今天 -> 1 块 07-24..07-30.
+        let daily = ["2026-07-27": 50_000_000, "2026-07-28": 0, "2026-07-29": 150_000_000]
+            .sorted { $0.key < $1.key }
+            .map { AgentDailyUsage(date: $0.key, input: $0.value, output: 0, total: $0.value) }
+        let agent = makeAgent(
+            id: "kimi-code-cli",
+            name: "Kimi Code CLI",
+            dailyEntries: daily
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
+        let vm = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let heatmap = vm.usage?.heatmap ?? []
+        try expect(heatmap.count == 1, "4 天数据应补齐为 1 个完整 7 天块: \(heatmap.count)")
+        let cells = heatmap[0].cells
+        try expect(
+            cells.allSatisfy { $0 != nil },
+            "补块后不应有 nil 缺口"
+        )
+        try expect(
+            cells[0]?.date == "2026-07-24",
+            "块首应为 07-24 (数据首日前补 3 天): \(cells[0]?.date ?? "nil")"
+        )
+        try expect(
+            cells[6]?.date == "2026-07-30",
+            "末格应为今天: \(cells[6]?.date ?? "nil")"
+        )
+        try expect(
+            cells[6]?.total == 0 && cells[6]?.level == 0,
+            "今天无数据应为 level 0"
         )
     }
 
@@ -2088,8 +2115,17 @@ struct PanelViewModelHarness {
             "深色绿阶色值必须落在定稿 5 档内"
         )
         try expect(
-            PanelAgentColor.nothingRampHex(agentID: "kimi-code-cli", darkMode: false) == "#2A6B3C",
-            "浅色模式应取反转色板"
+            PanelAgentColor.nothingRampHex(agentID: "kimi-code-cli", darkMode: false) == "#946A08",
+            "浅色模式应取杏色阶首档 (C221)"
+        )
+        let lightColors = top.map { PanelAgentColor.nothingRampHex(agentID: $0, darkMode: false) }
+        try expect(
+            Set(lightColors).count == 5,
+            "浅色 5 个高频 agent 应占满 5 档杏色阶: \(lightColors)"
+        )
+        try expect(
+            Set(lightColors).isSubset(of: ["#946A08", "#B8860B", "#D4A843", "#E3BE6B", "#F0D69A"]),
+            "浅色杏色阶色值必须落在定稿 5 档内 (C221)"
         )
         try expect(
             PanelAgentColor.nothingRampHex(agentID: "dsh", darkMode: true) == "#5FAF6E",

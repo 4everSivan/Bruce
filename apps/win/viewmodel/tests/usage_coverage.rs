@@ -99,41 +99,52 @@ fn days_and_legend_clip_to_last_14_entries() {
 }
 
 #[test]
-fn heatmap_spans_weeks_with_monday_grid_and_nil_padding() {
+fn heatmap_uses_full_seven_day_blocks_ending_today() {
     let mapper = PanelViewModelMapper::default();
-    // 2026-07-20 (周一) .. 2026-08-02 (周日) = 恰好 2 周。
-    let entries: Vec<(i64, i64)> = (0..14).map(|day| (19 + day, 50_000_000)).collect();
+    // today=07-28; 数据 07-20..07-28 (9 天) -> 2 个完整块 07-15..07-21 / 07-22..07-28.
+    let entries: Vec<(i64, i64)> = (0..9).map(|day| (19 + day, 50_000_000)).collect();
     let artifact = artifact_from(json!({"artifact": {
         "schemaVersion": 1, "module": "agent-usage", "generatedAt": "2026-07-28T12:00:00+08:00",
         "agents": [agent_with_daily(&entries)], "services": [], "totalCostUsd": null
     }}));
     let panel = mapper.make(Some(&artifact), fixed_now());
     let usage = panel.usage.unwrap();
-    assert_eq!(usage.heatmap.len(), 2, "恰好两周");
-    assert_eq!(usage.heatmap[0].cells.len(), 7);
+    assert_eq!(usage.heatmap.len(), 2, "9 天补成 2 个完整块");
+    for week in &usage.heatmap {
+        assert_eq!(week.cells.len(), 7);
+        assert!(
+            week.cells.iter().all(|cell| cell.is_some()),
+            "不得有 nil 缺口"
+        );
+    }
     assert_eq!(
         usage.heatmap[0].cells[0].as_ref().unwrap().date,
-        "2026-07-20"
+        "2026-07-15",
+        "块首日为数据首日前 5 天 (补 level 0)"
     );
     assert_eq!(
         usage.heatmap[1].cells[6].as_ref().unwrap().date,
-        "2026-08-02"
+        "2026-07-28",
+        "末格为今天"
     );
-    // 50M 属 1 档 (<100M)。
-    assert_eq!(usage.heatmap[0].cells[0].as_ref().unwrap().level, 1);
+    // 50M 属 1 档; 07-15..07-19 无数据为 0 档.
+    assert_eq!(usage.heatmap[0].cells[0].as_ref().unwrap().level, 0);
+    assert_eq!(usage.heatmap[0].cells[5].as_ref().unwrap().level, 1);
+    assert_eq!(usage.heatmap[1].cells[6].as_ref().unwrap().level, 1);
 
-    // 首日为周三: 第一周周一/周二为 nil。
-    let entries: Vec<(i64, i64)> = (0..3).map(|day| (20 + day, 1)).collect(); // 07-21..07-23
+    // 今天无数据: 数据 07-24..07-27, today=07-28 -> 1 块 07-22..07-28, 末格今天 level 0.
+    let entries: Vec<(i64, i64)> = (0..4).map(|day| (23 + day, 1)).collect(); // 07-24..07-27
     let artifact = artifact_from(json!({"artifact": {
         "schemaVersion": 1, "module": "agent-usage", "generatedAt": "2026-07-28T12:00:00+08:00",
         "agents": [agent_with_daily(&entries)], "services": [], "totalCostUsd": null
     }}));
     let panel = mapper.make(Some(&artifact), fixed_now());
     let usage = panel.usage.unwrap();
+    assert_eq!(usage.heatmap.len(), 1, "补齐为 1 个完整块");
     let cells = &usage.heatmap[0].cells;
-    assert!(cells[0].is_none(), "周一 (07-20) 窗口外");
-    assert_eq!(cells[1].as_ref().unwrap().date, "2026-07-21", "首日周二");
-    assert!(cells[6].is_none(), "未来日为 nil");
+    assert!(cells.iter().all(|cell| cell.is_some()), "不得有 nil 缺口");
+    assert_eq!(cells[6].as_ref().unwrap().date, "2026-07-28", "末格为今天");
+    assert_eq!(cells[6].as_ref().unwrap().level, 0, "今天无数据为 level 0");
 }
 
 #[test]

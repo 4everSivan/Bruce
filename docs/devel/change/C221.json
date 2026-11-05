@@ -1,0 +1,111 @@
+{
+  "$schema": "https://adflow.org/schemas/change-card.v1.json",
+  "id": "C221",
+  "title": "Nothing 浅色 Agent 用量卡图表改用杏色阶（macOS）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C219-C223-dashboard-polish",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "Nothing 浅色 Agent 用量卡 14 日点阵柱、图例徽章、逐小时走势与明细条 (HourlyLineCard / PanelAgentColor)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 反馈：Nothing 风格浅色下 Agent 用量卡的柱状图颜色也应该是黄色。Nothing 浅色主题的 hero、成本、热力图已经是杏色 #D4A843，但 Agent 卡的 14 日点阵柱仍按 `PanelAgentColor.nothingRampHex(darkMode:false)` 取深绿五档，图例徽章、行首色点、逐小时走势与模型/项目明细条也仍是绿色，与浅色主题的杏色强调色不一致。",
+  "precheck": {
+    "description": "确认 Nothing 浅色 Agent 卡仍使用绿色档位",
+    "command": "zsh -c 'grep -q \"\\\"#2A6B3C\\\", \\\"#35854A\\\"\" apps/macos/Sources/BruceAppCore/PanelModels.swift && grep -q \"heroGreen = Color.adaptive(light: Color(hex: \\\"#1C8C3D\\\")\" apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift'",
+    "expected": "退出码 0（浅色 ramp 为深绿、走势线浅色为 #1C8C3D，需本卡调整）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：PanelAgentColor.nothingRampHex(darkMode:false) 返回 `#2A6B3C/#35854A/#4A9E5C/#5FAF6E/#8CCB98`；HourlyLineCard.hourlyChart 的 heroGreen 浅色 #1C8C3D；nothingTierColor 浅色 #1C8C3D/#2E9E4F/#185E2B；实机截图 Nothing 浅色 Agent 卡折叠态未暴露 14 日柱，展开后点阵柱为绿色。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C221 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C221 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Nothing 浅色 agent 系列色阶",
+      "before": "PanelAgentColor.nothingRampHex 浅色返回五档深绿 `#2A6B3C/#35854A/#4A9E5C/#5FAF6E/#8CCB98`",
+      "after": "浅色返回五档杏色 `#946A08/#B8860B/#D4A843/#E3BE6B/#F0D69A`（深→浅，与绿色阶同序）；深色绿色阶保持不变。14 日点阵柱分段、图例徽章、agent 行首色点随 ramp 自动变黄",
+      "impact": "apps/macos/Sources/BruceAppCore/PanelModels.swift"
+    },
+    {
+      "scope": "Nothing 浅色走势线与明细条",
+      "before": "hourlyChart 的 heroGreen 浅色 #1C8C3D；nothingTierColor 浅色 #1C8C3D/#2E9E4F/#185E2B",
+      "after": "浅色统一改为杏色阶：走势线 `#D4A843`，模型/项目明细条 `#B8860B/#D4A843/#E3BE6B`；深色仍为 #30D158/#4A9E5C/#2B7A42 不变",
+      "impact": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "设计 03 §19 记录 Nothing 浅色明细条为 `#1C8C3D / #2E9E4F / #185E2B`，§14 记录 agent 5 档绿阶",
+      "after": "设计 03 更新为浅色杏色阶 / 深色绿色阶；PanelViewModelHarness 新增 Nothing ramp 浅色 / 深色断言（浅色值为杏色、深色值保持绿色）",
+      "impact": "docs/devel/design/03；apps/macos/Tests/Harnesses/PanelViewModelHarness"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "Nothing 主题 agent 配色深浅两模式均为绿色阶；明细条浅色 #1C8C3D / #2E9E4F / #185E2B",
+      "after": "Nothing 主题 agent 系列色随外观取色：浅色杏色阶 `#946A08→#F0D69A`、走势线 #D4A843、明细条 #B8860B/#D4A843/#E3BE6B；深色绿色阶与 #30D158 走势线不变"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-07",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build --build-tests 通过；PanelViewModelHarness 新断言通过；verify-local Exit 0",
+        "false_if": "构建/测试失败或既有用例回归",
+        "evidence": "2026-11-05：`swift run --package-path apps/macos PanelViewModelHarness` 67 项通过（含新增浅色杏阶断言：5 档互异且落在 #946A08/#B8860B/#D4A843/#E3BE6B/#F0D69A）；`zsh scripts/verify-local.sh` Exit 0。",
+        "result": true
+      },
+      {
+        "item": "浅色柱状图",
+        "true_if": "Nothing 浅色 14 日点阵柱分段、图例徽章、行首色点、逐小时走势与明细条均为杏色阶；空格仍为浅灰 surface-raised",
+        "false_if": "仍出现绿色分段或图例/柱体颜色不一致",
+        "evidence": "2026-11-05 mac Nothing 浅色实机截图（local/shot-nothing-light-agent.png）：14 日点阵柱、图例色块、行首色点、逐小时走势线与模型/项目明细条均为杏色；空格仍为 surface-raised #F0F0F0。",
+        "result": true
+      },
+      {
+        "item": "深色不变",
+        "true_if": "Nothing 深色 14 日柱、图例、走势与明细条仍为原绿色阶；经典 / 液态玻璃不受影响",
+        "false_if": "深色被误改或经典主题受影响",
+        "evidence": "Nothing 深色 ramp 未改（#8CCB98/#5FAF6E/#4A9E5C/#35854A/#2A6B3C、#30D158 走势线）；经典/液态玻璃路径未触及；PanelViewModelHarness 深色断言通过。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "mac 装机版 Nothing 浅色展开 Agent 卡目视确认柱状图为杏色",
+        "false_if": "效果与描述不符或用户驳回",
+        "evidence": "mac 已装机并截图核对 Nothing 浅色 Agent 卡；待用户最终确认。 2026-11-05 用户确认：「确认」。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

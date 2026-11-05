@@ -344,12 +344,12 @@ test("balance-only sections render the amount and status dual slot without a hea
   assert.match(card.textContent, /正常/);
 });
 
-test("hero tier colors travel as CSS variables and never as inline background", async () => {
+test("hero accent gradient travels as CSS variables and never as inline background (C220)", async () => {
   const app = await boot();
   const card = app.node("stack").querySelector('[data-card="usage"]');
-  // valid fixture usageTier=sage; 修复前写死 moss (#63885E→#82A57C)
-  assert.equal(card.style["--hero-grad-start"], "#7D9B76");
-  assert.equal(card.style["--hero-grad-end"], "#9DB597");
+  // C220: hero 渐变固定为深色 accent 深浅阶, 不再按 usageTier 五档换色
+  assert.equal(card.style["--hero-grad-start"], "#2A6B3C");
+  assert.equal(card.style["--hero-grad-end"], "#8CCB98");
   // 反向哨兵: hero 与收起态数字都不得写内联背景 —— 内联 background-image 会压过
   // Nothing 主题的 radial 点阵覆写 (C027 实测回归, 见 C029)。
   for (const node of [card.querySelector(".hero-num"), card.querySelector(".mini-num")]) {
@@ -359,13 +359,13 @@ test("hero tier colors travel as CSS variables and never as inline background", 
   panel.usage.usageTier = "forest";
   const other = await boot({ panel });
   const otherCard = other.node("stack").querySelector('[data-card="usage"]');
-  assert.equal(otherCard.style["--hero-grad-start"], "#26452A");
-  assert.equal(otherCard.style["--hero-grad-end"], "#456B42");
-  // 未知档位回落 sage, 不得留空
+  assert.equal(otherCard.style["--hero-grad-start"], "#2A6B3C");
+  assert.equal(otherCard.style["--hero-grad-end"], "#8CCB98");
+  // 未知档位同样回落固定 accent, 不得留空
   const fallback = structuredClone(fixture);
   fallback.usage.usageTier = "unknown-tier";
   const third = await boot({ panel: fallback });
-  assert.equal(third.node("stack").querySelector('[data-card="usage"]').style["--hero-grad-start"], "#7D9B76");
+  assert.equal(third.node("stack").querySelector('[data-card="usage"]').style["--hero-grad-start"], "#2A6B3C");
 });
 
 test("styles.css consumes tier variables and keeps Nothing overrides on new components", () => {
@@ -569,7 +569,9 @@ test("styles.css defines the Nothing segmented meter and dot grid", () => {
   assert.match(css, /\.meter\.segmented\s*\{[^}]*gap:\s*2px/);
   assert.match(css, /\.meter\.segmented > i\s*\{\s*flex:\s*1;\s*background:\s*#222222/);
   assert.match(css, /\.day-dots\s*\{[^}]*grid-template-columns:\s*repeat\(3, 6px\)/);
-  assert.match(css, /\.theme-nothing \.daily-chart \.day-total\s*\{\s*opacity:\s*0/);
+  // C222: 14 日柱总量改为全主题 hover 显示
+  assert.match(css, /\.daily-chart \.day-total\s*\{[^}]*opacity:\s*0/);
+  assert.match(css, /\.daily-chart \.day:hover \.day-total\s*\{\s*opacity:\s*1/);
 });
 
 test("Nothing theme renders hero dot-square, threshold legend, compact detail, and authentic typography tokens", async () => {
@@ -1256,6 +1258,38 @@ test("heatmap stays static in both themes after C213", () => {
       `Nothing 热力图 l${level} 保留静态档位底色`,
     );
   }
+});
+
+test("heatmap uses full 7-day blocks ending today with no future gap (C219/C223)", async () => {
+  const app = await boot();
+  const sec = app.node("heat-sec");
+  const cols = [...sec.querySelectorAll(".heatmap .col")];
+  assert.ok(cols.length > 0, "热力图渲染列");
+  for (const col of cols) assert.equal(col.children.length, 7, "每列 7 格");
+  // fixture 数据 07-27/07-28, today=07-28 → 1 个完整 7 天块 07-22..07-28.
+  const cells = [...cols.at(-1).children];
+  assert.equal(cells[6].classList.contains("empty"), false, "最后一格不是空槽");
+  assert.match(cells[6].title, /2026-07-28/, "最后一格为今天");
+  assert.equal(cells[0].classList.contains("empty"), false, "首格也渲染 (level 0)")
+  assert.equal(sec.querySelector(".heat-end").textContent, "26/07/28", "footer 截止今天");
+  assert.equal(sec.querySelector(".heat-start").textContent, "26/07/22", "footer 起始为块首日");
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.heatmap \.cell\.empty\s*\{[^}]*background:\s*transparent/, "经典 empty 不退化为透明");
+  assert.match(css, /\.heatmap \.cell\.empty\s*\{[^}]*background:\s*rgba\(255,255,255,\.07\)/, "经典 empty 取空槽");
+  assert.doesNotMatch(css, /\.cell\.future/, "future 透明类退役");
+});
+
+test("dashboard accent aligns with Nothing green while settings keep blue (C220)", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(css, /--panel-accent:\s*#4A9E5C/, "面板 accent 为 Nothing 深色绿");
+  assert.match(css, /--accent:\s*#0a84ff/, "设置页全局 accent 仍为蓝色");
+  assert.match(css, /\.hero-cost\s*\{[^}]*color:\s*var\(--panel-accent\)/, "成本色取面板 accent");
+  assert.match(css, /\.chip\.current \.m[^{]*\{[^}]*var\(--panel-accent\)/, "月度 chip 取面板 accent");
+  assert.match(css, /\.heatmap \.cell\.l5[^{]*\{[^}]*#4A9E5C/, "热力图 level 5 取 accent");
+  assert.match(css, /\.heatmap \.cell\.l1[^{]*\{[^}]*rgba\(74,158,92,\.2\)/, "热力图 level 1 取 accent 20%");
+  assert.match(js, /const HERO_GRADIENT = \["#2A6B3C", "#8CCB98"\]/, "hero 固定 accent 深浅阶");
+  assert.doesNotMatch(js, /const TIER_COLORS/, "五档 tier 彩色退役");
 });
 
 test("tab switcher keeps a hairline border and tints the active icon without a pill (C214)", async () => {

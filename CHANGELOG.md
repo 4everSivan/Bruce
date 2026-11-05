@@ -41,6 +41,11 @@
   - 设置中心「通用」面板的菜单栏实时预览条同步对齐，保持所见即所得。
 
 ### Changed
+- **热力图窗口末日锚定今天 (C223)**：近半年热力图窗口末日改为 `max(daily 数据末日, 今天)`；今天没有任何 Agent 用量时仍生成今天的 level 0 格，footer 截止日期显示今天，未来日保持空槽；mac `makeUsageHeatmap` 与 Windows `make_usage_heatmap` 同步，14 日柱与按月区块窗口不变。
+- **热力图首尾列铺满（完整 7 天块）(C219)**：热力图每列 7 格全部渲染，level 0 / 空槽取主题空槽色（经典 `primary 7%` / Nothing surface-raised）；mac 与 Windows 均不再出现透明缺口或未来格，首尾列自然铺满。
+- **经典 / 液态玻璃强调色对齐 Nothing 杏 / 绿 (C220)**：新增统一 accent（浅色 `#D4A843` / 深色 `#4A9E5C`）；hero 渐变改为 accent 深浅阶（`#B8860B → #E3BE6B` / `#2A6B3C → #8CCB98`），成本、月度 chip 当前/选中态、代码流 tint、订阅账号标签与热力图 1-5 档（20/40/60/80/100% 透明度）全部取该色系；五档 tier 彩色退役。Windows 新增 `--panel-accent` 面板 token，设置页 `--accent` 蓝色保持不变。
+- **Nothing 浅色 Agent 卡图表改杏色 (C221)**：`PanelAgentColor.nothingRampHex` 浅色档由深绿五阶改为杏色五阶（`#946A08 → #F0D69A`）；14 日点阵柱分段、图例徽章、行首色点、逐小时走势线与模型/项目明细条同步改杏色，深色绿阶不变。
+- **14 日柱总量改为悬停显示 (C222)**：经典 / 液态玻璃与 Windows fluent 的 14 日柱当日总量默认隐藏，悬停该日期列才淡入（mac `chartOverlay` 精确映射日期，Windows `.day:hover`）；标注行与 y 域余量保留，柱高、日期轴与图例不位移；Nothing 点阵柱语义不变。
 - **Token 用量热力图移除呼吸动效，双端全主题静态渲染 (C213)**：删除 mac `HeatmapBreathingPolicy` / `DashboardPanelAnimationPolicy.allowsHeatmap` 与图层呼吸动画，热力图保留单 NSView + 每格 CALayer 的渲染承载但格子透明度恒 1；Windows 删除 `nothing-heat-breathe` / `--lo` / 逐格 `--d` 相位，热力图、图例与收起态迷你周格均不再呼吸；Nothing 档位绿阶与经典 tier 色、底部单行日期/图例保持不变。
 - **顶栏 Tab 切换器去底色、保留 1px 发丝框、选中图标变色 (C214)**：双端移除容器填充与选中胶囊/滑块（mac 删除 `matchedGeometryEffect` 药丸与 `tabPillNamespace`，Windows 删除 `#tab-active-pill` 与 `translateX` 位移）；容器仅保留 3pt 圆角 + 1px 发丝描边，选中图标经典取主文本色、Nothing 取 accent（深色 `#4A9E5C` / 浅色 `#D4A843`），未选中 secondary；图标尺寸、hover 提示与 ⌘/Ctrl 1/2/3 切换不变。
 - **订阅 Provider 用户可见名称 OpenCode GO / OpenCode Go 统一改为 OpenCode (C215)**：mac `SubscriptionProviderID.displayName`、collector `CatalogSpec.display_prefix`（决定订阅卡 section 名）、Windows settings providers 清单、配置面板/错误文案、README/官网与设计文档统一为 OpenCode；内部 provider ID `opencodeGo` / `opencode-go`、存储键 `opencode-go:oauth`、credential_field、官方端点与账号派生保持不变，旧凭据无需迁移。
