@@ -892,10 +892,13 @@
   // 形状不对时采集端会静默查不出额度, 故在此按 Provider 组装, 并由后端二次校验。
   function oauthPayload(field, extra, secret, secondary) {
     if (field === "opencodeGoQuotaAccounts") {
-      const auth = String(extra.auth || "").trim();
+      // C204: {"apiKey": "oc_sk_..."} (workspaceId 可选高级字段), 与采集端 opencode_credential 一致。
+      const apiKey = String(extra.apiKey || "").trim();
+      if (!apiKey) throw new Error("请粘贴 OpenCode Console 的 API Key (oc_sk_...)");
+      const payload = { apiKey };
       const workspaceId = String(extra.workspaceId || "").trim();
-      if (!auth || !workspaceId) throw new Error("请粘贴包含 auth 与 workspaceId 的 JSON");
-      return { ...extra, auth, workspaceId };
+      if (workspaceId) payload.workspaceId = workspaceId;
+      return payload;
     }
     if (field === "claudeQuotaAccounts") {
       const wrapped = extra.claudeAiOauth || extra["claude.ai_oauth"];

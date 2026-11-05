@@ -271,10 +271,11 @@ fn grok_oauth_ready(object: &serde_json::Map<String, Value>) -> Result<(), Strin
         .ok_or_else(|| "Grok 凭证需 key 或 https://auth.x.ai:: 作用域条目".to_owned())
 }
 fn opencode_go_oauth_ready(object: &serde_json::Map<String, Value>) -> Result<(), String> {
-    (nonempty_string(object.get("auth")) && nonempty_string(object.get("workspaceId")))
+    // C204: apiKey 必填 (workspaceId 为可选高级字段); 旧 {auth, workspaceId} Cookie
+    // 形状直接拒绝, 文案直指「重新粘贴」改用 Console API Key。
+    nonempty_string(object.get("apiKey"))
         .then_some(())
-        // C085: 文案直指「重新粘贴」, 用户能据此回到引导行重新取 Cookie 与 wrk_ ID。
-        .ok_or_else(|| "OpenCode GO 凭证不完整, 请重新粘贴".to_owned())
+        .ok_or_else(|| "OpenCode GO 凭证缺少 apiKey, 请改用 Console API Key (oc_sk_...) 重新粘贴".to_owned())
 }
 /// 对齐 `collector-provider::grok_token`: 顶层 `key`, 或作用域条目
 /// (`https://auth.x.ai::*` / `*/sign-in`) 内的 `key`。

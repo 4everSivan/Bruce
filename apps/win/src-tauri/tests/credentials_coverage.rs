@@ -543,7 +543,7 @@ fn oauth_providers_reject_flat_token_shape() {
 /// 与采集端解析器一致的规范形状必须被接受。
 #[test]
 fn oauth_providers_accept_collector_native_shapes() {
-    let cases: [(&str, serde_json::Value); 5] = [
+    let cases: [(&str, serde_json::Value); 6] = [
         (
             "claudeQuotaAccounts",
             json!({"a": {"display_name": "A", "oauth": {"claudeAiOauth": {"accessToken": "tok"}}}}),
@@ -562,7 +562,11 @@ fn oauth_providers_accept_collector_native_shapes() {
         ),
         (
             "opencodeGoQuotaAccounts",
-            json!({"a": {"display_name": "A", "oauth": {"auth": "Fe26.2**fixture", "workspaceId": "wrk_fixture"}}}),
+            json!({"a": {"display_name": "A", "oauth": {"apiKey": "oc_sk_fixture"}}}),
+        ),
+        (
+            "opencodeGoQuotaAccounts",
+            json!({"a": {"display_name": "A", "oauth": {"apiKey": "oc_sk_fixture", "workspaceId": "wrk_fixture"}}}),
         ),
     ];
     for (field, shape) in cases {
@@ -576,7 +580,7 @@ fn oauth_providers_accept_collector_native_shapes() {
 /// 三家各自的必需键缺失必须给出可诊断文案, 且不回显凭据值。
 #[test]
 fn oauth_shape_failures_are_diagnosable_without_echoing_secrets() {
-    let cases: [(&str, serde_json::Value, &str); 4] = [
+    let cases: [(&str, serde_json::Value, &str); 5] = [
         (
             "claudeQuotaAccounts",
             json!({"a": {"display_name": "A", "oauth": {"accessToken": "fixture-secret"}}}),
@@ -595,8 +599,13 @@ fn oauth_shape_failures_are_diagnosable_without_echoing_secrets() {
         (
             "opencodeGoQuotaAccounts",
             json!({"a": {"display_name": "A", "oauth": {"auth": "fixture-secret"}}}),
-            // C085: 文案改为直指「重新粘贴」(用户据此回到引导行重取 Cookie 与 wrk_ ID)。
+            // C204: 旧 Cookie 形状 (无 apiKey) 拒绝, 文案直指「重新粘贴」改用 API Key。
             "重新粘贴",
+        ),
+        (
+            "opencodeGoQuotaAccounts",
+            json!({"a": {"display_name": "A", "oauth": {"workspaceId": "wrk_fixture"}}}),
+            "apiKey",
         ),
     ];
     for (field, shape, needle) in cases {
