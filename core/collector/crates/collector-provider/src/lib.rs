@@ -7,7 +7,6 @@
 mod protobuf;
 mod providers;
 mod quota_parsers;
-mod seroval;
 mod signing;
 #[cfg(test)]
 mod tests_parsers;
@@ -23,10 +22,9 @@ pub use providers::{
 };
 pub use quota_parsers::{
     codex_service_id, parse_claude_usage, parse_cline_usage_limits, parse_codex_usage,
-    parse_deepseek_balance, parse_jev_models, parse_kimi_usage, parse_stepfun_usage,
-    parse_volcengine_usage, parse_zhipu_usage,
+    parse_deepseek_balance, parse_jev_models, parse_kimi_usage, parse_opencode_go_usage,
+    parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage,
 };
-pub use seroval::{parse_opencode_go_body, parse_opencode_go_usage};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use collector_domain::Diagnostic;
@@ -805,9 +803,8 @@ pub const CLAUDE_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 pub const CLAUDE_USER_AGENT: &str = "claude-code/2.1.302";
 pub const GROK_BILLING_URL: &str =
     "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
-pub const OPENCODE_SERVER_URL: &str = "https://opencode.ai/_server";
-pub const OPENCODE_SERVER_ID: &str =
-    "c7389bd0e731f80f49593e5ee53835475f4e28594dd6bd83eb229bab753498cd";
+/// C204: OpenCode Go 官方用量端点 (opencode 官方客户端同源, Bearer API Key).
+pub const OPENCODE_GO_USAGE_URL: &str = "https://opencode.ai/zen/go/v1/usage";
 pub const STEPFUN_STEP_PLAN_RATE_LIMIT_URL: &str =
     "https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit";
 pub const STEPFUN_REFRESH_TOKEN_URL: &str =

@@ -12,24 +12,64 @@ use std::time::Duration;
 
 #[test]
 fn fixture_http_client_checks_request_headers_and_retry_count() {
-    let http = FixtureHttp::new(vec![
-        response("not seroval"),
-        response("$R[0]={rollingUsage:{status:\"ok\",usagePercent:10,resetInSec:5}}"),
-    ]);
+    let http = FixtureHttp::new(vec![response(
+        r#"{"usage":{"rolling":{"status":"ok","percent":10,"resetsAt":"2026-08-21T01:23:45Z"},"weekly":{"status":"rate-limited","percent":100,"resetsAt":"2026-08-24T00:00:00Z"},"monthly":{"status":"ok","percent":29,"resetsAt":"2026-09-05T07:45:46Z"}}}"#,
+    )]);
     let request = provider_request(
         "opencode-go",
-        json!({"auth": "fixture-cookie", "workspaceId": "wrk_fixture"}),
+        json!({"apiKey": "oc_sk_fixture", "workspaceId": "wrk_fixture"}),
     );
     let result = OpenCodeGoProvider
         .query(&request, &http, &CancellationToken::new())
         .unwrap()
         .unwrap();
-    assert_eq!(result["windows"][0]["usedPercent"], 10.0);
+    let windows = result["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 3);
+    assert_eq!(windows[0]["usedPercent"], 10.0);
+    assert_eq!(windows[0]["resetsAt"], 1_787_275_425);
+    // rate-limited 窗口照常输出 (C204), 不得丢弃.
+    assert_eq!(windows[1]["usedPercent"], 100.0);
+    assert_eq!(windows[2]["label"], "每月");
     let requests = http.requests();
-    assert_eq!(requests.len(), 2);
+    assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].timeout, Duration::from_secs(8));
-    assert_eq!(requests[0].headers["Cookie"], "auth=fixture-cookie");
-    assert!(!requests[0].url.contains("fixture-cookie"));
+    assert_eq!(requests[0].url, "https://opencode.ai/zen/go/v1/usage");
+    assert_eq!(requests[0].headers["Authorization"], "Bearer oc_sk_fixture");
+    assert_eq!(requests[0].headers["x-opencode-org-id"], "wrk_fixture");
+    assert!(!requests[0].url.contains("oc_sk_fixture"));
+}
+
+/// C204: 未提供 workspaceId 时不携带 org 头, 由服务端按 key 推断 workspace.
+#[test]
+fn opencode_go_query_omits_org_header_without_workspace() {
+    let http = FixtureHttp::new(vec![response(
+        r#"{"usage":{"rolling":{"status":"ok","percent":1,"resetsAt":"2026-08-21T01:23:45Z"},"weekly":{"status":"ok","percent":25,"resetsAt":"2026-08-24T00:00:00Z"},"monthly":{"status":"ok","percent":29,"resetsAt":"2026-09-05T07:45:46Z"}}}"#,
+    )]);
+    let request = provider_request("opencode-go", json!({"apiKey": "oc_sk_fixture"}));
+    let result = OpenCodeGoProvider
+        .query(&request, &http, &CancellationToken::new())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result["windows"].as_array().unwrap().len(), 3);
+    let requests = http.requests();
+    assert!(!requests[0].headers.contains_key("x-opencode-org-id"));
+    assert_eq!(requests[0].headers["Authorization"], "Bearer oc_sk_fixture");
+}
+
+/// C204: 403 (未订阅 Go / key 无权限) 映射为 permission 失败且不泄漏 key.
+#[test]
+fn opencode_go_query_maps_403_to_permission_error() {
+    let secret = "oc_sk_fixture-secret";
+    let http = FixtureHttp::new(vec![Ok(HttpResponse {
+        status: 403,
+        body: Vec::new(),
+    })]);
+    let request = provider_request("opencode-go", json!({"apiKey": secret}));
+    let error = OpenCodeGoProvider
+        .query(&request, &http, &CancellationToken::new())
+        .unwrap_err();
+    assert_eq!(error.diagnostic.code, "PROVIDER_PERMISSION_DENIED");
+    assert!(!error.diagnostic.message.contains(secret));
 }
 
 #[test]
@@ -724,12 +764,14 @@ fn oauth_credential_shapes_are_parseable_by_real_parsers() {
             .as_deref(),
         Some("fixture-grok-scoped")
     );
-    // OpenCode GO: auth + workspaceId 双必填。
-    let opencode = json!({"auth": "Fe26.2**fixture", "workspaceId": "wrk_fixture"});
+    // OpenCode GO: apiKey 必填, workspaceId 可选 (C204).
+    let opencode = json!({"apiKey": "oc_sk_fixture", "workspaceId": "wrk_fixture"});
     assert_eq!(
         opencode_credential(&opencode).unwrap(),
-        ("Fe26.2**fixture", "wrk_fixture")
+        ("oc_sk_fixture", Some("wrk_fixture"))
     );
+    let bare = json!({"apiKey": "oc_sk_fixture"});
+    assert_eq!(opencode_credential(&bare).unwrap(), ("oc_sk_fixture", None));
 }
 
 #[test]

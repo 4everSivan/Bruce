@@ -575,6 +575,41 @@ pub fn parse_cline_usage_limits(
     )))
 }
 
+/// OpenCode Go 官方用量端点 `/zen/go/v1/usage` 响应解析 (C204):
+/// `{usage:{rolling|weekly|monthly:{status:"ok"|"rate-limited", percent:<0~100>, resetsAt:<RFC3339>}}}`.
+/// 三窗口直读服务端权威值 (rolling 即 5h 滑动窗, weekly 周一 00:00Z 重置, monthly 锚定订阅日),
+/// `resetsAt` 为绝对时间戳; `status=rate-limited` 的窗口照常输出 (percent 即权威用量, 不丢弃).
+/// `usage` 缺失、非对象或三窗口全数缺失返回错误 (fail-visible); 个别窗口缺失跳过.
+pub fn parse_opencode_go_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
+    let usage = payload
+        .get("usage")
+        .and_then(Value::as_object)
+        .ok_or_else(invalid_payload)?;
+    let mut windows = Vec::new();
+    for (key, label, minutes) in [
+        ("rolling", "每 5 小时", 300_u64),
+        ("weekly", "每周", 10080),
+        ("monthly", "每月", 43200),
+    ] {
+        let Some(meter) = usage.get(key).and_then(Value::as_object) else {
+            continue;
+        };
+        let percent = number(meter.get("percent")).ok_or_else(invalid_payload)?;
+        let resets_at = reset_epoch(meter.get("resetsAt"));
+        windows.push(window(
+            label,
+            clamp_percent(percent),
+            Some(minutes),
+            resets_at,
+        ));
+    }
+    if windows.is_empty() {
+        // 三窗口全数缺失视为形状漂移, 显式报错而非输出空窗口.
+        return Err(invalid_payload());
+    }
+    Ok(Some(service_result("windows", None, windows)))
+}
+
 /// 定位 `/users/me/plan` 返回体的订阅外层对象 (`data`):
 /// 真实报文为 `{"data":{"planHistoryId","plan":{...},"cancelAt","canceledAt"},"success":true}`,
 /// 订阅生命周期字段 (`canceledAt`/`cancelAt`/`currentPeriodStart`) 位于本层;

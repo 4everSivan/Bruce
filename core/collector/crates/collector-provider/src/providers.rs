@@ -3,10 +3,9 @@
 use crate::protobuf::parse_grok_usage;
 use crate::quota_parsers::{
     cline_pass_entitled, parse_claude_usage, parse_cline_usage_limits, parse_codex_usage,
-    parse_deepseek_balance, parse_jev_models, parse_kimi_usage, parse_volcengine_usage,
-    parse_zhipu_usage,
+    parse_deepseek_balance, parse_jev_models, parse_kimi_usage, parse_opencode_go_usage,
+    parse_volcengine_usage, parse_zhipu_usage,
 };
-use crate::seroval::parse_opencode_go_body;
 use crate::signing::{
     is_stepfun_token_expired, query_stepfun_rate_limit, refresh_stepfun_token,
     volc_credential_field, volc_headers, volc_secret_candidates,
@@ -17,7 +16,7 @@ use crate::{
     HttpClient, ProviderError, ProviderOutcome, ProviderRequest, QuotaProvider, CLAUDE_BETA_HEADER,
     CLAUDE_CLIENT_ID, CLAUDE_OAUTH_TOKEN_URL, CLAUDE_USAGE_URL, CLAUDE_USER_AGENT, CLINE_API_BASE,
     CODEX_USAGE_URL, DEEPSEEK_BALANCE_URL, GROK_BILLING_URL, JEV_MODELS_URL, KIMI_USAGE_URL,
-    OPENCODE_SERVER_ID, OPENCODE_SERVER_URL, ZHIPU_QUOTA_PATH,
+    OPENCODE_GO_USAGE_URL, ZHIPU_QUOTA_PATH,
 };
 use collector_runtime::CancellationToken;
 use serde_json::{json, Value};
@@ -529,32 +528,24 @@ fn attach_credential_update(
     }
 }
 
-pub(crate) fn opencode_credential(credential: &Value) -> Result<(&str, &str), ProviderError> {
+/// C204: OpenCode GO 凭证 JSON: `{"apiKey": "oc_sk_..."}` (可选 `"workspaceId"`);
+/// 旧 `{auth, workspaceId}` Cookie 形状由评估层判待重配, 采集端不再兼容.
+pub(crate) fn opencode_credential(
+    credential: &Value,
+) -> Result<(&str, Option<&str>), ProviderError> {
     let object = credential.as_object().ok_or_else(invalid_credential)?;
-    let auth = object
-        .get("auth")
+    let api_key = object
+        .get("apiKey")
         .and_then(Value::as_str)
+        .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(invalid_credential)?;
     let workspace = object
         .get("workspaceId")
         .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(invalid_credential)?;
-    Ok((auth, workspace))
-}
-
-fn percent_encode(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            output.push(byte as char);
-        } else {
-            output.push('%');
-            output.push_str(&format!("{byte:02X}"));
-        }
-    }
-    output
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    Ok((api_key, workspace))
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -565,6 +556,9 @@ impl QuotaProvider for OpenCodeGoProvider {
         "opencode-go"
     }
 
+    /// C204: 官方端点 `GET /zen/go/v1/usage` Bearer API Key 三窗口直读
+    /// (opencode 官方客户端同源; resetsAt 为绝对时间, rate-limited 窗口照常输出).
+    /// 旧 `_server` server-fn 抓包与 seroval 解析已退役 (design/02 规则 16).
     fn query(
         &self,
         request: &ProviderRequest,
@@ -574,44 +568,26 @@ impl QuotaProvider for OpenCodeGoProvider {
         let Some(credential) = request.credential.as_ref() else {
             return Ok(None);
         };
-        let (auth, workspace) = opencode_credential(credential)?;
-        let url = format!(
-            "{OPENCODE_SERVER_URL}?id={}&args=%5B%22{}%22%5D",
-            OPENCODE_SERVER_ID,
-            percent_encode(workspace)
-        );
-        let mut last_error = None;
-        for _ in 0..2 {
-            let body = send_body(
-                request,
-                http,
-                cancellation,
-                "GET",
-                url.clone(),
-                provider_headers(&[
-                    ("Cookie", format!("auth={auth}")),
-                    ("Accept", "*/*".to_owned()),
-                    ("X-Server-Id", OPENCODE_SERVER_ID.to_owned()),
-                    ("X-Server-Instance", "server-fn:bruce".to_owned()),
-                ]),
-                None,
-                Some("OpenCode GO 会话已失效, 请重新登录 opencode.ai"),
-            );
-            match body.and_then(|body| {
-                parse_opencode_go_body(&body, captured_epoch(&request.captured_at))
-            }) {
-                Ok(result) => return Ok(result),
-                Err(error) => last_error = Some(error),
-            }
+        let (api_key, workspace) = opencode_credential(credential)?;
+        let mut headers = provider_headers(&[
+            ("Authorization", format!("Bearer {api_key}")),
+            ("Accept", "application/json".to_owned()),
+        ]);
+        if let Some(workspace) = workspace {
+            // 多 workspace 用户显式指定; 省略时服务端按 key 推断.
+            headers.insert("x-opencode-org-id".to_owned(), workspace.to_owned());
         }
-        Err(last_error.unwrap_or_else(|| {
-            ProviderError::new(
-                "PROVIDER_REQUEST_FAILED",
-                "request",
-                "OpenCode GO 查询失败",
-                true,
-            )
-        }))
+        let payload = send_json(
+            request,
+            http,
+            cancellation,
+            "GET",
+            OPENCODE_GO_USAGE_URL.to_owned(),
+            headers,
+            None,
+            Some("OpenCode GO API Key 无效或未订阅 Go, 请重新配置"),
+        )?;
+        parse_opencode_go_usage(&payload)
     }
 }
 
