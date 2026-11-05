@@ -462,7 +462,7 @@
     },
     "T24": {
       "title": "状态预警微气泡通用化与分流路由（弹窗支持点击跳设置，额度超限跳看板）",
-      "status": "pending",
+      "status": "completed",
       "branch": "main",
       "topic": "NetworkEgressCountry",
       "milestone": "M12-网络出口国家校验",
