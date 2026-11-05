@@ -57,6 +57,9 @@
   - 将 Nothing 极客点阵主题下的菜单栏文本字号从 11pt 放大至 12.5pt（SF Mono Semibold），消除原 11pt 等宽字体在 22pt 菜单栏高度中视觉偏小、偏窄的问题，视觉面积与高度同经典主题 12pt 达成平衡；
   - 动态宽度计算与 capHeight 光学垂直居中公式自适应适配，上下保留约 4.5pt 舒适呼吸空间；设置中心实时预览条 1:1 同步对齐。
 
+### Changed
+- **OpenCode GO 配置入口对齐 API Key 表单族 (C205)**：配置 UI 从 Cookie 时代的长文粘贴框切换为与 DeepSeek/Kimi/Jev/Cline 一致的 API Key 配置面板（mac `APIKeyProviderConfigDialog` / Windows `kind:apiKey` 表单）：API Key 必填掩码输入 + **Workspace ID 选填**（多工作区账号显式指定，留空由服务端按 Key 推断，Windows 表单族同步获得可选字段支持）；面板自带**多账号列表**（添加/重命名/删除，accountID 按 apiKey 派生自动 upsert，采集端逐账号查询出卡）；指引附 OpenCode Console 外链。旧 Cookie 账号可在账号列表直接删除；粘贴入口退役。
+
 ### Fixed
 - **OpenCode GO 用量查询切换官方端点与 API Key 配置 (C204)**：额度查询弃用 opencode.ai 控制台私有 server-fn 抓包（内容哈希 id 随控制台重新部署即失效、Fe26 浏览器 Cookie 会过期且无法判过期、seroval 私有序列化格式需约 200 行专用解析器），改用 opencode 官方客户端同源的 `GET opencode.ai/zen/go/v1/usage`（Bearer 认证）三窗口直读：5 小时滚动窗 / 每周 / 每月各带用量百分比与**绝对**重置时间（原为相对秒按采集时刻换算），`rate-limited` 窗口照常展示不再凭空消失；seroval 解析器整体退役。凭据配置从「浏览器开发者工具抓 auth Cookie 与 wrk_ ID 粘贴 JSON」改为「OpenCode Console → API Keys 创建 `oc_sk_...` 直接粘贴」（裸 key 自动包装，多工作区可粘贴含 `workspaceId` 的 JSON 显式指定），账号身份改按 apiKey 派生；旧 Cookie 凭据双端一律判「待重配」提示改用 API Key，不迁移。401/403 显式提示 key 失效或未订阅 Go。mac / Windows 双端同步（评估器、粘贴入口、指引文案与凭据校验）。
 - **macOS 版运行中自动退出修复 (C203)**：安装版 v0.16.0 起每天多次自行退出（诊断报告 19 份完全同栈）：菜单栏图标的 `NSImage(drawingHandler:)` 绘制闭包内 `attrString.size()` 文本测量走 NSStringDrawingEngine 的 CoreText 排版路径，在离屏上下文中偶发属性字典插 nil（`NSInvalidArgumentException` → SIGABRT）；C180 引入该测量当天首崩，刷新动画每 50ms 强制重绘放大了命中概率。现在绘制闭包内严禁一切文本测量 API：排版高度改由字体度量（`ceil(ascender + |descender|)`）推导、宽度沿用闭包外已有的 `targetStatusItemLength` 测量，指标字体（经典 T-0 / Nothing T-4）提升为控制器级缓存，闭包内只执行 `draw(in:)`；NativeLifecycleHarness 新增 2,000 次双主题高频光栅化压力回归用例。
