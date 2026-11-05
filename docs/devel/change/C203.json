@@ -32,19 +32,19 @@
     {
       "scope": "消除崩溃点：绘制闭包内文本测量",
       "before": "drawingHandler 闭包内构造 NSMutableAttributedString 后调用 attrString.size()（经 NSStringDrawingEngine 测量路径，在离屏 NSCustomImageRep 上下文中偶发 CoreText 插 nil abort）",
-      "after": "闭包内不再做任何文本测量：textRect 高度改用字体度量 ceil(capHeight - descender)（与 baselineY 同源），宽度沿用闭包外 targetStatusItemLength 已测结果，绘制区右界按画布宽度计算",
+      "after": "闭包内不再做任何文本测量：textRect 高度改用字体度量 ceil(ascender + |descender|) 推导，宽度沿用闭包外 targetStatusItemLength 已测结果，闭包内文本段仅构造属性串并 draw(in:)",
       "impact": "MenuBarStatusItemController.makeStatusItemImage 文本绘制段"
     },
     {
-      "scope": "字体与属性串外提加固",
-      "before": "字体对象与属性字符串在每次 drawingHandler 执行时（含 50ms 刷新动画高频重绘）重新构造",
-      "after": "字体提升为按主题缓存的控制器级常量（经典/Nothing 两个实例），属性串在 makeStatusItemImage 主线程调用时构建、闭包按值捕获，闭包内仅执行 draw",
+      "scope": "字体缓存加固",
+      "before": "字体对象在每次 drawingHandler 执行时（含 50ms 刷新动画高频重绘）重新构造",
+      "after": "指标字体提升为控制器级静态缓存（经典 T-0 / Nothing T-4 两个实例），targetStatusItemLength 与 makeStatusItemImage 共用；属性串因前景色依赖绘制时的深浅外观判定仍在闭包内构建（构造属性串与 draw 不走测量路径，自 2026-09-22 起稳定）",
       "impact": "MenuBarStatusItemController 菜单栏图标文本路径"
     },
     {
       "scope": "回归压力用例",
       "before": "NativeLifecycleHarness 无菜单栏图标高频重绘覆盖",
-      "after": "新增压力用例：模拟高频（数千次）makeStatusItemImage 构建与绘制，覆盖经典/Nothing 两主题与刷新动画相位，断言全程无异常且图像非空",
+      "after": "新增压力用例 menuBarImageRenderingSurvivesHighFrequencyRedraw：按修复后模式（缓存字体 + 闭包内仅 draw、字体度量行高）高频光栅化 2000 次，轮换经典/Nothing 双主题与多组指标文本，断言每次光栅化出图非空且全程无异常",
       "impact": "apps/macos NativeLifecycleHarness"
     }
   ],
@@ -54,7 +54,7 @@
     "modified": true,
     "rule_diff": {
       "before": "状态项图像绘制闭包内以 NSAttributedString.size() 测量文本尺寸用于垂直居中",
-      "after": "绘制闭包内严禁文本测量 API（size/boundingRect）；文本排版尺寸一律经闭包外主线程测量或字体度量推导（capHeight/descender），属性串闭包外构建闭包内仅 draw（渲染稳定性红线）"
+      "after": "绘制闭包内严禁文本测量 API（size/boundingRect）；文本排版尺寸一律经闭包外主线程测量或字体度量推导（行高 = ascender + |descender|），指标字体控制器级缓存（渲染稳定性红线）"
     }
   },
   "verification": {
@@ -100,5 +100,12 @@
     "commit": "",
     "tag": ""
   },
-  "gate": {}
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
 }
