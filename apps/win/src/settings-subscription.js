@@ -42,7 +42,7 @@
   // 凭证形态副标题 (mac subscriptionRowSubtitle)
   const CREDENTIAL_FORMS = {
     kimi: "Web 令牌", codex: "OAuth 设备码", claude: "CLI 登录态", grok: "CLI 登录态",
-    opencodeGo: "OAuth 设备码", stepfun: "Step Plan Token",
+    opencodeGo: "API Key", stepfun: "Step Plan Token",
   };
   function providerDescriptor(id) { return providers.find(value => value[0] === id) || [id, id, "", ""]; }
   /// 该 Provider 的账号记录。形状不合规的账号在读取侧即被丢弃 (规则 21 fail-closed),
@@ -300,7 +300,8 @@
     },
     opencodeGo: {
       kind: "paste",
-      pasteLabel: "打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID, 粘贴 JSON",
+      // C204: 改用 Console API Key; 多工作区可粘贴含 workspaceId 的 JSON。
+      pasteLabel: "打开 opencode.ai/console → API Keys → 创建并复制 API Key (oc_sk_...) 粘贴; 多工作区账号可粘贴 {\"apiKey\":\"oc_sk_...\",\"workspaceId\":\"wrk_...\"} JSON",
     },
   };
 
@@ -422,13 +423,13 @@
   /// 国内站 → 修复后再存一次」会生成第二个账号, 旧账号还停在错误站点。以 token 为身份后,
   /// 重新保存即 upsert 到同一账号, 顺带改写或清除站点 (未选站点 → 由采集端按令牌推导)。
   function credentialAccountId(id, credential) {
-    // 身份字段: StepFun 以 token、OpenCode GO 以 workspaceId 为身份 (C093 / C085) ——
+    // 身份字段: StepFun 以 token、OpenCode GO 以 apiKey 为身份 (C093 / C204) ——
     // 同一身份重新保存即 upsert, 不会因重新粘贴多出一条账号。
     const identity = credential && typeof credential === "object"
       ? id === "stepfun"
         ? { token: credential.token }
         : id === "opencodeGo"
-          ? { workspaceId: credential.oauth?.workspaceId }
+          ? { apiKey: credential.oauth?.apiKey }
           : credential
       : credential;
     const text = `${id}:${JSON.stringify(identity)}`;
@@ -466,7 +467,7 @@
       return { api_key: trimmed("apiKey") };
     }
     if (id === "codex") throw new Error("Codex 请使用上方「登录新账号」完成设备码登录");
-    // Claude / Grok / OpenCode GO: 粘贴凭证 JSON (Claude 亦接受纯令牌)。
+    // Claude / Grok / OpenCode GO: 粘贴凭证 JSON (Claude 亦接受纯令牌, OpenCode GO 亦接受裸 API Key)。
     const raw = (values.paste || "").trim();
     if (!raw) throw new Error("请粘贴凭证 JSON");
     let parsed = null;
@@ -475,6 +476,10 @@
       return { oauth: oauthPayload(quotaFieldOf(id), parsed, (values.secret || "").trim(), "") };
     }
     if (id === "claude" && raw.length > 10) return { oauth: oauthPayload(quotaFieldOf(id), {}, raw, "") };
+    // C204: OpenCode GO 裸 API Key 字符串自动包装为标准形状。
+    if (id === "opencodeGo" && /^oc_sk_[A-Za-z0-9_-]+$/.test(raw)) {
+      return { oauth: oauthPayload(quotaFieldOf(id), { apiKey: raw }, "", "") };
+    }
     throw new Error("凭证必须是 JSON 对象");
   }
 
