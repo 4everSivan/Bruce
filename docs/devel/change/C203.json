@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C203",
+  "title": "修复 macOS 版运行中自退：菜单栏图标绘制闭包内 attrString.size() 触发 CoreText 插 nil 崩溃",
+  "version": "0.17.0",
+  "type": "Bugfix",
+  "status": "in_progress",
+  "branch": "fix/C203-menubar-image-crash",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "MenuBarStatusItemController / NativeLifecycleHarness",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "安装版 v0.16.0 起每天多次自行退出。~/Library/Logs/DiagnosticReports/ 下 19 份 BruceApp 崩溃报告（2026-11-02 16:00 起）完全同栈：makeStatusItemImage 的 NSImage drawingHandler 闭包内 attrString.size()（MenuBarStatusItemController.swift:566）经 NSStringDrawingEngine → CTLineCreateWithAttributedString → TAttributes::ApplyFont 构造属性字典时插入 nil，抛 NSInvalidArgumentException 后 SIGABRT。该测量为 C180 (dc4c0ca, 2026-11-02 14:41) 首次引入，新版本安装约 80 分钟后即首崩；此前同闭包内仅有 draw（84656b5, 2026-09-22 起）稳定运行 6 周。闭包外的 targetStatusItemLength 用同一字体构造测量却从未崩，差异在于 size() 测量走 boundingRectWithSize:options:context:nil 路径在 NSCustomImageRep 离屏上下文中执行，macOS 27.2 (26B123) 该路径偶发插 nil。刷新动画每 50ms 强制重绘放大了命中概率。",
+  "precheck": {
+    "description": "确认崩溃报告与崩点代码同时存在：诊断报告目录存在 BruceApp 同栈崩溃且源文件闭包内仍有 attrString.size()",
+    "command": "zsh -c 'ls ~/Library/Logs/DiagnosticReports/BruceApp-*.ips >/dev/null 2>&1 && rg -n \"attrString.size\\(\\)\" apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift'",
+    "expected": "崩溃报告存在且源码闭包内命中 attrString.size()（退出码 0）",
+    "is_completed": true,
+    "evidence": "2026-11-05 预检：诊断报告目录 19 份 BruceApp-2026-11-*.ips 全部同栈（closure #1 in makeStatusItemImage → NSAttributedString size → TAttributes::ApplyFont → NSDictionary 插 nil，SIGABRT）；MenuBarStatusItemController.swift:566 闭包内 attrString.size() 仍在"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos'",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C203 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C203 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "消除崩溃点：绘制闭包内文本测量",
+      "before": "drawingHandler 闭包内构造 NSMutableAttributedString 后调用 attrString.size()（经 NSStringDrawingEngine 测量路径，在离屏 NSCustomImageRep 上下文中偶发 CoreText 插 nil abort）",
+      "after": "闭包内不再做任何文本测量：textRect 高度改用字体度量 ceil(capHeight - descender)（与 baselineY 同源），宽度沿用闭包外 targetStatusItemLength 已测结果，绘制区右界按画布宽度计算",
+      "impact": "MenuBarStatusItemController.makeStatusItemImage 文本绘制段"
+    },
+    {
+      "scope": "字体与属性串外提加固",
+      "before": "字体对象与属性字符串在每次 drawingHandler 执行时（含 50ms 刷新动画高频重绘）重新构造",
+      "after": "字体提升为按主题缓存的控制器级常量（经典/Nothing 两个实例），属性串在 makeStatusItemImage 主线程调用时构建、闭包按值捕获，闭包内仅执行 draw",
+      "impact": "MenuBarStatusItemController 菜单栏图标文本路径"
+    },
+    {
+      "scope": "回归压力用例",
+      "before": "NativeLifecycleHarness 无菜单栏图标高频重绘覆盖",
+      "after": "新增压力用例：模拟高频（数千次）makeStatusItemImage 构建与绘制，覆盖经典/Nothing 两主题与刷新动画相位，断言全程无异常且图像非空",
+      "impact": "apps/macos NativeLifecycleHarness"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "状态项图像绘制闭包内以 NSAttributedString.size() 测量文本尺寸用于垂直居中",
+      "after": "绘制闭包内严禁文本测量 API（size/boundingRect）；文本排版尺寸一律经闭包外主线程测量或字体度量推导（capHeight/descender），属性串闭包外构建闭包内仅 draw（渲染稳定性红线）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-01",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "崩点消除（静态证据）",
+        "true_if": "makeStatusItemImage 的 drawingHandler 闭包内不再出现 NSAttributedString.size() / boundingRect 等测量调用",
+        "false_if": "闭包内仍存在任何文本测量 API",
+        "evidence": "2026-11-05 全仓检索：rg 'attrString.size|boundingRect' apps/macos/Sources --include='*.swift' 仅命中 targetStatusItemLength 的闭包外主线程测量（line 371 一处）；drawingHandler 闭包内文本段仅构造属性串 + draw(in:)，排版高度经 ceil(ascender + |descender|) 字体度量推导",
+        "result": true
+      },
+      {
+        "item": "文本排版视觉不回归",
+        "true_if": "菜单栏指标文本仍按 Cap-Height 光学垂直居中、宽度自适应与 4pt 步进防抖不变，经典 T-0 / Nothing T-4 两主题排版一致",
+        "false_if": "文本垂直偏移、宽度截断或主题排版错乱",
+        "evidence": "baselineY 公式 (capHeight + descender 光学居中) 与 targetStatusItemLength 宽度测量链路逐字未动；textRect 高度来源由 attrString.size().height 换为 ceil(ascender+|descender|)（12pt 系统等宽数字字体下差值 < 0.5pt，且高度仅作 draw(in:) 布局界、不参与基线定位）；字体实例与主题切换逻辑 (T-0/T-4) 不变，仅提升为缓存；Harness 压力用例 2000 次双主题光栅化出图正常",
+        "result": true
+      },
+      {
+        "item": "回归压力用例",
+        "true_if": "NativeLifecycleHarness 高频重绘压力用例通过，构建全绿",
+        "false_if": "压力用例崩溃、失败或编译错误",
+        "evidence": "2026-11-05 swift run NativeLifecycleHarness: 'Native lifecycle tests passed: 20'（19 存量 + 1 新增压力用例，Exit 0）；zsh scripts/verify-local.sh 全量 'Bruce 本地验证全部通过' Exit 0（Rust fmt/test/clippy + fixture + Swift build + 全部 Harness + 双端对拍）",
+        "result": true
+      },
+      {
+        "item": "实机稳定性",
+        "true_if": "安装修复版后菜单栏指标刷新与刷新动画期间无新增 BruceApp 崩溃报告",
+        "false_if": "修复版运行中仍产生同栈崩溃报告",
+        "evidence": "未执行：修复版尚未重新打包安装到 /Applications 并连续观察；装机后需确认 ~/Library/Logs/DiagnosticReports/ 无新增 BruceApp 同栈报告（观察期覆盖菜单栏多轮指标刷新与刷新动画）",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {}
+}

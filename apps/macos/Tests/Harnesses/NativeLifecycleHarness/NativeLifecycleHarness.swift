@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import QuartzCore
 @testable import BruceAppCore
@@ -75,6 +76,7 @@ struct NativeLifecycleHarness {
         try metricFormatterUsesCompactValues()
         try menuBarContentUsesStableIconAndMetrics()
         try menuBarContentUsesRefreshAndFailureIcons()
+        try menuBarImageRenderingSurvivesHighFrequencyRedraw()
         try dashboardPlacementFallsBackFromInvalidStatusItemCoordinates()
         try panelSizingKeepsTopAnchoredWithinScreen()
         try dashboardSettingsRouteOrdersCloseBeforeOpen()
@@ -792,6 +794,56 @@ struct NativeLifecycleHarness {
             failedContent.iconName == "xmark.circle",
             "failed menu bar content must use the failure icon"
         )
+    }
+
+    /// C203: 菜单栏图标高频重绘压力回归 —— drawingHandler 闭包内只绘制不测量.
+    ///
+    /// 背景: `attrString.size()` 走 NSStringDrawingEngine 的 CoreText 排版测量路径,
+    /// 在 NSImage drawingHandler 的离屏上下文中偶发属性字典插 nil (SIGABRT, 每天多次自退).
+    /// 本用例按修复后的模式 (缓存字体 + 闭包内仅 `draw(in:)`, 排版高度经字体度量推导)
+    /// 高频光栅化双主题指标文本, 断言全程稳定出图.
+    private static func menuBarImageRenderingSurvivesHighFrequencyRedraw() throws {
+        let classicFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        let nothingFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
+        let classicTexts = ["124k  $1.28", "1.2M  $12.4", "--  $--"]
+        let nothingTexts = ["68% / 124K / $1.28", "9% / 2.4M / $240", "-- / -- / --"]
+
+        for iteration in 0..<2_000 {
+            let isNothingTheme = iteration.isMultiple(of: 2)
+            let font = isNothingTheme ? nothingFont : classicFont
+            let texts = isNothingTheme ? nothingTexts : classicTexts
+            let text = texts[iteration % texts.count]
+            let canvas = NSSize(width: 96, height: 22)
+
+            let image = NSImage(size: canvas, flipped: false) { _ in
+                let attrString = NSMutableAttributedString(
+                    string: text,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: NSColor.white,
+                    ]
+                )
+                let baselineY = round((canvas.height - font.capHeight) / 2.0 + font.descender)
+                let textRect = NSRect(
+                    x: 25,
+                    y: max(0, baselineY),
+                    width: max(0, canvas.width - 25),
+                    height: ceil(font.ascender + abs(font.descender))
+                )
+                attrString.draw(in: textRect)
+                return true
+            }
+
+            guard let rasterized = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                throw TestFailure.expectation(
+                    "menu bar image rasterization returned nil at iteration \(iteration)"
+                )
+            }
+            try expect(
+                rasterized.width > 0 && rasterized.height > 0,
+                "menu bar image rasterization must produce a non-empty bitmap at iteration \(iteration)"
+            )
+        }
     }
 
     private static func dashboardPlacementFallsBackFromInvalidStatusItemCoordinates() throws {

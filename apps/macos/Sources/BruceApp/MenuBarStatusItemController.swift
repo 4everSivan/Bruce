@@ -46,6 +46,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// never has to re-layout an image/title pair.
     private static let statusItemLength: CGFloat = 74
     private static let iconOnlyLength: CGFloat = 28
+
+    /// 菜单栏指标文本排版字体 (T-0 / T-4 主题各一), 控制器级缓存避免高频重绘反复构造 (C203).
+    private static let classicMetricFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    private static let nothingMetricFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
+
+    private static func metricFont(nothingTheme: Bool) -> NSFont {
+        nothingTheme ? nothingMetricFont : classicMetricFont
+    }
     private var lastRenderedContent: MenuBarStatusItemContent?
     private var refreshTimer: Timer?
     private var refreshPhase: CGFloat = 0
@@ -362,9 +370,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         guard !content.metricText.isEmpty else {
             return Self.iconOnlyLength
         }
-        let font: NSFont = content.isNothingTheme
-            ? NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
-            : NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        let font = Self.metricFont(nothingTheme: content.isNothingTheme)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
         ]
@@ -534,10 +540,13 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             }
 
             // 6. 指标文本绘制 (非仅图标模式时)
+            // C203: 闭包内严禁文本测量 API —— NSAttributedString.size() 走
+            // NSStringDrawingEngine 的 CoreText 排版路径, 在 NSCustomImageRep 离屏
+            // 上下文中偶发属性字典插 nil (NSInvalidArgumentException/SIGABRT).
+            // 排版尺寸一律经闭包外测量 (targetStatusItemLength) 或字体度量推导;
+            // 字体取控制器级缓存, 避免高频重绘时反复构造.
             if !content.metricText.isEmpty {
-                let font: NSFont = content.isNothingTheme
-                    ? NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
-                    : NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+                let font = Self.metricFont(nothingTheme: content.isNothingTheme)
 
                 let attrString = NSMutableAttributedString(
                     string: content.metricText,
@@ -563,14 +572,13 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                     }
                 }
 
-                let textSize = attrString.size()
                 // Cap-Height 光学垂直居中: 使文字大写字形中心与画布中心严格重合
                 let baselineY = round((size.height - font.capHeight) / 2.0 + font.descender)
                 let textRect = NSRect(
                     x: 25,
                     y: max(0, baselineY),
                     width: max(0, size.width - 25),
-                    height: textSize.height
+                    height: ceil(font.ascender + abs(font.descender))
                 )
                 attrString.draw(in: textRect)
             }

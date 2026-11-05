@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-04",
+  "updated_at": "2026-11-05",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -52,7 +52,8 @@
         "C182",
         "C183",
         "C200",
-        "C202"
+        "C202",
+        "C203"
       ]
     },
     "PricingEngine": {
@@ -2074,6 +2075,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
       "file": "docs/devel/change/C202.json"
+    },
+    "C203": {
+      "title": "修复 macOS 版运行中自退：菜单栏图标绘制闭包内 attrString.size() 触发 CoreText 插 nil 崩溃",
+      "type": "Bugfix",
+      "status": "in_progress",
+      "branch": "fix/C203-menubar-image-crash",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C203.json"
     }
   }
 }
