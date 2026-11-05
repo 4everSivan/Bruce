@@ -19,7 +19,7 @@ public enum InjectionKind: Sendable, Equatable {
     case claudeMetaEnabledPlusOptionalOAuth
     /// `providerMeta.grok.enabled` + 可选顶层 `grokOAuth` JSON
     case grokMetaEnabledPlusOptionalOAuth
-    /// `opencodeGoQuotaAccounts` = 多账号 oauth JSON 映射 (服务端 console OAuth)
+    /// `opencodeGoQuotaAccounts` = 多账号 oauth JSON 映射 (C204: Console API Key 形状)
     case opencodeGoQuotaAccounts
     /// 顶层 `stepfunQuotaAccounts` = {accountID: {token, display_name}} 映射
     case stepfunQuotaAccounts

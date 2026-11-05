@@ -139,23 +139,27 @@ public enum SubscriptionCredentialEvaluator {
 
     // MARK: - OpenCode GO
 
-    /// OpenCode GO 凭证 JSON: {"auth": <Fe26 cookie>, "workspaceId": "wrk_..."}
-    /// 两者均非空才 valid (collector 凭此调网页 server function).
+    /// OpenCode GO 凭证 JSON (C204): {"apiKey": "oc_sk_..."} (可选 "workspaceId").
+    /// apiKey 非空才 valid; 旧 {"auth", "workspaceId"} Cookie 形状判 expired
+    /// (配置方式已切换 API Key, 待重配, 不迁移不降级).
     public static func opencodeGoStatus(of json: String) -> SubscriptionCredentialStatus {
         guard let dict = jsonObject(from: json) else {
             return .malformed
         }
-        let auth = (dict["auth"] as? String ?? "")
+        let apiKey = (dict["apiKey"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let workspace = (dict["workspaceId"] as? String ?? "")
+        if !apiKey.isEmpty {
+            return .valid
+        }
+        let legacyAuth = (dict["auth"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if auth.isEmpty && workspace.isEmpty {
+        let legacyWorkspace = (dict["workspaceId"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if legacyAuth.isEmpty && legacyWorkspace.isEmpty {
             return .missing
         }
-        if auth.isEmpty || workspace.isEmpty {
-            return .malformed
-        }
-        return .valid
+        // 旧 Cookie 凭据: Cookie 不是 Bearer 令牌, 无法沿用官方端点.
+        return .expired
     }
 
     // MARK: - 辅助

@@ -165,7 +165,7 @@ extension SettingsView {
         case .stepfun: kind = "Step Plan Token"
         case .codex: kind = "OAuth 设备码"
         case .claude, .grok: kind = "CLI 登录态"
-        case .opencodeGo: kind = "OAuth 设备码"
+        case .opencodeGo: kind = "API Key"
         }
         let count = model.providerAccountSummaries[id]?.count ?? 0
         return count > 1 ? "\(kind) · \(count) 个账号" : kind
@@ -644,12 +644,12 @@ extension SettingsView {
             OfficialLocalProviderSettingsSection(
                 id: .opencodeGo,
                 available: false,
-                missingHint: "未检测到 OpenCode GO 登录态",
+                missingHint: "尚未配置 OpenCode GO API Key",
                 pasteText: $opencodeGoPasteText,
                 onRemove: { removeSubscriptionProvider(.opencodeGo) },
                 importFromLocal: {},
                 savePaste: { coordinator.importOpenCodeGoFromPaste($0) },
-                pasteHint: "打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID, 粘贴 JSON",
+                pasteHint: "打开 opencode.ai/console → API Keys → 创建并复制 API Key (oc_sk_...) 粘贴; 多工作区账号可粘贴 {\"apiKey\":\"oc_sk_...\",\"workspaceId\":\"wrk_...\"} JSON",
                 showsLocalRedetect: false,
                 isEditing: $opencodeGoEditing
             )

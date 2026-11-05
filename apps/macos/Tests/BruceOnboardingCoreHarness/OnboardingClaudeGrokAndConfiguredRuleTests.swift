@@ -469,15 +469,27 @@ extension BruceOnboardingCoreHarness {
     }
 
     static func opencodeGoEvaluatorValidAndMalformed() throws {
-        let valid = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        // C204: 新形状 {"apiKey": ...} 才 valid; workspaceId 为可选高级字段.
+        let valid = #"{"apiKey":"oc_sk_fixture"}"#
         try coreExpect(
             SubscriptionCredentialEvaluator.opencodeGoStatus(of: valid) == .valid,
-            "opencodeGo 双字段应 valid"
+            "opencodeGo apiKey 应 valid"
         )
-        let missingWorkspace = #"{"auth":"Fe26.2**abc"}"#
+        let withWorkspace = #"{"apiKey":"oc_sk_fixture","workspaceId":"wrk_01"}"#
         try coreExpect(
-            SubscriptionCredentialEvaluator.opencodeGoStatus(of: missingWorkspace) == .malformed,
-            "opencodeGo 缺 workspaceId 应 malformed"
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: withWorkspace) == .valid,
+            "opencodeGo apiKey+workspaceId 应 valid"
+        )
+        // 旧 Cookie 形状判 expired (待重配, 不迁移不降级).
+        let legacy = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        try coreExpect(
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: legacy) == .expired,
+            "opencodeGo 旧 Cookie 形状应 expired 待重配"
+        )
+        let legacyAuthOnly = #"{"auth":"Fe26.2**abc"}"#
+        try coreExpect(
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: legacyAuthOnly) == .expired,
+            "opencodeGo 仅旧 auth 也应 expired 待重配"
         )
         let empty = #"{}"#
         try coreExpect(
@@ -492,19 +504,19 @@ extension BruceOnboardingCoreHarness {
 
     static func opencodeGoAccountIDAndLegacyKeys() throws {
         let accountID = ProviderAccountIDGenerator.opencodeGoAccountID(
-            accessToken: "st_same"
+            apiKey: "oc_sk_same"
         )
         try coreExpect(
             accountID == ProviderAccountIDGenerator.opencodeGoAccountID(
-                accessToken: "st_same"
+                apiKey: "oc_sk_same"
             ),
-            "opencodeGo 同 token 应生成同 accountID"
+            "opencodeGo 同 apiKey 应生成同 accountID"
         )
         try coreExpect(
             accountID != ProviderAccountIDGenerator.opencodeGoAccountID(
-                accessToken: "st_other"
+                apiKey: "oc_sk_other"
             ),
-            "opencodeGo 不同 token 应生成不同 accountID"
+            "opencodeGo 不同 apiKey 应生成不同 accountID"
         )
         try coreExpect(
             ProviderAccountKeys.legacyKeys(for: .opencodeGo) == [

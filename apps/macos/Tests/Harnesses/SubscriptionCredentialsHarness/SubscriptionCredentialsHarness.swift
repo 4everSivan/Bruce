@@ -75,7 +75,7 @@ struct SubscriptionCredentialsHarness {
     /// C123: 定向刷新输入只携带 capabilities (= externalQuotas) 与目标凭证, 不再发送
     /// 已退役的 subscriptionQuotaOnly / subscriptionProviders (Bridge 会拒绝).
     private static func scopedInputCarriesOnlyLiveContractFields() async throws {
-        let goJSON = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        let goJSON = #"{"apiKey":"oc_sk_fixture","workspaceId":"wrk_01"}"#
         let (provider, _, _) = try makeProvider(
             enabled: [.opencodeGo],
             credentials: [SubscriptionCredentialAccount.opencodeGoOAuth: goJSON]
@@ -284,7 +284,7 @@ struct SubscriptionCredentialsHarness {
     }
 
     private static func opencodeGoInjectedWhenCredentialPresent() async throws {
-        let goJSON = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        let goJSON = #"{"apiKey":"oc_sk_fixture","workspaceId":"wrk_01"}"#
         let (provider, _, _) = try makeProvider(
             enabled: [.opencodeGo],
             credentials: [SubscriptionCredentialAccount.opencodeGoOAuth: goJSON]
@@ -299,8 +299,8 @@ struct SubscriptionCredentialsHarness {
             throw CredentialsTestFailure.expectation("opencodeGo oauth 结构不符")
         }
         try credentialsExpect(
-            oauth["auth"] != nil && oauth["workspaceId"] != nil,
-            "opencodeGoQuotaAccounts 应包含 auth/workspaceId"
+            oauth["apiKey"] != nil,
+            "opencodeGoQuotaAccounts 应包含 apiKey (C204)"
         )
     }
 
@@ -892,14 +892,14 @@ struct SubscriptionCredentialsHarness {
     }
 
     /// OpenCode GO 网页会话无轮换语义: 轮换条目应被跳过
-    /// (会话过期需用户重新登录, 不自动续期).
+    /// (key 失效需用户重新粘贴, 不自动续期; C204 起凭据为 API Key 形状).
     private static func coordinatorRotationOpenCodeGo() throws {
         let store = InMemoryCredentialStore()
         let accountStore = ProviderAccountStore(provider: .opencodeGo, credentialStore: store)
         _ = try accountStore.addAccount(
             accountID: "go-acct",
             displayName: "OpenCode GO · a",
-            credentialJSON: "{\"auth\":\"Fe26.2**old\",\"workspaceId\":\"wrk_01\"}"
+            credentialJSON: #"{"apiKey":"oc_sk_old"}"#
         )
 
         let coordinator = CredentialUpdateCoordinator(credentialStore: store)
@@ -915,7 +915,7 @@ struct SubscriptionCredentialsHarness {
 
         let record = try accountStore.loadRecord(for: "go-acct")
         try credentialsExpect(
-            record?.credentialJSON.contains("Fe26.2**old") == true,
+            record?.credentialJSON.contains("oc_sk_old") == true,
             "opencodeGo record 不应被轮换修改"
         )
     }
