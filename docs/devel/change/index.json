@@ -177,7 +177,8 @@
         "C131",
         "C164",
         "C171",
-        "C173"
+        "C173",
+        "C204"
       ]
     },
     "TokenUsage": {
@@ -2084,6 +2085,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
       "file": "docs/devel/change/C203.json"
+    },
+    "C204": {
+      "title": "OpenCode Go 用量查询切换官方 /zen/go/v1/usage 端点，凭据改为 API Key 配置，退役 server-fn 抓包与 seroval 解析",
+      "type": "Bugfix",
+      "status": "in_progress",
+      "branch": "fix/C204-opencode-go-usage-api",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C204.json"
     }
   }
 }

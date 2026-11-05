@@ -1,0 +1,125 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C204",
+  "title": "OpenCode Go 用量查询切换官方 /zen/go/v1/usage 端点，凭据改为 API Key 配置，退役 server-fn 抓包与 seroval 解析",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C204-opencode-go-usage-api",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/macos + apps/win",
+    "component": "OpenCodeGoProvider / seroval 解析 / 订阅凭据评估与注入（mac+win）",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "现有 OpenCode Go 额度查询走 opencode.ai 控制台私有 server-fn（opencode.ai/_server?id=<内容哈希>&args=[workspaceId]，Cookie 认证），响应是 seroval 私有序列化格式需专用抓包解析器（seroval.rs 约 200 行）。三重脆弱：① server-fn id 为内容哈希，控制台重新部署即失效；② Fe26 浏览器 Cookie 会过期且评估器只查非空、无法判过期；③ seroval 是实现细节，上游格式微调即整段报废。opencode 官方客户端（开源仓库 packages/core/src/usage-limits.ts）同源使用的正式端点 GET https://opencode.ai/zen/go/v1/usage（Bearer 认证，社区实测纯 key 直连 200）直接返回 rolling(5h)/weekly/monthly 三窗口 percent + rate-limited 状态 + 绝对 resetsAt，数据更全且认证改用长期有效的 Console API Key（oc_sk_...）。",
+  "precheck": {
+    "description": "确认旧实现仍在且官方端点未接入：providers.rs 仍引用 _server 常量、无 zen/go/v1/usage 引用",
+    "command": "zsh -c 'grep -q OPENCODE_SERVER_URL core/collector/crates/collector-provider/src/providers.rs && ! grep -rq \"zen/go/v1/usage\" core/collector/crates/collector-provider/src/'",
+    "expected": "退出码 0（旧 server-fn 实现在位、官方端点尚未接入，需要本卡实施）",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "zsh -c 'git checkout -b fix/C204-opencode-go-usage-api'"
+    ],
+    "after": [
+      "zsh -c 'cd core/collector && cargo fmt && cargo test --workspace && cargo clippy --workspace --all-targets'",
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos && swift run --package-path apps/macos BruceOnboardingCoreHarness'",
+      "zsh -c 'cd apps/win/src-tauri && cargo check'",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C204 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C204 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "查询通道（Rust collector-provider）",
+      "before": "GET https://opencode.ai/_server?id=<内容哈希>&args=[\"workspaceId\"]，Cookie: auth=<Fe26> 认证，响应经 seroval 私有格式解析（seroval.rs）",
+      "after": "GET https://opencode.ai/zen/go/v1/usage，Authorization: Bearer <apiKey>（存在 workspaceId 时附带 x-opencode-org-id 头），响应为标准 JSON：{usage:{rolling|weekly|monthly:{status,percent,resetsAt(RFC3339)}}}；seroval.rs 整体退役删除",
+      "impact": "OpenCodeGoProvider::query、opencode_credential、lib.rs 常量与导出；三窗口输出沿用既有 windows 契约（每 5 小时/每周/每月），Swift 渲染层零改动"
+    },
+    {
+      "scope": "窗口解析语义",
+      "before": "server-fn 形状 {rollingUsage|weeklyUsage|monthlyUsage:{status,usagePercent,resetInSec}}，仅输出 status==ok 的窗口（rate-limited 窗口被丢弃），重置时间为相对秒需按采集时刻换算",
+      "after": "官方形状三窗口全部照常输出（status=rate-limited 不丢弃，percent 即权威用量）；resetsAt 为 RFC3339 绝对时间戳直接解析（复用 Cline 解析器 chrono rfc3339 口径）",
+      "impact": "quota_parsers 新解析函数与单测/夹具；限流窗口不再凭空消失"
+    },
+    {
+      "scope": "凭据形状与评估（双端）",
+      "before": "凭据 JSON {auth:<Fe26 Cookie>, workspaceId}，两者非空才 valid（mac SubscriptionCredentialEvaluator / win opencode_go_oauth_ready 同口径）",
+      "after": "凭据 JSON {apiKey:\"oc_sk_...\"}（可选 workspaceId 高级字段）；apiKey 非空即 valid；旧 {auth,workspaceId} 形状判 expired → needsRelogin 待重配（提示改用 API Key），不迁移不降级；粘贴入口接受裸 key 字符串自动包装",
+      "impact": "mac：SubscriptionCredentialEvaluator/ProviderAccountStore/SubscriptionService 粘贴与重验证流；win：credentials.rs opencode_go_oauth_ready 与 settings-subscription.js"
+    },
+    {
+      "scope": "账号身份派生",
+      "before": "accountID 以 workspaceId 派生（C085/C093 口径）",
+      "after": "accountID 以 apiKey 派生；新粘贴生成新账号，旧 Cookie 账号残留由用户手动移除（沿用既有旧账号残留口径）",
+      "impact": "ProviderAccountIDGenerator.opencodeGoAccountID 调用点（mac）；win settings-subscription.js 身份字段"
+    },
+    {
+      "scope": "设置页配置指引（双端）",
+      "before": "指引从浏览器开发者工具抓 auth Cookie 与 wrk_ ID 粘贴 JSON；provider 副标题标注「OAuth 设备码」",
+      "after": "指引改为 OpenCode Console → API Key 复制粘贴（可选高级说明：多 workspace 用户可粘贴含 workspaceId 的 JSON）；副标题改「API Key」",
+      "impact": "mac SettingsView+SubscriptionPane.swift；win settings-subscription.js pasteLabel/副标题"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "OpenCode Go：Session Cookie + WrkID 凭据，出站 opencode.ai/_server 接口（seroval 抓包解析），会话失效提示重新粘贴 Cookie",
+      "after": "新增规则 16：官方端点 GET opencode.ai/zen/go/v1/usage Bearer API Key 三窗口直读（rate-limited 窗口照常输出、resetsAt 绝对时间）；凭据 {apiKey[,workspaceId]}，可选 org 头，401/403 → needsReauthorization；旧 Cookie 凭据判待重配；accountID 以 apiKey 派生；红线严禁回退 server-fn/seroval 路径"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector-provider cargo test 全绿（新解析/凭据/查询用例 + 存量回归），mac BruceOnboardingCoreHarness 全绿，win src-tauri cargo check 通过",
+        "false_if": "任何测试失败、编译错误或 clippy 告警",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "官方响应解析（fixture 对拍）",
+        "true_if": "官方端点公开实测响应样例（issue #43983 形状）解析出三窗口：percent 截断到 [0,100]、resetsAt RFC3339→epoch、rate-limited 窗口不被丢弃、缺失窗口跳过不报错",
+        "false_if": "解析失败、窗口丢失或字段错位",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "旧凭据待重配语义",
+        "true_if": "{auth,workspaceId} 旧形状评估为 expired→needsRelogin（双端同口径），{apiKey} 新形状 valid，裸 key 字符串自动包装",
+        "false_if": "旧形状被判 valid 或新形状被拒",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测（实网查询）",
+        "true_if": "以真实 oc_sk key 直连官方端点返回三窗口并经 collector 全链路落到订阅卡",
+        "false_if": "端点 401/403、返回形状与解析不符或卡片无数据",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
