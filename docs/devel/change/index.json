@@ -53,7 +53,9 @@
         "C183",
         "C200",
         "C202",
-        "C203"
+        "C203",
+        "C207",
+        "C208"
       ]
     },
     "PricingEngine": {
@@ -179,7 +181,8 @@
         "C171",
         "C173",
         "C204",
-        "C205"
+        "C205",
+        "C206"
       ]
     },
     "TokenUsage": {
@@ -2104,6 +2107,33 @@
       "topic": "SubscriptionQuota",
       "version": "0.17.0",
       "file": "docs/devel/change/C205.json"
+    },
+    "C206": {
+      "title": "订阅额度预警窗口重置后不再报警：去重状态补充窗口重置恢复判定（双端）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C206-quota-alert-window-reset",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C206.json"
+    },
+    "C207": {
+      "title": "Nothing 主题顶栏 Tab 切换器选中态改用点阵数字同源色（浅黄深绿）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C207-nothing-tab-accent",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C207.json"
+    },
+    "C208": {
+      "title": "移除顶栏 Tab 切换器 Agent 活跃图标绿点角标（双端，悬停数量保留）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C208-remove-tab-badge",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C208.json"
     }
   }
 }

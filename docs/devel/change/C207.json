@@ -1,0 +1,96 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C207",
+  "title": "Nothing 主题顶栏 Tab 切换器选中态改用点阵数字同源色（浅黄深绿）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C207-nothing-tab-accent",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "仪表盘顶栏 Tab 分段切换器 (MenuBarViews.headerTabSwitcher)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "现象：Nothing 主题下仪表盘顶栏右侧三图标 Tab 切换器的选中态为纯黑白反色（浅色黑药丸底 + 白图标 / 深色白药丸底 + 黑图标），与 Nothing 视觉语言的核心强调色脱节——点阵数字、模型用量 tier chip、呼吸角标等强调元素均已使用浅色 #D4A843（点阵黄）/ 深色 #4A9E5C（点阵绿）同源 accent。诉求（用户 2026-11-05，深色模式经确认选绿）：选中高亮改为跟随当前模式点阵数字色系。属视觉参数微调：不改交互行为、不改布局几何；设计文档 03 FR-5 仅约定「高亮背景药丸底」未钉死色值，不构成设计规则变更。",
+  "precheck": {
+    "description": "确认 headerTabSwitcher 的 Nothing 选中态仍为黑白反色（windowBackgroundColor 图标 + Color.primary 药丸）",
+    "command": "zsh -c 'grep -q \"isNothingTheme ? Color(nsColor: .windowBackgroundColor) : Color.primary\" apps/macos/Sources/BruceApp/MenuBarViews.swift && grep -q \"\\.fill(Color\\.primary)\" apps/macos/Sources/BruceApp/MenuBarViews.swift'",
+    "expected": "退出码 0（选中态仍为黑白反色，需本卡调整）；修复后任一标记消失则退出码 1",
+    "is_completed": true,
+    "evidence": "2026-11-05 预检退出码 0：MenuBarViews.swift:340 `isNothingTheme ? Color(nsColor: .windowBackgroundColor) : Color.primary`（选中图标反色）与 :348 `.fill(Color.primary)`（Nothing 选中药丸，全文件唯一）同时存在；另注 :468 状态灯 warn 档本就使用 #D4A843，属既有元素，首版预检的全文件 D4A843 排除条件误伤已修正为双标记判据"
+  },
+  "callback": {
+    "before": [
+      "zsh -c 'git branch fix/C207-nothing-tab-accent  # 共享工作区有并发在途改动 (C206 未提交)，不切换 HEAD；分支引用在提交后指向收口提交，仅作追溯（单人维护直接提 main 惯例）'"
+    ],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C207 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C207 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "顶栏 Tab 切换器选中态视觉 (Nothing 主题)",
+      "before": "headerTabSwitcher Nothing 分支：选中药丸 `.fill(Color.primary)`（浅色黑底 / 深色白底），选中图标 `Color(nsColor: .windowBackgroundColor)` 反色",
+      "after": "选中药丸改为 `Color.adaptive(light: #D4A843, dark: #4A9E5C)`（与 UsageHeroCard.nothingHeroAccent 点阵数字同源），选中图标改为同款反差字形色（深色白 / 浅色黑，对齐模型用量 tier chip 先例）；Classic 主题分支与未选中态 `Color.secondary` 保持不变",
+      "impact": "仅 mac 面板顶栏 Tab 模式 Nothing 主题的选中高亮观感；无行为 / 持久化影响。Windows 端 Nothing 选中色为既有独立实现，本卡不涉及，如需对齐另行立项"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": false,
+    "rule_diff": {
+      "before": "FR-5：顶栏三图标导航带高亮背景药丸底（未钉死色值；Nothing 选中态实现为黑白反色）",
+      "after": "无设计规则变更：FR-5 文字原样适用，「高亮背景」在 Nothing 主题下落地为点阵数字同源 accent（浅 #D4A843 / 深 #4A9E5C），与既有模型用量 tier chip（UsageHeroCard.tierSegment）同口径"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-01",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "swift build（含 tests）退出码 0；仓库标准验证 verify-local 全绿。纯视觉色值改动无新增行为分支，不新增行为测试（该视图属 BruceApp app target，无对应 Harness 覆盖，理由如实登记）",
+        "false_if": "构建失败或任一既有测试 / Harness 红灯",
+        "evidence": "2026-11-05：swift build --build-tests Exit 0（54.7s，仅既有 CLT ld search path 警告）；zsh scripts/verify-local.sh Exit 0——Rust fmt/test/clippy、JSON fixture 语法与敏感扫描、Swift build、18 项 Harness 全绿（RefreshScheduler 119、PanelViewModel 66、PanelParity 双端对拍、DashboardStatusTone、DashboardGlassSurface 等全部通过），变更总账一致检查通过 (cards=205 topics=13)",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "实机 Nothing 主题浅 / 深两模式下顶栏 Tab 切换器选中态分别为黄底黑图标 / 绿底白图标，三卡切换、键盘快捷键与角标呼吸点不受影响",
+        "false_if": "选中态色值不符、对比度不可读或切换行为异常",
+        "evidence": "2026-11-05 12:47 部署（PID 44146）后用户目视确认：深色模式选中药丸绿色 #4A9E5C 白字形（用户截图可见订阅选中态），浅色黄底黑字形同口径；用户原话「确认」随卡代签",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Classic 主题选中态与 Stack 模式头部布局不受影响；Nothing 主题其余强调元素（点阵数字 / tier chip / 角标）渲染正常",
+        "false_if": "其他主题或视图出现颜色回归",
+        "evidence": "改动仅涉 headerTabSwitcher 的 isNothingTheme 分支两处色值（药丸 fill 与选中字形），Classic 分支、Stack 模式头部、hourly 呼吸角标逻辑未动；verify-local 中 PanelViewModelHarness 66 项、PanelParity 双端对拍、DashboardGlassSurface 10 项、DashboardStatusTone 3 项全绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "c2c93cb",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

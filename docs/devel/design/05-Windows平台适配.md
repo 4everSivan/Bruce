@@ -128,7 +128,7 @@
 
 | 规则 | mac 语义 | Windows 渲染层 |
 |---|---|---|
-| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent > 0 时第 3 图标显示呼吸绿点角标；按键 1/2/3 切卡并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
+| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；按键 1/2/3 切卡并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
 | 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
 | `account.note` | 仅 `account.status == "error"` 渲染 | 同 |
