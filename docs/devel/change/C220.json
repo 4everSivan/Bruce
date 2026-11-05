@@ -4,7 +4,7 @@
   "title": "经典 / 液态玻璃主题强调色对齐 Nothing 杏色 / 绿色（双端）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C219-C223-dashboard-polish",
   "is_hotfix": false,
   "target": {
@@ -118,13 +118,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "409dac8",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }
