@@ -4,7 +4,7 @@
   "title": "订阅额度预警窗口重置后不再报警：去重状态补充窗口重置恢复判定（双端）",
   "version": "0.17.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C206-quota-alert-window-reset",
   "is_hotfix": false,
   "target": {
@@ -61,10 +61,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261105-03",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -100,13 +100,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "4287a82",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

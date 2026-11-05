@@ -1,0 +1,118 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C209",
+  "title": "移除「锁屏暂停订阅刷新」「额度预警气泡」通用配置项：锁屏保护与预警气泡转为恒开默认行为（双端）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "fix/C209-retire-lock-bubble-toggles",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win + website",
+    "component": "设置中心通用页开关行 + OnboardingConfiguration/AppSettings 持久化键 + 锁屏抑制与气泡投递门禁",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "两项均为「保护类默认开启」行为：锁屏暂停订阅刷新节省云端订阅配额（C064），额度预警气泡是额度预警唯一投递通道（C159 已退役系统通知，开关只是复用旧持久化键）。二者自上线以来保持默认开启，无已知关闭诉求，保留开关只增加设置中心噪声与持久化字段负担。本卡把两项从设置中心（mac 通用页两行、Windows 通用页「额度预警气泡」行）与官网演示页移除，行为固化为恒开默认：锁屏抑制无条件生效（解锁补偿刷新与 services 原样回填语义不变），预警气泡按既有展示策略恒可投递（主看板可见时静默跳过不变）。mac 与 Windows 首次启动欢迎向导从未包含这两项，欢迎页无需 UI 变更；持久化键 OnboardingConfiguration.systemNotificationsEnabled / pauseSubscriptionRefreshOnScreenLock 与 AppSettings.notifications_enabled 同步退役，旧配置文件中的遗留键被解码器忽略，向前兼容。顺带清理仅服务于该开关的退役死代码（mac QuotaAlertNotifier / SystemNotificationDeliveryPolicy，C159 后已无任何调用方）。",
+  "precheck": {
+    "description": "确认两行配置项与两个持久化键均在场（退役前状态），且欢迎向导不含这两项",
+    "command": "zsh -c 'grep -q \"锁屏暂停订阅刷新\" apps/macos/Sources/BruceApp/SettingsView.swift && grep -q \"额度预警气泡\" apps/macos/Sources/BruceApp/SettingsView.swift && grep -q \"额度预警气泡\" apps/win/src/settings-maintenance.js && grep -q \"pauseSubscriptionRefreshOnScreenLock\" apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift && grep -q \"notifications_enabled\" apps/win/src-tauri/src/settings.rs && ! grep -q \"锁屏暂停订阅刷新\\|额度预警气泡\" apps/macos/Sources/BruceApp/WelcomeOnboardingView.swift apps/win/src/settings-welcome.js'",
+    "expected": "退出码 0（设置中心两行/两键在场、欢迎向导无这两项，需本卡退役）",
+    "is_completed": true,
+    "evidence": "2026-11-05 预检：mac SettingsView.swift 468-499 两行在场；win settings-maintenance.js:151「额度预警气泡」行在场（Windows 无「锁屏暂停订阅刷新」行，为 mac 独占）；OnboardingConfiguration.swift:194-196 两键在场；settings.rs:75 notifications_enabled 在场；mac WelcomeOnboardingView 与 win settings-welcome.js 全文 grep 均无这两项（git log -S 亦确认历史上从未存在）"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests && $(swift build --package-path apps/macos --show-bin-path)/BruceOnboardingCoreHarness . && $(swift build --package-path apps/macos --show-bin-path)/RefreshSchedulerHarness .'",
+      "zsh -c 'cd apps/win/src-tauri && cargo test --manifest-path Cargo.toml --lib && cargo fmt --check && cargo clippy --all-targets -D warnings'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C209 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C209 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 设置中心与配置模型",
+      "before": "SettingsView 通用页「刷新」段含「锁屏暂停订阅刷新」开关行、「通知」位含「额度预警气泡」开关行；OnboardingCoordinator 持有 systemNotificationsEnabled / pauseSubscriptionRefreshOnScreenLock 两个 @Published 属性与对应 setter；OnboardingConfiguration 持久化两键（init 参数 / CodingKeys / 编解码，缺键默认 true）",
+      "after": "SettingsView 移除两行（通用页仅剩 配色模式→界面风格→模糊风格→界面动效→看板布局→刷新间隔→开机自启动→凭据存储→外部 CLI 来源）；OnboardingCoordinator 移除两属性与 setPauseSubscriptionRefreshOnScreenLock / setSystemNotificationsEnabled 及 init 内同步；OnboardingConfiguration 移除两字段，旧配置文件中的遗留键由 JSONDecoder 按未知键忽略，向前兼容",
+      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift、apps/macos/Sources/BruceApp/OnboardingCoordinator.swift、apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift"
+    },
+    {
+      "scope": "mac 行为默认化（恒开）",
+      "before": "RefreshScheduler 以 pauseSubscriptionRefreshOnScreenLock 门控锁屏抑制/解锁补偿/边界唤醒跳过/外部额度抑制；MenuBarStatusItemController.showStatusAlertBubble 以 coordinator.systemNotificationsEnabled 先决门控气泡投递；退役死代码 QuotaAlertNotifier（UNUserNotificationCenter）与 SystemNotificationDeliveryPolicy 仅服务旧开关，C159 后无任何调用方",
+      "after": "RefreshScheduler 移除该属性与 setter，锁屏抑制与解锁补偿无条件生效（isScreenLocked 判定与 C071 services 原样回填语义不变）；showStatusAlertBubble 移除通知开关门禁，气泡仅受 StatusBubblePresentationPolicy（主看板可见时静默）约束；删除 QuotaAlertNotifier.swift 与 SystemNotificationDeliveryPolicy.swift",
+      "impact": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift、apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift、apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift（删除）、apps/macos/Sources/BruceAppCore/SystemNotificationDeliveryPolicy.swift（删除）"
+    },
+    {
+      "scope": "win 设置与 Rust 门禁",
+      "before": "settings-maintenance.js buildGeneral 含「额度预警气泡」开关行与 notificationsEnabled 读写/回显；settings.rs AppSettings.notifications_enabled 参与默认值与序列化；scheduler.rs deliver_alerts 经 alerts_for_refresh(alerts, manual, notifications_enabled) 门控自动投递",
+      "after": "settings-maintenance.js 移除该行与读写/回显（通用页行序：界面风格→界面动效→看板布局→刷新间隔）；settings.rs 移除 notifications_enabled 字段（serde 默认忽略未知键，旧 settings.json 兼容）；scheduler.rs 走 alerts_for_refresh(alerts, manual)，alerts.rs 移除 enabled 参数与 !enabled 抑制分支，50/80/95 阶梯去重与窗口重置恢复（C206）语义不变",
+      "impact": "apps/win/src/settings-maintenance.js、apps/win/src-tauri/src/settings.rs、apps/win/src-tauri/src/scheduler.rs、apps/win/src-tauri/src/alerts.rs"
+    },
+    {
+      "scope": "测试与官网演示同步",
+      "before": "mac Harness 覆盖两键往返/默认值、锁屏抑制开关关闭路径、SystemNotificationDeliveryPolicy 三态；win frontend.test.mjs 以 setting-notifications 断言回滚/串行保存/行序；website/js/settings.js 演示页通用面板含两行",
+      "after": "mac：移除 pauseSubscriptionRefreshOnScreenLockRoundTrip / configSystemNotificationsDefaultsAndRoundTrips / screenLockSuppressionDisabledAllowsQuotaQuery / disabledSystemNotificationsSuppressDelivery，新增「遗留配置含退役键仍可解码」回归，锁屏抑制恒开用例保持；win：frontend.test.mjs 改用 trayHoverPreview 断言串行保存与回滚、行序断言去掉「额度预警气泡」，dom.mjs 默认值移除 notificationsEnabled；website/js/settings.js 移除两行",
+      "impact": "apps/macos/Tests/BruceOnboardingCoreHarness、apps/macos/Tests/Harnesses/RefreshSchedulerHarness、apps/win/tests/frontend.test.mjs、apps/win/tests/dom.mjs、website/js/settings.js"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "04 §7 五段固定顺序：外观 → 看板呈现 → 刷新（刷新间隔 → 锁屏暂停订阅刷新）→ 通知（系统通知）→ 凭据与来源；通用页存在「锁屏暂停订阅刷新」「额度预警气泡」开关行，Windows 同构保留「额度预警气泡」行（05 §规则表「通用」行）；02 §7.2/§15 与 03 FR-10/§14 以「设置中心开关」表述两项行为的前置门控",
+      "after": "C209 起两项配置退役、行为恒开：通用页固定顺序收敛为 外观 → 看板呈现 → 刷新（刷新间隔）→ 凭据与来源（04 §7 同步修订，Windows 同构行序去掉「额度预警气泡」，05 §规则表同步）；「锁屏暂停订阅刷新」升格为无条件默认行为（02 §7.2 改写，设置中心开关表述移除），「额度预警气泡」按 C159 展示策略恒可投递（02 §15、03 §14 改写「开关语义升级」表述）；持久化键 systemNotificationsEnabled / pauseSubscriptionRefreshOnScreenLock / notifications_enabled 退役，旧配置遗留键解码忽略"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build + BruceOnboardingCoreHarness + RefreshSchedulerHarness 全绿；win cargo test --lib + fmt + clippy 全绿；node --test frontend.test.mjs 与 check-win-frontend 全绿；verify-local 全量通过",
+        "false_if": "存在任何构建/测试失败或未同步的用例",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "配置项退役与默认行为",
+        "true_if": "mac 通用页与 win 通用页不再渲染两行；锁屏抑制/解锁补偿/预警气泡路径不再读开关（恒开）；欢迎向导无残留引用",
+        "false_if": "任一界面仍渲染开关，或行为路径仍存在可关闭分支",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "旧配置向前兼容",
+        "true_if": "含 systemNotificationsEnabled/pauseSubscriptionRefreshOnScreenLock/notificationsEnabled 遗留键的旧配置文件可正常解码且其余字段无损",
+        "false_if": "旧配置解码失败或字段丢失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "实机验收",
+        "true_if": "装机后设置中心不再显示两项；锁屏/解锁后订阅刷新按恒开保护运行；额度紧缺时气泡照常弹出",
+        "false_if": "实机仍显示开关或行为异常",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
