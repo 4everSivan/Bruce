@@ -178,7 +178,8 @@
         "C164",
         "C171",
         "C173",
-        "C204"
+        "C204",
+        "C205"
       ]
     },
     "TokenUsage": {
@@ -2094,6 +2095,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.17.0",
       "file": "docs/devel/change/C204.json"
+    },
+    "C205": {
+      "title": "OpenCode GO 配置入口对齐 API Key 表单族（DeepSeek 同款）：多账号列表管理与选填 Workspace ID",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C205-opencode-go-apikey-dialog",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C205.json"
     }
   }
 }
