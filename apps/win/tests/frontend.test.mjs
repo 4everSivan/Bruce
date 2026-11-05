@@ -904,9 +904,11 @@ test("oauth providers save collector-native oauth shapes (C081)", async () => {
     settings: { ...defaults, enabledProviders: ["opencodeGo"] },
   });
   await opencode.node("provider-configure-opencodeGo").click();
-  // C204: {apiKey[,workspaceId]} 形状; 裸 oc_sk_ 字符串亦自动包装。
-  opencode.node("cfg-opencodeGo-paste").value = '{"apiKey":"oc_sk_fixture","workspaceId":"wrk_fixture"}';
-  await opencode.node("cfg-opencodeGo-paste").dispatch("input");
+  // C205: API Key 表单 (DeepSeek 同款), workspaceId 为选填字段。
+  opencode.node("cfg-opencodeGo-apiKey").value = "oc_sk_fixture";
+  await opencode.node("cfg-opencodeGo-apiKey").dispatch("input");
+  opencode.node("cfg-opencodeGo-workspaceId").value = "wrk_fixture";
+  await opencode.node("cfg-opencodeGo-workspaceId").dispatch("input");
   await opencode.node("cfg-save-opencodeGo").click();
   const opencodeCall = opencode.calls.find(x => x.command === "save_credential_account");
   assert.equal(
@@ -939,30 +941,28 @@ test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () 
   );
 });
 
-test("OpenCode GO requires apiKey and surfaces the reason (C204)", async () => {
+test("OpenCode GO apiKey form gates required field and omits blank workspaceId (C205)", async () => {
   const app = await boot({
     html: "settings.html",
     settings: { ...defaults, enabledProviders: ["opencodeGo"] },
   });
   await app.node("provider-configure-opencodeGo").click();
-  // 旧 Cookie 形状 (无 apiKey) 必须被拒绝并指引改用 API Key。
-  app.node("cfg-opencodeGo-paste").value = '{"auth":"Fe26.2**fixture","workspaceId":"wrk_fixture"}';
-  await app.node("cfg-opencodeGo-paste").dispatch("input");
+  // C096/C205: apiKey 必填, 未填时保存置灰; workspaceId 选填不影响判定。
+  assert.equal(app.node("cfg-save-opencodeGo").disabled, true, "apiKey 未填时保存按钮禁用");
+  app.node("cfg-opencodeGo-workspaceId").value = "wrk_fixture";
+  await app.node("cfg-opencodeGo-workspaceId").dispatch("input");
+  assert.equal(app.node("cfg-save-opencodeGo").disabled, true, "仅选填 workspaceId 不足以启用保存");
+  app.node("cfg-opencodeGo-apiKey").value = "oc_sk_fixture_bare";
+  await app.node("cfg-opencodeGo-apiKey").dispatch("input");
+  assert.equal(app.node("cfg-save-opencodeGo").disabled, false, "apiKey 填齐后保存按钮启用");
+  // 清空选填字段再提交: workspaceId 留空不写入载荷。
+  app.node("cfg-opencodeGo-workspaceId").value = "";
+  await app.node("cfg-opencodeGo-workspaceId").dispatch("input");
   await app.node("cfg-save-opencodeGo").click();
+  // workspaceId 留空时不写入载荷, 由服务端按 Key 推断。
+  const call = app.calls.find(x => x.command === "save_credential_account");
   assert.equal(
-    app.calls.some(call => call.command === "save_credential_account"),
-    false,
-    "缺 apiKey 不得提交"
-  );
-  assert.match(app.node("cfg-status").textContent, /API Key/);
-
-  // 裸 oc_sk_ 字符串自动包装为标准形状后可提交。
-  app.node("cfg-opencodeGo-paste").value = "oc_sk_fixture_bare";
-  await app.node("cfg-opencodeGo-paste").dispatch("input");
-  await app.node("cfg-save-opencodeGo").click();
-  const bareCall = app.calls.find(call => call.command === "save_credential_account");
-  assert.equal(
-    oauthJSON(bareCall.args.payload.oauth),
+    oauthJSON(call.args.payload.oauth),
     oauthJSON({ apiKey: "oc_sk_fixture_bare" })
   );
 });
@@ -2184,20 +2184,23 @@ test("claude dialog keeps the paste entry collapsed behind an advanced section (
   assert.ok(details.querySelector("#cfg-claude-secret"), "纯令牌入口同样在折叠区内");
 });
 
-test("opencode GO account id derives from apiKey so re-pasting upserts (C204)", async () => {
+test("opencode GO account id derives from apiKey so form re-saves upsert (C205)", async () => {
   const app = await boot({ html: "settings.html", settings: { ...defaults, enabledProviders: ["opencodeGo"] } });
-  const paste = async (apiKey, workspaceId) => {
+  const submit = async (apiKey, workspaceId) => {
     await app.node("provider-configure-opencodeGo").click();
-    const payload = workspaceId ? { apiKey, workspaceId } : { apiKey };
-    app.node("cfg-opencodeGo-paste").value = JSON.stringify(payload);
-    await app.node("cfg-opencodeGo-paste").dispatch("input");
+    app.node("cfg-opencodeGo-apiKey").value = apiKey;
+    await app.node("cfg-opencodeGo-apiKey").dispatch("input");
+    if (workspaceId) {
+      app.node("cfg-opencodeGo-workspaceId").value = workspaceId;
+      await app.node("cfg-opencodeGo-workspaceId").dispatch("input");
+    }
     await app.node("cfg-save-opencodeGo").click();
     return app.calls.filter(c => c.command === "save_credential_account").pop().args.accountId;
   };
-  const first = await paste("oc_sk_first");
-  const again = await paste("oc_sk_first", "wrk_other");
-  assert.equal(first, again, "同一 apiKey 重复粘贴必须 upsert 到同一账号 (workspaceId 不参与身份)");
-  const other = await paste("oc_sk_second");
+  const first = await submit("oc_sk_first");
+  const again = await submit("oc_sk_first", "wrk_other");
+  assert.equal(first, again, "同一 apiKey 重复保存必须 upsert 到同一账号 (workspaceId 不参与身份)");
+  const other = await submit("oc_sk_second");
   assert.notEqual(first, other, "不同 apiKey 视为不同账号");
 });
 

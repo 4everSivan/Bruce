@@ -223,9 +223,9 @@ extension SettingsView {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline, .opencodeGo:
             apiKeyProviderDialog(id)
-        case .codex, .claude, .grok, .opencodeGo:
+        case .codex, .claude, .grok:
             genericProviderConfigSheet(id)
         }
     }
@@ -496,6 +496,40 @@ extension SettingsView {
                 },
                 onDismiss: dismiss
             )
+        case .opencodeGo:
+            APIKeyProviderConfigDialog(
+                id: .opencodeGo,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        label: "API Key",
+                        placeholder: "oc_sk-•••••••• (输入后不回显)",
+                        accessibilityLabel: "OpenCode Console API Key"
+                    ),
+                    APIKeyFieldDescriptor(
+                        id: "workspaceId",
+                        label: "Workspace ID (选填)",
+                        placeholder: "wrk_... (多工作区账号填写, 留空按 Key 推断)",
+                        accessibilityLabel: "OpenCode Workspace ID",
+                        isOptional: true
+                    ),
+                ],
+                values: $opencodeGoValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在 OpenCode Console 获取 API Key",
+                    linkTitle: "打开 OpenCode Console",
+                    linkURL: URL(string: "https://opencode.ai/console")
+                ),
+                footnote: "Workspace ID 仅多工作区账号需要; 留空时由服务端按 Key 推断",
+                extra: .none,
+                onRemove: { removeSubscriptionProvider(.opencodeGo) },
+                onSave: {
+                    let apiKey = ($0["apiKey"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let workspaceId = ($0["workspaceId"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    coordinator.saveAndVerifyOpenCodeGo(apiKey: apiKey, workspaceId: workspaceId)
+                },
+                onDismiss: dismiss
+            )
         default:
             EmptyView()
         }
@@ -605,7 +639,7 @@ extension SettingsView {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline, .opencodeGo:
             // 对话框版表单已接管, 通用外壳不会走到这里.
             EmptyView()
         case .codex:
@@ -639,19 +673,6 @@ extension SettingsView {
                 grokPasteText: $grokPasteText,
                 grokEditing: $grokEditing,
                 onRemove: { removeSubscriptionProvider(.grok) }
-            )
-        case .opencodeGo:
-            OfficialLocalProviderSettingsSection(
-                id: .opencodeGo,
-                available: false,
-                missingHint: "尚未配置 OpenCode GO API Key",
-                pasteText: $opencodeGoPasteText,
-                onRemove: { removeSubscriptionProvider(.opencodeGo) },
-                importFromLocal: {},
-                savePaste: { coordinator.importOpenCodeGoFromPaste($0) },
-                pasteHint: "打开 opencode.ai/console → API Keys → 创建并复制 API Key (oc_sk_...) 粘贴; 多工作区账号可粘贴 {\"apiKey\":\"oc_sk_...\",\"workspaceId\":\"wrk_...\"} JSON",
-                showsLocalRedetect: false,
-                isEditing: $opencodeGoEditing
             )
         }
     }

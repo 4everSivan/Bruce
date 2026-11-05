@@ -39,8 +39,7 @@ struct SettingsView: View {
     @State var claudeEditing = false
     @State var grokPasteText = ""
     @State var grokEditing = false
-    @State var opencodeGoPasteText = ""
-    @State var opencodeGoEditing = false
+    @State var opencodeGoValues: [String: String] = [:]
     @State var showsCodexCCImportConfirm = false
     // 订阅额度标签式管理: 本次会话点击添加的 provider 与 P2 配置 sheet 目标
     @State var addedSubscriptionProviders: Set<SubscriptionProviderID> = []

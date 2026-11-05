@@ -333,33 +333,22 @@ extension SubscriptionService {
         refreshOfficialLocalAvailability()
     }
 
-    // MARK: - OpenCode GO 手动导入 (Console API Key)
+    // MARK: - OpenCode GO 手动配置 (Console API Key 表单, C205)
 
-    /// OpenCode GO: 引导粘贴导入 (C204). 接受裸 API Key 字符串 (oc_sk_...)
-    /// 或 {"apiKey": ..., "workspaceId": ...} JSON (多 workspace 高级用法).
-    func importOpenCodeGoFromPaste(_ paste: String) {
-        let trimmed = paste.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let data = trimmed.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data),
-           let dict = object as? [String: Any] {
-            // 已是 JSON: 原样保存 (评估器校验 apiKey)
-            _ = dict
-            saveOpenCodeGoOAuthJSON(trimmed)
-        } else if trimmed.hasPrefix("oc_sk_"), trimmed.range(of: #"[^A-Za-z0-9_-]"#) == nil {
-            // 裸 key 自动包装为标准形状
-            if let data = try? JSONSerialization.data(
-                withJSONObject: ["apiKey": trimmed], options: [.sortedKeys]
-            ),
-               let wrapped = String(data: data, encoding: .utf8) {
-                saveOpenCodeGoOAuthJSON(wrapped)
-            } else {
-                model.setSettingsError("OpenCode GO 凭证无效, 请粘贴 API Key (oc_sk_...)", for: .opencodeGo)
-            }
+    /// OpenCode GO: 表单保存入口 (C205). 结构化组装 {apiKey[, workspaceId]} 后
+    /// 复用 C204 的统一保存流 (评估器判定 -> Keychain -> 状态迁移).
+    func saveAndVerifyOpenCodeGo(apiKey: String, workspaceId: String) {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let workspace = workspaceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        var payload: [String: String] = ["apiKey": key]
+        if !workspace.isEmpty {
+            payload["workspaceId"] = workspace
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+           let json = String(data: data, encoding: .utf8) {
+            saveOpenCodeGoOAuthJSON(json)
         } else {
-            model.setSettingsError(
-                "OpenCode GO 凭证无效, 请粘贴 OpenCode Console 的 API Key (oc_sk_...)",
-                for: .opencodeGo
-            )
+            model.setSettingsError("OpenCode GO 凭证无效, 请填写 API Key (oc_sk_...)", for: .opencodeGo)
         }
     }
 

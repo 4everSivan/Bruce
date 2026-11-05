@@ -324,8 +324,9 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.importGrokFromPaste(paste)
     }
 
-    func importOpenCodeGoFromPaste(_ paste: String) {
-        subscriptions.importOpenCodeGoFromPaste(paste)
+    /// OpenCode GO: 表单录入 API Key 与可选 Workspace ID (C205).
+    func saveAndVerifyOpenCodeGo(apiKey: String, workspaceId: String) {
+        subscriptions.saveAndVerifyOpenCodeGo(apiKey: apiKey, workspaceId: workspaceId)
     }
 
     func reverifyOpenCodeGo() {

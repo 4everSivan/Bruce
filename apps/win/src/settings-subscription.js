@@ -299,9 +299,14 @@
       pasteLabel: "粘贴 Grok 访问令牌或凭证 JSON",
     },
     opencodeGo: {
-      kind: "paste",
-      // C204: 改用 Console API Key; 多工作区可粘贴含 workspaceId 的 JSON。
-      pasteLabel: "打开 opencode.ai/console → API Keys → 创建并复制 API Key (oc_sk_...) 粘贴; 多工作区账号可粘贴 {\"apiKey\":\"oc_sk_...\",\"workspaceId\":\"wrk_...\"} JSON",
+      kind: "apiKey",
+      // C205: 对齐 DeepSeek 的 API Key 表单; workspaceId 可选 (多工作区账号显式指定)。
+      fields: [
+        ["apiKey", "API Key", "oc_sk-•••••••• (输入后不回显)"],
+        ["workspaceId", "Workspace ID (选填)", "wrk_... (多工作区账号填写, 留空按 Key 推断)", "optional"],
+      ],
+      guide: "在 OpenCode Console 获取 API Key",
+      footnote: "Workspace ID 仅多工作区账号需要, 留空时由服务端按 Key 推断",
     },
   };
 
@@ -464,10 +469,16 @@
           : { token: trimmed("token") };
       }
       if (!trimmed("apiKey")) throw new Error("请填写 API Key");
+      if (id === "opencodeGo") {
+        // C205: 表单组装 {apiKey[, workspaceId]}, 校验由 oauthPayload 承担。
+        const extra = { apiKey: trimmed("apiKey") };
+        if (trimmed("workspaceId")) extra.workspaceId = trimmed("workspaceId");
+        return { oauth: oauthPayload("opencodeGoQuotaAccounts", extra, "", "") };
+      }
       return { api_key: trimmed("apiKey") };
     }
     if (id === "codex") throw new Error("Codex 请使用上方「登录新账号」完成设备码登录");
-    // Claude / Grok / OpenCode GO: 粘贴凭证 JSON (Claude 亦接受纯令牌, OpenCode GO 亦接受裸 API Key)。
+    // Claude / Grok: 粘贴凭证 JSON (Claude 亦接受纯令牌)。
     const raw = (values.paste || "").trim();
     if (!raw) throw new Error("请粘贴凭证 JSON");
     let parsed = null;
@@ -476,10 +487,6 @@
       return { oauth: oauthPayload(quotaFieldOf(id), parsed, (values.secret || "").trim(), "") };
     }
     if (id === "claude" && raw.length > 10) return { oauth: oauthPayload(quotaFieldOf(id), {}, raw, "") };
-    // C204: OpenCode GO 裸 API Key 字符串自动包装为标准形状。
-    if (id === "opencodeGo" && /^oc_sk_[A-Za-z0-9_-]+$/.test(raw)) {
-      return { oauth: oauthPayload(quotaFieldOf(id), { apiKey: raw }, "", "") };
-    }
     throw new Error("凭证必须是 JSON 对象");
   }
 
@@ -749,9 +756,12 @@
     // 设备码登录类 (Codex) 无密钥字段, 由登录流程自身把关。
     if (config.kind === "codex") return true;
     if (config.kind === "apiKey") {
-      return (config.fields || []).every(([key]) => (byId(`cfg-${id}-${key}`)?.value || "").trim().length > 0);
+      // C205: 第 4 元素为 "optional" 的字段跳过必填判定 (对齐 mac isOptional)。
+      return (config.fields || []).every(
+        ([key, , , optional]) => optional === "optional" || (byId(`cfg-${id}-${key}`)?.value || "").trim().length > 0,
+      );
     }
-    // 粘贴类 (Claude / Grok / OpenCode GO): 粘贴框或 Claude 的纯令牌入口二者其一。
+    // 粘贴类 (Claude / Grok): 粘贴框或 Claude 的纯令牌入口二者其一。
     if ((byId(`cfg-${id}-paste`)?.value || "").trim()) return true;
     return id === "claude" && (byId(`cfg-${id}-secret`)?.value || "").trim().length > 0;
   }
