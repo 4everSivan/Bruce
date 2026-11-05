@@ -2151,7 +2151,7 @@
     "C210": {
       "title": "移除 Token 用量卡标题行 LIVE 徽标与绿色方点（双端，顶部状态灯保留）",
       "type": "Enhancement",
-      "status": "draft",
+      "status": "closed",
       "branch": "fix/C210-remove-live-badge",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
@@ -2160,7 +2160,7 @@
     "C211": {
       "title": "新增 ⌘/Ctrl 1/2/3 固定卡片快捷键并在通用页提供只读说明（双端）",
       "type": "Enhancement",
-      "status": "draft",
+      "status": "closed",
       "branch": "fix/C211-card-shortcuts",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
@@ -2169,7 +2169,7 @@
     "C212": {
       "title": "Agent 用量卡默认展开首个有明细 Agent、正文刷新与今日空态（双端）",
       "type": "Enhancement",
-      "status": "draft",
+      "status": "closed",
       "branch": "fix/C212-agent-card-refresh-empty",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",

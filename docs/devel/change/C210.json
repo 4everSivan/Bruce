@@ -4,7 +4,7 @@
   "title": "移除 Token 用量卡标题行 LIVE 徽标与绿色方点（双端，顶部状态灯保留）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "draft",
+  "status": "closed",
   "branch": "fix/C210-remove-live-badge",
   "is_hotfix": false,
   "target": {
@@ -62,8 +62,8 @@
   "verification": {
     "result": true,
     "run_id": "local-20261105-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -90,7 +90,7 @@
         "item": "实机验收",
         "true_if": "装机版展开 Token 卡时标题行无 LIVE 徽标/绿点，顶部状态灯与收起态迷你摘要正常",
         "false_if": "实机仍显示徽标、状态灯异常或收起态布局跳动",
-        "evidence": "本轮未在装机版实机展开 Token 卡目视；自动化构建、测试与源码残留检查已通过，待实机复核。",
+        "evidence": "2026-11-05 16:22 最终 67daa6a 装机版部署后用户确认（原话「确认」）；未记录逐项展开目视结果，故实机项仍记 false。",
         "result": false
       }
     ]
@@ -105,7 +105,11 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "draft",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

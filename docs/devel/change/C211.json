@@ -4,7 +4,7 @@
   "title": "新增 ⌘/Ctrl 1/2/3 固定卡片快捷键并在通用页提供只读说明（双端）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "draft",
+  "status": "closed",
   "branch": "fix/C211-card-shortcuts",
   "is_hotfix": false,
   "target": {
@@ -68,8 +68,8 @@
   "verification": {
     "result": true,
     "run_id": "local-20261105-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -96,7 +96,7 @@
         "item": "mac 实机按键",
         "true_if": "装机版面板 key 窗口内 ⌘1/⌘2/⌘3 可稳定触发；纵向级联先滚动再收放，Tab 模式切页签，长按不连发",
         "false_if": "Command 事件不可达、裸数字仍响应或滚动/收放顺序异常",
-        "evidence": "首次部署后用户实测快捷键未生效（SwiftUI .onKeyPress 未收到 Command 组合）；已改为面板宿主 DashboardPanel.performKeyEquivalent 捕获并经 model.requestedCardShortcut 交给 SwiftUI，需重新部署后实机复测。",
+        "evidence": "首次部署用 SwiftUI .onKeyPress 实测无响应；改为 DashboardPanel.performKeyEquivalent 后于 16:22 以 67daa6a 重装，用户确认（原话「确认」）；未记录逐项按键观测，故实机项仍记 false。",
         "result": false
       }
     ]
@@ -105,13 +105,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "d38649b",
+    "commit": "67daa6a",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "draft",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

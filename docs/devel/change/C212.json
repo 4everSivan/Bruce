@@ -4,7 +4,7 @@
   "title": "Agent 用量卡默认展开首个有明细 Agent、正文刷新与今日空态（双端）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "draft",
+  "status": "closed",
   "branch": "fix/C212-agent-card-refresh-empty",
   "is_hotfix": false,
   "target": {
@@ -68,8 +68,8 @@
   "verification": {
     "result": true,
     "run_id": "local-20261105-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -103,7 +103,7 @@
         "item": "实机验收",
         "true_if": "装机版进入/展开 Agent 卡默认打开首个有明细 agent；有数据「今日」+ 图标刷新；今日空态/无历史空态与收起「暂无用量」观感正常，14 日图不被误隐藏",
         "false_if": "默认未展开、刷新入口重复/缺失、图表误隐藏或空态布局异常",
-        "evidence": "本轮未在装机版实机点按/目视 Agent 卡；Windows DOM 用例与 mac 模型 Harness 已覆盖行为分支，待实机复核空态布局与图标观感。",
+        "evidence": "2026-11-05 16:22 最终 67daa6a 装机版部署后用户确认（原话「确认」）；未记录逐项目视/订阅数值不变观测，故实机项仍记 false。",
         "result": false
       }
     ]
@@ -112,13 +112,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "d38649b",
+    "commit": "67daa6a",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "draft",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }
