@@ -2139,7 +2139,7 @@
     "C209": {
       "title": "移除「锁屏暂停订阅刷新」「额度预警气泡」通用配置项：锁屏保护与预警气泡转为恒开默认行为（双端）",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C209-retire-lock-bubble-toggles",
       "topic": "PricingEngine",
       "version": "0.17.0",
