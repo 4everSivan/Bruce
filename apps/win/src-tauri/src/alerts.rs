@@ -35,6 +35,10 @@ pub struct QuotaAlert {
     pub provider_id: Option<String>,
     pub reset_text: Option<String>,
     pub resets_at: Option<String>,
+    /// 窗口重置时刻归一化 token (整数 epoch 秒 / 原始字符串), 用于窗口重置恢复判定。
+    /// 不进入前端 IPC 载荷 (气泡展示仍用 resetsAt / resetText)。
+    #[serde(skip)]
+    pub reset_token: Option<String>,
 }
 
 impl QuotaAlert {
@@ -100,6 +104,7 @@ pub fn over_threshold_entries(artifact: &Value) -> Vec<QuotaAlert> {
                 provider_id: provider_id.clone(),
                 reset_text,
                 resets_at,
+                reset_token: window_reset_token(window.get("resetsAt")),
             });
         }
     }
@@ -123,11 +128,41 @@ fn numeric_value(value: Option<&Value>) -> Option<f64> {
     }
 }
 
-/// 通知去重状态: 记录每个去重键已触发过的最高阶梯档位。
-/// 仅在用量跨越到更高阶梯 (如未告警 -> 50%, 或 50% -> 80%, 或 80% -> 95%) 时触发, 持续超标不重复打扰。
+/// 窗口重置时刻归一化 token: 采集端 artifact 实际写整数 epoch 秒,
+/// 兼容字符串形态; 非正数 / null / 缺失视为无重置时刻。
+fn window_reset_token(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::Number(number)) => {
+            let epoch = number.as_f64()?;
+            if epoch > 0.0 {
+                Some(format!("epoch:{}", epoch as i64))
+            } else {
+                None
+            }
+        }
+        Some(Value::String(raw)) if !raw.is_empty() => Some(format!("raw:{raw}")),
+        _ => None,
+    }
+}
+
+/// 单个判定键 (serviceID|windowLabel) 的最近一次观察快照。
+/// 用于识别「窗口在两次刷新之间被重置」(design/02 规则 15)。
+#[derive(Debug, Clone, PartialEq)]
+struct AlertObservation {
+    used_percent: f64,
+    reset_token: Option<String>,
+}
+
+/// 通知去重状态: 记录每个去重键已触发过的最高阶梯档位,
+/// 并在窗口重置时清空档位记忆, 为下一周期的 50/80/95 阶梯重新放行。
+///
+/// 窗口重置判定命中任一信号即视为新窗口:
+/// - 用量较上次观察下降超过 20 个百分点 (重置后未采到低点、直接重新爬升);
+/// - 窗口重置时刻更新 (前后两次采样均带非空 resetsAt 且取值不同)。
 #[derive(Debug, Default, Clone)]
 pub struct AlertDeliveryState {
     delivered_tiers: std::collections::BTreeMap<String, u32>,
+    observations: std::collections::BTreeMap<String, AlertObservation>,
 }
 
 impl AlertDeliveryState {
@@ -154,17 +189,42 @@ impl AlertDeliveryState {
 
         for alert in alerts {
             let key = alert.dedup_key();
+            let current = AlertObservation {
+                used_percent: alert.used_percent,
+                reset_token: alert.reset_token.clone(),
+            };
+            if let Some(previous) = self.observations.get(&key) {
+                if window_did_reset(previous, &current) {
+                    // 新窗口: 清空旧档位记忆, 当前档位重新算作首次跨越。
+                    self.delivered_tiers.remove(&key);
+                }
+            }
             let highest = self.delivered_tiers.get(&key).copied().unwrap_or(0);
             if alert.tier > highest {
                 new_alerts.push(alert.clone());
-                self.delivered_tiers.insert(key, alert.tier);
+                self.delivered_tiers.insert(key.clone(), alert.tier);
             }
+            self.observations.insert(key, current);
         }
 
         // 清理已回落至 50% 以下的 key
         self.delivered_tiers.retain(|k, _| current_keys.contains(k));
+        self.observations.retain(|k, _| current_keys.contains(k));
 
         new_alerts
+    }
+}
+
+/// 窗口重置判定 (design/02 规则 15)。
+fn window_did_reset(previous: &AlertObservation, current: &AlertObservation) -> bool {
+    // ① 用量较上次观察下降超过 20 个百分点。
+    if previous.used_percent - current.used_percent > 20.0 {
+        return true;
+    }
+    // ② 窗口重置时刻更新 (两端均有值时比较; nil → 有值不算换窗)。
+    match (&previous.reset_token, &current.reset_token) {
+        (Some(previous_token), Some(current_token)) => previous_token != current_token,
+        _ => false,
     }
 }
 
@@ -184,6 +244,15 @@ mod tests {
             service["freshness"] = json!(value);
         }
         json!({"services": [service]})
+    }
+
+    fn artifact_with_reset_at(percent: f64, resets_at: Value) -> Value {
+        json!({"services": [{
+            "id": "kimi_coding",
+            "name": "Kimi",
+            "provider": "kimi",
+            "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": percent, "resetsAt": resets_at}]
+        }]})
     }
 
     #[test]
@@ -273,5 +342,50 @@ mod tests {
         let refired = state.filter_new_alerts(&over_threshold_entries(&artifact_with(85.0, None)));
         assert_eq!(refired.len(), 1);
         assert_eq!(refired[0].tier, 80);
+    }
+
+    /// C206 缺陷复现: 三档全部触发后窗口被服务端重置, 但两次刷新之间没采到
+    /// ≤50% 的低点 (重置后用量很快又越过 50%), 新窗口的 50% 跨越必须重新报警。
+    #[test]
+    fn alert_refires_after_unobserved_window_reset() {
+        let mut state = AlertDeliveryState::default();
+
+        for (percent, tier) in [(60.0, 50), (85.0, 80), (96.0, 95)] {
+            let alerts =
+                state.filter_new_alerts(&over_threshold_entries(&artifact_with(percent, None)));
+            assert_eq!(alerts.len(), 1, "{percent}% 应触发 {tier} 档");
+            assert_eq!(alerts[0].tier, tier);
+        }
+
+        // 服务端重置窗口, 下一次采样直接是 60% (无 ≤50% 中间观测)
+        let refired = state.filter_new_alerts(&over_threshold_entries(&artifact_with(60.0, None)));
+        assert_eq!(
+            refired.len(),
+            1,
+            "窗口重置后再次越过 50% 应重新报警 (当前实现被旧 95 档记忆拦下)"
+        );
+        assert_eq!(refired[0].tier, 50);
+    }
+
+    /// C206 缺陷复现: 用量未回落但窗口重置时刻前进 (服务器侧换窗),
+    /// 同一档位也必须重新报警。
+    #[test]
+    fn alert_refires_when_window_reset_time_advances() {
+        let mut state = AlertDeliveryState::default();
+        let first = state.filter_new_alerts(&over_threshold_entries(&artifact_with_reset_at(
+            85.0,
+            json!("2026-10-30T15:00:00Z"),
+        )));
+        assert_eq!(first.len(), 1);
+
+        let second = state.filter_new_alerts(&over_threshold_entries(&artifact_with_reset_at(
+            85.0,
+            json!("2026-10-30T20:00:00Z"),
+        )));
+        assert_eq!(
+            second.len(),
+            1,
+            "窗口重置时刻更新后同一档位应重新报警 (当前实现只看档位不看窗口)"
+        );
     }
 }

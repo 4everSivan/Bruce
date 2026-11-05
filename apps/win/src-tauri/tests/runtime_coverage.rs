@@ -591,6 +591,7 @@ fn manual_alert_refresh_observes_threshold_without_delivery() {
         provider_id: Some("codex".into()),
         reset_text: None,
         resets_at: None,
+        reset_token: None,
     };
     assert!(state
         .alerts_for_refresh(std::slice::from_ref(&alert), true, true)

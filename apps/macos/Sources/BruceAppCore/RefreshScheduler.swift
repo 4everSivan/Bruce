@@ -68,10 +68,8 @@ struct ModuleScheduleState: Equatable, Sendable {
     var lastTriggerWasManual: Bool = false
     /// 最近一轮刷新的作用域; 失败退避重试继承该作用域, 避免定向刷新失败后放大成全量 (C185).
     var lastScope: RefreshScope = .all
-    /// 上次刷新后已超预警阈值的 5h 窗口 key 集合; 只有新跨越的窗口才报警.
-    var quotaAlertedKeys: Set<String> = []
-    /// 记录每个 key 已告警的最高阶梯档位 [key: highestDeliveredTier (50, 80, 95)].
-    var quotaAlertedTiers: [String: Int] = [:]
+    /// 额度预警去重与窗口重置恢复状态 (design/02 规则 15).
+    var quotaAlertDelivery = QuotaAlertDeliveryState()
     /// 上次刷新后处于出口阻断的 serviceID 集合；只有新跳变至阻断才报警 (边沿跳变防打扰 T24).
     var egressBlockedServiceIDs: Set<String> = []
 }
@@ -428,13 +426,10 @@ package final class RefreshScheduler {
             if var state = states[module] {
                 state.lastSuccessAt = stored.metadata.lastSuccessAt
                     .flatMap { ISODate.parse($0) }
-                // 用缓存快照回填预警阈值状态, 重启后不对已超的窗口重复报警
+                // 用缓存快照回填预警阈值状态, 重启后不对已超的窗口重复报警;
+                // 观察快照一并回填, 保留跨重启的窗口重置识别 (design/02 规则 15).
                 let cachedEntries = QuotaAlertEvaluator.overThresholdEntries(artifact: stored.artifact)
-                state.quotaAlertedKeys = Set(cachedEntries.map(\.key))
-                state.quotaAlertedTiers = Dictionary(
-                    cachedEntries.map { ($0.key, $0.alert.tier) },
-                    uniquingKeysWith: { max($0, $1) }
-                )
+                state.quotaAlertDelivery.seed(from: cachedEntries)
                 // 用缓存快照回填出口阻断状态, 避免重启后对已知阻断服务重复弹窗打扰
                 let cachedBlocked = EgressAlertEvaluator.blockedEntries(artifact: stored.artifact)
                 state.egressBlockedServiceIDs = Set(cachedBlocked.map(\.serviceID))
@@ -771,26 +766,15 @@ package final class RefreshScheduler {
             // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
             windowBoundaries = SubscriptionBoundaryWakePolicy.boundaries(in: artifact)
 
-            // 额度预警: 阶梯状态每次都同步 (回落后再次跨越或跨越到更高阶梯会报警),
-            // 但只有非 manual 且窗口新跨越更高阶梯才弹通知.
+            // 额度预警: 阶梯状态每次都同步 (回落后再次跨越、窗口重置后重新爬升
+            // 或跨越到更高阶梯都会报警), 但只有非 manual 且新跨越更高阶梯才弹通知.
             // includesManual 来自本轮 intent (与 lastTriggerWasManual 一致).
+            // 窗口重置恢复判定见 QuotaAlertDeliveryState (design/02 规则 15).
             let entries = run.quotaAlertEntries
-            let newAlerts: [(key: String, alert: QuotaAlert)]
-            if run.includesManual {
-                newAlerts = []
-            } else {
-                newAlerts = entries.filter { entry in
-                    let prevTier = state.quotaAlertedTiers[entry.key] ?? 0
-                    return entry.alert.tier > prevTier
-                }
-            }
-            let currentKeys = Set(entries.map(\.key))
-            for entry in entries {
-                let currentMax = state.quotaAlertedTiers[entry.key] ?? 0
-                state.quotaAlertedTiers[entry.key] = max(currentMax, entry.alert.tier)
-            }
-            state.quotaAlertedTiers = state.quotaAlertedTiers.filter { currentKeys.contains($0.key) }
-            state.quotaAlertedKeys = Set(state.quotaAlertedTiers.keys)
+            let newAlerts = state.quotaAlertDelivery.alerts(
+                for: entries,
+                deliver: !run.includesManual
+            )
 
             // 网络出口阻断预警: 边沿跳变触发 (Edge-Triggered Anti-Spam T24/C185)
             // 仅当网络状态由「放行」跳变至「阻断」时弹出一次气泡；
@@ -818,7 +802,7 @@ package final class RefreshScheduler {
             // 汇总派发多态通用状态预警
             var bubbleItems: [StatusBubbleAlertItem] = []
             for item in newAlerts {
-                bubbleItems.append(.quota(item.alert))
+                bubbleItems.append(.quota(item))
             }
             for item in newBlockedAlerts {
                 bubbleItems.append(.egressIssue(item))
@@ -827,7 +811,7 @@ package final class RefreshScheduler {
                 onStatusAlerts?(module, bubbleItems)
             }
             if !newAlerts.isEmpty {
-                onQuotaAlerts?(module, newAlerts.map(\.alert))
+                onQuotaAlerts?(module, newAlerts)
             }
 
             if response.status == .partial {

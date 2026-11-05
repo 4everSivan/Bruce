@@ -8,7 +8,10 @@ extension RefreshSchedulerHarness {
     // MARK: - 额度预警
 
     /// 构造 services 含单个 5h 窗口的 artifact.
-    static func makeQuotaArtifact(usedPercent: Double) -> JSONValue {
+    static func makeQuotaArtifact(
+        usedPercent: Double,
+        resetsAt: JSONValue = .null
+    ) -> JSONValue {
         .object([
             "schemaVersion": .integer(1),
             "module": .string("agent-usage"),
@@ -24,7 +27,7 @@ extension RefreshSchedulerHarness {
                             "label": .string("5小时窗口"),
                             "usedPercent": .double(usedPercent),
                             "windowMinutes": .integer(300),
-                            "resetsAt": .null,
+                            "resetsAt": resetsAt,
                         ])
                     ]),
                 ])
@@ -169,6 +172,93 @@ extension RefreshSchedulerHarness {
         try refreshExpect(
             alerts.items.last?.usedPercent == 91,
             "第二次预警内容错误: \(alerts.items)"
+        )
+    }
+
+    // C206 缺陷复现: 三档全部触发后窗口被服务端重置, 但两次刷新之间没采到
+    // ≤50% 的低点 (重置后用量很快又越过 50%), 新窗口的 50% 跨越必须重新报警.
+    static func quotaAlertRefiresAfterUnobservedWindowReset(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 60)
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+
+        // 1. 依次跨越 50 / 80 / 95 三档
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 85)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 96)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 3)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(
+            alerts.items.map(\.tier) == [50, 80, 95],
+            "三档应依次触发: \(alerts.items.map(\.tier))"
+        )
+
+        // 2. 服务端重置该窗口; 下一次采样直接是 60% (没有 ≤50% 的中间观测)
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 60)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 4)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+        // 3. 新窗口再次越过 50% -> 必须重新弹 50 档气泡
+        try refreshExpect(
+            alerts.items.count == 4,
+            "窗口重置后再次越过 50% 应重新报警, 实际未报警: \(alerts.items.map(\.tier))"
+        )
+        try refreshExpect(
+            alerts.items.last?.tier == 50,
+            "重新报警应为 50 档, 实际: \(String(describing: alerts.items.last?.tier))"
+        )
+    }
+
+    // C206 缺陷复现: 用量未回落但窗口重置时刻前进 (服务器侧换窗),
+    // 同一档位也必须重新报警.
+    static func quotaAlertRefiresWhenResetTimeAdvances(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeQuotaArtifact(
+            usedPercent: 85,
+            resetsAt: .integer(1_800_000_000)
+        )
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "首次跨越应报警: \(alerts.items)")
+
+        // 同一用量 85%, 但重置时刻前进 -> 新窗口
+        executor.artifactOverride = makeQuotaArtifact(
+            usedPercent: 85,
+            resetsAt: .integer(1_800_018_000)
+        )
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(
+            alerts.items.count == 2,
+            "窗口重置时刻更新后同一档位应重新报警, 实际未报警: \(alerts.items.map(\.tier))"
         )
     }
 

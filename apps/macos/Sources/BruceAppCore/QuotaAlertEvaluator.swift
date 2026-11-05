@@ -10,6 +10,9 @@ package struct QuotaAlert: Equatable, Sendable {
     package let providerID: String?
     package let resetText: String?
     package let resetsAt: String?
+    /// 窗口重置时刻归一化 token (整数 epoch 秒 / 原始字符串), 用于窗口重置恢复判定.
+    /// 与展示字段 `resetsAt` 分离: 后者只承载可直接渲染的字符串形态.
+    package let resetToken: String?
 
     package init(
         serviceID: String = "",
@@ -19,7 +22,8 @@ package struct QuotaAlert: Equatable, Sendable {
         tier: Int = 80,
         providerID: String? = nil,
         resetText: String? = nil,
-        resetsAt: String? = nil
+        resetsAt: String? = nil,
+        resetToken: String? = nil
     ) {
         self.serviceID = serviceID
         self.serviceName = serviceName
@@ -29,6 +33,7 @@ package struct QuotaAlert: Equatable, Sendable {
         self.providerID = providerID
         self.resetText = resetText
         self.resetsAt = resetsAt
+        self.resetToken = resetToken
     }
 }
 
@@ -116,7 +121,8 @@ package enum QuotaAlertEvaluator {
                         tier: tier,
                         providerID: providerID,
                         resetText: resetText,
-                        resetsAt: resetsAt
+                        resetsAt: resetsAt,
+                        resetToken: windowResetToken(w["resetsAt"])
                     )
                 ))
             }
@@ -144,6 +150,21 @@ package enum QuotaAlertEvaluator {
         case .double(let number): return number
         case .integer(let number): return Double(number)
         default: return nil
+        }
+    }
+
+    /// 窗口重置时刻归一化 token: 采集端 artifact 实际写整数 epoch 秒,
+    /// 兼容字符串形态; 非正数 / null / 缺失视为无重置时刻.
+    private static func windowResetToken(_ value: JSONValue?) -> String? {
+        switch value {
+        case .integer(let epoch) where epoch > 0:
+            return "epoch:\(epoch)"
+        case .double(let epoch) where epoch > 0:
+            return "epoch:\(Int64(epoch))"
+        case .string(let raw) where !raw.isEmpty:
+            return "raw:\(raw)"
+        default:
+            return nil
         }
     }
 }
