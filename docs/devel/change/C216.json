@@ -4,7 +4,7 @@
   "title": "Agent 用量展开明细统一为紧凑条形方案 C，内容对齐 Nothing（双端）",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C213-C218-dashboard-refinements",
   "is_hotfix": false,
   "target": {
@@ -112,13 +112,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "d701837",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }
