@@ -323,7 +323,7 @@ struct MenuBarDashboardView: View {
         .padding(.vertical, 9)
     }
 
-    /// 顶栏 Tab 分段切换器: 3 个图标 + 方案 1 滑动药丸底 + 第 3 个图标呼吸绿点角标
+    /// 顶栏 Tab 分段切换器: 3 个图标 + 选中药丸底 (C208 起不再渲染绿点角标, 活跃数仅悬停提示)
     @ViewBuilder
     private func headerTabSwitcher(activeCount: Int) -> some View {
         HStack(spacing: 2) {
@@ -332,36 +332,33 @@ struct MenuBarDashboardView: View {
                 Button {
                     selectTab(cardID)
                 } label: {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: cardID.systemImage)
-                            .font(.system(size: isNothingTheme ? 10.5 : 11, weight: .semibold))
-                            .foregroundStyle(
-                                isSelected
-                                    ? (isNothingTheme ? Color(nsColor: .windowBackgroundColor) : Color.primary)
-                                    : Color.secondary
-                            )
-                            .frame(width: isNothingTheme ? 24 : 27, height: isNothingTheme ? 20 : 22)
-                            .background {
-                                if isSelected {
-                                    if isNothingTheme {
-                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                            .fill(Color.primary)
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.10))
-                                            .matchedGeometryEffect(id: "activeTabPill", in: tabPillNamespace)
-                                    }
+                    Image(systemName: cardID.systemImage)
+                        .font(.system(size: isNothingTheme ? 10.5 : 11, weight: .semibold))
+                        .foregroundStyle(
+                            isSelected
+                                ? (isNothingTheme
+                                    ? (colorScheme == .dark ? Color.white : Color.black)
+                                    : Color.primary)
+                                : Color.secondary
+                        )
+                        .frame(width: isNothingTheme ? 24 : 27, height: isNothingTheme ? 20 : 22)
+                        .background {
+                            if isSelected {
+                                if isNothingTheme {
+                                    // Nothing 选中态与点阵数字同 accent (浅橘 #D4A843 / 深绿 #4A9E5C), 字形取反差色 (C207)
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(Color.adaptive(
+                                            light: Color(hex: "#D4A843"),
+                                            dark: Color(hex: "#4A9E5C")
+                                        ))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.10))
+                                        .matchedGeometryEffect(id: "activeTabPill", in: tabPillNamespace)
                                 }
                             }
-                            .contentShape(Rectangle())
-
-                        if cardID == .hourly && activeCount > 0 {
-                            Circle()
-                                .fill(isNothingTheme ? Color(hex: "#4A9E5C") : Color(hex: "#30D158"))
-                                .frame(width: 5.5, height: 5.5)
-                                .offset(x: 1, y: -1)
                         }
-                    }
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("\(cardID.title)\(cardID == .hourly && activeCount > 0 ? " (\(activeCount) 个运行中)" : "")")

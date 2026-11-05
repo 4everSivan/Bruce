@@ -1458,7 +1458,6 @@ test("dashboard tabbed layout toggles single card, supports directional slide an
   assert.equal(tabApp.node("hud-agents").style.display, "none");
   assert.equal(tabApp.node("stack").children.length, 1, "tab 模式仅展示 1 张激活卡片");
   assert.equal(tabApp.node("tab-btn-usage").classList.contains("active"), true);
-  assert.equal(tabApp.node("tab-active-dot").style.display, "block", "角标融合: 有活跃 Agent 时第 3 图标显示绿点");
 
   // 3. 点击切卡至 subscription
   await tabApp.node("tab-btn-subscription").click();

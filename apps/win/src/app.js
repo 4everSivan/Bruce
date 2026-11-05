@@ -1417,8 +1417,6 @@ function render(panel, options = {}) {
         const btn = document.getElementById(`tab-btn-${key}`);
         if (btn) btn.classList.toggle("active", idx === activeIndex);
       });
-      const activeDot = document.getElementById("tab-active-dot");
-      if (activeDot) activeDot.style.display = activeCount > 0 ? "block" : "none";
     }
   } else {
     if (agents) {

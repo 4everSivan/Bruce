@@ -294,23 +294,6 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .tab-icon-btn:hover { color: var(--ink); }
 .tab-icon-btn.active { color: var(--ink); }
 .theme-nothing .tab-icon-btn.active { color: #000; }
-.tab-badge-dot {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 5.5px;
-  height: 5.5px;
-  border-radius: 50%;
-  background: #30D158;
-  pointer-events: none;
-  animation: tabBreathe 2.2s ease-in-out infinite;
-}
-.theme-nothing .tab-badge-dot { background: #4A9E5C; }
-@keyframes tabBreathe {
-  0% { transform: scale(0.95); opacity: 0.7; }
-  50% { transform: scale(1.15); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.7; }
-}
 
 /* 方案 1: 水平定向滑动 (Directional Slide) */
 .card-slide-enter-right {
