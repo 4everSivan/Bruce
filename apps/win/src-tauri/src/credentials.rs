@@ -275,7 +275,9 @@ fn opencode_go_oauth_ready(object: &serde_json::Map<String, Value>) -> Result<()
     // 形状直接拒绝, 文案直指「重新粘贴」改用 Console API Key。
     nonempty_string(object.get("apiKey"))
         .then_some(())
-        .ok_or_else(|| "OpenCode GO 凭证缺少 apiKey, 请改用 Console API Key (oc_sk_...) 重新粘贴".to_owned())
+        .ok_or_else(|| {
+            "OpenCode GO 凭证缺少 apiKey, 请改用 Console API Key (oc_sk_...) 重新粘贴".to_owned()
+        })
 }
 /// 对齐 `collector-provider::grok_token`: 顶层 `key`, 或作用域条目
 /// (`https://auth.x.ai::*` / `*/sign-in`) 内的 `key`。

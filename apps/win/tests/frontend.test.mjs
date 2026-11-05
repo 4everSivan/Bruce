@@ -904,13 +904,14 @@ test("oauth providers save collector-native oauth shapes (C081)", async () => {
     settings: { ...defaults, enabledProviders: ["opencodeGo"] },
   });
   await opencode.node("provider-configure-opencodeGo").click();
-  opencode.node("cfg-opencodeGo-paste").value = '{"auth":"Fe26.2**fixture","workspaceId":"wrk_fixture"}';
+  // C204: {apiKey[,workspaceId]} 形状; 裸 oc_sk_ 字符串亦自动包装。
+  opencode.node("cfg-opencodeGo-paste").value = '{"apiKey":"oc_sk_fixture","workspaceId":"wrk_fixture"}';
   await opencode.node("cfg-opencodeGo-paste").dispatch("input");
   await opencode.node("cfg-save-opencodeGo").click();
   const opencodeCall = opencode.calls.find(x => x.command === "save_credential_account");
   assert.equal(
     oauthJSON(opencodeCall.args.payload.oauth),
-    oauthJSON({ auth: "Fe26.2**fixture", workspaceId: "wrk_fixture" })
+    oauthJSON({ apiKey: "oc_sk_fixture", workspaceId: "wrk_fixture" })
   );
 });
 
@@ -938,21 +939,32 @@ test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () 
   );
 });
 
-test("OpenCode GO requires auth and workspaceId and surfaces the reason (C081)", async () => {
+test("OpenCode GO requires apiKey and surfaces the reason (C204)", async () => {
   const app = await boot({
     html: "settings.html",
     settings: { ...defaults, enabledProviders: ["opencodeGo"] },
   });
   await app.node("provider-configure-opencodeGo").click();
-  app.node("cfg-opencodeGo-paste").value = '{"auth":"Fe26.2**fixture"}';
+  // 旧 Cookie 形状 (无 apiKey) 必须被拒绝并指引改用 API Key。
+  app.node("cfg-opencodeGo-paste").value = '{"auth":"Fe26.2**fixture","workspaceId":"wrk_fixture"}';
   await app.node("cfg-opencodeGo-paste").dispatch("input");
   await app.node("cfg-save-opencodeGo").click();
   assert.equal(
     app.calls.some(call => call.command === "save_credential_account"),
     false,
-    "缺 workspaceId 不得提交"
+    "缺 apiKey 不得提交"
   );
-  assert.match(app.node("cfg-status").textContent, /workspaceId/);
+  assert.match(app.node("cfg-status").textContent, /API Key/);
+
+  // 裸 oc_sk_ 字符串自动包装为标准形状后可提交。
+  app.node("cfg-opencodeGo-paste").value = "oc_sk_fixture_bare";
+  await app.node("cfg-opencodeGo-paste").dispatch("input");
+  await app.node("cfg-save-opencodeGo").click();
+  const bareCall = app.calls.find(call => call.command === "save_credential_account");
+  assert.equal(
+    oauthJSON(bareCall.args.payload.oauth),
+    oauthJSON({ apiKey: "oc_sk_fixture_bare" })
+  );
 });
 
 test("subscription pane removes legacy bypass credential cards and keeps only two cards (C095)", async () => {
@@ -2172,20 +2184,21 @@ test("claude dialog keeps the paste entry collapsed behind an advanced section (
   assert.ok(details.querySelector("#cfg-claude-secret"), "纯令牌入口同样在折叠区内");
 });
 
-test("opencode GO account id derives from workspaceId so re-pasting upserts (C085)", async () => {
+test("opencode GO account id derives from apiKey so re-pasting upserts (C204)", async () => {
   const app = await boot({ html: "settings.html", settings: { ...defaults, enabledProviders: ["opencodeGo"] } });
-  const paste = async (workspaceId) => {
+  const paste = async (apiKey, workspaceId) => {
     await app.node("provider-configure-opencodeGo").click();
-    app.node("cfg-opencodeGo-paste").value = JSON.stringify({ auth: "Fe26.2**fixture", workspaceId });
+    const payload = workspaceId ? { apiKey, workspaceId } : { apiKey };
+    app.node("cfg-opencodeGo-paste").value = JSON.stringify(payload);
     await app.node("cfg-opencodeGo-paste").dispatch("input");
     await app.node("cfg-save-opencodeGo").click();
     return app.calls.filter(c => c.command === "save_credential_account").pop().args.accountId;
   };
-  const first = await paste("wrk_first");
-  const again = await paste("wrk_first");
-  assert.equal(first, again, "同一 workspaceId 重复粘贴必须 upsert 到同一账号");
-  const other = await paste("wrk_second");
-  assert.notEqual(first, other, "不同 workspaceId 视为不同账号");
+  const first = await paste("oc_sk_first");
+  const again = await paste("oc_sk_first", "wrk_other");
+  assert.equal(first, again, "同一 apiKey 重复粘贴必须 upsert 到同一账号 (workspaceId 不参与身份)");
+  const other = await paste("oc_sk_second");
+  assert.notEqual(first, other, "不同 apiKey 视为不同账号");
 });
 
 test("stepfun dialog supports embedded web login auto-capture, site switch, session clear and manual fallback (C086)", async () => {

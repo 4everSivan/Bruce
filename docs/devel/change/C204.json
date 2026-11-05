@@ -5,7 +5,7 @@
   "version": "0.17.0",
   "type": "BugFix",
   "status": "in_progress",
-  "branch": "fix/C204-opencode-go-usage-api",
+  "branch": "feat/T27-official-website",
   "is_hotfix": false,
   "target": {
     "module": "core/collector + apps/macos + apps/win",
@@ -18,8 +18,8 @@
     "description": "确认旧实现仍在且官方端点未接入：providers.rs 仍引用 _server 常量、无 zen/go/v1/usage 引用",
     "command": "zsh -c 'grep -q OPENCODE_SERVER_URL core/collector/crates/collector-provider/src/providers.rs && ! grep -rq \"zen/go/v1/usage\" core/collector/crates/collector-provider/src/'",
     "expected": "退出码 0（旧 server-fn 实现在位、官方端点尚未接入，需要本卡实施）",
-    "is_completed": false,
-    "evidence": ""
+    "is_completed": true,
+    "evidence": "2026-11-05 预检（对照开工前基线 9c48cb1）：providers.rs OPENCODE_SERVER_URL 命中 2 处（旧 server-fn 实现在位），git grep \"zen/go\" 于 core/collector 为 0 处（官方端点未接入）；实施后 HEAD 命中 zen/go/v1/usage 5 处。并发说明：文档提交落在 fix/C204-opencode-go-usage-api（9c48cb1），其后 T27 会话切走分支，rust/mac/win 三笔实现提交（208d194/00932f7/d603c61）线性叠加在 feat/T27-official-website 上，与 T27 官网提交（40eaee3）交错但历史线性、无冲突"
   },
   "callback": {
     "before": [
@@ -75,7 +75,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261105-02",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -83,29 +83,29 @@
         "item": "自动化测试",
         "true_if": "collector-provider cargo test 全绿（新解析/凭据/查询用例 + 存量回归），mac BruceOnboardingCoreHarness 全绿，win src-tauri cargo check 通过",
         "false_if": "任何测试失败、编译错误或 clippy 告警",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-05：zsh scripts/verify-local.sh 全量通过（Exit 0，「Bruce 本地验证全部通过」：Rust fmt/test/clippy + fixture 敏感扫描 + Swift build + 全部 Harness + Windows src-tauri 测试与前端测试 + 双端对拍）；cargo test core/collector 30 套件全绿；BruceOnboardingCoreHarness 181 项、SubscriptionCredentialsHarness 38 项；apps/win 前端测试含 C204 新用例（apiKey 必填/裸 key 包装/apiKey 身份 upsert）",
+        "result": true
       },
       {
         "item": "官方响应解析（fixture 对拍）",
         "true_if": "官方端点公开实测响应样例（issue #43983 形状）解析出三窗口：percent 截断到 [0,100]、resetsAt RFC3339→epoch、rate-limited 窗口不被丢弃、缺失窗口跳过不报错",
         "false_if": "解析失败、窗口丢失或字段错位",
-        "evidence": "",
-        "result": null
+        "evidence": "tests_parsers.rs opencode_usage_parser_reads_official_endpoint_shape：issue #43983 公开实测响应样例三窗口全解析（rolling 1%/weekly 25%/monthly 29%，RFC3339→epoch 逐项断言）；opencode_usage_parser_keeps_limited_windows_and_skips_missing：rate-limited 窗口保留、缺失窗口跳过、percent 250 截断 100、usage 缺失/非对象/三窗口全缺/缺 percent 均 fail-visible 报错",
+        "result": true
       },
       {
         "item": "旧凭据待重配语义",
         "true_if": "{auth,workspaceId} 旧形状评估为 expired→needsRelogin（双端同口径），{apiKey} 新形状 valid，裸 key 字符串自动包装",
         "false_if": "旧形状被判 valid 或新形状被拒",
-        "evidence": "",
-        "result": null
+        "evidence": "mac BruceOnboardingCoreHarness opencodeGoEvaluatorValidAndMalformed：{apiKey} 与 {apiKey,workspaceId} 均 valid，旧 {auth,workspaceId} 与仅 auth 判 expired 待重配；win credentials_coverage：旧 Cookie 形状拒绝且文案含「重新粘贴」，新形状（含/不含 workspaceId）接受；裸 oc_sk_ 粘贴双端自动包装（mac importOpenCodeGoFromPaste / win buildCredential）",
+        "result": true
       },
       {
         "item": "行为实测（实网查询）",
         "true_if": "以真实 oc_sk key 直连官方端点返回三窗口并经 collector 全链路落到订阅卡",
         "false_if": "端点 401/403、返回形状与解析不符或卡片无数据",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行：无真实 oc_sk API Key 可用于实网验证（官方端点行为依据 opencode 开源客户端同源实现 + issue #43983 社区实测证据）；需用户在设置中心粘贴真实 Console API Key 后确认订阅卡三窗口（每 5 小时/每周/每月）正常显示",
+        "result": false
       }
     ]
   },
