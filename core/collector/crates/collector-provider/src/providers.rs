@@ -528,7 +528,7 @@ fn attach_credential_update(
     }
 }
 
-/// C204: OpenCode GO 凭证 JSON: `{"apiKey": "oc_sk_..."}` (可选 `"workspaceId"`);
+/// C204: OpenCode 凭证 JSON: `{"apiKey": "oc_sk_..."}` (可选 `"workspaceId"`);
 /// 旧 `{auth, workspaceId}` Cookie 形状由评估层判待重配, 采集端不再兼容.
 pub(crate) fn opencode_credential(
     credential: &Value,
@@ -585,7 +585,7 @@ impl QuotaProvider for OpenCodeGoProvider {
             OPENCODE_GO_USAGE_URL.to_owned(),
             headers,
             None,
-            Some("OpenCode GO API Key 无效或未订阅 Go, 请重新配置"),
+            Some("OpenCode API Key 无效或未订阅 Go, 请重新配置"),
         )?;
         parse_opencode_go_usage(&payload)
     }

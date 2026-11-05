@@ -121,7 +121,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "zhipu": return "Z.ai"
         case "claude": return "Claude"
         case "grok": return "Grok"
-        case "opencodeGo", "opencode-go": return "OpenCode GO"
+        case "opencodeGo", "opencode-go": return "OpenCode"
         case "stepfun": return "StepFun"
         case "jev": return "Jev"
         case "cline": return "Cline"

@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C214",
+  "title": "顶栏 Tab 切换器去底色、保留 1px 发丝框、选中图标变色（双端）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C213-C218-dashboard-refinements",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "仪表盘顶栏三图标卡片切换器 (headerTabSwitcher / #hud-tabs)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 要求右上角三栏切换卡片去掉底色、改为图标变色，并在 demo 讨论后选定「去底色 B」：保留 1px 发丝外框作为边界，但移除容器填充与选中胶囊/滑块，仅让选中图标变色。现状 mac 经典为 5% 容器填充 + 0.5pt 描边 + 选中药丸（matchedGeometryEffect 滑动），Nothing 为 accent 选中底块 + 反差字形；Windows 为 .segmented-track 背景 + #tab-active-pill 绝对定位滑块。",
+  "precheck": {
+    "description": "确认双端仍存在选中胶囊/滑块与容器底色",
+    "command": "zsh -c 'grep -q activeTabPill apps/macos/Sources/BruceApp/MenuBarViews.swift && grep -q tab-active-pill apps/win/src/index.html && grep -q tab-active-pill apps/win/src/styles.css'",
+    "expected": "退出码 0（mac matchedGeometryEffect 药丸与 Windows 滑块仍在，需本卡移除）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：mac headerTabSwitcher 的 selected 分支绘制 RoundedRectangle 药丸并挂 matchedGeometryEffect；Nothing 分支 accent 填充 + 反差字形；Windows index.html 有 #tab-active-pill，styles.css 有绝对定位滑块，app.js 1486 行按 activeIndex 设置 translateX。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C214 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C214 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 顶栏切换器",
+      "before": "容器经典主题 primary 5% 填充 + primary 8% 0.5pt 描边；Nothing 1pt 描边。选中项经典绘制 primary 10/16% 药丸并 matchedGeometryEffect 滑动，Nothing 绘制 accent 药丸并以黑/白反差字形显示；未选中 secondary",
+      "after": "容器全主题 1px 发丝描边、无填充（经典 primary.opacity(0.10)，Nothing #CCCCCC/#303030）；删除选中药丸、matchedGeometryEffect 与 tabPillNamespace；选中图标经典取 Color.primary，Nothing 取 accent（浅 #D4A843 / 深 #4A9E5C），未选中 secondary；尺寸 24×20 / 27×22 与间距保持",
+      "impact": "apps/macos/Sources/BruceApp/MenuBarViews.swift；设计 03 FR-5 与第 18 条"
+    },
+    {
+      "scope": "Windows 顶栏切换器",
+      "before": ".segmented-track 有 rgba(0,0,0,.24) 填充（Nothing #000），#tab-active-pill 为 27×22 绝对定位滑块并以 translateX 平移；选中图标经典 --ink、Nothing #000",
+      "after": "删除 #tab-active-pill 节点、样式与 app.js 位移逻辑；.segmented-track 仅保留 1px 发丝描边与透明底（Nothing #303030），选中图标经典 --ink、Nothing #4A9E5C；保留 .active class 切换与 hover",
+      "impact": "apps/win/src/index.html、styles.css、app.js、tests/frontend.test.mjs"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "FR-5 规定「带高亮背景滑动药丸底」；几何契约规定「外框 3pt，滑动胶囊 2pt」；无去底色后的选中图标色规范",
+      "after": "FR-5 改为「1px 发丝外框、无填充无药丸，选中图标变色（经典主文本色 / Nothing accent），未选中 secondary」；几何条目删除滑动胶囊；新增第 18 条记录双端实现与测试",
+      "impact": "docs/devel/design/03、05；CHANGELOG.md（收口时）；tests"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-5：顶栏三图标导航「并带高亮背景滑动药丸底」；几何：外框 3pt，滑动胶囊 2pt",
+      "after": "FR-5：顶栏三图标导航为 3pt 圆角容器 + 1px 发丝描边，容器与选中项均无底色、无滑动药丸/滑块；选中图标变色（经典 Color.primary，Nothing accent 浅 #D4A843 / 深 #4A9E5C），未选中 secondary；Windows 同语义（#tab-active-pill 退役，Nothing 选中 #4A9E5C）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-06",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build 与 Windows node --test/check-win-frontend 全绿；verify-local 通过；无 #tab-active-pill / matchedGeometryEffect 残留",
+        "false_if": "存在构建/测试失败，或仍存在药丸/滑块/容器填充",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（日志 local/verify-c213-c217.log，末行「Bruce 本地验证全部通过」）；mac swift build --build-tests Build complete；Windows `node --test apps/win/tests/frontend.test.mjs` 127/127 pass、`node scripts/check-win-frontend.mjs` 通过。",
+        "result": true
+      },
+      {
+        "item": "视觉与交互",
+        "true_if": "双端仅剩 1px 发丝外框；选中图标变色（经典主文本色 / Nothing accent），未选中 secondary；切换页签、hover 与快捷键照常",
+        "false_if": "仍有底色/药丸、选中不可辨、hover 或切页签失效",
+        "evidence": "2026-11-05：Windows render-harness 440×760 tabbed 实测 `#tab-active-pill` 不存在；`.segmented-track` 1px 边框 + transparent 背景；Nothing active 图标 #4A9E5C；页签切换 active class 正常；mac 源码无 matchedGeometryEffect/tabPillNamespace，选中图标经典 primary / Nothing accent。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "顶栏布局宽度、Brand 位置、Agent 状态文本与面板高度不受影响",
+        "false_if": "顶栏挤压、错位或高度抖动",
+        "evidence": "顶栏无横向溢出（doc 440/440、panel 438/438）；Brand/状态文本位置未变；verify-local 全量通过。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "mac 装机版目视确认本卡效果；Windows 真机不可用，以 render-harness 代替",
+        "false_if": "效果与描述不符、出现裁切/闪烁/回归或用户驳回",
+        "evidence": "2026-11-05 17:47 mac 装机版已部署（PID 60484）待用户确认；Windows 无真机，render-harness + DOM/CSS 用例代替。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

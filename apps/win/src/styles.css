@@ -243,40 +243,22 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 
 /* ============ 顶栏 Tab 分段切换器 (对齐 mac FR-5) ============ */
 #hud-right-wrap { margin-left: auto; display: flex; align-items: center; }
+/* C214: 仅保留 1px 发丝外框; 容器无填充、无选中胶囊/滑块, 选中仅图标变色. */
 .segmented-track {
-  position: relative;
   display: inline-flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.24);
   padding: 2px;
   border-radius: 3px;
   border: 1px solid var(--hairline);
+  background: transparent;
 }
 .theme-nothing .segmented-track {
-  background: #000;
   border-radius: 3px;
   border: 1px solid #303030;
   padding: 2px;
-}
-#tab-active-pill {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  height: 22px;
-  width: 27px;
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
-}
-.theme-nothing #tab-active-pill {
-  background: #E8E8E8;
-  border-radius: 2px;
+  background: transparent;
 }
 .tab-icon-btn {
-  position: relative;
-  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -293,7 +275,7 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .tab-icon-btn svg { width: 14px; height: 14px; display: block; }
 .tab-icon-btn:hover { color: var(--ink); }
 .tab-icon-btn.active { color: var(--ink); }
-.theme-nothing .tab-icon-btn.active { color: #000; }
+.theme-nothing .tab-icon-btn.active { color: #4A9E5C; }
 
 /* 方案 1: 水平定向滑动 (Directional Slide) */
 .card-slide-enter-right {
@@ -810,20 +792,22 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
   background: transparent; border-radius: 0; overflow: visible;
 }
 .meter.segmented > i { flex: 1; background: #222222; border-radius: 0; height: 100%; }
-/* 行级明细 (mac detailSection): 缩进 14, 组标题 + 100% 堆叠条 + 图例 */
+/* 行级明细 (mac detailSection C216): 缩进 14, 两段统一紧凑条形.
+   段头标题 + 数量; 行: 序号 / 名称 / 内联占比条 / 百分比 / Token. */
 .detail { padding-left: 14px; padding-top: 7px; }
-.detail-group + .detail-group, .detail-group + .nothing-prj-console { margin-top: 7px; }
-.detail-title { font-size: 9px; font-weight: 600; letter-spacing: .3px; color: var(--secondary); padding-bottom: 4px; }
-.share-bar { display: flex; gap: 1px; height: 6px; border-radius: 3px; background: var(--hairline); overflow: hidden; margin-bottom: 5px; }
-.share-bar .share-seg { height: 100%; flex: none; }
-.share-legend { display: flex; flex-direction: column; gap: 2px; }
-.legend-row { display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: rgba(255,255,255,.85); }
-.legend-row .sw { width: 5px; height: 5px; border-radius: 50%; flex: none; }
-.legend-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.legend-row .flex-spacer { flex: 1; min-width: 8px; }
-.legend-row .value { flex: none; display: flex; font-variant-numeric: tabular-nums; }
-.legend-row .pct { font-weight: 600; }
-.legend-row .sep { color: var(--secondary); }
+.detail-compact + .detail-compact { margin-top: 7px; }
+.detail-compact-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.detail-compact-title { font-size: 9px; font-weight: 600; letter-spacing: .3px; color: var(--secondary); }
+.detail-compact-count { font-size: 9px; color: var(--secondary); font-variant-numeric: tabular-nums; }
+.detail-compact-row { display: flex; align-items: center; gap: 6px; height: 19px; }
+.dc-idx { flex: none; width: 18px; font-family: var(--mono-font); font-size: 8.5px; font-weight: 600; }
+.dc-name { flex: none; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9.5px; color: rgba(255,255,255,.9); }
+.dc-bar { flex: 1 1 30px; min-width: 22px; height: 3px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
+.dc-bar i { display: block; height: 100%; border-radius: inherit; }
+.dc-pct { flex: none; width: 28px; text-align: right; font-family: var(--mono-font); font-size: 9.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dc-tokens { flex: none; width: 42px; text-align: right; font-family: var(--mono-font); font-size: 9px; color: var(--secondary); font-variant-numeric: tabular-nums; }
+.detail-compact-divider { height: 1px; margin: 7px 0; background: var(--divider); }
+
 /* 收起态迷你折线 (mac collapsedMini: 12pt 走势 + 峰值文案, 间距 15) */
 .collapsed-summary .hourly-mini { gap: 15px; }
 .mini-spark { flex: 1; min-width: 0; height: 12px; color: rgba(255,255,255,.5); }
@@ -1944,22 +1928,15 @@ details summary {
 }
 .theme-nothing .model-row .track, .theme-nothing .model-row .track > div { border-radius: 0; }
 
-/* 热力图: 全方角; level 0 surface-raised, 1-5 为 accent 绿 20/40/60/80/100% 透明度阶,
-   填充格错相位呼吸 (mac: 1.6s 往复, 不透明度 档位×0.42 → 1, 相位 列×0.12+行×0.05) */
+/* 热力图: 全方角; level 0 surface-raised, 1-5 为 accent 绿 20/40/60/80/100% 透明度阶.
+   C213 起全主题静态: 填充格、图例色样与收起态迷你周格均不挂呼吸/相位动画. */
 .theme-nothing .heatmap .cell, .theme-nothing .heat-legend .sw, .theme-nothing .mini-week i { border-radius: 0; background: #1A1A1A; }
 .theme-nothing .heatmap .cell.empty { background: transparent; }
-.theme-nothing .heatmap .cell.l1, .theme-nothing .heat-legend .sw.l1, .theme-nothing .mini-week i.l1 { background: rgba(74,158,92,.2); --lo: .084; }
-.theme-nothing .heatmap .cell.l2, .theme-nothing .heat-legend .sw.l2, .theme-nothing .mini-week i.l2 { background: rgba(74,158,92,.4); --lo: .168; }
-.theme-nothing .heatmap .cell.l3, .theme-nothing .heat-legend .sw.l3, .theme-nothing .mini-week i.l3 { background: rgba(74,158,92,.6); --lo: .252; }
-.theme-nothing .heatmap .cell.l4, .theme-nothing .heat-legend .sw.l4, .theme-nothing .mini-week i.l4 { background: rgba(74,158,92,.8); --lo: .336; }
-.theme-nothing .heatmap .cell.l5, .theme-nothing .heat-legend .sw.l5, .theme-nothing .mini-week i.l5 { background: #4A9E5C; --lo: .42; }
-.theme-nothing .heatmap .cell[class*=" l"] {
-  animation: nothing-heat-breathe 1.6s ease-in-out var(--d, 0s) infinite alternate;
-}
-@keyframes nothing-heat-breathe {
-  from { opacity: var(--lo, .42); }
-  to { opacity: 1; }
-}
+.theme-nothing .heatmap .cell.l1, .theme-nothing .heat-legend .sw.l1, .theme-nothing .mini-week i.l1 { background: rgba(74,158,92,.2); }
+.theme-nothing .heatmap .cell.l2, .theme-nothing .heat-legend .sw.l2, .theme-nothing .mini-week i.l2 { background: rgba(74,158,92,.4); }
+.theme-nothing .heatmap .cell.l3, .theme-nothing .heat-legend .sw.l3, .theme-nothing .mini-week i.l3 { background: rgba(74,158,92,.6); }
+.theme-nothing .heatmap .cell.l4, .theme-nothing .heat-legend .sw.l4, .theme-nothing .mini-week i.l4 { background: rgba(74,158,92,.8); }
+.theme-nothing .heatmap .cell.l5, .theme-nothing .heat-legend .sw.l5, .theme-nothing .mini-week i.l5 { background: #4A9E5C; }
 .theme-nothing .heat-footer, .theme-nothing .heat-legend,
 .theme-nothing .daily-axis {
   font: 400 9px/normal "Space Mono", var(--mono-font);
@@ -2086,61 +2063,17 @@ details summary {
 .theme-nothing .mini-spark { color: #999999; }
 .theme-nothing .mini-spark .spark-area { display: none; }
 .theme-nothing .mini-peak { font: 400 9px/normal "Space Mono", var(--mono-font); color: #666666; }
-/* 明细: 组标题 mono 9 字距 .8; P4 堆叠条无轨道, 段间 2, Top1 heroGreen, 其余斜纹 disabled */
-.theme-nothing .detail-title {
-  font: 400 9px/normal "Space Mono", var(--mono-font);
-  letter-spacing: .8px;
-}
-.theme-nothing .share-bar { border-radius: 0; background: transparent; gap: 2px; }
-.theme-nothing .share-bar .share-seg { border-radius: 1px; }
-.theme-nothing .share-bar .share-seg:first-child { background: #30D158 !important; }
-.theme-nothing .share-bar .share-seg:not(:first-child) {
-  background: repeating-linear-gradient(45deg, #666666 0 1.4px, transparent 1.4px 2.8px) !important;
-  border-radius: 0;
-}
-.theme-nothing .legend-row { font: 400 9px/normal "Space Mono", var(--mono-font); color: #999999; }
-.theme-nothing .legend-row .sw { width: 6px; height: 6px; border-radius: 0; }
-.theme-nothing .legend-row:first-of-type .sw { background: #30D158 !important; border-radius: 1px; }
-.theme-nothing .legend-row:not(:first-of-type) .sw {
-  background: repeating-linear-gradient(45deg, #666666 0 1.4px, transparent 1.4px 2.8px) !important;
-}
-.theme-nothing .legend-row .pct { font: 700 9.5px/normal "Space Mono", var(--mono-font); color: #E8E8E8; }
-.theme-nothing .legend-row:first-of-type .pct { color: #30D158; }
-.theme-nothing .legend-row .sep { font: 400 9.5px/normal "Space Mono", var(--mono-font); color: #666666; }
-
-/* 项目统计控制台 (mac nothingProjectConsoleSection 方案 A · Dot-Leader Console) */
-.nothing-prj-console { display: flex; flex-direction: column; gap: 3px; }
-.prj-console-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
-.prj-console-title { font: 400 9px/normal "Space Mono", var(--mono-font); letter-spacing: .8px; color: #999999; }
-.prj-console-count { font: 400 8.5px/normal "Space Mono", var(--mono-font); color: #666666; }
-.prj-console-row { display: flex; align-items: center; gap: 4px; padding: 1.5px 0; }
-.prj-tag { font: 700 8.5px/normal "Space Mono", var(--mono-font); flex: none; }
-.prj-name {
-  font: 400 9.5px/normal "Space Mono", var(--mono-font);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  /* mac HStack 把剩余宽度分给可伸缩的导引线, 名称约在 120pt 处截断 */
-  flex: 0 1 auto; min-width: 0; max-width: 120px;
-}
-.prj-name.top { font-weight: 700; }
-/* 点阵导引线: 1pt 线宽, 1.5 实 / 3 空 虚线, 取档色 35% */
-.prj-leader {
-  flex: 1 1 10px;
-  min-width: 10px;
-  height: 1px;
-  margin: 0 2px;
-  background-image: repeating-linear-gradient(90deg, var(--leader, #333333) 0 1.5px, transparent 1.5px 4.5px);
-}
-.prj-tokens { font: 400 9px/normal "Space Mono", var(--mono-font); color: #999999; white-space: nowrap; flex: none; }
-.prj-badge {
-  font: 700 9px/normal "Space Mono", var(--mono-font);
-  padding: .5px 4px;
-  border-radius: 2px;
-  border: 1px solid;
-  white-space: nowrap;
-  flex: none;
-}
-.prj-ticks { display: inline-flex; gap: 1.5px; align-items: center; margin-left: 3px; flex: none; }
-.prj-tick { width: 2.5px; height: 6px; border-radius: .5px; display: inline-block; }
+/* 明细 C216: 段头 mono 9 字距 .8; 行 Space Mono + 方角条, 档位色由 JS 内联下发 */
+.theme-nothing .detail-compact-title { font: 400 9px/normal "Space Mono", var(--mono-font); letter-spacing: .8px; color: #999999; }
+.theme-nothing .detail-compact-count { font: 400 8.5px/normal "Space Mono", var(--mono-font); color: #666666; }
+.theme-nothing .detail-compact-row { gap: 6px; }
+.theme-nothing .dc-idx { width: 16px; font: 700 8.5px/normal "Space Mono", var(--mono-font); }
+.theme-nothing .dc-name { width: 92px; font: 400 9.5px/normal "Space Mono", var(--mono-font); color: #E8E8E8; }
+.theme-nothing .dc-bar { border-radius: 0; background: #1A1A1A; }
+.theme-nothing .dc-bar i { border-radius: 0; }
+.theme-nothing .dc-pct { font: 700 9.5px/normal "Space Mono", var(--mono-font); }
+.theme-nothing .dc-tokens { font: 400 9px/normal "Space Mono", var(--mono-font); color: #666666; }
+.theme-nothing .detail-compact-divider { background: #222222; }
 
 /* 底栏按钮 (mac NothingPanelButtonStyle): #1A1A1A 底 + #333 描边, 圆角 3, 内边距 9/6 */
 .theme-nothing .foot-btn {
@@ -2157,7 +2090,6 @@ details summary {
 
 /* C141: 动效关闭时的 Nothing 静态降级, 与全局闸门同源. */
 html[data-motion="off"] .theme-nothing .hero-num { animation: none; opacity: 1; text-shadow: none; }
-html[data-motion="off"] .theme-nothing .heatmap .cell[class*=" l"] { animation: none; }
 html[data-motion="off"] .foot-btn.spinning svg { animation: none; }
 
 /* ==========================================================================

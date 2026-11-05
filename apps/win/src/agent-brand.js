@@ -98,7 +98,9 @@
     const asset = options.agentId
       ? assetForAgent(options.agentId)
       : assetForModel(options.modelKey || options.displayName || "");
-    const brandStyle = size >= 14 && !isNothing;
+    // C218: 图例 12pt 通过 forceBrand 保留品牌真彩/位图与系列色环;
+    // 模型 chip 等未显式开启的 12pt 小徽章仍走系列色档。
+    const brandStyle = (size >= 14 || Boolean(options.forceBrand)) && !isNothing;
 
     const badge = make("span", "ab-badge");
     badge.style.setProperty("--ab-size", size + "px");

@@ -333,9 +333,9 @@ extension SubscriptionService {
         refreshOfficialLocalAvailability()
     }
 
-    // MARK: - OpenCode GO 手动配置 (Console API Key 表单, C205)
+    // MARK: - OpenCode 手动配置 (Console API Key 表单, C205)
 
-    /// OpenCode GO: 表单保存入口 (C205). 结构化组装 {apiKey[, workspaceId]} 后
+    /// OpenCode: 表单保存入口 (C205). 结构化组装 {apiKey[, workspaceId]} 后
     /// 复用 C204 的统一保存流 (评估器判定 -> Keychain -> 状态迁移).
     func saveAndVerifyOpenCodeGo(apiKey: String, workspaceId: String) {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -348,17 +348,17 @@ extension SubscriptionService {
            let json = String(data: data, encoding: .utf8) {
             saveOpenCodeGoOAuthJSON(json)
         } else {
-            model.setSettingsError("OpenCode GO 凭证无效, 请填写 API Key (oc_sk_...)", for: .opencodeGo)
+            model.setSettingsError("OpenCode 凭证无效, 请填写 API Key (oc_sk_...)", for: .opencodeGo)
         }
     }
 
-    /// OpenCode GO: 统一保存入口 (evaluator 判定 -> Keychain -> 状态迁移).
+    /// OpenCode: 统一保存入口 (evaluator 判定 -> Keychain -> 状态迁移).
     func saveOpenCodeGoOAuthJSON(_ json: String) {
         let status = SubscriptionCredentialEvaluator.opencodeGoStatus(of: json)
         switch status {
             case .missing, .malformed:
             model.setSettingsError(
-                "OpenCode GO 凭证无效, 请粘贴 API Key (oc_sk_...)",
+                "OpenCode 凭证无效, 请粘贴 API Key (oc_sk_...)",
                 for: .opencodeGo
             )
             return
@@ -377,14 +377,14 @@ extension SubscriptionService {
             finishVerification(.opencodeGo, status: .ok)
             case .expired:
             model.setSettingsError(
-                "OpenCode GO 配置方式已升级, 旧会话凭证不再支持, 请改用 API Key (oc_sk_...)",
+                "OpenCode 配置方式已升级, 旧会话凭证不再支持, 请改用 API Key (oc_sk_...)",
                 for: .opencodeGo
             )
             finishVerification(.opencodeGo, status: .needsRelogin)
         }
     }
 
-    /// OpenCode GO: 用 Keychain 现有凭证重新触发验证状态迁移
+    /// OpenCode: 用 Keychain 现有凭证重新触发验证状态迁移
     /// (凭证已存在但验证状态缺失/过期时, 由设置页"重新验证"触发).
     func reverifyOpenCodeGo() {
         Task { await reverify(.opencodeGo) }
@@ -477,7 +477,7 @@ extension SubscriptionService {
             case .valid, .refreshPending:
                 finishVerification(.opencodeGo, status: .ok)
             case .missing, .malformed:
-                model.setSettingsError("OpenCode GO 凭证不完整, 请重新粘贴", for: .opencodeGo)
+                model.setSettingsError("OpenCode 凭证不完整, 请重新粘贴", for: .opencodeGo)
             case .expired:
                 finishVerification(.opencodeGo, status: .needsRelogin)
             }
@@ -532,7 +532,7 @@ extension SubscriptionService {
         return record
     }
 
-    /// 从 OpenCode GO 凭证 JSON 提取 apiKey (C204 身份字段); 失败返回 nil.
+    /// 从 OpenCode 凭证 JSON 提取 apiKey (C204 身份字段); 失败返回 nil.
     static func opencodeGoAPIKey(from json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),

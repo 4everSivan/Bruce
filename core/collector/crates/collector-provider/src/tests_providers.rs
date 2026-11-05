@@ -764,7 +764,7 @@ fn oauth_credential_shapes_are_parseable_by_real_parsers() {
             .as_deref(),
         Some("fixture-grok-scoped")
     );
-    // OpenCode GO: apiKey 必填, workspaceId 可选 (C204).
+    // OpenCode: apiKey 必填, workspaceId 可选 (C204).
     let opencode = json!({"apiKey": "oc_sk_fixture", "workspaceId": "wrk_fixture"});
     assert_eq!(
         opencode_credential(&opencode).unwrap(),
@@ -786,7 +786,7 @@ fn flat_oauth_token_shape_yields_no_credential() {
     assert_eq!(grok_token(&flat).unwrap(), None, "扁平形状读不出 Grok 凭据");
     assert!(
         opencode_credential(&flat).is_err(),
-        "扁平形状读不出 OpenCode GO 凭据"
+        "扁平形状读不出 OpenCode 凭据"
     );
 }
 

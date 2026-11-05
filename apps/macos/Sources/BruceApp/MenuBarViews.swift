@@ -126,7 +126,6 @@ struct MenuBarDashboardView: View {
 
     /// Tab 模式方案 1 水平定向滑动方向
     @State private var slideDirection: Edge = .trailing
-    @Namespace private var tabPillNamespace
     /// Tab 模式当前卡片的自然高度 (C148); 容器高度只跟它走一个数值, 切换时单程插值.
     @State private var tabCardHeight: CGFloat = 0
     /// C211: 纵向级联快捷键请求; 先滚到卡片, 再切换折叠态.
@@ -350,7 +349,8 @@ struct MenuBarDashboardView: View {
         .padding(.vertical, 9)
     }
 
-    /// 顶栏 Tab 分段切换器: 3 个图标 + 选中药丸底 (C208 起不再渲染绿点角标, 活跃数仅悬停提示)
+    /// 顶栏 Tab 分段切换器: 3 个图标 + 1px 发丝外框, 选中仅图标变色 (C214);
+    /// C208 起不再渲染绿点角标, 活跃数仅悬停提示.
     @ViewBuilder
     private func headerTabSwitcher(activeCount: Int) -> some View {
         HStack(spacing: 2) {
@@ -364,27 +364,12 @@ struct MenuBarDashboardView: View {
                         .foregroundStyle(
                             isSelected
                                 ? (isNothingTheme
-                                    ? (colorScheme == .dark ? Color.white : Color.black)
+                                    // Nothing 选中态取 hero accent (浅橘 #D4A843 / 深绿 #4A9E5C), 不再铺药丸底 (C214)
+                                    ? Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
                                     : Color.primary)
                                 : Color.secondary
                         )
                         .frame(width: isNothingTheme ? 24 : 27, height: isNothingTheme ? 20 : 22)
-                        .background {
-                            if isSelected {
-                                if isNothingTheme {
-                                    // Nothing 选中态与点阵数字同 accent (浅橘 #D4A843 / 深绿 #4A9E5C), 字形取反差色 (C207)
-                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                        .fill(Color.adaptive(
-                                            light: Color(hex: "#D4A843"),
-                                            dark: Color(hex: "#4A9E5C")
-                                        ))
-                                } else {
-                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.10))
-                                        .matchedGeometryEffect(id: "activeTabPill", in: tabPillNamespace)
-                                }
-                            }
-                        }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -393,20 +378,14 @@ struct MenuBarDashboardView: View {
         }
         .padding(2)
         .background {
-            if isNothingTheme {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .strokeBorder(
-                        Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030")),
-                        lineWidth: 1
-                    )
-            } else {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color.primary.opacity(0.05))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                    }
-            }
+            // 仅保留 1px 发丝描边作边界; 容器无填充、无选中胶囊/滑块 (C214).
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .strokeBorder(
+                    isNothingTheme
+                        ? Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030"))
+                        : Color.primary.opacity(0.10),
+                    lineWidth: 1
+                )
         }
     }
 

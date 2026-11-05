@@ -575,7 +575,7 @@ pub fn parse_cline_usage_limits(
     )))
 }
 
-/// OpenCode Go 官方用量端点 `/zen/go/v1/usage` 响应解析 (C204):
+/// OpenCode 官方用量端点 `/zen/go/v1/usage` 响应解析 (C204):
 /// `{usage:{rolling|weekly|monthly:{status:"ok"|"rate-limited", percent:<0~100>, resetsAt:<RFC3339>}}}`.
 /// 三窗口直读服务端权威值 (rolling 即 5h 滑动窗, weekly 周一 00:00Z 重置, monthly 锚定订阅日),
 /// `resetsAt` 为绝对时间戳; `status=rate-limited` 的窗口照常输出 (percent 即权威用量, 不丢弃).

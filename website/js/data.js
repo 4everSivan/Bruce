@@ -220,7 +220,7 @@
     { name: "Codex", tag: "多账号" },
     { name: "Claude", tag: "5 小时 · 每周" },
     { name: "Grok", tag: "每月" },
-    { name: "OpenCode Go", tag: "5 小时 · 每周 · 每月" },
+    { name: "OpenCode", tag: "5 小时 · 每周 · 每月" },
     { name: "Z.ai", tag: "5 小时 · 每周" },
     { name: "StepFun", tag: "按量付费" },
     { name: "Cline", tag: "5 小时 · 7 天 · 30 天" },

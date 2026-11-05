@@ -28,14 +28,17 @@ struct AgentBrandBadge: View {
     var followsTheme: Bool = true
     /// 无品牌素材时的字标。
     var fallbackMonogram: String = "?"
+    /// 紧凑品牌档: 允许 <14pt 仍使用品牌真彩/位图与系列色环 (C218 14 日图例 12pt)。
+    /// 默认关闭, 模型 chip 等 12pt 小徽章仍走系列色档。
+    var usesBrandChrome: Bool = false
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
     private var isNothing: Bool { followsTheme && theme.interfaceStyle == .nothing }
     private var cornerRadius: CGFloat { max(1, size * 0.27) }
-    /// 真彩档: 大尺寸且非 Nothing。
-    private var usesBrandStyle: Bool { size >= 14 && !isNothing }
+    /// 真彩档: 大尺寸 (或调用方显式开启紧凑品牌档) 且非 Nothing。
+    private var usesBrandStyle: Bool { (size >= 14 || usesBrandChrome) && !isNothing }
     private var monogram: String {
         let value = asset?.monogram ?? fallbackMonogram
         return value.isEmpty ? "?" : value

@@ -998,7 +998,7 @@ extension BruceOnboardingCoreHarness {
             "Z.ai 缺 base_url 应返回 nil"
         )
 
-        // OAuth 形态 (Claude / Grok / OpenCode GO): 重新验证走 Evaluator, 不解析
+        // OAuth 形态 (Claude / Grok / OpenCode): 重新验证走 Evaluator, 不解析
         let oauthJSON = """
         {"claudeAiOauth":{"accessToken":"t","refreshToken":"r"}}
         """
@@ -1012,7 +1012,7 @@ extension BruceOnboardingCoreHarness {
             StoredCredentialParser.parse(
                 provider: .opencodeGo, credentialJSON: "{\"auth\":\"x\",\"workspaceId\":\"wrk\"}"
             ) == nil,
-            "OpenCode GO 凭证应返回 nil"
+            "OpenCode 凭证应返回 nil"
         )
     }
 

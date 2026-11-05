@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C213",
+  "title": "Token 用量热力图移除呼吸动效，全主题改为静态渲染（双端）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C213-C218-dashboard-refinements",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "Token 用量卡半年热力图 (UsageHeroCard / heatmap)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 要求移除 Token 用量卡 Nothing 风格下的热力图动态效果，其他主题若也有热力图动效一并移除。现状：macOS Nothing 填充格经 HeatmapBreathingPolicy 在 CALayer 上挂 1.6s 错相位呼吸；Windows .theme-nothing .heatmap .cell / .heat-legend .sw / .mini-week i 共用 nothing-heat-breathe 动画，图例与收起态迷你周格也在呼吸。热力图应只承载用量强弱，不做持续动效，避免干扰阅读并降低渲染开销。",
+  "precheck": {
+    "description": "确认双端热力图仍存在呼吸动效与相位注入",
+    "command": "zsh -c 'grep -q HeatmapBreathingPolicy apps/macos/Sources/BruceAppCore/HeatmapBreathingPolicy.swift && grep -q nothing-heat-breathe apps/win/src/styles.css && grep -q \"setProperty(\\\"--d\\\"\" apps/win/src/app.js'",
+    "expected": "退出码 0（mac 策略文件与 Windows 关键帧/相位仍在，需本卡移除）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：mac HeatmapBreathingPolicy.animation 与 UsageHeroCard.HeatmapLayerView 挂载呼吸；Windows styles.css 1949-1961 行存在 nothing-heat-breathe 与 --lo，app.js 462-483 行为每格写入 --d 相位。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C213 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C213 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 热力图静态化",
+      "before": "每格 CALayer 挂 CABasicAnimation 呼吸；HeatmapBreathingPolicy 提供相位、低谷系数与动画构造；DashboardPanelAnimationPolicy.allowsHeatmap 按面板可见/Nothing/填充/动效开关裁决；HeatmapLayerView 在 update 中重挂动画并维护 restingOpacity",
+      "after": "删除 HeatmapBreathingPolicy 与 allowsHeatmap；HeatmapLayerView 仅按档位色绘制静态格子，透明度恒 1；HeatmapLayerGrid 不再传 breathing/motionSuppressed/restingOpacity/breathingBase；网格仍保留单 NSView + 每格 CALayer 的渲染承载（只为性能，不带动画）",
+      "impact": "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift、BruceAppCore/HeatmapBreathingPolicy.swift（删除）、BruceAppCore/DashboardPanelAnimationPolicy.swift、NativeLifecycleHarness"
+    },
+    {
+      "scope": "Windows 热力图静态化",
+      "before": "styles.css 为 Nothing 填充格/图例/迷你周格挂 nothing-heat-breathe，并用 --lo 控制低谷透明度；app.js 为每格写入 --d 错相位",
+      "after": "删除 nothing-heat-breathe 与 @keyframes、删除 --lo 与 --d 注入；仅保留档位底色（20/40/60/80/100% 绿阶）与方角几何；图例与迷你周格同样静态",
+      "impact": "apps/win/src/styles.css、apps/win/src/app.js、apps/win/tests/frontend.test.mjs"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "设计 03 第 15 条把呼吸交给 Core Animation，并规定门控/观感/测试；设计 05 记录 Windows 呼吸实现",
+      "after": "设计 03 第 15 条改为「图层承载保留、全主题静态、禁止呼吸动画与 CSS keyframes」；设计 05 同步；mac 删除呼吸 Harness，Windows 新增断言：无 nothing-heat-breathe/--lo/--d",
+      "impact": "docs/devel/design/03、05；CHANGELOG.md（收口时）；tests"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "第 15 条：Nothing 填充格错相位呼吸交给 Core Animation（HeatmapBreathingPolicy.animation），门控由 allowsHeatmap 裁决；Windows 以逐格 CSS @keyframes nothing-heat-breathe 实现同一呼吸语义",
+      "after": "第 15 条：热力图全主题静态显示，格子仅承载档位色（Nothing 20/40/60/80/100% 绿阶）；禁止 CABasicAnimation 呼吸、禁止 SwiftUI repeatForever、禁止 CSS keyframes 与逐格相位；图层宿主（NSView + 每格 CALayer）保留用于渲染性能，不再挂动画；图例与收起态迷你周格同样静态"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-06",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build 与 Windows node --test/check-win-frontend 全绿；verify-local 通过；呼吸相关断言退役且无残留引用",
+        "false_if": "存在构建/测试失败，或仍存在 HeatmapBreathingPolicy / nothing-heat-breathe / --lo / --d 引用",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（日志 local/verify-c213-c217.log，末行「Bruce 本地验证全部通过」）；mac swift build --build-tests Build complete；Windows `node --test apps/win/tests/frontend.test.mjs` 127/127 pass、`node scripts/check-win-frontend.mjs` 通过。 NativeLifecycleHarness 呼吸用例退役后 19 项通过；Windows 新增 C213 静态断言（无 nothing-heat-breathe/--lo/--d）。",
+        "result": true
+      },
+      {
+        "item": "静态渲染",
+        "true_if": "mac 热力图格子无动画、透明度恒 1；Windows 填充格/图例/迷你周格无 animation 声明，外观与档位色保持",
+        "false_if": "仍有格子呼吸、图例闪动或档位色丢失",
+        "evidence": "2026-11-05：Windows render-harness 440×760 经典/Nothing 深色实测热力图、图例、迷你周格无 animation；mac HeatmapLayerView.update 只设 backgroundColor/opacity=1，无 CABasicAnimation；源码 grep 无 HeatmapBreathingPolicy/allowsHeatmap/nothing-heat-breathe/--lo/--d。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "热力图布局、底部单行日期/图例、面板动画门控与其余卡片不受影响",
+        "false_if": "网格尺寸/裁切异常、图例错位或既有动画策略回归",
+        "evidence": "verify-local 全量通过；热力图布局/底部单行/面板高度/其他卡片 Harness 保持；Windows 127/127。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "mac 装机版目视确认本卡效果；Windows 真机不可用，以 render-harness 代替",
+        "false_if": "效果与描述不符、出现裁切/闪烁/回归或用户驳回",
+        "evidence": "2026-11-05 17:47 mac 装机版已部署（PID 60484）待用户确认；Windows 无真机，render-harness + DOM/CSS 用例代替。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

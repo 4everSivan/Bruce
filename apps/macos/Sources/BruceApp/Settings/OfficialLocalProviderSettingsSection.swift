@@ -2,7 +2,7 @@ import BruceAppCore
 import BruceOnboardingCore
 import SwiftUI
 
-/// Claude / Grok / OpenCode GO 共用管理组 (Phase 4): 支持手动粘贴导入与从本机 CLI 导入.
+/// Claude / Grok / OpenCode 共用管理组 (Phase 4): 支持手动粘贴导入与从本机 CLI 导入.
 /// 应用持有凭证存 Keychain; 本机登录态检测作为"从本机导入"按钮的显隐条件.
 struct OfficialLocalProviderSettingsSection: View {
     @EnvironmentObject private var model: AppModel
@@ -17,7 +17,7 @@ struct OfficialLocalProviderSettingsSection: View {
     var savePaste: (String) -> Void
     /// 粘贴框上方的引导文案; nil 时回退默认提示.
     var pasteHint: String?
-    /// 是否显示"重新检测"本机登录态按钮 (Claude / Grok = true, OpenCode GO = false).
+    /// 是否显示"重新检测"本机登录态按钮 (Claude / Grok = true, OpenCode = false).
     var showsLocalRedetect: Bool
     /// 编辑态: 默认 `editing || !configured`, needsRelogin 时强制展开粘贴入口.
     @Binding var isEditing: Bool

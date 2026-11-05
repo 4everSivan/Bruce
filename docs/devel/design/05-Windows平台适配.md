@@ -128,7 +128,7 @@
 
 | 规则 | mac 语义 | Windows 渲染层 |
 |---|---|---|
-| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；C211 起固定快捷键为 ⌘1/⌘2/⌘3（Tab 切页签 / 纵向级联先滚动再收放，裸 1/2/3 退役），并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；全局快捷键分组卡在唤出看板行下方展示只读 `Ctrl+1/2/3` 键帽；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
+| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标 + 1px 发丝外框（C214 起无填充、无滑动滑块，选中图标变色：经典主文本色 / Nothing `#4A9E5C`），活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；C211 起固定快捷键为 ⌘1/⌘2/⌘3（Tab 切页签 / 纵向级联先滚动再收放，裸 1/2/3 退役），并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；全局快捷键分组卡在唤出看板行下方展示只读 `Ctrl+1/2/3` 键帽；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动（仅卡片切换，切换器本身不再有滑块），持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
 | Agent 用量卡（C212） | 进入/展开默认打开首个有模型/项目明细的 agent；有数据时「今日」+ 图标刷新；今日空态保留 14 日柱状图（无历史不渲染），空态图标/文案下唯一刷新；收起空态「暂无用量」 | 同语义（`hourlyExpansionPending` + `makeCollapsible(onExpand)` 重置；`refresh_agent_usage_local` 只跑本地采集、保留订阅 services；刷新按钮与订阅 `ProviderRefreshButton` 同构：14×14 无边框、刷新中 `.sub-spinner`） |
 | 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
@@ -139,9 +139,9 @@
 | 收起态迷你摘要 | `collapsedPeakWindow` = `windows ∪ accounts[].windows` 中 `usedPercent` 最大者；纯余额型（无窗口）不出迷你条 | 渲染层按同语义推导（不改契约字段，避免 golden 漂移） |
 | 折叠态可见性 | 折叠时 status 槽（最后更新时间等）被 mini 摘要取代 | 同（C067 起标题行结构为 `[.drag-handle] [.card-title] [.card-status] [.collapsed-summary] [.chev]`：状态件经 `margin-left:auto` 推到行尾，折叠态隐藏 `.card-status`、迷你摘要嵌入标题行铺满中间区，而非另起一行） |
 | Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发）。**实现约束（C029）**：档位色必须以 CSS 自定义属性（`--hero-grad-start` / `--hero-grad-end`）下发，由 `.hero-num` / `.mini-num` 消费，**严禁用内联 style 直接写 background/前景** —— 内联 `background-image` 会压过 `.theme-nothing .hero-num` 的纯色覆写（C027 实测回归时该类尚带 4px 点阵遮罩，叠加成平铺条纹；C067 起 Nothing hero 改为 Doto 字体自身点阵 + 纯色 accent，不再叠加遮罩） |
-| 模型/项目分布 | 渲染视图模型给出的全部行（Top3 + 「其他」聚合） | 同（前端不得再截断） |
+| 模型/项目分布 | 渲染视图模型给出的全部行（Top3 + 「其他」聚合）；C216 起统一为紧凑条形：段头数量 + 序号/名称/内联占比条/百分比/Token，不渲染 100% 堆叠条 | 同（前端不得再截断；`.detail-compact` / `.dc-*` 与 mac `compactShareSection` 同构） |
 | Nothing 主题覆写 | 新增任何卡片内组件时，除 Fluent 形态外必须同时给出 `.theme-nothing` 覆写（圆角 3 / `#1A1A1A` 底 / `#222222` 描边；阈值红 `#D71921` 只用于 ≥80 档，当月/选中等强调色一律取 hero accent `#4A9E5C`；C067 起 Nothing 块不再覆写 `--accent`） | 同（C029 起：账号子卡、余额双槽、tag 胶囊、成本数字均有 Nothing 覆写与断言） |
-| Nothing 形态（C034/C066） | 订阅量条 = 24 段方角（高 10 / 段间 2 / 填充段数 = `round(clamp(fraction,0,1)×24)` / 阈值档纯色 `#4A9E5C`·`#D4A843`·`#D71921`）；14 日柱 = 3×8 点阵（6×6 格 / 段间 2 / 填充区自底向上增长 / 填充数 = `max(1, round(total/maxDayTotal×24))` / 格子自上而下编号、从第 `24 - filled` 格起按段序落槽，故首段在填充区顶部，非末段至少 1 格且末段吃剩余直至末格（mac `nothingCellSlots`，C067 校正段序）/ 退化时统一 accent 单色 / 日总量 hover 显示）；24 点走势线 = heroGreen `#30D158`（C067 校正，原 `#4A9E5C`）；agent 配色取 5 档绿阶（已知 agent 固定档位、未知 agent FNV-1a 落档）；**C066 深度对齐**：捆绑分发开源 OFL 许可官方 Doto / Space Grotesk / Space Mono 字体族（`apps/win/src/fonts/`），Hero 数字拆分 4×4px 实心小方块小数点并带呼吸微光晕；面板锁定 10px 紧凑圆角、`#000000` OLED 纯黑底座、无毛玻璃透明；卡内不再渲染 LIVE 指示灯（C210 双端退役，顶部 Header 状态灯仍为圆点）；订阅卡底部渲染 `<50` / `50–79` / `≥80` 三档方块阈值图例；Agent 展开区渲染 P4 斜点阵堆叠条与 Dot-Leader 控制台（`PRJ.CONSOLE` + 6-Tick 进度块）。~~设置中心 T07 工作台全量 Nothing 纯黑单色化~~（C067 撤销：mac 设置窗口恒用 `SettingsDemoTokens` Fluent 平面 token，不随界面风格切换） | 同（Windows 恒深色，只实现 dark 侧色序）。 |
+| Nothing 形态（C034/C066） | 订阅量条 = 24 段方角（高 10 / 段间 2 / 填充段数 = `round(clamp(fraction,0,1)×24)` / 阈值档纯色 `#4A9E5C`·`#D4A843`·`#D71921`）；14 日柱 = 3×8 点阵（6×6 格 / 段间 2 / 填充区自底向上增长 / 填充数 = `max(1, round(total/maxDayTotal×24))` / 格子自上而下编号、从第 `24 - filled` 格起按段序落槽，故首段在填充区顶部，非末段至少 1 格且末段吃剩余直至末格（mac `nothingCellSlots`，C067 校正段序）/ 退化时统一 accent 单色 / 日总量 hover 显示）；24 点走势线 = heroGreen `#30D158`（C067 校正，原 `#4A9E5C`）；agent 配色取 5 档绿阶（已知 agent 固定档位、未知 agent FNV-1a 落档）；**C066 深度对齐**：捆绑分发开源 OFL 许可官方 Doto / Space Grotesk / Space Mono 字体族（`apps/win/src/fonts/`），Hero 数字拆分 4×4px 实心小方块小数点并带呼吸微光晕；面板锁定 10px 紧凑圆角、`#000000` OLED 纯黑底座、无毛玻璃透明；卡内不再渲染 LIVE 指示灯（C210 双端退役，顶部 Header 状态灯仍为圆点）；订阅卡底部渲染 `<50` / `50–79` / `≥80` 三档方块阈值图例；Agent 展开区 C216 起渲染紧凑条形（段头数量 + 序号/名称/方角内联占比条/百分比/Token，Space Mono + 绿阶），不再渲染 P4 堆叠条、Dot-Leader 控制台或 6-Tick；热力图 C213 起全主题静态，无呼吸动画/图例闪动。~~设置中心 T07 工作台全量 Nothing 纯黑单色化~~（C067 撤销：mac 设置窗口恒用 `SettingsDemoTokens` Fluent 平面 token，不随界面风格切换） | 同（Windows 恒深色，只实现 dark 侧色序）。 |
 
 **Windows 侧验证纪律（C029，因维护者无 Windows 机器）**：
 
@@ -272,6 +272,12 @@ Windows Tauri 后端 (Rust)
 | C160 | 界面对齐 | 刷新间隔收敛为 3 / 6 分钟预设 + 自定义 1–1440 分钟（与 mac 同口径），移除验证期「测试气泡」入口 | 通用页刷新间隔改为预设分段 + 只读「X 分钟 / 编辑」，点击后才展开 `setting-interval-custom` 数字输入；历史值回显自定义、越界不写盘；`test_quota_alert` 命令与行内测试按钮退役（见 design/04 规则 10） |
 | C172 | 缺陷修复 | Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 `CREDENTIAL_UPDATE_UNSUPPORTED` 未写回 | 规则 6 补充 Collector 轮换更新写回：Claude 与 mac 同口径写嵌套 `claudeAiOauth`、零配置 `claude-cli` 自动建立、error envelope 同样写回；新增 `credential-rotation-parity` 双端对拍 |
 | C178 | 安全加固 | 前端 webview 无 CSP、全部应用命令对所有窗口开放 | 新增规则 36「前端安全基线」：严格 CSP；AppManifest 声明全部应用命令，capabilities 按窗口只授予其页面脚本实际调用的命令；预览 / 预警窗口内联脚本移入外链文件、内联事件属性改为委托；`check-win-frontend.mjs` 反查 |
+| C218 | 缺陷修复 | Agent 卡 14 日柱顶部标注与图例徽章尺寸 | mac y 域留 20% 顶部余量；双端图例徽章 14→12pt，Windows 用 forceBrand 保留品牌真彩/色环；14 日柱 calc 预留标注行不变 |
+| C217 | 缺陷修复 | mac Agent 卡徽章左侧被裁切 | 仅 mac `.clipped()` 内容左缘把 seriesRing 裁掉；图例首项与行首留 3pt leading 内缩。Windows 卡片裁剪在卡片外缘，无此问题，不改 |
+| C213 | 界面对齐 | Token 用量热力图静态化（双端） | 删除 nothing-heat-breathe / --lo / --d 相位；图例与迷你周格不再呼吸，档位底色与单行 footer 保持 |
+| C214 | 界面对齐 | 顶栏 Tab 切换器去底色（双端） | 删除 #tab-active-pill 与 translateX；.segmented-track 仅 1px 发丝描边 + 透明底，Nothing 选中图标 #4A9E5C，经典 --ink |
+| C215 | 文案对齐 | 订阅 Provider 展示名统一为 OpenCode（双端） | settings-state providers 显示名改为 OpenCode；provider ID / 存储键 / 配置字段不变 |
+| C216 | 界面对齐 | Agent 明细统一为紧凑条形（双端） | 删除 stackedShareBar/detailGroup/nothingProjectConsole 与 share-bar/prj-console；新增 .detail-compact / .dc-*，内容与 mac 方案 C 同构 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则

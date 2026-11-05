@@ -186,7 +186,7 @@ public enum ProviderAccountIDGenerator {
         ProviderAccountKeys.sha256Hex(key)
     }
 
-    /// OpenCode GO: API Key SHA-256 前 16 位 (C204: apiKey 为身份字段).
+    /// OpenCode: API Key SHA-256 前 16 位 (C204: apiKey 为身份字段).
     public static func opencodeGoAccountID(apiKey: String) -> String {
         ProviderAccountKeys.sha256Hex(apiKey)
     }

@@ -32,7 +32,7 @@ package struct QuotaRunPolicy: Equatable, Sendable {
 // MARK: - SubscriptionProviderID -> collector app id
 
 package extension SubscriptionProviderID {
-    /// Collector service 的 `app` 字段; OpenCode GO 在 Rust 侧使用连字符命名.
+    /// Collector service 的 `app` 字段; OpenCode 在 Rust 侧使用连字符命名.
     var collectorAppID: String {
         self == .opencodeGo ? "opencode-go" : rawValue
     }

@@ -13,15 +13,6 @@ package enum DashboardPanelAnimationPolicy {
         panelVisible && !motionSuppressed
     }
 
-    package static func allowsHeatmap(
-        panelVisible: Bool,
-        isNothing: Bool,
-        filled: Bool,
-        motionSuppressed: Bool
-    ) -> Bool {
-        panelVisible && isNothing && filled && !motionSuppressed
-    }
-
     /// 定向刷新进度指示 (系统 `ProgressView` 为不确定进度, 逐帧驱动).
     /// 面板隐藏时不得挂载 —— 定向刷新最长 90s, 期间隐藏面板会持续逐帧布局 (C044).
     package static func allowsRefreshProgress(panelVisible: Bool) -> Bool {

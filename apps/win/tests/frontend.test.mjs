@@ -396,7 +396,7 @@ test("agent rows default-open first expandable agent and toggle details", async 
   const app = await boot({ panel });
   const firstRow = () => app.node("stack").querySelectorAll(".agent-row")[0];
   // C212: 默认打开第一个有明细 agent
-  assert.equal(firstRow().querySelectorAll(".legend-row").length, 7);
+  assert.equal(firstRow().querySelectorAll(".detail-compact-row").length, 7);
   assert.equal(firstRow().querySelector(".line1").getAttribute("aria-expanded"), "true");
   assert.equal(firstRow().querySelector(".row-chev").classList.contains("open"), true, "chevron 旋转 90°");
   assert.ok(firstRow().querySelector(".row-chev svg"), "chevron 为线性图标 (mac SF Symbol 等价)");
@@ -405,26 +405,32 @@ test("agent rows default-open first expandable agent and toggle details", async 
   let row = firstRow();
   assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "false");
   assert.equal(row.querySelector(".row-chev").classList.contains("open"), false, "chevron.right 复位");
-  assert.equal(row.querySelectorAll(".legend-row").length, 0);
+  assert.equal(row.querySelectorAll(".detail-compact-row").length, 0);
   // 再次点击展开并核对内容
   await firstRow().querySelector(".line1").click();
   row = firstRow();
   assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "true");
-  assert.deepEqual([...row.querySelectorAll(".detail-title")].map((n) => n.textContent), ["模型占比", "项目分布"]);
+  assert.deepEqual([...row.querySelectorAll(".detail-compact-title")].map((n) => n.textContent), ["模型占比", "项目占比"]);
+  assert.equal(row.querySelectorAll(".detail-compact").length, 2, "模型与项目两段同构");
+  assert.deepEqual([...row.querySelectorAll(".detail-compact-count")].map((n) => n.textContent), ["5 个模型", "2 个工程"]);
   // 模型 5 条 (含「其他」与极小份额) + 项目 2 条, 全部渲染 (前端不得截断)
-  assert.equal(row.querySelectorAll(".legend-row").length, 7);
+  assert.equal(row.querySelectorAll(".detail-compact-row").length, 7);
   assert.match(row.textContent, /其他/);
-  const rows = [...row.querySelectorAll(".legend-row")];
-  // 图例格式: 名称 …… pct% · 总量
-  assert.equal(rows[0].querySelector(".pct").textContent, "50%");
-  assert.equal(rows[0].querySelector(".sep").textContent, " · 62K");
-  assert.equal(rows[4].querySelector(".pct").textContent, "<1%", "极小非零份额特例");
-  // 100% 堆叠条: 每组一条, 段宽按 share
-  assert.equal(row.querySelectorAll(".share-bar").length, 2);
-  assert.equal(row.querySelectorAll(".share-bar")[0].querySelectorAll(".share-seg").length, 5);
+  const rows = [...row.querySelectorAll(".detail-compact-row")];
+  // 行格式: 序号 / 名称 / 内联占比条 / pct% / Token
+  assert.equal(rows[0].querySelector(".dc-idx").textContent, "01");
+  assert.equal(rows[0].querySelector(".dc-name").textContent, "m1");
+  assert.equal(rows[0].querySelector(".dc-pct").textContent, "50%");
+  assert.equal(rows[0].querySelector(".dc-tokens").textContent, "62K");
+  assert.equal(rows[0].querySelector(".dc-bar i").style.width, "50%");
+  assert.equal(rows[4].querySelector(".dc-pct").textContent, "<1%", "极小非零份额特例");
+  // 旧 100% 堆叠条与 Nothing 控制台退役
+  assert.equal(row.querySelectorAll(".share-bar").length, 0);
+  assert.equal(row.querySelectorAll(".nothing-prj-console").length, 0);
+  assert.ok(row.querySelector(".detail-compact-divider"), "模型与项目之间保留 1px 分隔线");
   // 键盘可收起
   await firstRow().querySelector(".line1").dispatch("keydown", { key: "Enter" });
-  assert.equal(firstRow().querySelectorAll(".legend-row").length, 0, "可再次收起");
+  assert.equal(firstRow().querySelectorAll(".detail-compact-row").length, 0, "可再次收起");
 });
 
 test("agent card shows today-empty under 14-day history with one refresh entry (C212)", async () => {
@@ -566,7 +572,7 @@ test("styles.css defines the Nothing segmented meter and dot grid", () => {
   assert.match(css, /\.theme-nothing \.daily-chart \.day-total\s*\{\s*opacity:\s*0/);
 });
 
-test("Nothing theme renders hero dot-square, threshold legend, project console, and authentic typography tokens", async () => {
+test("Nothing theme renders hero dot-square, threshold legend, compact detail, and authentic typography tokens", async () => {
   const panel = structuredClone(fixture);
   panel.usage.totalTokensText = "128.4K";
   panel.hourly.rows[0].projects = [
@@ -594,18 +600,20 @@ test("Nothing theme renders hero dot-square, threshold legend, project console, 
     assert.equal(legend.querySelector(".updated")?.textContent, panel.subscription.updatedText, "Nothing 底栏右侧包含平齐的最后更新");
   }
 
-  // 3. 项目统计控制台: 首个 agent 已按 C212 默认展开
+  // 3. C216: 首个 agent 已按 C212 默认展开, 两段均为紧凑条形
   const getFirstRow = () => stack.querySelectorAll(".agent-row")[0];
-  const prjConsole = getFirstRow().querySelector(".nothing-prj-console");
-  assert.ok(prjConsole, "Nothing 主题下项目分布使用点阵终端控制台渲染");
-  assert.match(prjConsole.querySelector(".prj-console-title").textContent, /PRJ\.CONSOLE/);
-  assert.match(prjConsole.querySelector(".prj-console-count").textContent, /2 WORKSPACES/);
-  const prjRows = prjConsole.querySelectorAll(".prj-console-row");
-  assert.equal(prjRows.length, 2);
-  assert.equal(prjRows[0].querySelector(".prj-tag").textContent, "[P1]");
-  assert.equal(prjRows[0].querySelector(".prj-name").textContent, "Bruce");
-  assert.ok(prjRows[0].querySelector(".prj-leader"), "包含点阵导引虚线");
-  assert.equal(prjRows[0].querySelectorAll(".prj-tick").length, 6, "包含 6-Tick 微型液晶进度格");
+  const compactSections = getFirstRow().querySelectorAll(".detail-compact");
+  assert.equal(compactSections.length, 2, "模型与项目两段同构");
+  assert.deepEqual([...compactSections].map((n) => n.querySelector(".detail-compact-title").textContent), ["模型占比", "项目占比"]);
+  assert.match(compactSections[0].querySelector(".detail-compact-count").textContent, /1 MODELS/);
+  assert.match(compactSections[1].querySelector(".detail-compact-count").textContent, /2 WORKSPACES/);
+  const compactRows = getFirstRow().querySelectorAll(".detail-compact-row");
+  assert.equal(compactRows.length, 3);
+  assert.equal(compactRows[0].querySelector(".dc-idx").textContent, "01");
+  assert.equal(compactRows[0].querySelector(".dc-name").textContent, "kimi-k2.5");
+  assert.equal(compactRows[1].querySelector(".dc-name").textContent, "Bruce");
+  assert.ok(compactRows[0].querySelector(".dc-bar i"), "内联占比条存在");
+  assert.equal(getFirstRow().querySelector(".nothing-prj-console"), null, "旧 PRJ.CONSOLE 控制台退役");
 
   // 4. styles.css 中的字体定义与几何契约
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
@@ -621,7 +629,7 @@ test("Nothing theme renders hero dot-square, threshold legend, project console, 
 
 test("styles.css defines the P2 shapes and keeps theme overrides for them", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-  for (const rule of [".daily-chart .day-total", ".share-bar", ".legend-row", ".mini-spark", ".drag-handle", ".card.usage-card"]) {
+  for (const rule of [".daily-chart .day-total", ".detail-compact", ".dc-bar", ".mini-spark", ".drag-handle", ".card.usage-card"]) {
     assert.ok(css.includes(rule), `styles.css 缺少 ${rule}`);
   }
   // 拖拽手柄仅折叠态可见; Nothing 走势色为 heroGreen; 趋势/纹样不得用内联色
@@ -1059,7 +1067,7 @@ test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () 
   );
 });
 
-test("OpenCode GO apiKey form gates required field and omits blank workspaceId (C205)", async () => {
+test("OpenCode apiKey form gates required field and omits blank workspaceId (C205)", async () => {
   const app = await boot({
     html: "settings.html",
     settings: { ...defaults, enabledProviders: ["opencodeGo"] },
@@ -1232,6 +1240,35 @@ test("heatmap footer puts start date, legend and end date on one row (C202)", as
   // 1fr auto 1fr 网格: 图例恒居中于网格, 两侧日期各自贴边, 互不挤占
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(css, /\.heat-footer\s*\{[^}]*grid-template-columns:\s*1fr auto 1fr;/);
+});
+
+test("heatmap stays static in both themes after C213", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /nothing-heat-breathe/, "呼吸关键帧退役");
+  assert.doesNotMatch(css, /--lo\s*:/, "低谷透明度变量退役");
+  assert.doesNotMatch(js, /--d/, "逐格相位注入退役");
+  assert.doesNotMatch(js, /mod 3\.2/, "相位计算退役");
+  for (let level = 1; level <= 5; level += 1) {
+    assert.match(
+      css,
+      new RegExp(`\\.theme-nothing \\.heatmap \\.cell\\.l${level}[^{]*\\{[^}]*background`),
+      `Nothing 热力图 l${level} 保留静态档位底色`,
+    );
+  }
+});
+
+test("tab switcher keeps a hairline border and tints the active icon without a pill (C214)", async () => {
+  const app = await boot({ settings: { ...defaults, layoutMode: "tabbed", activeCardId: "usage" } });
+  assert.equal(app.document.querySelector("#tab-active-pill"), null, "选中滑块节点退役");
+  assert.equal(app.node("tab-btn-usage").classList.contains("active"), true, "页签 active 语义保留");
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /#tab-active-pill/);
+  assert.match(css, /\.segmented-track\s*\{[^}]*background:\s*transparent/, "容器无底色");
+  assert.match(css, /\.segmented-track\s*\{[^}]*border:\s*1px solid/, "保留 1px 发丝框");
+  assert.match(css, /\.theme-nothing \.tab-icon-btn\.active\s*\{[^}]*color:\s*#4A9E5C/, "Nothing 选中图标取 accent");
+  assert.doesNotMatch(js, /tab-active-pill/, "滑块位移逻辑退役");
 });
 
 test("classic daily bars scale by day total and stack segments by in-day share (C067)", async () => {
@@ -2773,7 +2810,10 @@ test("agent brand badges replace colour dots on settings and dashboard (C161)", 
 
   // 仪表盘: 14 日图例与逐小时行首同样换成徽章
   const dashboard = await boot();
-  assert.ok(dashboard.document.querySelectorAll(".daily-legend .ab-badge").length >= 1);
+  const legendBadges = [...dashboard.document.querySelectorAll(".daily-legend .ab-badge")];
+  assert.ok(legendBadges.length >= 1);
+  assert.ok(legendBadges.every((badge) => badge.style.getPropertyValue("--ab-size") === "12px"), "C218: 图例徽章收敛到 12px");
+  assert.ok(legendBadges.every((badge) => badge.classList.contains("ab-badge--ring")), "C218: 12px 图例仍带品牌系列色环");
   assert.ok(dashboard.document.querySelectorAll(".agent-row .ab-badge").length >= 1);
   assert.equal(dashboard.document.querySelectorAll(".daily-legend .sw").length, 0, "图例不应再留旧色块");
 });

@@ -587,7 +587,7 @@ public enum SubscriptionCredentialAccount {
     public static let claudeOAuth = "claude:oauth"
     /// Grok 手动导入凭证: scope 映射同构 JSON (Phase 2)
     public static let grokOAuth = "grok:oauth"
-    /// OpenCode GO 手动导入凭证: {"access_token", "refresh_token", "expiry"} JSON
+    /// OpenCode 手动导入凭证: {"access_token", "refresh_token", "expiry"} JSON
     public static let opencodeGoOAuth = "opencode-go:oauth"
     /// StepFun (Step Plan) 控制台 Oasis-Token 字符串
     public static let stepfunToken = "stepfun:token"

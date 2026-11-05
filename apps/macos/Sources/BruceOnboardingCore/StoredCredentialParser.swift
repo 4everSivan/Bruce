@@ -5,7 +5,7 @@ import Foundation
 /// 解析 `ProviderAccountStore` 中持久化的 `credentialJSON`, 供「重新验证」复用
 /// 已存凭证. 不同 provider 的凭证形态各异, 本解析器只覆盖可本地重跑的结构化形态:
 /// Kimi / DeepSeek 裸 key 字符串, 火山引擎 `{"accessKey","secretKey"}`,
-/// 智谱 `{"api_key","base_url"}`. Claude / Grok / OpenCode GO 为 OAuth JSON,
+/// 智谱 `{"api_key","base_url"}`. Claude / Grok / OpenCode 为 OAuth JSON,
 /// 重新验证走对应 Evaluator, 本法返回 nil.
 public enum StoredCredentialParser {
     /// 解析出的结构化凭证形态.

@@ -472,8 +472,6 @@ function usageCard(usage) {
         else {
           if (cell.level > 0) box.classList.add(`l${Math.min(cell.level, 5)}`);
           box.title = `${cell.date}  ${cell.total.toLocaleString()}`;
-          // Nothing 填充格错相位呼吸的相位 (mac: (列×0.12 + 行×0.05) mod 3.2 秒)
-          box.style.setProperty("--d", `${((column * 0.12 + row * 0.05) % 3.2).toFixed(2)}s`);
           if (!first) first = cell.date;
           last = cell.date;
         }
@@ -905,88 +903,45 @@ const expandedAgents = new Set();
 // C212: 首次建立 / 切到 hourly 页签时默认打开首个有明细 agent; 消费后普通刷新不重置.
 let hourlyExpansionPending = true;
 
-// 100% 堆叠条 (mac stackedShareBar): 段宽按 share, 段不足 100% 时露出轨道底。
-function stackedShareBar(bars, shadeAt) {
-  const track = el("div", "share-bar");
-  for (const [index, bar] of bars.entries()) {
-    const seg = el("div", "share-seg");
-    seg.style.width = `${Math.max(2, Math.min(100, bar.share * 100))}%`;
-    seg.style.background = shadeAt(index);
-    track.append(seg);
-  }
-  return track;
+// C216: 紧凑条形明细 (镜像 mac compactShareSection / compactShareRow).
+// 段头「模型占比 / 项目占比」+ 数量; 每行 序号 / 名称 / 内联占比条 / 百分比 / Token.
+// 不渲染 100% 堆叠条、点阵导引、6-Tick 或 PRJ.CONSOLE 控制台.
+const NOTHING_TIER_COLORS = ["#30D158", "#4A9E5C", "#2B7A42"];
+function nothingTierColor(index) {
+  return NOTHING_TIER_COLORS[Math.min(index, NOTHING_TIER_COLORS.length - 1)];
 }
 
-// 明细分组 (mac distributionGroup): 标题 + 堆叠条 + `名称 …… pct% · 总量` 图例。
-function detailGroup(title, bars, shadeAt) {
-  const group = el("div", "detail-group");
-  group.append(el("div", "detail-title", title));
-  group.append(stackedShareBar(bars, shadeAt));
-  const legend = el("div", "share-legend");
-  for (const [index, bar] of bars.entries()) {
-    const line = el("div", "legend-row");
-    const sw = el("span", "sw");
-    sw.style.background = shadeAt(index);
-    line.append(sw, el("span", "name", bar.name), el("span", "flex-spacer"));
-    const value = el("span", "value");
-    value.append(el("span", "pct", sharePercentText(bar.share)));
-    value.append(el("span", "sep", ` · ${bar.totalText}`));
-    line.append(value);
-    line.setAttribute("aria-label", `${bar.name} ${sharePercentText(bar.share)} · ${bar.totalText}`);
-    legend.append(line);
-  }
-  group.append(legend);
-  return group;
-}
-
-// Nothing 风格项目统计控制台 (镜像 mac nothingProjectConsoleSection 方案 A + 色系 1 翡翠绿阶):
-// P1 亮绿 (标签/名称同色), P2 翡翠绿 (名称 primary), P3 起暗薄荷绿 (名称 secondary)。
-const PROJECT_TIERS = [
-  { tag: "#30D158", name: "#30D158", bg: "rgba(48,209,88,.12)", border: "rgba(48,209,88,.35)", leader: "rgba(48,209,88,.35)" },
-  { tag: "#4A9E5C", name: "#E8E8E8", bg: "rgba(74,158,92,.10)", border: "rgba(74,158,92,.25)", leader: "rgba(74,158,92,.35)" },
-  { tag: "#2B7A42", name: "#999999", bg: "#1A1A1A", border: "#222222", leader: "rgba(43,122,66,.35)" },
-];
-function nothingProjectConsole(projects) {
-  const consoleEl = el("div", "nothing-prj-console");
-  const head = el("div", "prj-console-head");
+function compactShareSection(title, bars, countText, shadeAt) {
+  const section = el("div", "detail-compact");
+  const head = el("div", "detail-compact-head");
   head.append(
-    el("span", "prj-console-title", "项目统计 // PRJ.CONSOLE"),
-    el("span", "prj-console-count", `${projects.length} WORKSPACES`)
+    el("span", "detail-compact-title", title),
+    el("span", "detail-compact-count", countText)
   );
-  consoleEl.append(head);
-  for (const [index, bar] of projects.entries()) {
-    const rowEl = el("div", "prj-console-row");
-    const tier = PROJECT_TIERS[Math.min(index, PROJECT_TIERS.length - 1)];
-    // 6-Tick 进度格: round(share×6), 非零份额至少 1 格
-    const activeTicks = Math.max(bar.share > 0 ? 1 : 0, Math.min(6, Math.round(bar.share * 6)));
-
-    const tag = el("span", "prj-tag", `[P${index + 1}]`);
-    tag.style.color = tier.tag;
-    const name = el("span", index === 0 ? "prj-name top" : "prj-name", bar.name);
-    name.style.color = tier.name;
-    const leader = el("span", "prj-leader");
-    leader.style.setProperty("--leader", tier.leader);
-    const tokens = el("span", "prj-tokens", bar.totalText);
-    const share = el("span", "prj-badge", sharePercentText(bar.share));
-    share.style.color = tier.tag;
-    share.style.background = tier.bg;
-    share.style.borderColor = tier.border;
-    const ticks = el("span", "prj-ticks");
-    for (let t = 0; t < 6; t += 1) {
-      const tick = el("span", "prj-tick");
-      tick.style.background = t < activeTicks ? tier.tag : "#222222";
-      ticks.append(tick);
-    }
-
-    rowEl.append(tag, name, leader, tokens, share, ticks);
+  section.append(head);
+  for (const [index, bar] of bars.entries()) {
+    const color = shadeAt(index);
+    const rowEl = el("div", "detail-compact-row");
+    const idx = el("span", "dc-idx", String(index + 1).padStart(2, "0"));
+    idx.style.color = color;
+    const name = el("span", "dc-name", bar.name);
+    const barEl = el("span", "dc-bar");
+    const fill = el("i");
+    fill.style.width = `${Math.max(2, Math.min(100, bar.share * 100))}%`;
+    fill.style.background = color;
+    barEl.append(fill);
+    const pct = el("span", "dc-pct", sharePercentText(bar.share));
+    pct.style.color = color;
+    const tokens = el("span", "dc-tokens", bar.totalText);
+    rowEl.append(idx, name, barEl, pct, tokens);
     rowEl.setAttribute("aria-label", `${bar.name} ${sharePercentText(bar.share)} · ${bar.totalText}`);
-    consoleEl.append(rowEl);
+    section.append(rowEl);
   }
-  return consoleEl;
+  return section;
 }
 
 // Agent 身份徽章 (C161): 有 agent-brand.js 时用品牌徽章, 否则退回原来的色点。
-function agentBadgeFor({ agentId, seriesHex, size, nothingHex }) {
+function agentBadgeFor({ agentId, seriesHex, size, nothingHex, forceBrand = false }) {
   const brand = window.BRUCE_AGENT_BRAND;
   if (brand && typeof brand.create === "function") {
     return brand.create({
@@ -995,6 +950,7 @@ function agentBadgeFor({ agentId, seriesHex, size, nothingHex }) {
       size,
       nothing: isNothingTheme(),
       nothingHex,
+      forceBrand,
     });
   }
   const dot = el("span", size >= 14 ? "dot ab-dot-lg" : "dot");
@@ -1035,13 +991,23 @@ function agentRow(row, rerender) {
 
   if (row.isExpandable) {
     const detail = el("div", "detail");
-    if (row.models.length) detail.append(detailGroup("模型占比", row.models, (index) => modelShade(row.colorHex, index)));
+    const nothing = isNothingTheme();
+    if (row.models.length) {
+      detail.append(compactShareSection(
+        "模型占比",
+        row.models,
+        nothing ? `${row.models.length} MODELS` : `${row.models.length} 个模型`,
+        (index) => nothing ? nothingTierColor(index) : modelShade(row.colorHex, index)
+      ));
+    }
     if (row.projects.length) {
-      if (isNothingTheme()) {
-        detail.append(nothingProjectConsole(row.projects));
-      } else {
-        detail.append(detailGroup("项目分布", row.projects, projectShade));
-      }
+      if (row.models.length) detail.append(el("div", "detail-compact-divider"));
+      detail.append(compactShareSection(
+        "项目占比",
+        row.projects,
+        nothing ? `${row.projects.length} WORKSPACES` : `${row.projects.length} 个工程`,
+        (index) => nothing ? nothingTierColor(index) : projectShade(index)
+      ));
     }
     if (expanded) block.append(detail);
     // mac: 整行为按钮; Windows 只在行首行挂点击, 图表区仍可悬停而不误触。
@@ -1172,8 +1138,10 @@ function hourlyCard(hourly, usage) {
           const sw = agentBadgeFor({
             agentId: item.agentId,
             seriesHex: item.colorHex,
-            size: isNothingTheme() ? 9 : 14,
+            size: isNothingTheme() ? 9 : 12,
             nothingHex: agentColor(item.agentId, item.colorHex),
+            // C218: 图例 12pt 仍保留品牌真彩/位图与系列色环.
+            forceBrand: !isNothingTheme(),
           });
           span.append(sw, el("span", null, item.name));
           legend.append(span);
@@ -1483,8 +1451,6 @@ function render(panel, options = {}) {
       const tabKeys = ["usage", "subscription", "hourly"];
       const activeKey = currentSettings.activeCardId || currentSettings.activeCardID || "usage";
       const activeIndex = Math.max(0, tabKeys.indexOf(activeKey));
-      const pill = document.getElementById("tab-active-pill");
-      if (pill) pill.style.transform = `translateX(${activeIndex * 28}px)`;
       tabKeys.forEach((key, idx) => {
         const btn = document.getElementById(`tab-btn-${key}`);
         if (btn) btn.classList.toggle("active", idx === activeIndex);

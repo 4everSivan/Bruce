@@ -428,7 +428,7 @@
   /// 国内站 → 修复后再存一次」会生成第二个账号, 旧账号还停在错误站点。以 token 为身份后,
   /// 重新保存即 upsert 到同一账号, 顺带改写或清除站点 (未选站点 → 由采集端按令牌推导)。
   function credentialAccountId(id, credential) {
-    // 身份字段: StepFun 以 token、OpenCode GO 以 apiKey 为身份 (C093 / C204) ——
+    // 身份字段: StepFun 以 token、OpenCode 以 apiKey 为身份 (C093 / C204) ——
     // 同一身份重新保存即 upsert, 不会因重新粘贴多出一条账号。
     const identity = credential && typeof credential === "object"
       ? id === "stepfun"

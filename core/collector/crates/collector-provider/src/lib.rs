@@ -43,7 +43,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
     CatalogSpec {
         provider: "opencode-go",
         prefix: "opencode_go_",
-        display_prefix: "OpenCode GO",
+        display_prefix: "OpenCode",
         app: "opencode-go",
         credential_field: "opencodeGoQuotaAccounts",
         direct_credential_field: None,
@@ -803,7 +803,7 @@ pub const CLAUDE_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 pub const CLAUDE_USER_AGENT: &str = "claude-code/2.1.302";
 pub const GROK_BILLING_URL: &str =
     "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
-/// C204: OpenCode Go 官方用量端点 (opencode 官方客户端同源, Bearer API Key).
+/// C204: OpenCode 官方用量端点 (opencode 官方客户端同源, Bearer API Key).
 pub const OPENCODE_GO_USAGE_URL: &str = "https://opencode.ai/zen/go/v1/usage";
 pub const STEPFUN_STEP_PLAN_RATE_LIMIT_URL: &str =
     "https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit";

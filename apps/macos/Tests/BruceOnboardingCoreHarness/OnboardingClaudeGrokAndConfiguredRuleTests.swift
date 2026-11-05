@@ -449,7 +449,7 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
-    // MARK: - OpenCode GO (console OAuth)
+    // MARK: - OpenCode (console OAuth)
 
     static func opencodeGoCredentialAccountsAndRegistry() throws {
         try coreExpect(
@@ -463,8 +463,8 @@ extension BruceOnboardingCoreHarness {
             "opencodeGo injectionKind 应为 opencodeGoQuotaAccounts"
         )
         try coreExpect(
-            SubscriptionProviderID.opencodeGo.displayName == "OpenCode GO",
-            "opencodeGo 展示名应为 OpenCode GO"
+            SubscriptionProviderID.opencodeGo.displayName == "OpenCode",
+            "opencodeGo 展示名应为 OpenCode"
         )
     }
 

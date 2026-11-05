@@ -137,9 +137,9 @@ public enum SubscriptionCredentialEvaluator {
         return .valid
     }
 
-    // MARK: - OpenCode GO
+    // MARK: - OpenCode
 
-    /// OpenCode GO 凭证 JSON (C204): {"apiKey": "oc_sk_..."} (可选 "workspaceId").
+    /// OpenCode 凭证 JSON (C204): {"apiKey": "oc_sk_..."} (可选 "workspaceId").
     /// apiKey 非空才 valid; 旧 {"auth", "workspaceId"} Cookie 形状判 expired
     /// (配置方式已切换 API Key, 待重配, 不迁移不降级).
     public static func opencodeGoStatus(of json: String) -> SubscriptionCredentialStatus {

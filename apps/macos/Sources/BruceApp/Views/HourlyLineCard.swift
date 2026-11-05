@@ -292,7 +292,9 @@ struct HourlyLineCard: View {
             }
         }
         // 固定 Y 域, 生长动画期间已出现的列不会因新列出现而重新缩放.
-        .chartYScale(domain: 0...maxDayTotal)
+        // C218: 顶部留 20% 余量给最高柱的 .annotation(.top) 总量标注, 避免被
+        // chart frame 裁掉上半截; 最高柱约 83% 高.
+        .chartYScale(domain: 0...(Double(maxDayTotal) * 1.20))
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .frame(height: 68)
@@ -463,12 +465,14 @@ struct HourlyLineCard: View {
                     AgentBrandBadge(
                         asset: AgentBrandPalette.asset(forAgent: item.agentID),
                         seriesHex: item.color.hex,
-                        size: isNothing ? 9 : 14,
+                        size: isNothing ? 9 : 12,
                         nothingHex: PanelAgentColor.nothingRampHex(
                             agentID: item.agentID,
                             darkMode: colorScheme == .dark
                         ),
-                        fallbackMonogram: String(item.name.prefix(1)).uppercased()
+                        fallbackMonogram: String(item.name.prefix(1)).uppercased(),
+                        // C218: 图例 12pt 也保留品牌真彩/位图与系列色环, 不退回系列色瓷砖.
+                        usesBrandChrome: !isNothing
                     )
                     Text(item.name)
                 }
@@ -476,6 +480,9 @@ struct HourlyLineCard: View {
         }
         .font(isNothing ? NothingFont.mono(9) : .system(size: 9.5))
         .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.75))
+        // C217: 卡片内容由 .clipped() 裁在内容左缘, 徽章 seriesRing 外扩 1.5pt,
+        // 首项贴边会缺左边; 留 3pt 让色环与 tile 左圆角完整.
+        .padding(.leading, 3)
     }
 
     // MARK: - 今日小标题与卡内刷新
@@ -659,6 +666,8 @@ struct HourlyLineCard: View {
                     .monospacedDigit()
             }
         }
+        // C217: 行首徽章同样避让 .clipped() 左缘, 3pt 留白保证系列色环完整.
+        .padding(.leading, 3)
     }
 
     /// 24 点折线 (0-23 时): agent 色 1.5pt 线 + 淡渐变面积;
@@ -728,147 +737,162 @@ struct HourlyLineCard: View {
         }
     }
 
-    /// 明细区: 模型占比 + 项目分布两组 DistributionBar, 直接排在折线下方, 无内层卡片容器.
+    /// 明细区 (C216): 模型/项目两组同构紧凑条形, 内容对齐 Nothing:
+    /// 段头 (标题 + 数量) + 每行 序号 / 名称 / 内联占比条 / 百分比 / Token.
+    /// 不再渲染 100% 堆叠条、点阵导引、6-Tick 或 PRJ.CONSOLE 控制台.
     private func detailSection(_ row: HourlyAgentRow) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !row.models.isEmpty {
-                distributionGroup(
+                compactShareSection(
                     title: "模型占比",
+                    countText: isNothing
+                        ? "\(row.models.count) MODELS"
+                        : "\(row.models.count) 个模型",
                     bars: row.models,
-                    colorAt: { Color(hex: row.color.distributionHex(at: $0)) }
+                    colorAt: { modelTierColor(row: row, index: $0) }
                 )
             }
             if !row.projects.isEmpty {
-                if isNothing {
-                    nothingProjectConsoleSection(bars: row.projects)
-                        .padding(.top, row.models.isEmpty ? 0 : 7)
-                } else {
-                    distributionGroup(
-                        title: "项目分布",
-                        bars: row.projects,
-                        colorAt: { Color(hex: Self.projectBarShades[min($0, Self.projectBarShades.count - 1)]) }
-                    )
-                    .padding(.top, row.models.isEmpty ? 0 : 7)
+                if !row.models.isEmpty {
+                    compactSectionDivider
+                        .padding(.vertical, 7)
                 }
+                compactShareSection(
+                    title: "项目占比",
+                    countText: isNothing
+                        ? "\(row.projects.count) WORKSPACES"
+                        : "\(row.projects.count) 个工程",
+                    bars: row.projects,
+                    colorAt: { projectTierColor(index: $0) }
+                )
             }
         }
         .padding(.leading, 14)
         .padding(.top, 3)
     }
 
-    /// 占比组: 标题 + 通宽 100% 堆叠条 + 图例行 (色点 + 名称 + 百分比 + 数值).
-    /// 分段用同色系阶梯色, 而非同一色只降透明度, 避免明细进度条视觉重复.
-    /// Nothing 下组标题用 .dist-head .t 样式 (mono 9 + 字距 + secondary).
-    private func distributionGroup(
+    /// 段头 + 行列表; 两段共用同一结构与间距.
+    private func compactShareSection(
         title: String,
+        countText: String,
         bars: [DistributionBar],
         colorAt: @escaping (Int) -> Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 9, weight: .semibold))
-                .tracking(isNothing ? 0.8 : 0.3)
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 2)
-            stackedShareBar(bars, colorAt: colorAt)
-                .padding(.bottom, 3)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(isNothing ? NothingFont.mono(9) : .system(size: 9, weight: .semibold))
+                    .tracking(isNothing ? 0.8 : 0.3)
+                    .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.55))
+                Spacer(minLength: 8)
+                Text(countText)
+                    .font(isNothing ? NothingFont.mono(8.5) : .system(size: 9))
+                    .foregroundStyle(isNothing ? nothingTokens.disabled : Color.secondary)
+            }
+            .padding(.bottom, 5)
+
             ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                shareLegendRow(bar, index: index, color: colorAt(index))
+                compactShareRow(bar, index: index, color: colorAt(index))
             }
         }
     }
 
-    /// 100% 堆叠占比条: 分段按份额拼接, 各段独立色阶, 份额不足 100% 时余量露出轨道色.
-    /// Nothing 下段间 2pt; 方案 P4: Top 1 主模型高亮翡翠绿, 次段采用点阵斜纹, 无轨道底色.
-    private func stackedShareBar(
-        _ bars: [DistributionBar],
-        colorAt: @escaping (Int) -> Color
+    /// 单行: 序号 / 名称 / 内联占比条 / 百分比 / Token.
+    /// 经典与 Nothing 只换字体、圆角与色阶, 不改变行结构.
+    private func compactShareRow(
+        _ bar: DistributionBar,
+        index: Int,
+        color: Color
     ) -> some View {
-        let heroGreen = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
-        return GeometryReader { proxy in
-            if isNothing {
-                let gap: CGFloat = 2
-                let available = proxy.size.width - gap * CGFloat(max(bars.count - 1, 0))
-                HStack(spacing: gap) {
-                    ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                        let segWidth = max(2, available * min(max(bar.share, 0), 1))
-                        if index == 0 {
-                            RoundedRectangle(cornerRadius: 1, style: .continuous)
-                                .fill(heroGreen)
-                                .frame(width: segWidth, height: 6)
-                        } else {
-                            NothingPatternView(pattern: .diagonal, color: nothingTokens.disabled)
-                                .frame(width: segWidth, height: 6)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                let available = proxy.size.width - CGFloat(max(bars.count - 1, 0))
-                HStack(spacing: 1) {
-                    ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                        Rectangle()
-                            .fill(colorAt(index))
-                            .frame(width: max(2, available * min(max(bar.share, 0), 1)))
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(Color.adaptive(light: Color.black.opacity(0.07), dark: Color.white.opacity(0.12)))
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-            }
+        HStack(spacing: 6) {
+            Text(String(format: "%02d", index + 1))
+                .font(isNothing
+                    ? NothingFont.mono(8.5, weight: .bold)
+                    : .system(size: 8.5, weight: .semibold, design: .monospaced))
+                .foregroundStyle(color)
+                .frame(width: isNothing ? 16 : 18, alignment: .leading)
+            Text(bar.name)
+                .font(isNothing ? NothingFont.mono(9.5) : .system(size: 9.5))
+                .foregroundStyle(isNothing ? nothingTokens.primary : Color.primary.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: isNothing ? 92 : 100, alignment: .leading)
+            compactShareBar(share: bar.share, color: color)
+                .frame(maxWidth: .infinity)
+            Text(Self.sharePercentText(bar.share))
+                .font(isNothing
+                    ? NothingFont.mono(9.5, weight: .bold)
+                    : .system(size: 9.5, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .frame(width: 28, alignment: .trailing)
+            Text(bar.totalText)
+                .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                .monospacedDigit()
+                .foregroundStyle(isNothing ? nothingTokens.disabled : Color.secondary)
+                .frame(width: 42, alignment: .trailing)
         }
-        .frame(height: 6)
-        .accessibilityHidden(true)
+        .frame(height: 19)
+        .accessibilityElement(children: .combine)
     }
 
-    /// 图例行: 色点 + 名称 + 右侧「百分比 · 数值」, 百分比为主数值.
-    /// Nothing 色点: P4 下主模型翡翠绿方块, 次要模型 6pt 点阵 swatch; 文本 mono.
-    private func shareLegendRow(_ bar: DistributionBar, index: Int, color: Color) -> some View {
-        let heroGreen = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
-        return HStack(spacing: 5) {
-            if isNothing {
-                if index == 0 {
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(heroGreen)
-                        .frame(width: 6, height: 6)
-                } else {
-                    NothingPatternView(pattern: .diagonal, color: nothingTokens.disabled)
-                        .frame(width: 6, height: 6)
-                }
-            } else {
-                Circle()
+    /// 3pt 内联占比条: 轨道 + 按 share 裁切的前景; 极小非零份额保底 2pt.
+    private func compactShareBar(share: Double, color: Color) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
+                    .fill(isNothing
+                        ? nothingTokens.raised
+                        : Color.adaptive(
+                            light: Color.black.opacity(0.08),
+                            dark: Color.white.opacity(0.12)
+                        ))
+                RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
                     .fill(color)
-                    .frame(width: 5, height: 5)
-            }
-            Text(bar.name)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            // 分两段 Text 保留字重/颜色差异; 避免 macOS 26 弃用的 Text + 拼接.
-            HStack(spacing: 0) {
-                if isNothing {
-                    Text(Self.sharePercentText(bar.share))
-                        .font(NothingFont.mono(9.5, weight: .bold))
-                        .monospacedDigit()
-                        .foregroundStyle(index == 0 ? heroGreen : nothingTokens.primary)
-                    Text(" · \(bar.totalText)")
-                        .font(NothingFont.mono(9.5))
-                        .foregroundStyle(nothingTokens.disabled)
-                } else {
-                    Text(Self.sharePercentText(bar.share))
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .monospacedDigit()
-                    Text(" · \(bar.totalText)")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.secondary)
-                }
+                    .frame(width: max(2, proxy.size.width * min(max(share, 0), 1)))
             }
         }
-        .font(isNothing ? NothingFont.mono(9) : .system(size: 9.5))
-        .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.85))
-        .accessibilityElement(children: .combine)
+        .frame(height: 3)
+    }
+
+    /// 两段之间的 1px 发丝分隔线.
+    private var compactSectionDivider: some View {
+        Rectangle()
+            .fill(isNothing
+                ? nothingTokens.border
+                : Color.adaptive(
+                    light: Color.black.opacity(0.08),
+                    dark: Color.white.opacity(0.12)
+                ))
+            .frame(height: 1)
+    }
+
+    /// 模型档位色: 经典沿用 agent 四档色阶; Nothing 用绿阶.
+    private func modelTierColor(row: HourlyAgentRow, index: Int) -> Color {
+        if isNothing {
+            return nothingTierColor(index: index)
+        }
+        return Color(hex: row.color.distributionHex(at: index))
+    }
+
+    /// 项目档位色: 经典沿用冻结青阶; Nothing 用绿阶.
+    private func projectTierColor(index: Int) -> Color {
+        if isNothing {
+            return nothingTierColor(index: index)
+        }
+        return Color(hex: Self.projectBarShades[min(index, Self.projectBarShades.count - 1)])
+    }
+
+    /// Nothing 绿阶 (与 hero accent / agent ramp 同源): 深色亮绿→暗绿, 浅色深绿三档.
+    private func nothingTierColor(index: Int) -> Color {
+        switch index {
+        case 0:
+            return Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
+        case 1:
+            return Color.adaptive(light: Color(hex: "#2E9E4F"), dark: Color(hex: "#4A9E5C"))
+        default:
+            return Color.adaptive(light: Color(hex: "#185E2B"), dark: Color(hex: "#2B7A42"))
+        }
     }
 
     /// 份额文案: 0 到 0.5% 之间显示 <1%, 避免四舍五入成误导性的 0%.
@@ -877,136 +901,6 @@ struct HourlyLineCard: View {
             return "<1%"
         }
         return String(format: "%.0f%%", share * 100)
-    }
-
-    // MARK: - Nothing 风格项目统计 (方案 A · 点阵终端导引流 + 翡翠绿阶)
-
-    /// Nothing 风格项目统计: 方案 A 点阵终端导引流 (Dot-Leader Console) + 色系 1 (Glyph 翡翠绿阶)
-    private func nothingProjectConsoleSection(bars: [DistributionBar]) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text("项目统计 // PRJ.CONSOLE")
-                    .font(NothingFont.mono(9))
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(bars.count) WORKSPACES")
-                    .font(NothingFont.mono(8.5))
-                    .foregroundStyle(nothingTokens.disabled)
-            }
-            .padding(.bottom, 2)
-
-            ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                nothingProjectConsoleRow(bar: bar, index: index)
-            }
-        }
-    }
-
-    private func nothingProjectConsoleRow(bar: DistributionBar, index: Int) -> some View {
-        let colors = projectTierColors(index: index)
-        let activeTicks = max(bar.share > 0 ? 1 : 0, min(6, Int(round(bar.share * 6.0))))
-
-        return HStack(alignment: .firstTextBaseline, spacing: 4) {
-            // [P1] 标签
-            Text("[P\(index + 1)]")
-                .font(NothingFont.mono(8.5, weight: .bold))
-                .foregroundStyle(colors.tag)
-
-            // 工程名称
-            Text(bar.name)
-                .font(NothingFont.mono(9.5, weight: index == 0 ? .semibold : .regular))
-                .foregroundStyle(colors.name)
-                .lineLimit(1)
-
-            // 点阵导引虚线
-            dotLeaderLine(color: colors.tag.opacity(0.35))
-
-            // Token 数值
-            Text(bar.totalText)
-                .font(NothingFont.mono(9))
-                .foregroundStyle(nothingTokens.secondary)
-
-            // 百分比 Badge
-            Text(Self.sharePercentText(bar.share))
-                .font(NothingFont.mono(9, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(colors.tag)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 0.5)
-                .background(colors.badgeBg, in: RoundedRectangle(cornerRadius: 2, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .strokeBorder(colors.badgeStroke, lineWidth: 1)
-                )
-
-            // 6-Tick 微型液晶进度块
-            HStack(spacing: 1.5) {
-                ForEach(0..<6, id: \.self) { tickIndex in
-                    RoundedRectangle(cornerRadius: 0.5, style: .continuous)
-                        .fill(tickIndex < activeTicks ? colors.tick : nothingTokens.border)
-                        .frame(width: 2.5, height: 6)
-                }
-            }
-            .padding(.leading, 3)
-            .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 2 }
-        }
-        .padding(.vertical, 1.5)
-        .accessibilityElement(children: .combine)
-    }
-
-    /// 点阵虚线引线 (Dot-Leader Line)
-    private func dotLeaderLine(color: Color) -> some View {
-        GeometryReader { proxy in
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: proxy.size.height / 2))
-                path.addLine(to: CGPoint(x: proxy.size.width, y: proxy.size.height / 2))
-            }
-            .stroke(
-                color,
-                style: StrokeStyle(lineWidth: 1, dash: [1.5, 3])
-            )
-        }
-        .frame(minWidth: 10, maxHeight: 6)
-        .padding(.horizontal, 2)
-    }
-
-    /// 翡翠绿阶分档色彩 (P1 亮绿, P2 翡翠绿, P3 暗薄荷绿)
-    private func projectTierColors(index: Int) -> (
-        tag: Color,
-        name: Color,
-        badgeBg: Color,
-        badgeStroke: Color,
-        tick: Color
-    ) {
-        switch index {
-        case 0:
-            let green = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
-            return (
-                tag: green,
-                name: green,
-                badgeBg: green.opacity(0.12),
-                badgeStroke: green.opacity(0.35),
-                tick: green
-            )
-        case 1:
-            let midGreen = Color.adaptive(light: Color(hex: "#2E9E4F"), dark: Color(hex: "#4A9E5C"))
-            return (
-                tag: midGreen,
-                name: nothingTokens.primary,
-                badgeBg: midGreen.opacity(0.10),
-                badgeStroke: midGreen.opacity(0.25),
-                tick: midGreen
-            )
-        default:
-            let darkGreen = Color.adaptive(light: Color(hex: "#185E2B"), dark: Color(hex: "#2B7A42"))
-            return (
-                tag: darkGreen,
-                name: nothingTokens.secondary,
-                badgeBg: nothingTokens.raised,
-                badgeStroke: nothingTokens.border,
-                tick: darkGreen
-            )
-        }
     }
 
     // MARK: - 颜色
@@ -1058,116 +952,6 @@ private struct NothingTokens {
             raised = Color(hex: "#F0F0F0")
             border = Color(hex: "#E8E8E8")
             accent = Color(hex: "#D4A843")
-        }
-    }
-}
-
-/// Nothing 主题 agent 区分图案: 实心 / 45° 斜纹 / 横纹 / 4pt 网点,
-/// 按行序循环取用 (定稿 .p1-.p4), 前景一律 display 单色.
-private enum NothingPattern: CaseIterable {
-    case solid
-    case diagonal
-    case horizontal
-    case dots
-
-    /// 按序号循环取图案, 负数也安全.
-    static func at(_ index: Int) -> Self {
-        Self.allCases[((index % 4) + 4) % 4]
-    }
-
-    /// 折线透明度档位, 与图案序号一一对应 (定稿 OP).
-    var lineOpacity: Double {
-        switch self {
-        case .solid: 1.0
-        case .diagonal: 0.66
-        case .horizontal: 0.45
-        case .dots: 0.80
-        }
-    }
-}
-
-/// Nothing 图案块: Canvas 按 4pt 周期绘制, 尺寸由调用方 frame 决定
-/// (图例 swatch 8pt / 行首点 7pt / 占比图例点 6pt / 堆叠条分段).
-private struct NothingPatternView: View {
-    let pattern: NothingPattern
-    let color: Color
-
-    var body: some View {
-        Canvas { context, size in
-            switch pattern {
-            case .solid:
-                context.fill(
-                    Path(CGRect(origin: .zero, size: size)),
-                    with: .color(color)
-                )
-            case .diagonal:
-                // 平移到中心后旋转 45°, 再铺横条纹覆盖全对角范围.
-                var rotated = context
-                rotated.translateBy(x: size.width / 2, y: size.height / 2)
-                rotated.rotate(by: .degrees(45))
-                let reach = CGFloat(sqrt(size.width * size.width + size.height * size.height)) / 2 + 2
-                Self.drawStripes(
-                    in: &rotated,
-                    x: -reach,
-                    width: reach * 2,
-                    yStart: -reach,
-                    yEnd: reach,
-                    color: color
-                )
-            case .horizontal:
-                var copied = context
-                Self.drawStripes(
-                    in: &copied,
-                    x: 0,
-                    width: size.width,
-                    yStart: 0,
-                    yEnd: size.height,
-                    color: color
-                )
-            case .dots:
-                drawDots(context, size: size)
-            }
-        }
-    }
-
-    /// 2pt 条纹 + 2pt 空隙, 沿 y 轴按 4pt 周期铺满 [yStart, yEnd) (定稿 repeating-linear-gradient).
-    private static func drawStripes(
-        in context: inout GraphicsContext,
-        x: CGFloat,
-        width: CGFloat,
-        yStart: CGFloat,
-        yEnd: CGFloat,
-        color: Color
-    ) {
-        var y = yStart
-        while y < yEnd {
-            context.fill(
-                Path(CGRect(x: x, y: y, width: width, height: 2)),
-                with: .color(color)
-            )
-            y += 4
-        }
-    }
-
-    /// 4pt 网格上 1.6pt 半径圆点 (定稿 radial-gradient + background-size 4px).
-    private func drawDots(_ context: GraphicsContext, size: CGSize) {
-        let radius: CGFloat = 1.6
-        var y: CGFloat = 0
-        while y < size.height {
-            var x: CGFloat = 0
-            while x < size.width {
-                context.fill(
-                    Path(ellipseIn: CGRect(
-                        x: x + 2 - radius,
-                        y: y + 2 - radius,
-                        width: radius * 2,
-                        height: radius * 2
-                    )),
-                    with: .color(color)
-                )
-                x += 4
-            }
-            y += 4
         }
     }
 }

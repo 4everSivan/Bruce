@@ -14,7 +14,7 @@
     ["codex", "Codex", "codexQuotaAccounts"],
     ["claude", "Claude", "claudeQuotaAccounts"],
     ["grok", "Grok", "grokQuotaAccounts"],
-    ["opencodeGo", "OpenCode GO", "opencodeGoQuotaAccounts"],
+    ["opencodeGo", "OpenCode", "opencodeGoQuotaAccounts"],
     ["stepfun", "StepFun", "stepfunQuotaAccounts"],
     ["cline", "Cline", "clineQuotaAccounts"],
   ];

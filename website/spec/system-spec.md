@@ -438,7 +438,7 @@ and cloud subscription quotas** entirely on the user's machine: it read-only sca
 session directories and the CC Switch SQLite database (forced `mode=ro`), aggregates tokens and cost
 against a built-in/synced per-model price list, and optionally queries the cloud quota endpoints of
 about ten subscription providers (Kimi, DeepSeek, Volcengine, Zhipu, Codex/OpenAI, Claude, Grok,
-OpenCode Go, StepFun, Jev, Cline) for 5-hour and weekly windows. Its status item is a compact
+OpenCode, StepFun, Jev, Cline) for 5-hour and weekly windows. Its status item is a compact
 single-orbit quota gauge plus up to three live metrics (minimum/average remaining quota, today's
 tokens, today's cost) rendered at 22pt with tiered green/amber/red coloring; clicking it drops a
 440pt-wide borderless glass panel (`MenuBarViews.swift:204`) with Token 用量, 订阅与配额 and Agent 活跃 cards, switchable between a

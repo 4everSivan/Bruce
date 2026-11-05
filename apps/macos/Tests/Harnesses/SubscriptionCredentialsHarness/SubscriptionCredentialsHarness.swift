@@ -891,14 +891,14 @@ struct SubscriptionCredentialsHarness {
         )
     }
 
-    /// OpenCode GO 网页会话无轮换语义: 轮换条目应被跳过
+    /// OpenCode 网页会话无轮换语义: 轮换条目应被跳过
     /// (key 失效需用户重新粘贴, 不自动续期; C204 起凭据为 API Key 形状).
     private static func coordinatorRotationOpenCodeGo() throws {
         let store = InMemoryCredentialStore()
         let accountStore = ProviderAccountStore(provider: .opencodeGo, credentialStore: store)
         _ = try accountStore.addAccount(
             accountID: "go-acct",
-            displayName: "OpenCode GO · a",
+            displayName: "OpenCode · a",
             credentialJSON: #"{"apiKey":"oc_sk_old"}"#
         )
 

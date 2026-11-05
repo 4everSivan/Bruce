@@ -1686,7 +1686,7 @@ struct PanelViewModelHarness {
     private static func providerOrderMatchesOpenCodeGoRawValue() throws {
         let go = makeService(
             id: "opencode_go_eada03635c22306a",
-            name: "OpenCode GO · eada0363",
+            name: "OpenCode · eada0363",
             kind: "windows",
             windows: [makeWindow(label: "每 5 小时", usedPercent: 3, windowMinutes: 300)]
         )
@@ -1712,8 +1712,8 @@ struct PanelViewModelHarness {
             "opencodeGo 应按 rawValue 顺序排前: \(sections.map(\.id))"
         )
         try expect(
-            sections[0].name == "OpenCode GO",
-            "分组名应为 OpenCode GO: \(sections[0].name)"
+            sections[0].name == "OpenCode",
+            "分组名应为 OpenCode: \(sections[0].name)"
         )
     }
 

@@ -58,7 +58,12 @@
         "C208",
         "C210",
         "C211",
-        "C212"
+        "C212",
+        "C213",
+        "C214",
+        "C216",
+        "C217",
+        "C218"
       ]
     },
     "PricingEngine": {
@@ -186,7 +191,8 @@
         "C173",
         "C204",
         "C205",
-        "C206"
+        "C206",
+        "C215"
       ]
     },
     "TokenUsage": {
@@ -2174,6 +2180,60 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
       "file": "docs/devel/change/C212.json"
+    },
+    "C213": {
+      "title": "Token 用量热力图移除呼吸动效，全主题改为静态渲染（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C213-C218-dashboard-refinements",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C213.json"
+    },
+    "C214": {
+      "title": "顶栏 Tab 切换器去底色、保留 1px 发丝框、选中图标变色（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C213-C218-dashboard-refinements",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C214.json"
+    },
+    "C215": {
+      "title": "订阅 Provider 用户可见名称 OpenCode GO / OpenCode Go 统一改为 OpenCode（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C213-C218-dashboard-refinements",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C215.json"
+    },
+    "C216": {
+      "title": "Agent 用量展开明细统一为紧凑条形方案 C，内容对齐 Nothing（双端）",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C213-C218-dashboard-refinements",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C216.json"
+    },
+    "C217": {
+      "title": "修复 mac Agent 用量卡厂商徽章左侧被裁切（14 日图例与行首，C161 系列色环）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C213-C218-dashboard-refinements",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C217.json"
+    },
+    "C218": {
+      "title": "Agent 用量卡 14 日柱顶部总量标注裁切与图例厂商徽章缩小（双端）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C213-C218-dashboard-refinements",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C218.json"
     }
   }
 }
