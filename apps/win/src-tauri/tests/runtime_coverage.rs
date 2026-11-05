@@ -593,14 +593,15 @@ fn manual_alert_refresh_observes_threshold_without_delivery() {
         resets_at: None,
         reset_token: None,
     };
+    // C209: 气泡恒开, 手动刷新仅观察不投递, 自动刷新投递。
     assert!(state
-        .alerts_for_refresh(std::slice::from_ref(&alert), true, true)
+        .alerts_for_refresh(std::slice::from_ref(&alert), true)
         .is_empty());
     assert!(state
-        .alerts_for_refresh(std::slice::from_ref(&alert), false, true)
+        .alerts_for_refresh(std::slice::from_ref(&alert), false)
         .is_empty());
-    assert!(state.alerts_for_refresh(&[], false, true).is_empty());
-    assert_eq!(state.alerts_for_refresh(&[alert], false, true).len(), 1);
+    assert!(state.alerts_for_refresh(&[], false).is_empty());
+    assert_eq!(state.alerts_for_refresh(&[alert], false).len(), 1);
 }
 
 #[test]

@@ -313,29 +313,26 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    static func pauseSubscriptionRefreshOnScreenLockRoundTrip() throws {
-        var config = OnboardingConfiguration()
+    /// C209: 旧配置遗留的「系统通知/额度预警气泡」与「锁屏暂停订阅刷新」退役键
+    /// 按未知键忽略, 其余字段解码无损; 两项行为已升格为恒开默认, 不再有开关。
+    static func retiredLegacyKeysStillDecode() throws {
+        let legacy = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "systemNotificationsEnabled": false, "pauseSubscriptionRefreshOnScreenLock": false}"#.utf8)
+        )
         try coreExpect(
-            config.pauseSubscriptionRefreshOnScreenLock,
-            "new configuration must enable pause subscription refresh on screen lock by default"
+            legacy.resolvedRefreshIntervalMinutes
+                == OnboardingConfiguration.defaultRefreshIntervalMinutes,
+            "含退役键的旧配置必须可正常解码 (退役键被忽略)"
         )
 
-        config.pauseSubscriptionRefreshOnScreenLock = false
+        var config = OnboardingConfiguration()
+        config.appearanceMode = .dark
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: data)
         try coreExpect(
-            !decoded.pauseSubscriptionRefreshOnScreenLock,
-            "pauseSubscriptionRefreshOnScreenLock state must survive configuration roundtrip"
-        )
-
-        let legacy = Data("{\"schemaVersion\":2}".utf8)
-        let legacyDecoded = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: legacy
-        )
-        try coreExpect(
-            legacyDecoded.pauseSubscriptionRefreshOnScreenLock,
-            "legacy configuration without pauseSubscriptionRefreshOnScreenLock must default to true"
+            decoded.resolvedAppearanceMode == .dark,
+            "退役键移除后其余字段必须可持久化往返"
         )
     }
 

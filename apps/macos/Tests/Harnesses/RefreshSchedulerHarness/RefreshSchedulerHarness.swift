@@ -18,8 +18,6 @@ struct RefreshSchedulerHarness {
 
         print("Refresh scheduler: timer")
         try await timerFiresTriggersRefresh(repository: repository)
-        print("Refresh scheduler: disabled system notifications")
-        try disabledSystemNotificationsSuppressDelivery()
         print("Refresh scheduler: manual rerun")
         try await manualRefreshWhileRunningMergesToRerun(repository: repository)
         print("Refresh scheduler: backoff")
@@ -259,14 +257,12 @@ struct RefreshSchedulerHarness {
         try await wakeDedupSkipsRecentAttempt(repository: repository)
         print("Refresh scheduler: screen lock suppresses quota and wakes on unlock")
         try await screenLockSuppressesQuotaQueryAndWakesOnUnlock(repository: repository)
-        print("Refresh scheduler: screen lock suppression disabled allows query")
-        try await screenLockSuppressionDisabledAllowsQuotaQuery(repository: repository)
         print("Refresh scheduler: quota policy suppressed on screen lock")
         try await quotaPolicySuppressedOnScreenLock()
         print("Refresh scheduler: screen lock suppressed run carries over services (C071)")
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 119")
+        print("Refresh scheduler tests passed: 117")
     }
 }

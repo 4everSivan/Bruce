@@ -89,7 +89,6 @@ Windows 原生 WebView2、Toast、系统热键、SID ACL 与真实 Agent 路径�
 | `providerOrder` | 空数组 | 调整订阅段顺序；映射后再次排序 |
 | `pricingOverrides` | 空对象 | 最多 `512` 个模型；支持价格、币种、备注字段，价格须为非负有限数值 |
 | `refreshIntervalSecs` | `1800` | 保存范围为 `60` 至 `86400` 秒；加载时先钳制到此范围 |
-| `notificationsEnabled` | `true` | 控制自动刷新时的配额通知投递 |
 | `theme` | `fluent` | 仅允许 `fluent`、`nothing` |
 | `cardOrder` | `usage`、`subscription`、`hourly` | 拒绝未知或重复卡片；前端补齐未列出的卡片 |
 | `hotkey` | 空字符串 | 空值关闭热键；非空值由插件解析与注册 |

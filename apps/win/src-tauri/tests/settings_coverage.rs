@@ -26,7 +26,6 @@ fn temp_root() -> PathBuf {
 fn defaults_match_mac_scheduler_configuration() {
     let settings = AppSettings::default();
     assert_eq!(settings.refresh_interval_secs, 1800, "mac 默认刷新周期");
-    assert!(settings.notifications_enabled);
     assert_eq!(settings.theme, "fluent");
     assert_eq!(settings.card_order, vec!["usage", "subscription", "hourly"]);
     assert!(settings.hotkey.is_empty(), "对齐 mac 默认不注册热键");
@@ -44,7 +43,6 @@ fn round_trip_preserves_all_fields_including_panel_position() {
     let root = temp_root();
     let settings = AppSettings {
         refresh_interval_secs: 600,
-        notifications_enabled: false,
         theme: "nothing".to_owned(),
         card_order: vec!["hourly".to_owned(), "usage".to_owned()],
         hotkey: "Ctrl+Alt+P".to_owned(),
@@ -261,7 +259,7 @@ fn only_collection_inputs_trigger_an_immediate_collection() {
     assert!(!changed(|s| s.theme = "nothing".into()));
     assert!(!changed(|s| s.card_order.reverse()));
     assert!(!changed(|s| s.provider_order = vec!["cline".into()]));
-    assert!(!changed(|s| s.notifications_enabled = false));
+    // C209: notifications_enabled 已退役, 预警气泡恒开, 不参与采集输入变化判定。
     assert!(!changed(|s| s.hotkey = "Control+Shift+B".into()));
     assert!(!changed(|s| s.panel_x = Some(10)));
     // 启用集合相同、仅顺序不同不算采集输入变化

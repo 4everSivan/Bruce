@@ -37,6 +37,11 @@
   - 设置中心「通用」面板的菜单栏实时预览条同步对齐，保持所见即所得。
 
 ### Changed
+- **移除「锁屏暂停订阅刷新」「额度预警气泡」两项通用配置，转为恒开默认行为 (C209)**：
+  - **锁屏订阅抑制恒开**：电脑锁屏期间照旧抑制非手动的云端订阅额度查询、跳过额度边界提前唤醒，解锁后按相位与去重窗口补偿一次刷新；`RefreshScheduler` 不再读取开关，`OnboardingConfiguration.pauseSubscriptionRefreshOnScreenLock` 持久化键退役（旧配置遗留键按未知键忽略）；
+  - **额度预警气泡恒开**：菜单栏 / 托盘图标锚定气泡恒可投递（mac 仍受主看板可见时静默的展示策略约束；Windows 自动刷新跨越即投递、手动刷新仅观察不投递，50/80/95 阶梯去重与窗口重置恢复不变）；`systemNotificationsEnabled` / `notifications_enabled` 持久化键退役，设置中心通用页两行与官网设置演示同步移除；
+  - **死代码清理**：`QuotaAlertNotifier`（UNUserNotificationCenter 通知路径）与 `SystemNotificationDeliveryPolicy` 自 C159 改为图标锚定气泡后已无生产调用方，随开关退役一并删除；
+  - **向前兼容**：双端解码器均忽略未知键，含两个退役键的旧配置文件可无损加载；mac `retiredLegacyKeysStillDecode` 与 Windows 遗留 JSON fixture 用例守护。
 - **移除仪表盘顶栏 Tab 切换器 Agent 活跃图标绿点角标 (C208)**：Tab 模式下第 3 个图标右上角的呼吸绿点角标双端退役（mac Circle 角标与承载层 / win `#tab-active-dot` + `tabBreathe` 呼吸动画整体移除），活跃 Agent 数量仅保留悬停提示（mac「(N 个运行中)」/ win 按钮原生 tooltip）；三卡切换、滑动滑块与选中药丸不受影响。
 - **仪表盘顶栏 Tab 切换器 Nothing 选中态改用点阵数字同源色 (C207)**：Nothing 主题下顶栏三图标分段切换器的选中高亮由纯黑白反色（浅色黑药丸底 / 深色白药丸底）改为跟随当前模式点阵数字 accent——浅色 `#D4A843` 黄底黑字形、深色 `#4A9E5C` 绿底白字形，与模型用量 tier chip（`UsageHeroCard.tierSegment`）同口径；Classic 主题选中态与未选中态字形保持不变，Windows 端 Nothing 选中色为独立实现，本卡不涉及。
 - **卡片展开掉帧：用量热力图呼吸改由图层宿主与 Core Animation 承载 (C179)**：Nothing 主题下近半年热力图（约 180 格）此前每格一个 SwiftUI 视图并各挂一条 `repeatForever` 呼吸动画，展开时首帧集中建树、逐帧在主线程求值，展开过渡开头即掉帧（同进程交错 A/B 探针 12 轮：展开丢帧均值 2.42 → 0.42，展开首帧最长间隔中位 50.2 → 24.8ms）。现在整张网格由一个 `NSViewRepresentable` 图层宿主承载、每格一个纯色 `CALayer`，呼吸交给 Core Animation 在渲染服务逐帧插值，相位、曲线、透明度区间与门控（面板可见 ∧ Nothing ∧ 有填充格 ∧ 动效未抑制）保持不变；离屏像素对拍 Nothing 深浅色 × 静态/低谷/峰值 maxΔ ≤ 1，经典主题 2pt 圆角抗锯齿差 1.7–2.1% 像素。

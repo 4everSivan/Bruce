@@ -115,16 +115,15 @@ mod desktop {
     use std::time::Duration;
     use tauri::{AppHandle, Emitter, Manager};
 
-    fn deliver_alerts(app: &AppHandle, settings: &AppSettings, artifact: &Value, manual: bool) {
+    fn deliver_alerts(app: &AppHandle, artifact: &Value, manual: bool) {
         let alerts = over_threshold_entries(artifact);
         // Observe crossings on manual refresh but deliver only automatic notifications.
+        // C209: 气泡恒开, 不再读 notifications_enabled (键已退役)。
         let to_notify: Vec<QuotaAlert> = app
             .state::<SchedulerControl>()
             .alert_state
             .lock()
-            .map(|mut state| {
-                state.alerts_for_refresh(&alerts, manual, settings.notifications_enabled)
-            })
+            .map(|mut state| state.alerts_for_refresh(&alerts, manual))
             .unwrap_or_default();
         if !to_notify.is_empty() {
             // C159: 退役 Windows Toast 弹窗通知, 改为向托盘气泡浮层派发并展现
@@ -273,7 +272,7 @@ mod desktop {
                 if applied.is_ok() {
                     if let Ok(state) = control.snapshot.lock() {
                         if let Some(artifact) = state.artifact() {
-                            deliver_alerts(app, settings, artifact, manual);
+                            deliver_alerts(app, artifact, manual);
                         }
                     }
                     RefreshOutcome::Success

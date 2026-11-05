@@ -142,7 +142,7 @@ export const analytics = Object.fromEntries(
     .map(snapshot => [snapshot.range, snapshot]),
 );
 export const defaults = {
-  refreshIntervalSecs: 1800, notificationsEnabled: true, theme: "fluent",
+  refreshIntervalSecs: 1800, theme: "fluent",
   cardOrder: ["usage", "subscription", "hourly"], hotkey: "", consentVersion: 0,
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek"], providerOrder: [], pricingOverrides: {},
   layoutMode: "stack", activeCardId: "usage",

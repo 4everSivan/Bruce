@@ -11,7 +11,7 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-dialog", "dep:tauri-plugin-updater", "dep:tauri-plugin-single-instance"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-dialog", "dep:tauri-plugin-updater", "dep:tauri-plugin-single-instance"]
 
 [lib]
 name = "bruce_win_lib"
@@ -36,9 +36,9 @@ base64 = "=0.22.1"
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
 uuid = { version = "=1.11.0", features = ["v4"] }
 iana-time-zone = "0.1"
-tauri-plugin-notification = { version = "2", optional = true }
+# C209: tauri-plugin-notification 已移除 —— C159 起预警改由托盘锚定气泡投递, 该插件无任何调用方。
 tauri-plugin-global-shortcut = { version = "2", optional = true }
-# 导出文件的系统保存对话框 (与 notification/global-shortcut 同为 Tauri 官方插件)
+# 导出文件的系统保存对话框 (与 global-shortcut 同为 Tauri 官方插件)
 tauri-plugin-dialog = { version = "2", optional = true }
 # 应用内软件更新 (T11): latest.json 检查 + minisign 验签 + NSIS 静默安装 (07-软件更新 §4.2 R7)
 tauri-plugin-updater = { version = "2", optional = true }

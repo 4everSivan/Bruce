@@ -165,7 +165,7 @@
 | 订阅额度行 | 每行 = 品牌图形徽章（26px，与看板同一套生成产物）+ 显示名 + 凭证形态副标题（`Web 令牌`/`API Key`/`OAuth 设备码`/`CLI 登录态`/`Step Plan Token`，多账号追加 `N 个账号`）+ 套餐标签（取自 artifact `service.plan`，C024 起只在设置页呈现）+ 状态尾件（`未配置`/`已配置`/`需要重新授权`）+ 行内启用开关 + 上移/下移 |
 | Claude 本机登录态（C075） | 「Claude 本机登录态」卡：状态文案（已跟随 / 未发现 / 已过期，对齐 mac `ClaudeProviderSettingsSection`）+ `立即检测`（`claude_local_status`）+ `读取本机登录态`（`import_claude_from_local`，持久化为 `claude-cli` 账号）；启用 Claude 后自动只读跟随，粘贴入口保留作多账号兜底（见规则 17） |
 | 授权与隐私 | mac 语义：单一 `Agent 用量` 开关 + 四条动态说明（含刷新间隔与已启用 provider 名单）+ `当前授权有效` 状态 + `确认授权` / `撤销全部授权` 两个**即时生效**按钮（不走全局保存）；采集与云端额度查询同属一次授权 |
-| 通用 | 首卡行序对齐 mac（C153）：界面风格（经典 / Nothing）→ 界面动效 → 看板布局 → 刷新间隔（C160：预设 3 / 6 分钟 + 自定义 1–1440 分钟；历史遗留的非预设值回显为「自定义」，禁止静默改写）→ 额度预警气泡；配色模式 / 模糊风格 / 锁屏暂停订阅刷新 / 凭据存储 / 外部 CLI 来源为 mac 独占行，不参与对齐；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067）；版本展示在维护页「软件更新」卡（07 §4.2 R3），通用页不再有版本行 |
+| 通用 | 首卡行序对齐 mac（C153）：界面风格（经典 / Nothing）→ 界面动效 → 看板布局 → 刷新间隔（C160：预设 3 / 6 分钟 + 自定义 1–1440 分钟；历史遗留的非预设值回显为「自定义」，禁止静默改写）→ 托盘实时预览；配色模式 / 模糊风格 / 凭据存储 / 外部 CLI 来源为 mac 独占行，不参与对齐；C209 起「额度预警气泡」行整体退役（气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递），mac 侧「锁屏暂停订阅刷新」同步退役；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067）；版本展示在维护页「软件更新」卡（07 §4.2 R3），通用页不再有版本行 |
 | 窗口观感（C067） | 设置窗口恒用 Fluent 平面 token（mac `SettingsDemoTokens` dark 侧），界面风格只作用于看板，**设置窗口不得套用 `.theme-nothing`**；侧栏宽度按窗口锁定 **17.6%**（1000 宽窗口下 176px，C152，与 mac 同比例）、最小 160px、项 12.5pt / 内边距 10·7 / 圆角 5、选中左缘 3pt accent 条，底部为版本号（无 Windows 自创标题）；内容区内边距 24·18，crumb · 标题 · 内容间距 14；分组标题（11pt 半粗 tertiary）位于卡片上方而非卡内；行标题 13pt 常规；按钮 12pt / 12·5 / 圆角 5，主按钮 `#4C9CFF`。设置窗口默认 1000×680、最小 980×620 且可缩放；设置即时生效、无全局保存栏（C069，见规则 15） |
 | 维护 | `清理用量缓存`（后端 `clear_snapshot_cache`：仅删快照文件，不动配置/凭证，幂等）+ `诊断预览`（客户端拼装**脱敏** JSON：版本、模块阶段、诊断码、目录**末段名**，不含路径分隔符/凭证/账号/业务数据） |
 | 品牌图形产物 | `apps/win/src/provider-brand.js` 为生成产物第三目标（与 Swift 数据、app.js 内联块同源），由 `scripts/gen-provider-glyphs.mjs --check` 锁定；设置窗口须在 `settings.js` 之前加载它 |
@@ -304,7 +304,7 @@ Windows Tauri 后端 (Rust)
     - **合并**：`merge_scoped_snapshot`（mac `ScopedQuotaSnapshotMerger` 同语义）保留上一份快照的 agents / totalCostUsd 与非目标 provider 的 services；目标只取本轮返回（已断开账号不复活），成功 fresh、失败借合格旧窗口 stale、无历史 unavailable。全局 phase / lastSuccessAt / 诊断码沿用最近一次全量采集（定向刷新不代表本机会话已更新）；Bridge 整体失败只把目标降级 stale；
     - **并发**：`SchedulerControl.collection` 互斥锁令全量周期与定向刷新串行，快照写入不交错；进行中的 provider 集合经 `panel.runtime.refreshingProviders` 下发，`panel.runtime.quotaRefreshAllowed` 下发授权态；
     - **呈现**：订阅 section 头部行尾 `arrow.clockwise` 按钮（14×14，secondary）；目标刷新中为进度环并禁用（「正在刷新 X 订阅额度」），全量刷新中 / 未授权 / 未启用禁用（45% 透明）；与多账号展开开关为兄弟控件；被后端拒绝时**静默**（C080，对齐 mac `RefreshScheduler.refreshSubscription` 的静默 `return`：mac 在拒绝条件下直接返回、不产生任何用户可见提示，由 `SubscriptionRefreshControl` 的按钮禁用态预防该路径），可见反馈仅为按钮恢复可点；不把整体运行态标为失败；定向刷新属手动操作，不投递配额预警。
-15. **设置窗口即时生效**（C069，mac `SettingsView` 同语义）：无全局「保存设置」；每个控件变更即保存——`settings.js` `persist(patch)` 串行排队，每次基于后端最新设置合并本次改动再保存，连续操作不互相覆盖；保存失败（价格覆盖非法、热键被占用等）回滚该控件，并在内容区顶部状态行以告警色提示原因，成功不打扰。后端 `settings::requires_collection` 门控：只有授权、本机会话开关、启用的 provider 集合、价格覆盖或刷新间隔变化才请求全量采集（刷新间隔即「变更后立即重新计时」），主题 / 卡片与 provider 顺序 / 通知 / 热键 / 面板位置只重新发布看板，避免即时保存引发采集风暴。授权页「Agent 用量」开关切换即等价确认 / 撤销授权。
+15. **设置窗口即时生效**（C069，mac `SettingsView` 同语义）：无全局「保存设置」；每个控件变更即保存——`settings.js` `persist(patch)` 串行排队，每次基于后端最新设置合并本次改动再保存，连续操作不互相覆盖；保存失败（价格覆盖非法、热键被占用等）回滚该控件，并在内容区顶部状态行以告警色提示原因，成功不打扰。后端 `settings::requires_collection` 门控：只有授权、本机会话开关、启用的 provider 集合、价格覆盖或刷新间隔变化才请求全量采集（刷新间隔即「变更后立即重新计时」），主题 / 卡片与 provider 顺序 / 热键 / 面板位置只重新发布看板（C209 起「通知」开关已退役，不再参与判定），避免即时保存引发采集风暴。授权页「Agent 用量」开关切换即等价确认 / 撤销授权。
 16. **设置页 Agent 用量工作台**（C070，mac `AgentUsageWorkbenchView` 同契约，计算口径见 design 06 §4.2）：
     - **数据**：Tauri 命令 `get_usage_analytics(range)`（`today` / `7d` / `30d` / `month` / `all`）返回 `bruce_win_viewmodel::analytics::make` 的快照；与看板共用「本机会话」开关与快照，关闭或无快照时为空快照。**前端不得做任何汇总、换算或估算**（含模型名归一），只渲染快照字段；
     - **对拍**：`apps/win/viewmodel/tests/analytics_parity.rs` 对 mac `PanelParityHarness` 产出的 `*.analytics.json` 逐字段（含浮点位）比对；前端测试与 render-harness 直接渲染同一 golden；
@@ -445,7 +445,7 @@ Windows Tauri 后端 (Rust)
 |---|---|---|
 | `viewmodel/src/usage.rs` | `UsageMapping.swift` / `PanelViewModelMapper` | artifact → 今日总量/Agent 明细/逐小时/热力图/模型用量视图模型 |
 | `viewmodel/src/subscription.rs` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
-| `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
+| `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `QuotaAlertDeliveryState.swift`（C206；C209 前对应 `SystemNotificationDeliveryPolicy`，该文件已删除） | 配额告警判定与通知去重（C209 起气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递） |
 | `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略（T17 起退避与窗口边界唤醒经共享 `collector-policy::refresh`） |
 | `src-tauri/src/reachability.rs` | `NetworkReachability.swift` | 网络可达性闸门状态机与可注入探针（C076，见规则 18） |
 | `src-tauri/src/quota_policy.rs` | `QuotaPolicyClient.swift`（T16 起经静态库 `collector-policy-ffi` 进程内调用同一 crate） | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19）；T13 起为共享 crate `core/collector/crates/collector-policy` 的薄封装 |

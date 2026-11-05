@@ -1280,7 +1280,6 @@ mod desktop {
             .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
                 reveal_dashboard(app, DashboardOpenSource::Tray, true);
             }))
-            .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             // 导出文件的系统保存对话框 (C033): 与 mac NSSavePanel 等价
             .plugin(tauri_plugin_dialog::init())

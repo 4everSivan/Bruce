@@ -95,8 +95,6 @@ package final class RefreshScheduler {
     private let networkReachability: (any NetworkReachabilityProviding)?
     /// 可选屏幕锁定监视器 (C064); nil 时保持旧行为 (始终视为未锁屏).
     private let screenLockState: (any ScreenLockStateProviding)?
-    /// 电脑锁屏后是否禁止订阅刷新 (C064), 与 OnboardingConfiguration 同步.
-    package private(set) var pauseSubscriptionRefreshOnScreenLock: Bool = true
 
     private var states: [CollectorModule: ModuleScheduleState] = [:]
     private var timers: [CollectorModule: RunnerTimerToken] = [:]
@@ -335,14 +333,8 @@ package final class RefreshScheduler {
         screenLockState?.isScreenLocked ?? false
     }
 
-    /// 更新锁屏暂停订阅刷新偏好 (C064).
-    package func setPauseSubscriptionRefreshOnScreenLock(_ enabled: Bool) {
-        self.pauseSubscriptionRefreshOnScreenLock = enabled
-    }
-
     /// 屏幕锁屏/解锁状态变动回调 (C064).
     private func handleScreenLockStateChange(_ isLocked: Bool) {
-        guard pauseSubscriptionRefreshOnScreenLock else { return }
         if !isLocked {
             handleScreenUnlocked()
         }
@@ -350,7 +342,6 @@ package final class RefreshScheduler {
 
     /// 屏幕解锁时自动补偿订阅额度刷新 (C064).
     package func handleScreenUnlocked() {
-        guard pauseSubscriptionRefreshOnScreenLock else { return }
         guard let state = states[.agentUsage], state.enabled, state.autoRefreshEnabled else { return }
         guard state.phase != .authRequired && state.phase != .running else { return }
         let now = clock.now()
@@ -464,9 +455,9 @@ package final class RefreshScheduler {
 
         // C037: 定时刷新不得跨过额度窗口边界 —— 否则槽/窗口重置后最长一个间隔内
         // 卡片仍展示上一窗口的百分比。首次调度 (delay=0) 不参与, 策略自带防风暴防线。
-        // C064: 锁屏且开启抑制时跳过边界提前唤醒, 避免在锁屏期间为了窗口重置多跑。
+        // C064: 锁屏时跳过边界提前唤醒, 避免在锁屏期间为了窗口重置多跑 (C209 起恒开).
         var boundaryTriggered = false
-        let shouldSkipBoundaryWake = isScreenLocked && pauseSubscriptionRefreshOnScreenLock
+        let shouldSkipBoundaryWake = isScreenLocked
         if delay > 0 && !shouldSkipBoundaryWake {
             let intervalRemaining = delay
             delay = SubscriptionBoundaryWakePolicy.delay(
@@ -588,7 +579,8 @@ package final class RefreshScheduler {
             // publish 用实时 clock; request.now 仅服务 load-previous 入口快照.
             now: { [clock] in clock.now() }
         )
-        let suppressQuotas = isScreenLocked && pauseSubscriptionRefreshOnScreenLock && intent.reason != .manual
+        // C064/C209: 锁屏抑制恒开 (手动刷新不受抑制).
+        let suppressQuotas = isScreenLocked && intent.reason != .manual
         let result = await pipeline.run(RefreshPipelineRequest(
             module: module,
             intent: intent,

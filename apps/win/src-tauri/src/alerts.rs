@@ -1,5 +1,5 @@
 //! 配额预警评估与去重 —— 对齐 mac `QuotaAlertEvaluator` +
-//! `SystemNotificationDeliveryPolicy` 语义。
+//! `QuotaAlertDeliveryState` 语义（C206；C209 前对应已删除的 `SystemNotificationDeliveryPolicy`）。
 //!
 //! 纯逻辑无通知框架依赖: 从 artifact services 提取 5h 窗口用量超过三档阶梯阈值 [50%, 80%, 95%] 条目;
 //! 跨越判定 (阶梯跃迁: 0 -> 50 -> 80 -> 95) 与去重状态由调用方 (调度器) 持有。
@@ -167,14 +167,11 @@ pub struct AlertDeliveryState {
 
 impl AlertDeliveryState {
     /// Manual refresh updates crossing state without sending a notification.
-    pub fn alerts_for_refresh(
-        &mut self,
-        alerts: &[QuotaAlert],
-        manual: bool,
-        enabled: bool,
-    ) -> Vec<QuotaAlert> {
+    /// C209: 「额度预警气泡」开关已退役, 自动刷新跨越即投递 (气泡恒开);
+    /// 50/80/95 阶梯去重与窗口重置恢复 (C206) 语义不变。
+    pub fn alerts_for_refresh(&mut self, alerts: &[QuotaAlert], manual: bool) -> Vec<QuotaAlert> {
         let fresh = self.filter_new_alerts(alerts);
-        if manual || !enabled {
+        if manual {
             Vec::new()
         } else {
             fresh

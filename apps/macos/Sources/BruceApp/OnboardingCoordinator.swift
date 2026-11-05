@@ -34,10 +34,6 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var keychainAccessState: KeychainAccessState
     /// 已显式允许的外部 CLI 来源.
     @Published private(set) var externalKeychainSources: Set<KeychainExternalSource>
-    /// Bruce 是否允许投递系统通知; 仅控制应用行为, 不撤销 macOS 系统授权.
-    @Published private(set) var systemNotificationsEnabled: Bool
-    /// 电脑锁屏后是否禁止订阅刷新 (C064), 与配置持久化同步.
-    @Published private(set) var pauseSubscriptionRefreshOnScreenLock: Bool
     /// 全局界面动效偏好 (C145), 与配置持久化同步.
     @Published private(set) var motionPreference: MotionPreference
     /// 模型单价人工校准覆盖 (模型名 -> 校准单价).
@@ -183,10 +179,8 @@ final class OnboardingCoordinator: ObservableObject {
         self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
         self.keychainAccessState = resolvedKeychainAccessController.policy.state
         self.externalKeychainSources = config?.keychainAccess.externalSources ?? []
-        self.systemNotificationsEnabled = config?.systemNotificationsEnabled ?? true
-        let resolvedPauseOnLock = config?.pauseSubscriptionRefreshOnScreenLock ?? true
-        self.pauseSubscriptionRefreshOnScreenLock = resolvedPauseOnLock
-        scheduler.setPauseSubscriptionRefreshOnScreenLock(resolvedPauseOnLock)
+        // C209: 锁屏暂停订阅刷新与额度预警气泡开关已退役, 行为恒开,
+        // 不再从配置读取或同步调度器 (见 design/02 §7.2 与 §15).
         self.motionPreference = config?.resolvedMotionPreference ?? .system
         self.pricingOverrides = config?.pricingOverrides ?? [:]
 
@@ -538,25 +532,6 @@ final class OnboardingCoordinator: ObservableObject {
         model.setSettingsError(nil)
     }
 
-    /// 更新锁屏暂停订阅刷新偏好 (C064).
-    func setPauseSubscriptionRefreshOnScreenLock(_ enabled: Bool) {
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存锁屏刷新偏好")
-            return
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.pauseSubscriptionRefreshOnScreenLock = enabled
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("锁屏刷新偏好保存失败")
-            return
-        }
-        pauseSubscriptionRefreshOnScreenLock = enabled
-        scheduler.setPauseSubscriptionRefreshOnScreenLock(enabled)
-        model.setSettingsError(nil)
-    }
-
     /// 用户变更全局界面动效偏好 (C145): 先持久化再发布, 保存失败不改变运行中行为.
     func setMotionPreference(_ preference: MotionPreference) {
         guard let configStore else {
@@ -653,24 +628,6 @@ final class OnboardingCoordinator: ObservableObject {
                 return SubscriptionProviderID(rawValue: rawID)
             } ?? []
         )
-    }
-
-    /// 用户变更 Bruce 系统通知开关: 先持久化再发布, 保存失败不改变运行中行为.
-    func setSystemNotificationsEnabled(_ enabled: Bool) {
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存系统通知设置")
-            return
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.systemNotificationsEnabled = enabled
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("系统通知设置保存失败")
-            return
-        }
-        systemNotificationsEnabled = enabled
-        model.setSettingsError(nil)
     }
 
     /// 用户变更外观偏好: 先持久化再发布 (先存后生效);

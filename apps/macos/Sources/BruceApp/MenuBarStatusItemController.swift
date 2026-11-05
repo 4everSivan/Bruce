@@ -612,10 +612,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     /// 弹出通用状态预警气泡 (方案 A · 280pt 胶囊微卡，支持额度超限与网络出口阻断多态)
-    func showStatusAlertBubble(items: [StatusBubbleAlertItem], force: Bool = false) {
-        if !force {
-            guard coordinator.systemNotificationsEnabled else { return }
-        }
+    /// C209: 「额度预警气泡」开关已退役, 气泡恒可投递, 仅受展示策略约束.
+    func showStatusAlertBubble(items: [StatusBubbleAlertItem]) {
         // 设计 03 §14: 主面板可见时静默跳过气泡, 避免与仪表盘卡片叠加 (C187).
         guard StatusBubblePresentationPolicy.shouldPresent(
             dashboardOpen: dashboardToggleState == .open
@@ -630,8 +628,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     /// 弹出额度预警气泡 (方案 A · 280pt 胶囊微卡，兼容旧接口)
-    func showQuotaAlertBubble(alerts: [QuotaAlert], force: Bool = false) {
-        showStatusAlertBubble(items: alerts.map { .quota($0) }, force: force)
+    func showQuotaAlertBubble(alerts: [QuotaAlert]) {
+        showStatusAlertBubble(items: alerts.map { .quota($0) })
     }
 
     /// 若主看板未处于打开状态则展开主看板

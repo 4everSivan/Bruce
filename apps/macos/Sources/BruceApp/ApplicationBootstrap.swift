@@ -27,7 +27,7 @@ final class ApplicationBootstrap {
     private var appearanceObserver: AnyCancellable?
     private var keychainAccessObserver: AnyCancellable?
     private var keychainStateObserver: AnyCancellable?
-    private var notificationPreferenceObserver: AnyCancellable?
+    // C209: notificationPreferenceObserver 随「额度预警气泡」开关退役删除（从未被赋值/订阅）。
     private var keychainStartupPrepared = false
     private var lastStatusRefresh = Date.distantPast
 

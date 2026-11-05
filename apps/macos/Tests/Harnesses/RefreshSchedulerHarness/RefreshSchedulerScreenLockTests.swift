@@ -54,40 +54,9 @@ extension RefreshSchedulerHarness {
         try refreshExpect(lockState.stopCount == 1, "调度器停止时应注销锁屏监视")
     }
 
-    /// 开关关闭时不抑制锁屏刷新.
-    static func screenLockSuppressionDisabledAllowsQuotaQuery(
-        repository: URL
-    ) async throws {
-        let executor = MockCollectorExecutor()
-        let clock = ManualClock()
-        let timers = FakeTimerScheduler()
-        let lockState = StubScreenLockState(isLocked: true)
-        let (scheduler, _, root) = try makeScheduler(
-            repository: repository,
-            executor: executor,
-            clock: clock,
-            timers: timers,
-            screenLock: lockState
-        )
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        scheduler.setPauseSubscriptionRefreshOnScreenLock(false)
-        scheduler.start()
-        scheduler.enableModule(.agentUsage)
-        timers.fireFirst()
-
-        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
-        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
-
-        try refreshExpect(
-            executor.runCount[.agentUsage] == 1,
-            "开关关闭时锁屏状态下刷新照常执行"
-        )
-        scheduler.stop()
-    }
-
     /// 纯策略: 锁屏抑制强制本地专用 run, 且 skipProviders 覆盖上一份全部
     /// provider (含 codex), 供回填原样保留 (C071); T15 起经策略子命令.
+    /// C209 起锁屏抑制恒开, 原「开关关闭不抑制」用例随开关一并退役。
     static func quotaPolicySuppressedOnScreenLock() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let captured = ISO8601DateFormatter().string(from: now.addingTimeInterval(-7200))

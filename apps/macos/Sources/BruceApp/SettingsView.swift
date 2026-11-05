@@ -3,7 +3,6 @@ import BruceAppCore
 import BruceOnboardingCore
 import SwiftUI
 import UniformTypeIdentifiers
-import UserNotifications
 
 /// 设置页: 左侧边栏分类导航 + 右侧单分类面板, Fluent 平面视觉
 /// (token 与组件见 Settings/FluentSettingsChrome.swift, 1:1 对齐
@@ -46,8 +45,7 @@ struct SettingsView: View {
     /// 当前在配置 sheet 中打开的 provider (P2 对话框).
     @State var configuringProvider: SubscriptionProviderID?
     @State var providerToAdd: SubscriptionProviderID?
-    // 通知权限状态: denied 时预警通知无法投递, 提示用户前往系统设置
-    @State var notificationDenied = false
+    // C209: 系统通知授权探针随「额度预警气泡」开关退役一并删除 —— 气泡投递不依赖系统通知权限。
     // 首次启动时引导配置 Bruce 自有 Keychain 访问权限
     @State var showsKeychainAccessGuide = false
     /// C156: 同一面板的两种用途 —— 首次未配置的自动引导 (false) 与主动查看/重新配置 (true).
@@ -465,38 +463,8 @@ struct SettingsView: View {
                     // C160: 预设 3 / 6 分钟, 其余 1–1440 分钟经「自定义」输入.
                     RefreshIntervalControl(coordinator: coordinator)
                 }
-                FluentRow(
-                    "锁屏暂停订阅刷新",
-                    sub: "电脑锁屏期间暂停查询云端订阅额度，避免消耗配额；解锁后自动恢复",
-                    divided: true
-                ) {
-                    // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { coordinator.pauseSubscriptionRefreshOnScreenLock },
-                            set: { coordinator.setPauseSubscriptionRefreshOnScreenLock($0) }
-                        )
-                    )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                }
-                FluentRow(
-                    "额度预警气泡",
-                    sub: "额度紧缺时在菜单栏图标下方弹出提示微卡; 关闭后不弹出",
-                    divided: true
-                ) {
-                    // C160: 验证期「测试气泡」入口已移除, 行内只保留开关.
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { coordinator.systemNotificationsEnabled },
-                            set: { coordinator.setSystemNotificationsEnabled($0) }
-                        )
-                    )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                }
+                // C209: 「锁屏暂停订阅刷新」与「额度预警气泡」开关行已退役,
+                // 锁屏保护与预警气泡为恒开默认行为 (见 design/02 §7.2 与 §15).
                 FluentRow(
                     "开机自启动",
                     sub: "开机时自动启动 Bruce 并在后台常驻菜单栏",
@@ -607,14 +575,6 @@ struct SettingsView: View {
                     menuBarReorderableCardsSection
                 }
             }
-        }
-    }
-
-    /// 查询系统通知授权状态; 仅 denied 视为未开启, notDetermined 会在首次预警时弹授权.
-    func refreshNotificationStatus() {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            let denied = settings.authorizationStatus == .denied
-            Task { @MainActor in notificationDenied = denied }
         }
     }
 

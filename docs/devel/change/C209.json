@@ -55,6 +55,18 @@
       "before": "mac Harness 覆盖两键往返/默认值、锁屏抑制开关关闭路径、SystemNotificationDeliveryPolicy 三态；win frontend.test.mjs 以 setting-notifications 断言回滚/串行保存/行序；website/js/settings.js 演示页通用面板含两行",
       "after": "mac：移除 pauseSubscriptionRefreshOnScreenLockRoundTrip / configSystemNotificationsDefaultsAndRoundTrips / screenLockSuppressionDisabledAllowsQuotaQuery / disabledSystemNotificationsSuppressDelivery，新增「遗留配置含退役键仍可解码」回归，锁屏抑制恒开用例保持；win：frontend.test.mjs 改用 trayHoverPreview 断言串行保存与回滚、行序断言去掉「额度预警气泡」，dom.mjs 默认值移除 notificationsEnabled；website/js/settings.js 移除两行",
       "impact": "apps/macos/Tests/BruceOnboardingCoreHarness、apps/macos/Tests/Harnesses/RefreshSchedulerHarness、apps/win/tests/frontend.test.mjs、apps/win/tests/dom.mjs、website/js/settings.js"
+    },
+    {
+      "scope": "文档回写（设计基线 + 官方知识库 + CHANGELOG）",
+      "before": "design/04 §5 状态文字适用范围的举例与 §7 五段顺序仍列两行；design/05 通用行序与文件映射表仍列「额度预警气泡」与 SystemNotificationDeliveryPolicy；docs/official 设置中心 §3.3 与刷新生命周期 §3.3/§5 仍以开关字段与 QuotaAlertNotifier 描述行为；CHANGELOG 未记账",
+      "after": "04 §5 适用范围改为剩余开关行并注明两项退役、§7 收敛为四段固定顺序；05 通用行序去掉「额度预警气泡」、映射表改为 QuotaAlertDeliveryState 并注明退役；docs/official 设置中心 §3.3 改写为「锁屏订阅抑制（C209 起恒开）」、刷新生命周期去掉开关条件与 QuotaAlertNotifier 引用、Windows 应用设计设置表移除 notificationsEnabled；CHANGELOG [Unreleased] Changed 新增 C209 条目",
+      "impact": "docs/devel/design/02-订阅额度与凭据安全存储.md、03-菜单栏状态与多风格原生渲染.md、04-设置中心与价格校准交互.md、05-Windows平台适配.md；docs/official/设置中心与价格校准设计.md、刷新生命周期设计.md、Windows应用设计.md；CHANGELOG.md"
+    },
+    {
+      "scope": "退役残留清理（系统通知通道与官网 spec）",
+      "before": "SettingsView 仍 import UserNotifications 并保留 notificationDenied / refreshNotificationStatus 系统通知授权探针（C159 改气泡后已无 UI 读取）；ApplicationBootstrap 残留从未赋值的 notificationPreferenceObserver；Windows 仍注册 tauri-plugin-notification 插件并保留 Cargo 依赖（C159 退役 Toast 后无任何调用方）；website/spec/system-spec.md 通用 pane 表仍列两行开关",
+      "after": "SettingsView 移除 UserNotifications import 与通知授权探针；ApplicationBootstrap 移除 notificationPreferenceObserver；Windows 移除 Cargo.toml 依赖与 feature、lib.rs 插件注册，Cargo.lock 收敛（-161 行，移除 tauri-plugin-notification / notify-rust / mac-notification-sys / tauri-winrt-notification 及其传递依赖）；spec 表移除两行并加 C209 增量注记；alerts.rs 模块注释对齐 QuotaAlertDeliveryState",
+      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift、apps/macos/Sources/BruceApp/ApplicationBootstrap.swift、apps/win/src-tauri/Cargo.toml、apps/win/src-tauri/Cargo.lock、apps/win/src-tauri/src/lib.rs、apps/win/src-tauri/src/alerts.rs、website/spec/system-spec.md"
     }
   ],
   "design": {
@@ -67,8 +79,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261105-04",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -76,43 +88,45 @@
         "item": "自动化测试",
         "true_if": "mac swift build + BruceOnboardingCoreHarness + RefreshSchedulerHarness 全绿；win cargo test --lib + fmt + clippy 全绿；node --test frontend.test.mjs 与 check-win-frontend 全绿；verify-local 全量通过",
         "false_if": "存在任何构建/测试失败或未同步的用例",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` 全量通过（Exit 0，末行「Bruce 本地验证全部通过」），其中 BruceOnboardingCore 180 项、RefreshSchedulerHarness 117 项（含锁屏抑制/解锁补偿/services 回填用例）、PanelViewModel 66 项、其余 Harness 全绿；Windows `cargo test` 全部 target 通过（lib 81 含 settings/alerts 单测、runtime_coverage 45、settings_coverage 13、alerts_coverage 8、credentials 52 等，0 failed）；`cargo fmt --check` Exit 0、`cargo clippy --all-targets -D warnings` Exit 0；`node --test apps/win/tests/*.mjs` 134/134 pass；`node scripts/check-win-frontend.mjs` 通过。 移除 tauri-plugin-notification 插件后重跑：`cargo test`（apps/win）全部 target 0 failed、`cargo fmt --check` 与 `cargo clippy --all-targets -D warnings` Exit 0，Cargo.lock 收敛 161 行；随后 `zsh scripts/verify-local.sh` 再次全量通过（Exit 0），RefreshSchedulerHarness 117 / OnboardingCore 180 不变。",
+        "result": true
       },
       {
         "item": "配置项退役与默认行为",
         "true_if": "mac 通用页与 win 通用页不再渲染两行；锁屏抑制/解锁补偿/预警气泡路径不再读开关（恒开）；欢迎向导无残留引用",
         "false_if": "任一界面仍渲染开关，或行为路径仍存在可关闭分支",
-        "evidence": "",
-        "result": null
+        "evidence": "mac：`SettingsView.swift` 通用页已无「锁屏暂停订阅刷新」「额度预警气泡」两行（grep 源码无匹配，行序为 配色模式→界面风格→模糊风格→界面动效→仪表盘卡片布局→刷新间隔→开机自启动→凭据存储→外部 CLI 来源）；`RefreshScheduler` 以 `isScreenLocked && intent.reason != .manual` 无条件抑制、锁屏跳过边界提前唤醒，无任何开关字段或 setter；`MenuBarStatusItemController.showStatusAlertBubble` 移除开关门禁，仅受 `StatusBubblePresentationPolicy`（主看板可见时静默）约束；`QuotaAlertNotifier.swift` 与 `SystemNotificationDeliveryPolicy.swift` 已删除且全仓无引用。win：`settings-maintenance.js` 通用页行序 界面风格→界面动效→看板布局→刷新间隔→托盘实时预览，`frontend.test.mjs` 断言 `row(c1, \"额度预警气泡\"` 不存在且行序用例通过；`settings.rs` 无 `notifications_enabled`；`alerts_for_refresh` 仅按 manual 观察/投递，50/80/95 去重与 C206 窗口重置恢复用例全绿。欢迎向导：mac `WelcomeOnboardingView.swift` 与 win `settings-welcome.js` grep 两关键词均无匹配（历史上也从未包含）。 另清掉两处隐性残留：`SettingsView` 的系统通知授权探针（`import UserNotifications`、`notificationDenied`、`refreshNotificationStatus`）与 `ApplicationBootstrap` 从未赋值的 `notificationPreferenceObserver`（全仓已无 `UNUserNotificationCenter` 引用）；Windows `tauri-plugin-notification` 依赖与插件注册移除，Cargo.lock 同步收敛。",
+        "result": true
       },
       {
         "item": "旧配置向前兼容",
         "true_if": "含 systemNotificationsEnabled/pauseSubscriptionRefreshOnScreenLock/notificationsEnabled 遗留键的旧配置文件可正常解码且其余字段无损",
         "false_if": "旧配置解码失败或字段丢失",
-        "evidence": "",
-        "result": null
+        "evidence": "mac：`OnboardingCoreHarness.retiredLegacyKeysStillDecode` 通过——`{\"schemaVersion\": 2, \"systemNotificationsEnabled\": false, \"pauseSubscriptionRefreshOnScreenLock\": false}` 可正常解码、退役键按未知键忽略，且其余字段（appearanceMode）编解码往返无损；该 Harness 180 项全绿。win：`settings.rs` 的 `motion_preference_defaults_to_system_for_legacy_settings` 故意保留 `\"notificationsEnabled\": true` 遗留键并断言解析成功、其余设置不被改写；settings_coverage 13 项全绿。",
+        "result": true
       },
       {
         "item": "实机验收",
         "true_if": "装机后设置中心不再显示两项；锁屏/解锁后订阅刷新按恒开保护运行；额度紧缺时气泡照常弹出",
         "false_if": "实机仍显示开关或行为异常",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行：需装机后人工确认（1）设置中心 mac 通用页 / win 维护页通用卡不再出现两项；（2）锁屏期间订阅额度查询被抑制、解锁后补偿刷新；（3）额度紧缺时菜单栏/托盘气泡照常弹出。本卡已由自动化与源码级断言覆盖其余验收点，实机项按未执行记 false，待人工装机确认后回填。",
+        "result": false
       }
     ]
   },
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "closed"
   }
 }

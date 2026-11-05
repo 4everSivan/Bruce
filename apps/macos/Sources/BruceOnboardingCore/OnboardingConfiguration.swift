@@ -190,10 +190,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
                 ? KeychainAccessConfiguration.currentBruceStoreStorageVersion : 0
         }
     }
-    /// 是否允许 Bruce 投递系统通知. 这是应用层开关, 不会修改 macOS 的系统授权状态.
-    public var systemNotificationsEnabled: Bool
-    /// 电脑锁屏后是否禁止订阅额度刷新 (C064). 默认开启保护以节省云端 API 配额.
-    public var pauseSubscriptionRefreshOnScreenLock: Bool
+    // C209: 「系统通知/额度预警气泡」与「锁屏暂停订阅刷新」配置键已退役,
+    // 预警气泡与锁屏订阅抑制为恒开默认行为, 不再持久化开关
+    // (旧配置文件中的遗留键由 JSONDecoder 按未知键忽略).
     /// 全局界面动效偏好 (C145). nil 表示跟随系统.
     public var motionPreference: MotionPreference?
     /// 是否开启开机自启动 (12-开机自启动.md, T25). nil 表示未显式配置，以系统真实状态为准.
@@ -311,8 +310,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         dashboardHotkey: GlobalHotkey? = nil,
         keychainAccessConfigured: Bool = false,
         keychainAccess: KeychainAccessConfiguration? = nil,
-        systemNotificationsEnabled: Bool = true,
-        pauseSubscriptionRefreshOnScreenLock: Bool = true,
         motionPreference: MotionPreference? = nil,
         launchAtLogin: Bool? = nil
     ) {
@@ -334,12 +331,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.keychainAccess = keychainAccess ?? KeychainAccessConfiguration(
             bruceStoreConfigured: keychainAccessConfigured
         )
-        self.systemNotificationsEnabled = systemNotificationsEnabled
-        self.pauseSubscriptionRefreshOnScreenLock = pauseSubscriptionRefreshOnScreenLock
         self.motionPreference = motionPreference
         self.launchAtLogin = launchAtLogin
     }
-
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -403,14 +397,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
                 bruceStoreStorageVersion: 0
             )
         }
-        // 旧配置缺该键时保持历史行为: 系统通知功能默认开启.
-        systemNotificationsEnabled = try container.decodeIfPresent(
-            Bool.self, forKey: .systemNotificationsEnabled
-        ) ?? true
-        // 电脑锁屏暂停订阅刷新: 旧配置缺该键时默认开启保护.
-        pauseSubscriptionRefreshOnScreenLock = try container.decodeIfPresent(
-            Bool.self, forKey: .pauseSubscriptionRefreshOnScreenLock
-        ) ?? true
+        // C209: 旧配置中的 systemNotificationsEnabled / pauseSubscriptionRefreshOnScreenLock
+        // 遗留键按未知键忽略, 不再读取; 预警气泡与锁屏订阅抑制恒开.
         // 全局动效偏好: 旧配置缺该键 (或值非法) 一律回落跟随系统 (C145).
         motionPreference = (try? container.decodeIfPresent(
             MotionPreference.self, forKey: .motionPreference
@@ -437,8 +425,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case dashboardHotkey
         case keychainAccess
         case keychainAccessConfigured
-        case systemNotificationsEnabled
-        case pauseSubscriptionRefreshOnScreenLock
         case motionPreference
         case launchAtLogin
     }
@@ -465,11 +451,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         )
         try container.encodeIfPresent(dashboardHotkey, forKey: .dashboardHotkey)
         try container.encode(keychainAccess, forKey: .keychainAccess)
-        try container.encode(systemNotificationsEnabled, forKey: .systemNotificationsEnabled)
-        try container.encode(
-            pauseSubscriptionRefreshOnScreenLock,
-            forKey: .pauseSubscriptionRefreshOnScreenLock
-        )
         try container.encodeIfPresent(motionPreference, forKey: .motionPreference)
         try container.encodeIfPresent(launchAtLogin, forKey: .launchAtLogin)
     }

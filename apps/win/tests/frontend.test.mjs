@@ -849,10 +849,10 @@ test("invalid credentials/price overrides do not persist and command failures ar
   await failing.node("setting-hotkey").dispatch("change");
   assert.match(failing.node("settings-status").textContent, /热键冲突/);
   assert.equal(failing.node("setting-hotkey").value, "", "冲突热键不留在输入框里冒充已生效");
-  // 失败的开关同样回滚
-  failing.node("setting-notifications").checked = false;
-  await failing.node("setting-notifications").dispatch("change");
-  assert.equal(failing.node("setting-notifications").checked, true);
+  // 失败的开关同样回滚 (C209: 额度预警气泡开关已退役, 改用托盘实时预览开关断言)
+  failing.node("setting-tray-hover-preview").checked = false;
+  await failing.node("setting-tray-hover-preview").dispatch("change");
+  assert.equal(failing.node("setting-tray-hover-preview").checked, true);
 });
 
 test("Zhipu optional API address supplies the collector's required default", async () => {
@@ -1312,14 +1312,13 @@ test("settings saves are serialized and each merges the latest backend state (C0
   const intervalGroup = app.node("setting-interval").parentElement.querySelector(".fluent-seg");
   const intervalChoices = intervalGroup.querySelectorAll(".seg-opt");
   const pending = [intervalChoices[0].click(), app.node("card-down-usage").click()];
-  app.node("setting-notifications").checked = false;
-  pending.push(app.node("setting-notifications").dispatch("change"));
+  // C209: 额度预警气泡开关已退役, 串行保存断言改用托盘实时预览开关
+  app.node("setting-tray-hover-preview").checked = false;
+  pending.push(app.node("setting-tray-hover-preview").dispatch("change"));
   await Promise.all(pending);
   assert.equal(app.state.settings.refreshIntervalSecs, 180);
   assert.deepEqual([...app.state.settings.cardOrder], ["subscription", "usage", "hourly"]);
-  assert.equal(app.state.settings.notificationsEnabled, false);
-  // C146: 开关旁不再有状态字节点, 开合位置即唯一状态表达.
-  assert.equal(app.node("setting-notifications-state"), null, "不得再渲染已开启/已关闭状态字");
+  assert.equal(app.state.settings.trayHoverPreview, false);
   const saves = app.calls.filter((call) => call.command === "save_settings_command").length;
   assert.equal(saves, 3, "每个控件各保存一次");
 });
@@ -2390,9 +2389,9 @@ test("settings sidebar locks a 17.6% window-width ratio instead of a fixed pixel
 
 // ---------- C153: 通用页配置项分组顺序 ----------
 
-test("general pane rows keep the appearance → layout → refresh → notification order (C153 / C159)", async () => {
+test("general pane rows keep the appearance → layout → refresh order (C153, C209 退役气泡行)", async () => {
   const source = readFileSync(new URL("../src/settings-maintenance.js", import.meta.url), "utf8");
-  const order = ["界面风格", "界面动效", "看板布局", "刷新间隔", "额度预警气泡"];
+  const order = ["界面风格", "界面动效", "看板布局", "刷新间隔"];
   const positions = order.map((label) => source.indexOf(`row(c1, "${label}"`));
   positions.forEach((position, index) => {
     assert.ok(position >= 0, `通用页缺少「${order[index]}」行`);
@@ -2402,6 +2401,8 @@ test("general pane rows keep the appearance → layout → refresh → notificat
     positions,
     `通用页行序应保持 ${order.join(" → ")}`,
   );
+  // C209: 「额度预警气泡」开关行已退役, 通用页不得再渲染该行 (按行调用形式断言, 注释不参与)
+  assert.equal(source.indexOf('row(c1, "额度预警气泡"'), -1, "额度预警气泡行应已移除");
 });
 
 // ---------- C157: 订阅卡空状态与 Tab 回退 ----------

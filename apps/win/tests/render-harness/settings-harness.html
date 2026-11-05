@@ -20,7 +20,7 @@ const [html, fixture, analytics] = await Promise.all([
 const analyticsByRange = Object.fromEntries(analytics.map((snapshot) => [snapshot.range, snapshot]));
 
 const settings = {
-  refreshIntervalSecs: 1800, notificationsEnabled: true, theme: "fluent",
+  refreshIntervalSecs: 1800, theme: "fluent",
   cardOrder: ["usage", "subscription", "hourly"], hotkey: "Control+Shift+B", consentVersion: 1,
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek", "volcengine", "zhipu", "grok", "opencodeGo", "stepfun", "cline"],
   providerOrder: [], pricingOverrides: {},

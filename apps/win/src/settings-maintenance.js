@@ -140,15 +140,7 @@
       intervalCustomWrap,
     );
     row(c1, "刷新间隔", intervalWrap, "已授权模块的自动采集周期，变更后立即重新计时；订阅额度最短 3 分钟查询一次");
-    // C146: 状态由开关开合位置表达, 行内不再渲染「已开启 / 已关闭」.
-    // C160: 验证期「测试气泡」入口已移除, 行内只保留开关.
-    const notifyWrap = node("div", null, { class: "toggle-with-state" });
-    const notify = input("setting-notifications", "checkbox");
-    notifyWrap.append(notify);
-    notify.addEventListener("change", () => persist({ notificationsEnabled: notify.checked }, {
-      revert: () => { notify.checked = !notify.checked; },
-    }));
-    row(c1, "额度预警气泡", notifyWrap, "额度紧缺时在托盘图标上方弹出提示微卡; 关闭后不弹出");
+    // C209: 「额度预警气泡」开关已退役, 预警气泡为恒开默认行为 (50/80/95 阶梯去重不变)。
 
     // 方案 1: 任务栏托盘悬停预览开关
     const previewWrap = node("div", null, { class: "toggle-with-state" });
@@ -862,7 +854,6 @@
       intervalCustomEditing = false;
       syncIntervalCustomVisibility();
     }
-    if (byId("setting-notifications")) byId("setting-notifications").checked = coreState.settings.notificationsEnabled;
     if (byId("setting-tray-hover-preview")) byId("setting-tray-hover-preview").checked = coreState.settings.trayHoverPreview !== false;
     syncToggleState("setting-tray-hover-preview");
     if (byId("setting-hotkey")) byId("setting-hotkey").value = coreState.settings.hotkey || "";

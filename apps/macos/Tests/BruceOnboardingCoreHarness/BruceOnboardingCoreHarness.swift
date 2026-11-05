@@ -44,7 +44,7 @@ struct BruceOnboardingCoreHarness {
         try configStoreReturnsNilForUnknownSchema()
         try configStoreFilePermissions()
         try keychainAccessConfigurationRoundTrip()
-        try pauseSubscriptionRefreshOnScreenLockRoundTrip()
+        try retiredLegacyKeysStillDecode()
         try atomicStoreBackupRefreshesOnEachWrite()
         try credentialStoreRoundTrip()
         try credentialStoreDelete()
@@ -82,7 +82,6 @@ struct BruceOnboardingCoreHarness {
         try configStoreSubscriptionProvidersRoundTrip()
         try configRefreshIntervalDecodeAndFallback()
         try customRefreshIntervalInputParsing()
-        try configSystemNotificationsDefaultsAndRoundTrips()
         try keychainAccessPolicyTests()
         try credentialStoreSubscriptionAccountsRoundTrip()
         if !IsNonInteractiveEnvironment.runningInCI {
@@ -186,7 +185,7 @@ struct BruceOnboardingCoreHarness {
         try codexCustomNameOverridesAndBackwardCompatibility()
         try welcomeOnboardingConfigPersistenceAndUpgradeRules()
         try launchAtLoginConfigPersistenceRoundTrip()
-        print("BruceOnboardingCore tests passed: 181")
+        print("BruceOnboardingCore tests passed: 180")
     }
 
     static func launchAtLoginConfigPersistenceRoundTrip() throws {

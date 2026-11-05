@@ -316,39 +316,6 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
-    static func configSystemNotificationsDefaultsAndRoundTrips() throws {
-        let legacy = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(#"{"schemaVersion": 2}"#.utf8)
-        )
-        try coreExpect(
-            legacy.systemNotificationsEnabled,
-            "旧配置缺少系统通知开关时默认开启"
-        )
-
-        let disabled = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(
-                #"{"schemaVersion": 2, "systemNotificationsEnabled": false}"#.utf8
-            )
-        )
-        try coreExpect(
-            !disabled.systemNotificationsEnabled,
-            "系统通知关闭状态必须被解码"
-        )
-
-        var config = OnboardingConfiguration()
-        config.systemNotificationsEnabled = false
-        let encoded = try JSONEncoder().encode(config)
-        let decoded = try JSONDecoder().decode(
-            OnboardingConfiguration.self, from: encoded
-        )
-        try coreExpect(
-            !decoded.systemNotificationsEnabled,
-            "系统通知关闭状态必须可持久化往返"
-        )
-    }
-
     /// appearanceMode: 缺键, 显式 null 与非法字符串一律回落跟随系统,
     /// 合法值原样保留; 原子读写往返一致.
     static func configAppearanceModeDecodeAndFallback() throws {

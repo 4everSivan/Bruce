@@ -71,8 +71,8 @@ pub struct AppSettings {
     pub pricing_overrides: BTreeMap<String, serde_json::Value>,
     /// 后台刷新间隔 (秒); mac 默认 1800。
     pub refresh_interval_secs: u64,
-    /// 配额预警 Toast 通知开关。
-    pub notifications_enabled: bool,
+    // C209: notifications_enabled 配置键已退役, 额度预警气泡为恒开默认行为
+    // (旧 settings.json 中的遗留键由 serde 按未知字段忽略)。
     /// 看板主题: fluent | nothing。
     pub theme: String,
     /// 卡片展示顺序 (usage/subscription/hourly)。
@@ -150,7 +150,6 @@ impl Default for AppSettings {
             subscription_providers: None,
             pricing_overrides: BTreeMap::new(),
             refresh_interval_secs: DEFAULT_REFRESH_INTERVAL_SECS,
-            notifications_enabled: true,
             theme: "fluent".to_owned(),
             card_order: vec![
                 "usage".to_owned(),
@@ -453,7 +452,6 @@ mod tests {
         let settings = AppSettings {
             refresh_interval_secs: 600,
             theme: "nothing".to_owned(),
-            notifications_enabled: false,
             ..AppSettings::default()
         };
         save_settings(&root, &settings).unwrap();
@@ -486,6 +484,7 @@ mod tests {
             "providerOrder": [],
             "pricingOverrides": {},
             "refreshIntervalSecs": 1800,
+            // C209: notificationsEnabled 已退役, 故意保留以证明旧配置遗留键被忽略而非解析失败。
             "notificationsEnabled": true,
             "theme": "fluent",
             "cardOrder": ["usage", "subscription", "hourly"],
