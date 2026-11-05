@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bruce — 每一枚 token，都记在账上</title>
+<meta name="description" content="Bruce 是一个 macOS 菜单栏 / Windows 托盘应用，替你记下本机每个 AI&nbsp;Agent 的 token 用量、费用与订阅额度。全部在本机完成，没有账号，没有服务端。" />
+<meta name="theme-color" content="#f1efe9" />
+<link rel="icon" href="assets/bruce-icon.png" />
+<link rel="stylesheet" href="css/base.css" />
+<link rel="stylesheet" href="css/site.css" />
+<link rel="stylesheet" href="css/panel.css" />
+<link rel="stylesheet" href="css/settings.css" />
+</head>
+<body>
+<a class="skip-link" href="#panel">跳到看板</a>
+
+<!-- ============================================================
+     页眉
+     ============================================================ -->
+<header class="masthead" id="masthead">
+  <a class="masthead__mark" href="#top" aria-label="Bruce，回到首页">
+    <img class="mark__icon" src="assets/bruce-icon.png" width="26" height="26" alt="" />
+    <span class="mark__word">Bruce</span>
+  </a>
+  <nav class="masthead__nav" aria-label="章节">
+    <a href="#panel"><span class="n">01</span>看板</a>
+    <a href="#desk"><span class="n">02</span>设置</a>
+    <a href="#record"><span class="n">03</span>账目</a>
+    <a href="#machine"><span class="n">04</span>本机</a>
+    <a href="#sources"><span class="n">05</span>数据源</a>
+    <a href="#install"><span class="n">06</span>安装</a>
+  </nav>
+  <div class="masthead__meta">
+    <span class="ver">v{{VERSION}}</span>
+    <a class="link" href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============================================================
+       首屏
+       ============================================================ -->
+  <section class="hero shell" aria-labelledby="hero-title">
+    <div class="hero__grid">
+      <div class="hero__left">
+        <div class="hero__eyebrow">
+          <span class="label">macOS · Windows</span>
+          <span class="bar" aria-hidden="true"></span>
+          <span class="label">本地优先</span>
+        </div>
+
+        <h1 class="hero__title" id="hero-title">
+          <span>每一枚 token</span>
+          <span>每一个模型</span>
+          <span><b class="hl">都记在账上</b></span>
+        </h1>
+
+        <p class="hero__lede">Bruce 待在 Mac 的菜单栏、Windows 的托盘里，替你记下这台电脑上每个 AI&nbsp;Agent 的用量：进出多少 token、按你自己的价目折算成多少钱、十家订阅各还剩多少。全部在本机完成。</p>
+
+        <div class="hero__action">
+          <div class="hero__dl">
+            <a class="cta" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce-{{VERSION}}.dmg" rel="noopener">
+              <span class="visually-hidden">下载 </span>macOS 版 <span class="cta__arrow" aria-hidden="true">→</span>
+            </a>
+            <a class="cta" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce_{{VERSION}}_x64-setup.exe" rel="noopener">
+              <span class="visually-hidden">下载 </span>Windows 版 <span class="cta__arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <span class="aside">免费、MIT 开源。.dmg {{DMG_SIZE}}，.exe {{EXE_SIZE}}；两版均为未签名预览版。</span>
+        </div>
+
+        <dl class="hero__spec">
+          <div><dt>版本</dt><dd>{{VERSION}}</dd></div>
+          <div><dt>系统</dt><dd>macOS 14+ · Win 10/11</dd></div>
+          <div><dt>架构</dt><dd>Universal 2 · x64</dd></div>
+          <div><dt>服务端</dt><dd>无</dd></div>
+        </dl>
+      </div>
+
+      <div class="hero__right">
+        <div class="deck-host" id="panel-stage">
+          <div class="deck" id="panel-deck" role="group" aria-label="三种主题的菜单栏面板重建">
+            <div class="deck__item" data-theme="nothing" style="--i:0">
+              <div class="bruce-panel" id="panel-nothing"></div>
+            </div>
+            <div class="deck__item" data-theme="liquid" style="--i:1">
+              <div class="bruce-panel" id="panel-liquid"></div>
+            </div>
+            <div class="deck__item" data-theme="classic" style="--i:2">
+              <div class="bruce-panel" id="panel-classic"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <nav class="contents" aria-label="目录">
+      <a href="#panel"><span class="n">01</span><span class="t">看板</span><span class="s">一张卡一件事</span></a>
+      <a href="#desk"><span class="n">02</span><span class="t">设置</span><span class="s">六个房间</span></a>
+      <a href="#record"><span class="n">03</span><span class="t">账目</span><span class="s">一天一天记</span></a>
+      <a href="#machine"><span class="n">04</span><span class="t">本机</span><span class="s">不出这台机器</span></a>
+      <a href="#sources"><span class="n">05</span><span class="t">数据源</span><span class="s">它读什么</span></a>
+      <a href="#install"><span class="n">06</span><span class="t">安装</span><span class="s">装进菜单栏</span></a>
+    </nav>
+  </section>
+
+  <!-- ============================================================
+       01 — 看板
+       ============================================================ -->
+  <section class="section panel-section" id="panel" aria-labelledby="panel-title">
+    <div class="shell">
+      <div class="section__head">
+        <div class="section__label">
+          <span class="id">01</span>
+          <span class="name">看板</span>
+          <span class="line" aria-hidden="true"></span>
+        </div>
+        <div class="section__title">
+          <h2 class="h2" id="panel-title">一张卡，<br /><b class="hl">只说一件事</b></h2>
+        </div>
+      </div>
+
+      <div class="anatomy">
+        <div class="anatomy__copy">
+          <p class="body-copy">弹出面板的高度，就是它要说的话的高度——没有滚动条，没有二级页面，也没有需要关掉的提示。</p>
+          <p class="body-copy">卡片可以折叠、可以拖拽排序，面板会记住。首屏那三块只是静态样张，不动。</p>
+          <p class="panel-hint">按 App 自己的布局常量在 HTML 里重建，不是截图。面板顶部那三个图标，就是这三张卡。数字是样例数据。</p>
+        </div>
+
+        <ol class="card-list">
+          <li>
+            <span class="i">01</span>
+            <div class="card-list__body">
+              <h3 class="n">Token 用量</h3>
+              <p>累计总量与估算成本，四格细分，按月聚合，再加一张 26 周热力图。</p>
+            </div>
+          </li>
+          <li>
+            <span class="i">02</span>
+            <div class="card-list__body">
+              <h3 class="n">订阅用量</h3>
+              <p>每家服务商的窗口量条与重置倒计时；余额型服务商换成双槽对照。</p>
+            </div>
+          </li>
+          <li>
+            <span class="i">03</span>
+            <div class="card-list__body">
+              <h3 class="n">Agent 用量</h3>
+              <p>14 日按 Agent 堆叠的柱状图与逐小时折线，可逐层下钻到模型和项目。</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       02 — 设置
+       ============================================================ -->
+  <section class="section" id="desk" aria-labelledby="desk-title">
+    <div class="shell">
+      <div class="section__head">
+        <div class="section__label">
+          <span class="idx">02</span>
+          <span class="name">设置</span>
+          <span class="line" aria-hidden="true"></span>
+        </div>
+        <div class="section__title">
+          <h2 class="h2" id="desk-title">六个房间，<br /><b class="hl">一道门</b></h2>
+        </div>
+      </div>
+
+      <div class="desk-layout">
+        <div class="desk-copy">
+          <p class="body-copy">设置窗口是你告诉 Bruce 能读什么的地方：多久刷新一次、允许扫描哪些 Agent、每个模型什么价、能碰哪一份凭证。你没点头之前，它什么都不会开始。</p>
+          <p class="body-copy">每一个开关都可以撤回，最后那个房间只有一颗按钮，把授权全部收回。</p>
+          <p class="panel-hint desk-hint">下面这个窗口是活的：点侧栏，或点右边这一列房间。</p>
+        </div>
+
+        <ol class="desk-index" id="desk-index" aria-label="设置分类">
+          <li><span class="i">01</span><span class="n">通用</span><span class="s">外观、节奏与菜单栏</span></li>
+          <li><span class="i">02</span><span class="n">模型用量</span><span class="s">只读的工作台</span></li>
+          <li><span class="i">03</span><span class="n">模型计费</span><span class="s">86 款模型，随时校准</span></li>
+          <li><span class="i">04</span><span class="n">订阅额度</span><span class="s">十家服务商，一份凭证</span></li>
+          <li><span class="i">05</span><span class="n">授权与隐私</span><span class="s">一次授权，随时撤回</span></li>
+          <li><span class="i">06</span><span class="n">维护</span><span class="s">更新、账单、诊断</span></li>
+        </ol>
+      </div>
+
+      <p class="desk-swipe" hidden>可以横向滑动这个窗口</p>
+      <div class="desk-window-wrap" id="desk-stage">
+        <div id="bruce-settings" class="bruce-settings" role="group"
+             aria-label="Bruce 设置窗口的可交互重建"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       03 — 账目
+       ============================================================ -->
+  <section class="section section--plate" id="record" aria-labelledby="record-title">
+    <div class="shell">
+      <div class="section__head">
+        <div class="section__label">
+          <span class="idx">03</span>
+          <span class="name">账目</span>
+          <span class="line" aria-hidden="true"></span>
+        </div>
+        <div class="section__title">
+          <h2 class="h2" id="record-title">这本账，<br /><b class="hl">按天写</b></h2>
+        </div>
+      </div>
+
+      <div class="record-grid">
+        <div class="record-heat">
+          <div class="heatmap" id="heatmap">
+            <div class="heatmap__months" id="heatmap-months" aria-hidden="true"></div>
+            <div class="heatmap__grid" id="heatmap-grid" role="img"
+                 aria-label="26 周的每日 token 用量"></div>
+            <div class="heatmap__foot">
+              <span id="heatmap-range">5 月 11 日 — 11 月 4 日</span>
+              <span class="heatmap__legend">
+                少
+                <i style="background:rgba(23,22,15,.07)"></i>
+                <i style="background:rgba(77,122,82,.24)"></i>
+                <i style="background:rgba(77,122,82,.43)"></i>
+                <i style="background:rgba(77,122,82,.62)"></i>
+                <i style="background:rgba(60,100,66,.82)"></i>
+                <i style="background:#2f5138"></i>
+                多
+              </span>
+            </div>
+            <p class="heatmap__note">每一格是一天。颜色越深，用量越大；最后四格是还没有发生的日子。把鼠标停在上面可以读它。</p>
+          </div>
+        </div>
+
+        <div class="record-copy">
+          <h3 class="h3">四个数字，<br />各自说得清。</h3>
+          <p class="body-copy">一次刷新只重读变化的部分。缓存读取和缓存命中分开记：前者是你付过钱的流量，后者是你没有重复付的钱。</p>
+          <ul class="stat-list">
+            <li><span class="k">输入</span><span class="v num">18.4M</span></li>
+            <li><span class="k">输出</span><span class="v num">1.7M</span></li>
+            <li><span class="k">缓存读取</span><span class="v num">566.5M</span></li>
+            <li><span class="k">缓存命中率</span><span class="v num">97%</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       04 — 本机
+       ============================================================ -->
+  <section class="section night" id="machine" aria-labelledby="machine-title">
+    <div class="shell">
+      <div class="section__head">
+        <div class="section__label">
+          <span class="idx">04</span>
+          <span class="name">本机</span>
+          <span class="line" aria-hidden="true"></span>
+        </div>
+        <div class="section__title">
+          <p class="label label--night" style="margin-bottom:1.6em;">隐私，是一种结构</p>
+          <h2 class="night__statement" id="machine-title">
+            账本<b class="hl">从不离开</b>这台机器
+          </h2>
+        </div>
+      </div>
+
+      <div class="pledges">
+        <article class="pledge">
+          <span class="pledge__n">01</span>
+          <h3>快照留在硬盘上</h3>
+          <p>每次刷新在 <em>~/Library/Application Support/Bruce</em> 写一份 artifact，上一份好的就放在旁边。</p>
+        </article>
+        <article class="pledge">
+          <span class="pledge__n">02</span>
+          <h3>凭证 0600</h3>
+          <p>用的时候才读，走 stdin 传进去，原子写入。不进命令行参数，也不进日志。</p>
+        </article>
+        <article class="pledge">
+          <span class="pledge__n">03</span>
+          <h3>只读是写死的</h3>
+          <p>别的应用的数据库一律以 <em>mode=ro</em> 打开，Bruce 没有一条写入路径。</p>
+        </article>
+        <article class="pledge">
+          <span class="pledge__n">04</span>
+          <h3>没有账号，也没有遥测</h3>
+          <p>没有我们自己的服务端，没有埋点，不需要登录。唯一一次联网，是你授权的那次额度查询。</p>
+        </article>
+      </div>
+
+      <div class="night__foot">
+        <span>本地优先 · macOS 与 Windows</span>
+        <span>每一项授权都能单独撤回</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       05 — 数据源
+       ============================================================ -->
+  <section class="section" id="sources" aria-labelledby="sources-title">
+    <div class="shell">
+      <div class="section__head">
+        <div class="section__label">
+          <span class="idx">05</span>
+          <span class="name">数据源</span>
+          <span class="line" aria-hidden="true"></span>
+        </div>
+        <div class="section__title">
+          <h2 class="h2" id="sources-title">十个 Agent，<br /><b class="hl">十种窗口</b></h2>
+        </div>
+      </div>
+
+      <div class="sources-grid">
+        <div class="source-col">
+          <div class="source-col__head">
+            <span class="t">本机会话扫描</span>
+            <span class="c">10 个 Agent</span>
+          </div>
+          <ol class="source-list" id="agent-list"></ol>
+        </div>
+
+        <div class="source-col">
+          <div class="source-col__head">
+            <span class="t">额度端点</span>
+            <span class="c">10 家服务商</span>
+          </div>
+          <ol class="source-list" id="provider-list"></ol>
+        </div>
+      </div>
+
+      <p class="sources-note">Cline 的 5 小时、7 天、30 天三个窗口，直接读服务端的权威端点——Bruce 不在本地为它们建模。以上截至 v{{VERSION}}。</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       06 — 安装
+       ============================================================ -->
+  <section class="section" id="install" aria-labelledby="install-title">
+    <div class="shell">
+      <div class="section__head">
+        <div class="section__label">
+          <span class="idx">06</span>
+          <span class="name">安装</span>
+          <span class="line" aria-hidden="true"></span>
+        </div>
+        <div class="section__title">
+          <h2 class="h2" id="install-title">装进菜单栏，<br /><b class="hl">或者托盘</b></h2>
+        </div>
+      </div>
+
+      <div class="install-grid">
+        <div class="install-main">
+          <p class="body-copy">两个平台各有自己的安装包，版本号与采集引擎同一个：macOS 是 Universal 2 的 .dmg，Windows 是 x64 的 NSIS 安装包。想先读一遍代码，也可以一条命令自己编。</p>
+
+          <div class="dl-grid">
+            <a class="dl-card" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce-{{VERSION}}.dmg" rel="noopener" aria-label="下载 macOS 版 Bruce-{{VERSION}}.dmg，Universal 2，{{DMG_SIZE}}">
+              <span class="dl-card__os">macOS</span>
+              <span class="dl-card__file">Bruce-{{VERSION}}.dmg</span>
+              <span class="dl-card__meta">Universal 2 · Apple Silicon 与 Intel · {{DMG_SIZE}}</span>
+              <span class="dl-card__go">下载 <span class="cta__arrow" aria-hidden="true">→</span></span>
+            </a>
+
+            <a class="dl-card" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce_{{VERSION}}_x64-setup.exe" rel="noopener" aria-label="下载 Windows 版 Bruce_{{VERSION}}_x64-setup.exe，x64，{{EXE_SIZE}}">
+              <span class="dl-card__os">Windows</span>
+              <span class="dl-card__file">Bruce_{{VERSION}}_x64-setup.exe</span>
+              <span class="dl-card__meta">x64 · Windows 10 / 11 · {{EXE_SIZE}}</span>
+              <span class="dl-card__go">下载 <span class="cta__arrow" aria-hidden="true">→</span></span>
+            </a>
+          </div>
+
+          <p class="install-alt">
+            <a class="link" href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">全部版本与 SHA256 ↗</a>
+            <a class="link" href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">读源码 ↗</a>
+          </p>
+
+          <div class="cmd">
+            <div class="cmd__label">或者，从源码构建</div>
+            <div class="cmd__box">
+              <code id="build-cmd">zsh scripts/build-test-app.sh --universal --install</code>
+              <button type="button" data-copy="#build-cmd">复制</button>
+            </div>
+          </div>
+
+          <p class="install-note">两版都还没签名：macOS 侧 Developer ID 与公证尚未进入 CI，首次启动系统会请你确认；Windows 侧的 exe 未做 Authenticode，SmartScreen 会拦一次。之后应用自己更新——替换前校验 SHA-256，失败就回滚。</p>
+        </div>
+
+        <div class="install-spec">
+          <p class="label" style="margin-bottom:1.1em">规格</p>
+          <table class="spec-table">
+            <tbody>
+              <tr><th scope="row">版本</th><td>{{VERSION}}</td></tr>
+              <tr><th scope="row">平台</th><td>macOS 14+ · Windows 10/11</td></tr>
+              <tr><th scope="row">架构</th><td>Universal 2 · x64</td></tr>
+              <tr><th scope="row">液态玻璃</th><td>macOS 26 或更高</td></tr>
+              <tr><th scope="row">语言</th><td>Swift 6.2 · Rust · Tauri 2</td></tr>
+              <tr><th scope="row">许可证</th><td>MIT</td></tr>
+              <tr><th scope="row">服务端</th><td>无</td></tr>
+            </tbody>
+          </table>
+
+          <figure class="icon-note">
+            <img src="assets/bruce-icon.png" width="64" height="64" alt="Bruce 应用图标：绿底上一只奶油色的狗" />
+            <figcaption>Bruce，就长这样。</figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================================================
+     页脚
+     ============================================================ -->
+<footer class="colophon shell">
+  <div class="colophon__top">
+    <div class="colophon__note">
+      <p>macOS 菜单栏应用，与基于 Tauri 的 Windows 托盘版共用一套账本。<br />它记账，你管钥匙。</p>
+      <p>
+        由 <a class="foot-link" href="https://github.com/4everSivan" target="_blank" rel="noopener">sivan</a>
+        制作，感谢 <a class="foot-link" href="https://linux.do/" target="_blank" rel="noopener">LINUX DO</a>。
+      </p>
+    </div>
+
+    <nav class="foot-nav foot-nav--site" aria-label="目录">
+      <h4>目录</h4>
+      <ul>
+        <li><a href="#panel">01 — 看板</a></li>
+        <li><a href="#desk">02 — 设置</a></li>
+        <li><a href="#record">03 — 账目</a></li>
+        <li><a href="#machine">04 — 本机</a></li>
+        <li><a href="#sources">05 — 数据源</a></li>
+        <li><a href="#install">06 — 安装</a></li>
+      </ul>
+    </nav>
+
+    <nav class="foot-nav foot-nav--project" aria-label="项目">
+      <h4>项目</h4>
+      <ul>
+        <li><a href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">源码 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">发布 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/blob/main/LICENSE" target="_blank" rel="noopener">许可证 ↗</a></li>
+      </ul>
+    </nav>
+
+    <nav class="foot-nav foot-nav--elsewhere" aria-label="别处">
+      <h4>别处</h4>
+      <ul>
+        <li><a href="https://github.com/4everSivan/Bruce/tree/main/docs" target="_blank" rel="noopener">文档 ↗</a></li>
+        <li><a href="https://linux.do/" target="_blank" rel="noopener">LINUX DO ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/issues" target="_blank" rel="noopener">报告问题 ↗</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div class="wordmark-wrap" aria-hidden="true"><p class="wordmark">Bruce</p></div>
+
+  <div class="colophon__bottom">
+    <span>© 2026 Bruce · MIT</span>
+    <span class="set">正文宋体，西文 Times New Roman，纸色 #f1efe9。</span>
+    <span>v{{VERSION}}</span>
+  </div>
+</footer>
+
+<div class="heatmap__tip" id="heatmap-tip" role="status" aria-live="polite"></div>
+
+<script src="js/data.js"></script>
+<script src="js/panel.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/site.js"></script>
+</body>
+</html>

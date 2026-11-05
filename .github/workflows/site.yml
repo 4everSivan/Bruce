@@ -1,0 +1,59 @@
+name: Deploy Site
+
+# 官网发布线（T27）：与 App 的 CI/Release 完全解耦。
+# 只在站点相关路径变化时触发；构建前先跑同步门禁，产物落在 local/dist/site 后交给 Pages。
+# 设计见 docs/devel/design/13-官方网站.md §3.10。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/assets/provider-icons/**"
+      - "scripts/build-site.mjs"
+      - "scripts/check-site-sync.mjs"
+      - "VERSION"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建官网产物 (site)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 校验站点与仓库事实源同步
+        run: node scripts/check-site-sync.mjs
+      - name: 注入版本与资产大小并构建
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # --strict: 发布场景不接受「资产大小未解析」的降级产物
+        run: node scripts/build-site.mjs --strict
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: local/dist/site
+
+  deploy:
+    name: 发布到 GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,6 +1,6 @@
 # 系统设计中心 (design/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-03 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-05 ｜ **status**: active
 
 ## 1. 简介
 
@@ -35,6 +35,7 @@
 | [10-首次启动欢迎与引导向导.md](10-首次启动欢迎与引导向导.md) | `FirstLaunchWelcome` | `DESIGN-WELCOME` | 首次启动双栏沉浸式三步欢迎向导（方案 A · `780 × 540`）：本机 Agent 只读探测与双门禁合并一键激活、订阅额度快速导入、双同心环实时预览定制与自动展开看板 | 现行基线 | 2026-11-02 |
 | [11-网络出口国家校验.md](11-网络出口国家校验.md) | `NetworkEgressCountry` | `DESIGN-EGRESS-COUNTRY` | 订阅额度查询前本机网络出口校验：设置页双卡分立、Cloudflare Trace 两级检测（含国内 IP 快速熔断）、仪表盘 30pt 单行出口问题卡片与快照保护 | 现行基线 | 2026-11-03 |
 | [12-开机自启动.md](12-开机自启动.md) | `LaunchAtLogin` | `DESIGN-LAUNCH-AT-LOGIN` | macOS 原生开机自启动（SMAppService API）、设置中心「通用」面板开关、首次启动向导可选联动与系统权限拦截引导 | 现行基线 | 2026-11-03 |
+| [13-官方网站.md](13-官方网站.md) | `OfficialWebsite` | `DESIGN-WEBSITE` | 官网单页落地主仓：宋体 + Times 的时装画册版式、三主题面板牌堆与设置窗口高保真重建、VERSION 注入构建、站点同步门禁与 Pages 独立发布 | 现行基线 | 2026-11-05 |
 
 ### 待评审草稿
 

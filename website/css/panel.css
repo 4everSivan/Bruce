@@ -1,0 +1,1629 @@
+/* ============================================================
+   BRUCE — official site
+   panel.css : the menu bar popover, rebuilt to the app's constants
+   Panel 440 · radius 14 · card radius 8 · card pad 15/13
+   Product chrome uses system sans; it is software, not type.
+   ============================================================ */
+
+.bruce-panel {
+  position: relative;
+  z-index: 2;
+  width: 440px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.25;
+  color: #000;
+  -webkit-font-smoothing: antialiased;
+  transform-origin: top center;
+}
+
+/* ---- the popover shell ------------------------------------------ */
+.bp-surface {
+  --bp-card: rgba(255, 255, 255, 0.96);
+  --bp-border: rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(246, 248, 252, 0.92);
+  border: 1px solid var(--bp-border);
+  box-shadow:
+    0 32px 64px -26px rgba(20, 24, 34, 0.38),
+    0 10px 22px -14px rgba(20, 24, 34, 0.2),
+    0 1px 2px rgba(20, 24, 34, 0.05);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  transition: background-color 420ms var(--ease), border-color 420ms var(--ease),
+    backdrop-filter 420ms var(--ease);
+}
+
+/* liquid glass: native glass tokens, white 46% tint, thinner card fill */
+.bp-surface[data-material="liquid"] {
+  --bp-card: rgba(255, 255, 255, 0.36);
+  background: rgba(255, 255, 255, 0.46);
+  border-color: rgba(0, 0, 0, 0.08);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  backdrop-filter: blur(40px) saturate(200%);
+  box-shadow:
+    0 36px 80px -28px rgba(20, 24, 34, 0.42),
+    0 12px 26px -16px rgba(20, 24, 34, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* ---- panel header ---------------------------------------------- */
+.bp-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px 9px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  margin-bottom: 9px;
+  min-height: 31px;
+}
+
+.bp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0a7d3b;
+  box-shadow: 0 0 0 3px rgba(10, 125, 59, 0.18);
+  flex: 0 0 auto;
+  margin-left: 3px;
+}
+
+.bp-brand {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.bp-head__right { margin-left: auto; display: flex; align-items: center; }
+
+.bp-status {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(0, 0, 0, 0.42);
+}
+
+.bp-tabs { display: flex; gap: 2px; }
+
+.bp-tab {
+  width: 27px;
+  height: 22px;
+  border-radius: 2px;
+  display: grid;
+  place-items: center;
+  color: rgba(0, 0, 0, 0.4);
+  transition: background-color 200ms var(--ease), color 200ms var(--ease);
+}
+
+.bp-tab:hover { background: rgba(0, 0, 0, 0.05); color: rgba(0, 0, 0, 0.7); }
+
+.bp-tab[aria-selected="true"] {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.bp-tab svg { width: 11px; height: 11px; }
+
+/* ---- cards ------------------------------------------------------ */
+.bp-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bp-card {
+  position: relative;
+  background: var(--bp-card);
+  border-radius: 8px;
+  padding: 13px 15px;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.05), inset 0 0 0 1px rgba(0, 0, 0, 0.045);
+  overflow: hidden;
+  transition: background-color 420ms var(--ease);
+}
+
+.bp-card__head {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-height: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bp-card__title {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bp-chev {
+  width: 9px;
+  height: 9px;
+  color: rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: rotate(0deg);
+  transition: opacity 150ms var(--ease), transform 150ms var(--ease);
+  flex: 0 0 auto;
+}
+
+.bp-card__head:hover .bp-chev { opacity: 1; }
+
+.bp-card.is-collapsed .bp-chev { transform: rotate(-90deg); }
+
+.bp-card.is-collapsed .bp-card__head:hover .bp-chev { transform: rotate(0deg); }
+
+/* collapse animation */
+.bp-card__body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 300ms cubic-bezier(0.42, 0, 0.58, 1);
+}
+
+.bp-card__body > div {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 1;
+  transition: opacity 220ms var(--ease-out);
+}
+
+.bp-card.is-collapsed .bp-card__body { grid-template-rows: 0fr; }
+
+.bp-card.is-collapsed .bp-card__body > div { opacity: 0; }
+
+/* LIVE badge */
+.bp-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #0a7d3b;
+}
+
+.bp-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0a7d3b;
+  box-shadow: 0 0 0 3px rgba(10, 125, 59, 0.18);
+  display: block;
+}
+
+/* ---- token card ------------------------------------------------- */
+.bp-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.bp-hero__num {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1.2px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, #064e3b 28%, #065f46 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bp-hero__unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.bp-hero__cost {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0284c7;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.bp-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.07);
+  margin-top: 12px;
+}
+
+.bp-breakdown {
+  display: flex;
+  padding-top: 10px;
+}
+
+.bp-breakdown > div {
+  flex: 1 1 0;
+  padding: 0 13px;
+  border-left: 1px solid rgba(0, 0, 0, 0.07);
+  min-width: 0;
+}
+
+.bp-breakdown > div:first-child { padding-left: 0; border-left: 0; }
+.bp-breakdown > div:last-child { padding-right: 0; }
+
+.bp-breakdown dt {
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.55);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.bp-breakdown dd {
+  margin: 3px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.85);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+
+/* monthly section */
+.bp-section {
+  padding-top: 12px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bp-section__title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: rgba(0, 0, 0, 0.55);
+  text-transform: uppercase;
+}
+
+.bp-section__meta {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.5);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bp-section__meta b { font-weight: 700; color: rgba(0, 0, 0, 0.72); }
+
+.bp-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.bp-month {
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(0, 0, 0, 0.065);
+  border-radius: 6px;
+  padding: 6px 9px;
+}
+
+.bp-month__k {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.bp-month__v {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.bp-month.is-current {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.09);
+}
+
+.bp-month.is-current .bp-month__k { color: #065f46; font-weight: 600; }
+.bp-month.is-current .bp-month__v { color: #064e3b; }
+
+/* heatmap */
+.bp-heatmap { padding-top: 12px; }
+
+.bp-heatmap__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bp-heatmap__grid {
+  display: grid;
+  grid-template-columns: repeat(26, 11.96px);
+  grid-template-rows: repeat(7, 11.96px);
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.bp-heatmap__cell {
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.055);
+  transition: transform 160ms var(--ease), background-color 160ms var(--ease);
+}
+
+.bp-heatmap__cell[data-level="1"] { background: #cbd9c7; }
+.bp-heatmap__cell[data-level="2"] { background: #a6c0a2; }
+.bp-heatmap__cell[data-level="3"] { background: #7ba077; }
+.bp-heatmap__cell[data-level="4"] { background: #4e7a52; }
+.bp-heatmap__cell[data-level="5"] { background: #2a4a31; }
+
+.bp-heatmap__cell:hover { transform: scale(1.18); }
+
+.bp-heatmap__axis {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 5px;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-heatmap__legend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.bp-heatmap__legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: block;
+  margin: 0 1px;
+}
+
+/* ---- hourly card ------------------------------------------------- */
+.bp-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 68px;
+  margin-top: 12px;
+}
+
+.bp-bars__col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 100%;
+  position: relative;
+  cursor: default;
+}
+
+.bp-bars__seg {
+  width: 100%;
+  border-radius: 1.5px;
+  transition: filter 180ms var(--ease);
+  transform-origin: bottom;
+  animation: bp-grow 500ms var(--ease-out) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes bp-grow { from { transform: scaleY(0.02); } to { transform: scaleY(1); } }
+
+.bp-bars__col:hover .bp-bars__seg { filter: brightness(1.12); }
+
+.bp-axis {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 3px;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.bp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-top: 4px;
+}
+
+.bp-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.bp-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  display: block;
+}
+
+.bp-hr-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 0 2px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  margin-top: 8px;
+}
+
+.bp-hr-head span:first-child {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.bp-hr-head span:last-child { font-size: 10px; color: rgba(0, 0, 0, 0.45); }
+
+.bp-agent {
+  padding: 7px 0 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.bp-agent:first-of-type { border-top: 0; }
+
+.bp-agent__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.bp-agent__name { font-size: 11px; font-weight: 600; }
+
+.bp-agent__total {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-agent__line {
+  width: 100%;
+  height: 26px;
+  display: block;
+  margin-top: 2px;
+}
+
+.bp-agent__chev {
+  width: 9px;
+  height: 9px;
+  color: rgba(0, 0, 0, 0.3);
+  transition: transform 150ms var(--ease);
+}
+
+.bp-agent.is-open .bp-agent__chev { transform: rotate(90deg); }
+
+.bp-agent__detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 150ms cubic-bezier(0.42, 0, 0.58, 1);
+}
+
+.bp-agent.is-open .bp-agent__detail { grid-template-rows: 1fr; }
+
+.bp-agent__detail > div { overflow: hidden; min-height: 0; }
+
+.bp-share {
+  display: flex;
+  gap: 1px;
+  height: 6px;
+  margin: 4px 0 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.bp-share i { display: block; height: 100%; }
+
+.bp-share-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  color: rgba(0, 0, 0, 0.6);
+  padding: 1px 0;
+}
+
+.bp-share-row b { margin-left: auto; font-weight: 600; color: rgba(0, 0, 0, 0.72); }
+
+/* ---- subscription card ------------------------------------------ */
+.bp-prov {
+  padding-top: 10px;
+  padding-bottom: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.bp-prov:first-of-type { border-top: 0; }
+
+.bp-prov__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 17px;
+  padding-bottom: 3px;
+}
+
+.bp-badge {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  flex: 0 0 auto;
+}
+
+.bp-prov__name { font-size: 11px; font-weight: 600; }
+
+.bp-prov__chev {
+  width: 8px;
+  height: 8px;
+  color: rgba(0, 0, 0, 0.3);
+  transition: transform 150ms var(--ease);
+}
+
+.bp-prov.is-open .bp-prov__chev { transform: rotate(180deg); }
+
+.bp-prov__count { font-size: 10.5px; color: rgba(0, 0, 0, 0.45); }
+
+.bp-prov__head .bp-icon { margin-left: auto; }
+
+.bp-icon {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  color: rgba(0, 0, 0, 0.45);
+  border-radius: 3px;
+  transition: color 180ms var(--ease), background-color 180ms var(--ease);
+}
+
+.bp-icon:hover { color: rgba(0, 0, 0, 0.8); background: rgba(0, 0, 0, 0.05); }
+
+.bp-icon svg { width: 10px; height: 10px; }
+
+.bp-icon.is-spinning svg { animation: bp-spin 1s linear infinite; }
+
+@keyframes bp-spin { to { transform: rotate(360deg); } }
+
+/* window row: 62 / meter / 46 / 48 */
+.bp-window {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2.5px 0;
+}
+
+.bp-window__k {
+  flex: 0 0 62px;
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.bp-meter {
+  display: block;
+  flex: 1 1 auto;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.07);
+  overflow: hidden;
+}
+
+.bp-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #30d158, #66d4a3);
+  transition: width 850ms cubic-bezier(0.16, 1, 0.3, 1), background 250ms var(--ease);
+}
+
+.bp-meter__fill[data-level="warning"] { background: linear-gradient(90deg, #ff9f0a, #ffd60a); }
+.bp-meter__fill[data-level="critical"] { background: linear-gradient(90deg, #ff453a, #ff6961); }
+
+.bp-window__pct {
+  flex: 0 0 46px;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-window__when {
+  flex: 0 0 48px;
+  text-align: right;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* multi-account sub-cards */
+.bp-accounts {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms cubic-bezier(0.42, 0, 0.58, 1);
+}
+
+.bp-prov.is-open .bp-accounts { grid-template-rows: 1fr; }
+
+.bp-accounts > div { overflow: hidden; min-height: 0; }
+
+.bp-accounts__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.bp-account {
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(0, 0, 0, 0.065);
+}
+
+.bp-account__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 1px;
+}
+
+.bp-account__name { font-size: 10.5px; font-weight: 600; }
+
+.bp-account__tag {
+  font-size: 8.5px;
+  font-weight: 500;
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.12);
+  border-radius: 3.5px;
+  padding: 1px 5px;
+}
+
+/* balance mode: two equal slots */
+.bp-balance {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.bp-balance__slot {
+  flex: 1 1 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid rgba(0, 0, 0, 0.065);
+}
+
+.bp-balance__k {
+  display: block;
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.bp-balance__v {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.bp-balance__status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.8);
+}
+
+.bp-balance__status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #30d158;
+  display: block;
+}
+
+/* subscription footer */
+.bp-subfoot {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  margin-top: 7px;
+  padding-top: 8px;
+  font-size: 10.5px;
+  color: rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- footer ----------------------------------------------------- */
+.bp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0 0;
+  margin-top: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.07);
+}
+
+.bp-foot__spacer { flex: 1 1 auto; }
+
+.bp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.5);
+  color: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: background-color 180ms var(--ease), color 180ms var(--ease),
+    transform 160ms var(--ease);
+}
+
+.bp-btn:hover { background: rgba(255, 255, 255, 0.95); color: #000; }
+.bp-btn:active { transform: scale(0.96); }
+
+.bp-btn svg { width: 12px; height: 12px; }
+
+.bp-btn.is-spinning svg { animation: bp-spin 1s linear infinite; }
+
+/* ---- transitions between layouts -------------------------------- */
+.bp-card__body > div > .bp-fade { animation: bp-fade 240ms var(--ease-out) both; }
+
+@keyframes bp-fade {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* character-stream decoration on the token card (app: U:1052–1112) */
+.bp-stream {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 18%, #000 55%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 18%, #000 55%, #000 100%);
+  mix-blend-mode: multiply;
+}
+
+/* tooltip shared with the record heatmap */
+.bp-tip {
+  position: fixed;
+  z-index: 80;
+  padding: 4px 7px 5px;
+  border-radius: 4px;
+  background: rgba(20, 20, 18, 0.92);
+  color: #f6f4ee;
+  font-family: var(--sans);
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -140%);
+  transition: opacity 160ms var(--ease);
+}
+
+.bp-tip.is-on { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-bars__seg { animation: none; }
+  .bp-icon.is-spinning svg,
+  .bp-btn.is-spinning svg { animation: none; }
+}
+
+/* ================================================================
+   面板内部：真机是中文原生界面 → 系统无衬线（SF Pro + 苹方）
+   汉字在 8.5px 会糊，故中文标签统一抬到 9.5–10.5px
+   ================================================================ */
+.bruce-panel {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Helvetica Neue", sans-serif;
+  letter-spacing: 0;
+}
+
+.bp-breakdown dt {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.bp-section__title {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: none;
+}
+
+.bp-section__meta { font-size: 10px; letter-spacing: 0.01em; }
+
+.bp-month__k {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.bp-heatmap__axis,
+.bp-heatmap__legend { font-size: 9.5px; letter-spacing: 0.02em; }
+
+.bp-hr-head span:first-child {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: none;
+}
+
+.bp-window__k { font-size: 10.5px; letter-spacing: 0.01em; }
+.bp-window__when { font-size: 9.5px; letter-spacing: 0.01em; }
+
+.bp-prov__name { font-size: 11.5px; }
+.bp-prov__count { font-size: 10.5px; }
+
+.bp-balance__k { font-size: 10.5px; letter-spacing: 0.01em; }
+.bp-balance__status { font-size: 12px; }
+
+.bp-subfoot { font-size: 10.5px; letter-spacing: 0.01em; }
+
+.bp-account__name { font-size: 11px; }
+.bp-account__tag { font-size: 9.5px; letter-spacing: 0.02em; }
+
+.bp-legend span { font-size: 10px; letter-spacing: 0.01em; }
+.bp-axis { font-size: 9.5px; letter-spacing: 0.02em; }
+.bp-share-row { font-size: 10px; letter-spacing: 0.01em; }
+
+.bp-tab svg { width: 12px; height: 12px; }
+
+/* ================================================================
+   Nothing 主题（theme = nothing）
+   照 GlassSurfacePlan / UsageHeroCard / SubscriptionCard 的 Nothing 分支 1:1 重做
+   ================================================================ */
+@font-face {
+  font-family: "Space Mono";
+  src: url("../assets/fonts/spacemono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Mono";
+  src: url("../assets/fonts/spacemono-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Doto";
+  src: url("../assets/fonts/doto-var.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+.bp-surface[data-material="nothing"] {
+  --bp-card: #ffffff;
+  background: #f5f5f5;
+  border-color: #e8e8e8;
+  border-radius: 14px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-family: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color: #111;
+}
+
+.bp-surface[data-material="nothing"] .bp-head { border-bottom-color: #e8e8e8; }
+
+.bp-surface[data-material="nothing"] .bp-brand {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bp-surface[data-material="nothing"] .bp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+  background: #111;
+  box-shadow: none;
+}
+
+.bp-surface[data-material="nothing"] .bp-status {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #666;
+}
+
+/* tab 条：Nothing 选项为实心主色 */
+.bp-surface[data-material="nothing"] .bp-tab { width: 24px; height: 20px; border-radius: 2px; }
+.bp-surface[data-material="nothing"] .bp-tab svg { width: 10.5px; height: 10.5px; }
+.bp-surface[data-material="nothing"] .bp-tab[aria-selected="true"] {
+  background: #111;
+  color: #fff;
+}
+
+/* 卡片：平底、1px 实线、0 圆角、无投影 */
+.bp-surface[data-material="nothing"] .bp-card {
+  background: #fff;
+  border-radius: 0;
+  box-shadow: none;
+  border: 1px solid #e8e8e8;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.bp-surface[data-material="nothing"] .bp-card__title {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #666;
+}
+
+.bp-surface[data-material="nothing"] .bp-live {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #4a9e5c;
+}
+.bp-surface[data-material="nothing"] .bp-live i { border-radius: 0; box-shadow: none; }
+
+/* Hero：Doto 点阵 52pt + Nothing 亮色主调 #D4A843 */
+
+.bp-surface[data-material="nothing"] .bp-hero__unit {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #999;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__cost {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111;
+}
+
+.bp-surface[data-material="nothing"] .bp-divider { background: #e8e8e8; }
+
+.bp-surface[data-material="nothing"] .bp-breakdown > div { border-left-color: #e8e8e8; }
+.bp-surface[data-material="nothing"] .bp-breakdown dt {
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #999;
+}
+.bp-surface[data-material="nothing"] .bp-breakdown dd {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111;
+}
+
+.bp-surface[data-material="nothing"] .bp-section__title {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #999;
+}
+.bp-surface[data-material="nothing"] .bp-section__meta { font-size: 9.5px; color: #999; }
+.bp-surface[data-material="nothing"] .bp-section__meta b { color: #111; }
+
+.bp-surface[data-material="nothing"] .bp-month {
+  border-radius: 0;
+  background: #fff;
+  border-color: #e8e8e8;
+}
+.bp-surface[data-material="nothing"] .bp-month.is-current { background: #f0f0f0; border-color: #cfcfcf; }
+.bp-surface[data-material="nothing"] .bp-month__k { font-size: 9px; color: #999; }
+.bp-surface[data-material="nothing"] .bp-month__v { font-size: 13px; font-weight: 700; color: #111; }
+
+/* 模型用量：方角刻条 */
+.bp-surface[data-material="nothing"] .bp-models { border-top-color: #e8e8e8; }
+.bp-surface[data-material="nothing"] .bp-seg--xs { border-radius: 2px; background: #efefef; }
+.bp-surface[data-material="nothing"] .bp-seg--xs button {
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 9px;
+  color: #666;
+}
+.bp-surface[data-material="nothing"] .bp-seg--xs button[aria-pressed="true"] {
+  background: #111;
+  color: #fff;
+  box-shadow: none;
+}
+.bp-surface[data-material="nothing"] .bp-model { font-size: 10px; }
+.bp-surface[data-material="nothing"] .bp-model__name { color: #333; }
+.bp-surface[data-material="nothing"] .bp-model__bar { border-radius: 0; background: #ececec; }
+.bp-surface[data-material="nothing"] .bp-model__bar i { border-radius: 0; background: #4a9e5c; }
+.bp-surface[data-material="nothing"] .bp-model__val { color: #111; }
+.bp-surface[data-material="nothing"] .bp-models__more { color: #666; }
+
+/* 热力图：方点阵 + 呼吸（Nothing 专属） */
+.bp-surface[data-material="nothing"] .bp-heatmap__cell {
+  border-radius: 0;
+  background: #e8e8e8;
+  animation: bp-breathe 3.2s ease-in-out infinite alternate;
+  animation-delay: var(--ph, 0s);
+}
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="1"] { background: #c9e3cd; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="2"] { background: #8ccb98; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="3"] { background: #4a9e5c; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="4"] { background: #35854a; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="5"] { background: #2a6b3c; }
+
+@keyframes bp-breathe {
+  from { opacity: 0.42; }
+  to { opacity: 1; }
+}
+
+.bp-surface[data-material="nothing"] .bp-heatmap__axis,
+.bp-surface[data-material="nothing"] .bp-heatmap__legend { color: #666; }
+
+/* 订阅：24 段刻度条 */
+.bp-surface[data-material="nothing"] .bp-prov { border-top-color: #e8e8e8; }
+.bp-surface[data-material="nothing"] .bp-prov__name { color: #111; }
+.bp-surface[data-material="nothing"] .bp-prov__count,
+.bp-surface[data-material="nothing"] .bp-window__k,
+.bp-surface[data-material="nothing"] .bp-window__when { color: #666; }
+.bp-surface[data-material="nothing"] .bp-window__pct {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+.bp-surface[data-material="nothing"] .bp-badge { border-radius: 0; }
+.bp-surface[data-material="nothing"] .bp-account { border-radius: 0; background: #fff; border-color: #e8e8e8; }
+.bp-surface[data-material="nothing"] .bp-balance__slot { border-radius: 0; background: #f7f7f7; border-color: #e8e8e8; }
+.bp-surface[data-material="nothing"] .bp-subfoot { border-top-color: #e8e8e8; color: #666; }
+
+/* 页脚：方按钮 */
+.bp-surface[data-material="nothing"] .bp-foot { border-top-color: #e8e8e8; box-shadow: none; }
+.bp-surface[data-material="nothing"] .bp-btn {
+  border-radius: 6px;
+  background: #fff;
+  border-color: #ccc;
+  box-shadow: none;
+}
+
+/* token 卡的点阵底纹：16pt 网格、2pt 点、13% 不透明度、向下淡出 */
+.bp-surface[data-material="nothing"] .bp-card[data-card="token"] {
+  position: relative;
+  isolation: isolate;
+}
+.bp-surface[data-material="nothing"] .bp-card[data-card="token"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(rgba(17, 17, 17, 0.13) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 34%, #000 76%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 34%, #000 76%, #000 100%);
+  pointer-events: none;
+}
+
+@keyframes bp-breathe2 { from { opacity: 1; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .bp-surface[data-material="nothing"] .bp-heatmap__cell { animation: none; }
+}
+
+/* ================================================================
+   模型用量区块（经典 / 液态 / Nothing 共用骨架）
+   ================================================================ */
+.bp-models {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.bp-models__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.bp-seg--xs {
+  display: inline-flex;
+  padding: 1px;
+  border-radius: 6px;
+  background: rgba(27, 26, 23, 0.06);
+}
+
+.bp-seg--xs button {
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 1px 6px 2px;
+  border-radius: 4px;
+  color: rgba(27, 26, 23, 0.45);
+  transition: background-color 180ms var(--ease), color 180ms var(--ease);
+}
+
+.bp-seg--xs button[aria-pressed="true"] {
+  background: #fff;
+  color: #1b1a17;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.bp-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 10px;
+}
+
+.bp-model__name {
+  flex: 0 0 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.bp-model__bar {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.07);
+  overflow: hidden;
+}
+
+.bp-model__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #4d7a52;
+  transition: width 500ms var(--ease-out);
+}
+
+.bp-model__val {
+  flex: 0 0 54px;
+  text-align: right;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-models__more {
+  margin-top: 5px;
+  font-size: 9.5px;
+  color: rgba(0, 0, 0, 0.45);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  padding-bottom: 1px;
+}
+
+.bp-models__more:hover { color: rgba(0, 0, 0, 0.75); }
+
+/* Nothing：24 段刻度量条 */
+.bp-meter--seg {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.bp-seg-cell {
+  flex: 1 1 0;
+  background: #e0e0e0;
+  border-radius: 0;
+}
+
+.bp-seg-cell.is-on { background: #4a9e5c; }
+
+.bp-meter--seg[data-level="warning"] .bp-seg-cell.is-on { background: #d4a843; }
+.bp-meter--seg[data-level="critical"] .bp-seg-cell.is-on { background: #d71921; }
+
+.bp-seg-cell.is-frontier { background: #8fc79b; }
+.bp-meter--seg[data-level="warning"] .bp-seg-cell.is-frontier { background: #e6c884; }
+.bp-meter--seg[data-level="critical"] .bp-seg-cell.is-frontier { background: #e5726d; }
+
+/* Nothing：14 日柱状换成 3×8 点阵，折线统一翡翠绿 */
+.bp-bars__col--dots {
+  display: grid;
+  grid-template-columns: repeat(3, 6px);
+  grid-template-rows: repeat(8, 6px);
+  gap: 2px;
+  align-content: end;
+  justify-content: center;
+}
+
+.bp-dot-cell {
+  width: 6px;
+  height: 6px;
+  background: #ececec;
+}
+
+.bp-dot-cell.is-on { background: #4a9e5c; }
+
+.bp-surface[data-material="nothing"] .bp-bars { height: 68px; }
+
+/* ================================================================
+   静态样张：去掉一切"可点"的暗示（hover / cursor / 折叠箭头）
+   ================================================================ */
+.bp-card__head,
+.bp-btn,
+.bp-tab,
+.bp-icon,
+.bp-models__more { cursor: default; }
+
+.bp-chev { display: none; }
+
+.bp-btn:hover { background: rgba(255, 255, 255, 0.5); color: rgba(0, 0, 0, 0.55); }
+.bp-icon:hover { background: transparent; color: rgba(0, 0, 0, 0.45); }
+.bp-tab:hover { background: transparent; color: rgba(0, 0, 0, 0.4); }
+.bp-btn:active { transform: none; }
+.bp-models__more { border-bottom: 0; }
+
+.bp-surface[data-material="nothing"] .bp-btn:hover { background: #fff; color: rgba(0, 0, 0, 0.55); }
+.bp-surface[data-material="nothing"] .bp-tab:hover { background: transparent; color: #000; }
+
+/* tab 选中态（span 版） */
+.bp-tab.is-active {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.bp-surface[data-material="nothing"] .bp-tab.is-active {
+  background: #111;
+  color: #fff;
+}
+
+/* 模型用量窗口（span 版） */
+.bp-seg--xs .bp-win {
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 1px 6px 2px;
+  border-radius: 4px;
+  color: rgba(27, 26, 23, 0.45);
+}
+
+.bp-seg--xs .bp-win.is-on {
+  background: #fff;
+  color: #1b1a17;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.bp-surface[data-material="nothing"] .bp-seg--xs .bp-win {
+  border-radius: 0;
+  color: #666;
+}
+
+.bp-surface[data-material="nothing"] .bp-seg--xs .bp-win.is-on {
+  background: #111;
+  color: #fff;
+  box-shadow: none;
+}
+
+/* ================================================================
+   B 方案：Token 用量卡的主角数字统一用 Doto 点阵（三种皮肤）
+   Agent / 订阅卡仍用各自的文字体系
+   ================================================================ */
+.bp-surface .bp-card[data-card="token"] .bp-hero__num {
+  font-family: "Doto", "Space Mono", ui-monospace, monospace;
+  letter-spacing: -0.01em;
+}
+
+/* 经典 / 液态：46px，保留各自的绿色渐变 */
+.bp-surface:not([data-material="nothing"]) .bp-card[data-card="token"] .bp-hero__num {
+  font-size: 46px;
+  font-weight: 600;
+}
+
+/* Nothing 保持源码的 52px + #D4A843 */
+
+/* 顶栏状态灯：三块面板一致（绿点 + 光晕） */
+.bp-surface[data-material="nothing"] .bp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0a7d3b;
+  box-shadow: 0 0 0 3px rgba(10, 125, 59, 0.18);
+  margin-left: 3px;
+}
+
+
+/* ================================================================
+   Nothing 主题 · 按真机参考图校准（Doto 真点阵 / 琥珀色系 / 大圆角）
+   ================================================================ */
+.bp-surface[data-material="nothing"] {
+  --n-amber: #c9a24a;
+  --n-amber-deep: #a8842f;
+  border-radius: 22px;
+  background: #f7f7f8;
+  border-color: #ececec;
+}
+
+.bp-surface[data-material="nothing"] .bp-card {
+  border-radius: 14px;
+  border-color: #ededed;
+}
+
+/* Hero：Doto 400 点阵 + 琥珀 */
+
+.bp-surface[data-material="nothing"] .bp-hero__unit {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9a9a9a;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__cost {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* 卡片标题：跟随真机用无衬线，只有数字与标签用等宽 */
+.bp-surface[data-material="nothing"] .bp-card__title {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: #6b6b6b;
+}
+
+.bp-surface[data-material="nothing"] .bp-breakdown dt {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #9b9b9b;
+}
+.bp-surface[data-material="nothing"] .bp-breakdown dd {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* 月份格：更大的圆角 + 当前月琥珀 */
+.bp-surface[data-material="nothing"] .bp-month {
+  border-radius: 10px;
+  border-color: #ededed;
+}
+.bp-surface[data-material="nothing"] .bp-month.is-current {
+  background: #efefe9;
+  border-color: #e2e2da;
+}
+.bp-surface[data-material="nothing"] .bp-month.is-current .bp-month__v { color: #c9a24a; }
+.bp-surface[data-material="nothing"] .bp-month__k { color: #9b9b9b; font-size: 9.5px; }
+.bp-surface[data-material="nothing"] .bp-month__v { font-size: 13.5px; }
+
+/* 模型用量：色块 + 大写 ID + 彩条 + 百分比 */
+.bp-models__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b6b6b;
+}
+.bp-models__title svg { width: 9px; height: 9px; color: #b0b0b0; }
+
+.bp-model__swatch {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.bp-model__pct {
+  flex: 0 0 32px;
+  text-align: right;
+  font-size: 9.5px;
+  color: #9b9b9b;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp-surface[data-material="nothing"] .bp-model__name {
+  flex: 0 0 108px;
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  color: #3a3a3a;
+}
+
+.bp-surface[data-material="nothing"] .bp-model__bar {
+  height: 7px;
+  border-radius: 3px;
+  background: #efefef;
+}
+
+.bp-surface[data-material="nothing"] .bp-model__val {
+  flex: 0 0 50px;
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.bp-surface[data-material="nothing"] .bp-models {
+  border-top-color: #efefef;
+}
+
+/* 模型窗口：选中态琥珀实心 */
+.bp-surface[data-material="nothing"] .bp-seg--xs {
+  background: #f2f2f2;
+  border-radius: 8px;
+  padding: 2px;
+}
+.bp-surface[data-material="nothing"] .bp-seg--xs .bp-win {
+  border-radius: 6px;
+  font-size: 9.5px;
+  color: #8a8a8a;
+}
+.bp-surface[data-material="nothing"] .bp-seg--xs .bp-win.is-on {
+  background: #c9a24a;
+  color: #fff;
+}
+
+/* 热力图：琥珀色阶 + 更大圆角 */
+.bp-surface[data-material="nothing"] .bp-heatmap__grid { gap: 4px; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell {
+  border-radius: 4px;
+  background: #ececec;
+}
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="1"] { background: #efe6d2; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="2"] { background: #e3d0a4; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="3"] { background: #d6b877; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="4"] { background: #c9a24a; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="5"] { background: #a8842f; }
+
+.bp-surface[data-material="nothing"] .bp-section__title {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: #6b6b6b;
+}
+
+.bp-surface[data-material="nothing"] .bp-section__meta { color: #9b9b9b; }
+.bp-surface[data-material="nothing"] .bp-section__meta b { color: #1a1a1a; }
+
+/* Doto 点阵：略小一号、加粗一档、留出行高避免切边 */
+
+/* 点阵更清晰：细一档 + 行高放宽，避免上下切边 */
+
+/* 按参考图：方点、加粗一档、上留白避免顶边裁切 */
+.bp-surface[data-material="nothing"] .bp-hero {
+  padding-top: 14px;
+}
+
+/* ================================================================
+   Nothing · Token 卡主角数字（唯一权威规则）
+   Doto 真点阵：方点、700、52px、琥珀
+   ================================================================ */
+.bp-surface[data-material="nothing"] .bp-hero {
+  padding-top: 16px;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__num {
+  font-family: "Doto", "Space Mono", ui-monospace, monospace;
+  font-size: 52px;
+  font-weight: 700;
+  font-variation-settings: "ROND" 0;
+  letter-spacing: 0.03em;
+  line-height: 1.08;
+  color: #c9a24a;
+  -webkit-text-fill-color: #c9a24a;
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+}
+
+/* 厂商徽章：真 SVG（mask 成白色图形，占 58%） */
+.bp-badge { position: relative; overflow: hidden; }
+
+.bp-badge__glyph {
+  width: 58%;
+  height: 58%;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  display: block;
+}
+
+.bp-surface[data-material="nothing"] .bp-badge__glyph { background: #fff; }
+
+/* 点阵数字底下的氛围灯：暖色光晕 */
+.bp-surface[data-material="nothing"] .bp-hero {
+  position: relative;
+  isolation: isolate;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero::after {
+  content: "";
+  position: absolute;
+  left: -18px;
+  bottom: -10px;
+  width: 300px;
+  height: 96px;
+  z-index: -1;
+  background: radial-gradient(
+    50% 50% at 50% 55%,
+    rgba(201, 162, 74, 0.42),
+    rgba(201, 162, 74, 0.16) 45%,
+    rgba(201, 162, 74, 0) 72%
+  );
+  filter: blur(9px);
+  pointer-events: none;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__num {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 0 20px rgba(201, 162, 74, 0.42);
+}
+
+/* 点阵数字：放宽行高避免顶部被裁，氛围灯对准数字 */
+.bp-surface[data-material="nothing"] .bp-hero__num {
+  line-height: 1.34;
+}
+.bp-surface[data-material="nothing"] .bp-hero::after {
+  left: -14px;
+  bottom: 0;
+  width: 220px;
+  height: 86px;
+  background: radial-gradient(
+    50% 50% at 50% 52%,
+    rgba(201, 162, 74, 0.5),
+    rgba(201, 162, 74, 0.18) 46%,
+    rgba(201, 162, 74, 0) 74%
+  );
+}
+
+
+/* 卡片内容不得撑破卡片：子元素宽度锁死在内容盒内 */
+.bp-card__body > div {
+  overflow: hidden;
+}
+.bp-months,
+.bp-hero,
+.bp-models,
+.bp-heatmap {
+  max-width: 100%;
+}
+
+.bp-badge__mono {
+  display: none;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+}

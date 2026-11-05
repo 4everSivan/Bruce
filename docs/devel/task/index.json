@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-11-04",
+  "updated_at": "2026-11-05",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -112,6 +112,13 @@
       "tasks": [
         "T26"
       ]
+    },
+    "M15-官方网站": {
+      "title": "官方网站落地主仓：版本注入构建、同步门禁与 Pages 发布",
+      "design_doc": "docs/devel/design/13-官方网站.md",
+      "tasks": [
+        "T27"
+      ]
     }
   },
   "topics": {
@@ -183,6 +190,12 @@
       "design_doc": "docs/devel/design/12-开机自启动.md",
       "tasks": [
         "T25"
+      ]
+    },
+    "OfficialWebsite": {
+      "design_doc": "docs/devel/design/13-官方网站.md",
+      "tasks": [
+        "T27"
       ]
     }
   },
@@ -478,6 +491,16 @@
       "depends_on": [],
       "file": "docs/devel/task/T26.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T26-usage-history-persistence"
+    },
+    "T27": {
+      "title": "官方网站落地主仓 website/：版本注入构建、同步门禁与 Pages 发布",
+      "status": "in_progress",
+      "branch": "feat/T27-official-website",
+      "topic": "OfficialWebsite",
+      "milestone": "M15-官方网站",
+      "depends_on": [],
+      "file": "docs/devel/task/T27.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T27-official-website"
     }
   }
 }

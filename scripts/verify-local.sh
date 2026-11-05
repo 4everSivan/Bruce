@@ -124,6 +124,9 @@ node "$BRUCE_REPO_ROOT/scripts/gen-pricing-catalog.mjs" --check
 echo "校验变更总账一致性 (topic 归属下限与路径映射)"
 node "$BRUCE_REPO_ROOT/scripts/check-change-ledger.mjs"
 
+echo "校验官网源码与仓库事实源同步 (T27)"
+node "$BRUCE_REPO_ROOT/scripts/check-site-sync.mjs"
+
 echo "运行 Panel 视图模型双端对拍 Harness"
 "$BRUCE_SWIFT_BIN_DIR/PanelParityHarness" "$BRUCE_REPO_ROOT"
 
