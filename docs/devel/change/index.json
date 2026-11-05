@@ -2079,7 +2079,7 @@
     "C203": {
       "title": "修复 macOS 版运行中自退：菜单栏图标绘制闭包内 attrString.size() 触发 CoreText 插 nil 崩溃",
       "type": "Bugfix",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C203-menubar-image-crash",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
