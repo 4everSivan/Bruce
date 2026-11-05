@@ -676,7 +676,7 @@ struct MenuBarDashboardView: View {
     }
 
     private func refreshAgentUsage() {
-        coordinator.refresh(.agentUsage)
+        coordinator.refreshAgentUsageLocalOnly()
     }
 
     /// 切换 Tab 并自动判定水平滑入方向.

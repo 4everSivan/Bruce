@@ -40,13 +40,13 @@
     {
       "scope": "mac 正文刷新与今日空态",
       "before": "正文标题行为「逐小时」+ 右侧「0 – 23 时」；无刷新按钮；rows 为空时仅渲染空标题，柱状图/空态语义不清；收起态迷你摘要固定显示峰值 0",
-      "after": "有数据时标题行改为「今日」+ 右侧 14×14 无边框图标刷新按钮（无「刷新」文字，与订阅 ProviderRefreshButton 同构）；rows 为空时不显示「今日」行，正文显示订阅空态同构占位（36pt 虚线图标框 + 标题 + 说明 + 下方同一 14×14 刷新按钮）；今日无用量但有历史时保留 14 日柱状图，仅逐小时区置空；无历史时不渲染柱状图；收起态 rows 为空显示「暂无用量」；刷新中显示小型进度环且禁用，面板隐藏/关闭动效时不挂载进度环",
+      "after": "有数据时标题行改为「今日」+ 右侧 14×14 无边框图标刷新按钮（无「刷新」文字，与订阅 ProviderRefreshButton 同构）；点击只跑本机会话采集，不查询订阅额度；rows 为空时不显示「今日」行，正文显示订阅空态同构占位（36pt 虚线图标框 + 标题 + 说明 + 下方同一 14×14 刷新按钮）；今日无用量但有历史时保留 14 日柱状图，仅逐小时区置空；无历史时不渲染柱状图；收起态 rows 为空显示「暂无用量」；刷新中显示小型进度环且禁用，面板隐藏/关闭动效时不挂载进度环",
       "impact": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift、MenuBarViews.swift（注入 refresh/refreshing）"
     },
     {
       "scope": "Windows Agent 卡对齐",
       "before": "app.js hourlyCard 以「逐小时」+「0 – 23 时」渲染；expandedAgents 全局集合手动切换；无卡内刷新；rows 为空时无空态；收起迷你摘要固定峰值",
-      "after": "进入 hourly 页签或展开卡片时重置为首个 isExpandable agent；有数据时「今日」+ 14×14 无边框图标刷新；rows 为空时隐藏「今日」行并渲染同构空态（图标/文案 + 下方同一刷新图标）；今日无用量保留 14 日柱状图、无历史不渲染；收起空态显示「暂无用量」；刷新调用 refresh_now，刷新中替换为 .sub-spinner 并禁用，忽略重复触发",
+      "after": "进入 hourly 页签或展开卡片时重置为首个 isExpandable agent；有数据时「今日」+ 14×14 无边框图标刷新；rows 为空时隐藏「今日」行并渲染同构空态（图标/文案 + 下方同一刷新图标）；今日无用量保留 14 日柱状图、无历史不渲染；收起空态显示「暂无用量」；刷新调用 refresh_agent_usage_local，只跑本地采集并用 plan_local_only 回填上一份 services，刷新中替换为 .sub-spinner 并禁用，忽略重复触发",
       "impact": "apps/win/src/app.js、apps/win/src/styles.css"
     },
     {
@@ -62,7 +62,7 @@
     "modified": true,
     "rule_diff": {
       "before": "Agent 用量卡（HourlyLineCard）首次渲染全收起，正文固定「逐小时 / 0 – 23 时」，无卡内刷新；今日无用量时无专门空态，收起摘要固定峰值 0；设计 05 未记录该卡行为",
-      "after": "C212 起：每次进入 Agent 页签或展开卡片默认打开第一个有模型/项目明细的 agent；有数据时正文为「今日」+ 14×14 无边框图标刷新（与订阅 ProviderRefreshButton 同构，无「刷新」文字）；rows 为空时隐藏今日行，显示订阅空态同构占位与下方同一刷新图标；今日无用量保留 14 日柱状图，仅逐小时区置空，无历史时不渲染柱状图；收起空态显示「暂无用量」；Windows 等价实现"
+      "after": "C212 起：每次进入 Agent 页签或展开卡片默认打开第一个有模型/项目明细的 agent；有数据时正文为「今日」+ 14×14 无边框图标刷新（与订阅 ProviderRefreshButton 同构，无「刷新」文字）；点击只做本机会话采集，不查询订阅额度，上一份 services 原样回填；rows 为空时隐藏今日行，显示订阅空态同构占位与下方同一刷新图标；今日无用量保留 14 日柱状图，仅逐小时区置空，无历史时不渲染柱状图；收起空态显示「暂无用量」；Windows 等价实现"
     }
   },
   "verification": {
@@ -89,7 +89,7 @@
         "item": "空态与刷新布局",
         "true_if": "有数据时「今日」+ 仅图标刷新；今日无用量保留 14 日图且不显示今日行，空态文案下唯一刷新；无历史不显示图且空态文案下唯一刷新；收起空态「暂无用量」",
         "false_if": "今日行/刷新重复出现、图表被误隐藏、空态按钮缺失或收起文案仍为峰值 0",
-        "evidence": "Windows DOM：有数据时 .hourly-title-row 为「今日」且仅一个 .hourly-refresh（14×14 无边框/无底色，与订阅 .sub-refresh 同构，不含「刷新」文字）；rows 为空且 usage.days 有历史时保留 .daily-chart、无今日行、空态文案下唯一 14×14 刷新图标；无历史时无 .daily-chart、标题「暂无 Agent 用量」；收起态空 rows 迷你摘要「暂无用量」。mac 使用与订阅 ProviderRefreshButton 完全相同的 14×14 框、10pt arrow.clockwise、ProgressView 进度环。",
+        "evidence": "Windows DOM：有数据时 .hourly-title-row 为「今日」且仅一个 .hourly-refresh（14×14 无边框/无底色，与订阅 .sub-refresh 同构，不含「刷新」文字）；rows 为空且 usage.days 有历史时保留 .daily-chart、无今日行、空态文案下唯一 14×14 刷新图标；无历史时无 .daily-chart、标题「暂无 Agent 用量」；收起态空 rows 迷你摘要「暂无用量」。Windows 新增 quota_policy 单测：plan_local_only 跳过上一份全部 provider；mac RefreshSchedulerHarness 新增 C212 用例：Agent 卡刷新 includeExternalQuotas=false、注入 localUsageOnly、上一份 claude service 原样回填。",
         "result": true
       },
       {
@@ -112,7 +112,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "3c1b0ae",
+    "commit": "d38649b",
     "tag": ""
   },
   "gate": {

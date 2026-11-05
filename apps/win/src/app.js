@@ -1221,7 +1221,7 @@ async function requestAgentRefresh(button) {
   button.classList.add("busy");
   button.replaceChildren(el("span", "sub-spinner"));
   try {
-    await invoke("refresh_now");
+    await invoke("refresh_agent_usage_local");
     setTimeout(() => {
       button.disabled = false;
       button.classList.remove("busy");

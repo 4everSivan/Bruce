@@ -183,3 +183,85 @@ extension RefreshSchedulerHarness {
         scheduler.stop()
     }
 }
+
+// MARK: - Agent 卡卡内刷新 (C212)
+
+extension RefreshSchedulerHarness {
+    /// Agent 卡卡内刷新只跑本地采集, 不查询订阅额度; 上一份 services 原样回填.
+    static func agentCardRefreshRunsLocalOnlyAndKeepsServices(
+        repository: URL
+    ) async throws {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let executor = MockCollectorExecutor()
+        let clock = ManualClock(start: base)
+        let timers = FakeTimerScheduler()
+        let lockState = StubScreenLockState(isLocked: false)
+        let (scheduler, store, root) = try makeScheduler(
+            repository: repository,
+            executor: executor,
+            clock: clock,
+            timers: timers,
+            screenLock: lockState,
+            refreshInterval: 1800,
+            quotaRefreshInterval: 1800,
+            wakeDedupSeconds: 0
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let inputProvider = QuotaPolicyInputProvider()
+        scheduler.setRunInputProviderForTesting(inputProvider)
+
+        let fresh = base.addingTimeInterval(-60)
+        let seeded = JSONValue.object([
+            "schemaVersion": .integer(1),
+            "module": .string("agent-usage"),
+            "generatedAt": .string(ISODate.string(from: fresh)),
+            "agents": .array([]),
+            "services": .array([
+                .object([
+                    "id": .string("claude_a"),
+                    "app": .string("claude"),
+                    "name": .string("Claude"),
+                    "kind": .string("windows"),
+                    "status": .string("ok"),
+                    "note": .string(""),
+                    "windows": .array([
+                        .object([
+                            "label": .string("5小时"),
+                            "usedPercent": .double(10),
+                            "resetsAt": .integer(0),
+                        ])
+                    ]),
+                    "capturedAt": .string(ISODate.string(from: fresh)),
+                ])
+            ]),
+            "totalCostUsd": .double(1.0),
+        ])
+        try store.publish(seeded, for: .agentUsage, attemptedAt: fresh)
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        scheduler.refreshLocalUsage(.agentUsage)
+
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+        try refreshExpect(
+            inputProvider.policies.last?.includeExternalQuotas == false,
+            "Agent 卡刷新不得发起外部额度查询"
+        )
+        let context = executor.receivedContexts.last
+        if case .boolean(true)? = context?["localUsageOnly"] {
+            // expected
+        } else {
+            throw RefreshTestFailure.expectation("Agent 卡刷新未注入 localUsageOnly")
+        }
+        let stored = try store.load(.agentUsage, now: clock.now(), staleAfter: 3600)
+        let services = stored.artifact.objectValue?["services"]?.arrayValue ?? []
+        try refreshExpect(services.count == 1, "上一份订阅服务应原样回填, got \(services.count)")
+        try refreshExpect(
+            services.first?.objectValue?["id"]?.stringIdValue == "claude_a",
+            "回填服务应保持原 id"
+        )
+        scheduler.stop()
+    }
+}

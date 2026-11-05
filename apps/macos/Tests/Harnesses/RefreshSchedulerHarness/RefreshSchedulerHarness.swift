@@ -261,8 +261,10 @@ struct RefreshSchedulerHarness {
         try await quotaPolicySuppressedOnScreenLock()
         print("Refresh scheduler: screen lock suppressed run carries over services (C071)")
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
+        print("Refresh scheduler: agent card refresh local-only (C212)")
+        try await agentCardRefreshRunsLocalOnlyAndKeepsServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 117")
+        print("Refresh scheduler tests passed: 118")
     }
 }

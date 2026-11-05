@@ -454,6 +454,11 @@ final class OnboardingCoordinator: ObservableObject {
         scheduler.refresh(module)
     }
 
+    /// C212: Agent 卡内刷新只跑本机会话采集, 不刷新订阅用量.
+    func refreshAgentUsageLocalOnly() {
+        scheduler.refreshLocalUsage(.agentUsage)
+    }
+
     /// 定向刷新单个订阅 Provider (Stage 3 核心链路入口:
     /// SubscriptionCard -> OnboardingCoordinator -> RefreshScheduler).
     /// Scheduler 按显式 scope 合并/排队; 全量刷新优先于定向集合.

@@ -33,3 +33,37 @@ pub fn plan(
         suppress_external_quotas: false,
     })
 }
+
+/// C212: Agent 卡内刷新只跑本地采集, 不查询订阅额度; 上一份全部 provider 进入
+/// skip, 由共享 merge 原样回填, 订阅卡数值与时间戳不变。
+pub fn plan_local_only(previous: Option<&serde_json::Value>) -> QuotaRunPolicy {
+    collector_policy::plan(&collector_policy::PlanInput {
+        previous,
+        enabled_providers: Some(&[]),
+        now_ms: 0,
+        interval_secs: 0,
+        force_refresh: false,
+        bypass_cooldown: false,
+        suppress_external_quotas: true,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn local_only_policy_skips_all_previous_providers() {
+        let previous = json!({
+            "services": [
+                { "id": "claude_a", "app": "claude", "status": "ok", "windows": [] },
+                { "id": "codex_b", "app": "codex", "status": "ok", "windows": [] }
+            ]
+        });
+        let policy = plan_local_only(Some(&previous));
+        assert!(!policy.include_external_quotas);
+        assert!(policy.skip_providers.contains("claude"));
+        assert!(policy.skip_providers.contains("codex"));
+    }
+}

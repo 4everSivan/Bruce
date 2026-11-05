@@ -367,6 +367,55 @@ mod desktop {
         Ok(())
     }
 
+    /// C212: Agent 卡内刷新只跑本机会话采集; 不查询订阅额度, 上一份 services
+    /// 由 `plan_local_only` + 共享 merge 原样回填。与全量/定向刷新共用采集互斥。
+    pub fn refresh_agent_usage_local(app: &AppHandle) -> Result<(), String> {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let control = app.state::<SchedulerControl>();
+            let _collection = control.collection.lock();
+            let root = paths::data_root();
+            let settings = load_settings(&root);
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            let interval_secs = settings.refresh_interval_secs as i64;
+            if let Ok(mut state) = control.snapshot.lock() {
+                state.begin_refresh();
+            }
+            publish(&app);
+            let policy = {
+                let previous = control
+                    .snapshot
+                    .lock()
+                    .ok()
+                    .and_then(|state| state.artifact().cloned());
+                crate::quota_policy::plan_local_only(previous.as_ref())
+            };
+            // 空凭证: capabilities 仅 localSessions, collector 不发起外部额度请求。
+            let result = collector::run_configured_collection(
+                credentials::CredentialPayloads::new(),
+                &settings,
+            );
+            if let Ok(mut state) = control.snapshot.lock() {
+                match &result {
+                    Ok(response) => {
+                        let _ = state.apply_response_with_policy(
+                            response,
+                            Some(&policy),
+                            now_ms,
+                            interval_secs,
+                        );
+                    }
+                    Err(_) => state.fail("COLLECTION_FAILED"),
+                }
+                if state.save(&root).is_err() {
+                    state.fail("SNAPSHOT_WRITE_FAILED");
+                }
+            }
+            publish(&app);
+        });
+        Ok(())
+    }
+
     pub fn spawn(app: AppHandle) {
         let receiver = app.state::<SchedulerControl>().connect_manual_refresh();
         std::thread::spawn(move || {
@@ -468,5 +517,6 @@ mod desktop {
 
 #[cfg(feature = "desktop")]
 pub use desktop::{
-    cached_artifact, cached_panel, publish, refresh_subscription, run_refresh, spawn,
+    cached_artifact, cached_panel, publish, refresh_agent_usage_local, refresh_subscription,
+    run_refresh, spawn,
 };

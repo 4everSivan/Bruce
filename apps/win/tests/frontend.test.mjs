@@ -48,9 +48,10 @@ test("dashboard has no tabs and footer button invokes open_settings", async () =
   assert.deepEqual(app.calls.slice(start).map(x => x.command), ["open_settings"]);
 });
 
-test("general pane shows read-only card shortcut keycaps (C211)", async () => {
+test("general pane shows read-only card shortcut keycaps under global shortcuts (C211)", async () => {
   const app = await boot({ html: "settings.html" });
-  const row = [...app.node("pane-general").querySelectorAll(".fluent-row")]
+  const pane = app.node("pane-general");
+  const row = [...pane.querySelectorAll(".fluent-row")]
     .find((node) => node.textContent.includes("卡片快捷键"));
   assert.ok(row, "通用页存在卡片快捷键行");
   assert.match(row.textContent, /Ctrl\+1/);
@@ -58,6 +59,15 @@ test("general pane shows read-only card shortcut keycaps (C211)", async () => {
   assert.equal(row.querySelector("input"), null, "无输入控件");
   assert.equal(row.querySelector("select"), null, "无下拉控件");
   assert.equal(row.querySelector("button"), null, "无录制按钮");
+  const hotkeyCard = [...pane.querySelectorAll(".fluent-card")]
+    .find((card) => card.textContent.includes("唤出看板"));
+  assert.ok(hotkeyCard, "存在全局快捷键分组卡");
+  assert.ok(hotkeyCard.textContent.includes("卡片快捷键"), "卡片快捷键归入全局快捷键卡");
+  assert.equal(
+    pane.querySelector(".fluent-card").textContent.includes("卡片快捷键"),
+    false,
+    "通用主卡不再包含卡片快捷键"
+  );
 });
 
 test("settings window navigation switches categories and persists configuration", async () => {
@@ -429,7 +439,7 @@ test("agent card shows today-empty under 14-day history with one refresh entry (
   assert.equal(card.querySelectorAll(".hourly-refresh").length, 1, "空态只有一个刷新入口");
   const start = app.calls.length;
   await card.querySelector(".hourly-refresh").click();
-  assert.ok(app.calls.slice(start).some((call) => call.command === "refresh_now"));
+  assert.ok(app.calls.slice(start).some((call) => call.command === "refresh_agent_usage_local"));
 });
 
 test("agent card hides chart and says no usage when there is no history (C212)", async () => {

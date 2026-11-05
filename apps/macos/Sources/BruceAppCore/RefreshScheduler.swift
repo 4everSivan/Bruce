@@ -376,6 +376,15 @@ package final class RefreshScheduler {
         triggerRefresh(for: .agentUsage, intent: .subscription(provider))
     }
 
+    /// C212: Agent 卡内刷新只做本机会话采集; 不查询订阅额度, 上一份 services 原样回填.
+    package func refreshLocalUsage(_ module: CollectorModule) {
+        guard let state = states[module], state.enabled else { return }
+        if stopped {
+            start()
+        }
+        triggerRefresh(for: module, intent: .manualLocalUsage())
+    }
+
     // MARK: - Sleep / wake
 
     package func handleWakeOrReactivation() {
@@ -579,8 +588,9 @@ package final class RefreshScheduler {
             // publish 用实时 clock; request.now 仅服务 load-previous 入口快照.
             now: { [clock] in clock.now() }
         )
-        // C064/C209: 锁屏抑制恒开 (手动刷新不受抑制).
-        let suppressQuotas = isScreenLocked && intent.reason != .manual
+        // C064/C209: 锁屏抑制恒开 (手动刷新不受抑制); C212: 卡内刷新显式只跑本地采集.
+        let suppressQuotas = intent.localUsageOnly
+            || (isScreenLocked && intent.reason != .manual)
         let result = await pipeline.run(RefreshPipelineRequest(
             module: module,
             intent: intent,

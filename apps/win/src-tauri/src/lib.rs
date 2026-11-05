@@ -1183,6 +1183,12 @@ mod desktop {
         scheduler::refresh_subscription(&app, &section_id)
     }
 
+    /// C212: Agent 卡内刷新 —— 只做本机会话采集, 不查询订阅额度.
+    #[tauri::command]
+    fn refresh_agent_usage_local(app: tauri::AppHandle) -> Result<(), String> {
+        scheduler::refresh_agent_usage_local(&app)
+    }
+
     #[tauri::command]
     fn hide_dashboard(app: tauri::AppHandle) {
         if let Some(activity) = app.try_state::<ActivityState>() {
@@ -1510,6 +1516,7 @@ mod desktop {
                 stepfun_web_login_close,
                 refresh_now,
                 refresh_subscription,
+                refresh_agent_usage_local,
                 open_settings,
                 hide_dashboard,
                 hide_preview_window,

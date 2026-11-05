@@ -381,6 +381,12 @@
           "markdownDescription": "Enables the quit_app command without any pre-configured scope."
         },
         {
+          "description": "Enables the refresh_agent_usage_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-refresh-agent-usage-local",
+          "markdownDescription": "Enables the refresh_agent_usage_local command without any pre-configured scope."
+        },
+        {
           "description": "Enables the refresh_now command without any pre-configured scope.",
           "type": "string",
           "const": "allow-refresh-now",
@@ -739,6 +745,12 @@
           "type": "string",
           "const": "deny-quit-app",
           "markdownDescription": "Denies the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the refresh_agent_usage_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-refresh-agent-usage-local",
+          "markdownDescription": "Denies the refresh_agent_usage_local command without any pre-configured scope."
         },
         {
           "description": "Denies the refresh_now command without any pre-configured scope.",

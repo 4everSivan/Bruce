@@ -46,6 +46,7 @@ fn main() {
                 "stepfun_web_login_close",
                 "refresh_now",
                 "refresh_subscription",
+                "refresh_agent_usage_local",
                 "open_settings",
                 "hide_dashboard",
                 "hide_preview_window",

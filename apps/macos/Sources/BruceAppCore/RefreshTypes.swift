@@ -64,21 +64,36 @@ package struct RefreshIntent: Equatable, Sendable {
     /// 本轮是否强制查询外部订阅额度 (手动刷新与窗口边界唤醒).
     /// 为 false 时仍可能因额度周期到期而查询, 由共享额度门禁 (`QuotaPolicyComputing.plan`, collector-policy) 判定.
     package var forceQuotaRefresh: Bool
+    /// C212: Agent 卡卡内刷新只做本机会话采集, 不查询订阅额度;
+    /// 上一份 services 由 pipeline 原样回填.
+    package var localUsageOnly: Bool
 
     package init(
         reason: RefreshTriggerReason,
         includesManual: Bool,
         scope: RefreshScope = .all,
-        forceQuotaRefresh: Bool = false
+        forceQuotaRefresh: Bool = false,
+        localUsageOnly: Bool = false
     ) {
         self.reason = reason
         self.includesManual = includesManual
         self.scope = scope
         self.forceQuotaRefresh = forceQuotaRefresh
+        self.localUsageOnly = localUsageOnly
     }
 
     package static func manual() -> RefreshIntent {
         RefreshIntent(reason: .manual, includesManual: true, forceQuotaRefresh: true)
+    }
+
+    /// C212: 手动触发但只跑本地采集, 不发起订阅额度查询.
+    package static func manualLocalUsage() -> RefreshIntent {
+        RefreshIntent(
+            reason: .manual,
+            includesManual: true,
+            forceQuotaRefresh: false,
+            localUsageOnly: true
+        )
     }
 
     package static func timer(forceQuotaRefresh: Bool = false) -> RefreshIntent {
@@ -150,7 +165,10 @@ package enum RefreshIntentMerge {
             reason: reason,
             includesManual: includesManual,
             scope: scope,
-            forceQuotaRefresh: existing.forceQuotaRefresh || incoming.forceQuotaRefresh
+            forceQuotaRefresh: existing.forceQuotaRefresh || incoming.forceQuotaRefresh,
+            // C212: 只有两个意图都要求本地专用时才保持 localOnly; 任一全量意图
+            // (含定时/手动全量) 合并后按全量执行, 不削弱既有刷新范围.
+            localUsageOnly: existing.localUsageOnly && incoming.localUsageOnly
         )
     }
 }

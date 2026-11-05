@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-refresh-agent-usage-local"
+description = "Enables the refresh_agent_usage_local command without any pre-configured scope."
+commands.allow = ["refresh_agent_usage_local"]
+
+[[permission]]
+identifier = "deny-refresh-agent-usage-local"
+description = "Denies the refresh_agent_usage_local command without any pre-configured scope."
+commands.deny = ["refresh_agent_usage_local"]

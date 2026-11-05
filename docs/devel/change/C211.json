@@ -46,8 +46,8 @@
     {
       "scope": "设置通用页只读说明",
       "before": "mac SettingsView 通用页「仪表盘卡片布局」行后无快捷键说明；Windows settings-maintenance.js 通用页「看板布局」行后无快捷键说明",
-      "after": "两端在布局行后新增只读行「卡片快捷键」：说明文案为「⌘1 Token 用量 · ⌘2 订阅 · ⌘3 Agent 用量；纵向级联下展开/收起，顶栏 Tab 下切换页签。固定快捷键，不可修改。」（Windows 用 Ctrl+1/2/3），右侧仅展示键帽，无录制/编辑控件；mac 不新增持久化字段",
-      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift（可加局部 Keycap 视图）、apps/win/src/settings-maintenance.js 与 settings.html/styles.css（键帽样式）"
+      "after": "两端在「全局快捷键」分组卡内新增只读行「卡片快捷键」（位于唤出看板录制器下方）：说明文案为「⌘1 Token 用量 · ⌘2 订阅 · ⌘3 Agent 用量；纵向级联下展开/收起，顶栏 Tab 下切换页签。固定快捷键，不可修改。」（Windows 用 Ctrl+1/2/3），右侧仅展示键帽，无录制/编辑控件；mac 不新增持久化字段",
+      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift（全局快捷键 FluentCard 内只读 FluentRow）、apps/win/src/settings-maintenance.js（全局快捷键卡「唤出看板 → 卡片快捷键」）与 styles.css（键帽样式）"
     },
     {
       "scope": "设计回写与测试",
@@ -62,7 +62,7 @@
     "modified": true,
     "rule_diff": {
       "before": "FR-5：顶栏 Tab 通过右上角小图标点击切换；无键盘快捷键规则；设计 04 通用页行序为 配色模式 → 界面风格 → 模糊风格 → 界面动效 → 仪表盘卡片布局 → 刷新间隔 → 开机自启动 → 凭据与来源；设计 05 未记录卡片快捷键",
-      "after": "C211 起：⌘1/⌘2/⌘3 固定映射 Token 用量/订阅/Agent 用量，与拖拽顺序无关；Tab 模式切换页签，纵向级联先滚动到卡片再折叠/展开；长按不连发，缺卡 no-op；通用页在布局行后增加只读「卡片快捷键」说明，不可修改；Windows 以 Ctrl+1/2/3 等价实现"
+      "after": "C211 起：⌘1/⌘2/⌘3 固定映射 Token 用量/订阅/Agent 用量，与拖拽顺序无关；Tab 模式切换页签，纵向级联先滚动到卡片再折叠/展开；长按不连发，缺卡 no-op；通用页「全局快捷键」分组卡在唤出看板行下方增加只读「卡片快捷键」说明，不可修改；Windows 以 Ctrl+1/2/3 等价实现"
     }
   },
   "verification": {
@@ -89,7 +89,7 @@
         "item": "设置页只读与反向影响",
         "true_if": "通用页仅展示键帽与说明，无编辑/录制控件；原布局、刷新间隔、全局快捷键等其他行行为不变",
         "false_if": "出现可编辑快捷键控件、行序错乱或挤占其他设置",
-        "evidence": "Windows 新增用例断言通用页「卡片快捷键」行含 Ctrl+1 与「固定快捷键，不可修改」，且行内无 input/select/button；mac 通用页新增只读 FluentRow（Text 键帽，无控件），其余行序与控件未改；verify-local 通过。",
+        "evidence": "Windows 新增用例断言「全局快捷键」卡内「卡片快捷键」行含 Ctrl+1 与「固定快捷键，不可修改」，且行内无 input/select/button；mac 全局快捷键 FluentCard 内新增只读 FluentRow（Text 键帽，无控件），通用主卡行序未增加该行；verify-local 通过。",
         "result": true
       },
       {
@@ -105,7 +105,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "3c1b0ae",
+    "commit": "d38649b",
     "tag": ""
   },
   "gate": {

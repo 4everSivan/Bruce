@@ -128,8 +128,8 @@
 
 | 规则 | mac 语义 | Windows 渲染层 |
 |---|---|---|
-| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；C211 起固定快捷键为 ⌘1/⌘2/⌘3（Tab 切页签 / 纵向级联先滚动再收放，裸 1/2/3 退役），并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器，并在布局行后展示只读 `Ctrl+1/2/3` 键帽；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
-| Agent 用量卡（C212） | 进入/展开默认打开首个有模型/项目明细的 agent；有数据时「今日」+ 图标刷新；今日空态保留 14 日柱状图（无历史不渲染），空态图标/文案下唯一刷新；收起空态「暂无用量」 | 同语义（`hourlyExpansionPending` + `makeCollapsible(onExpand)` 重置；`refresh_now` 刷新；刷新按钮与订阅 `ProviderRefreshButton` 同构：14×14 无边框、刷新中 `.sub-spinner`） |
+| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；C211 起固定快捷键为 ⌘1/⌘2/⌘3（Tab 切页签 / 纵向级联先滚动再收放，裸 1/2/3 退役），并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；全局快捷键分组卡在唤出看板行下方展示只读 `Ctrl+1/2/3` 键帽；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
+| Agent 用量卡（C212） | 进入/展开默认打开首个有模型/项目明细的 agent；有数据时「今日」+ 图标刷新；今日空态保留 14 日柱状图（无历史不渲染），空态图标/文案下唯一刷新；收起空态「暂无用量」 | 同语义（`hourlyExpansionPending` + `makeCollapsible(onExpand)` 重置；`refresh_agent_usage_local` 只跑本地采集、保留订阅 services；刷新按钮与订阅 `ProviderRefreshButton` 同构：14×14 无边框、刷新中 `.sub-spinner`） |
 | 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
 | `account.note` | 仅 `account.status == "error"` 渲染 | 同 |
@@ -166,7 +166,7 @@
 | 订阅额度行 | 每行 = 品牌图形徽章（26px，与看板同一套生成产物）+ 显示名 + 凭证形态副标题（`Web 令牌`/`API Key`/`OAuth 设备码`/`CLI 登录态`/`Step Plan Token`，多账号追加 `N 个账号`）+ 套餐标签（取自 artifact `service.plan`，C024 起只在设置页呈现）+ 状态尾件（`未配置`/`已配置`/`需要重新授权`）+ 行内启用开关 + 上移/下移 |
 | Claude 本机登录态（C075） | 「Claude 本机登录态」卡：状态文案（已跟随 / 未发现 / 已过期，对齐 mac `ClaudeProviderSettingsSection`）+ `立即检测`（`claude_local_status`）+ `读取本机登录态`（`import_claude_from_local`，持久化为 `claude-cli` 账号）；启用 Claude 后自动只读跟随，粘贴入口保留作多账号兜底（见规则 17） |
 | 授权与隐私 | mac 语义：单一 `Agent 用量` 开关 + 四条动态说明（含刷新间隔与已启用 provider 名单）+ `当前授权有效` 状态 + `确认授权` / `撤销全部授权` 两个**即时生效**按钮（不走全局保存）；采集与云端额度查询同属一次授权 |
-| 通用 | 首卡行序对齐 mac（C153）：界面风格（经典 / Nothing）→ 界面动效 → 看板布局 → 卡片快捷键（只读，C211）→ 刷新间隔（C160：预设 3 / 6 分钟 + 自定义 1–1440 分钟；历史遗留的非预设值回显为「自定义」，禁止静默改写）→ 托盘实时预览；配色模式 / 模糊风格 / 凭据存储 / 外部 CLI 来源为 mac 独占行，不参与对齐；C209 起「额度预警气泡」行整体退役（气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递），mac 侧「锁屏暂停订阅刷新」同步退役；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067）；版本展示在维护页「软件更新」卡（07 §4.2 R3），通用页不再有版本行 |
+| 通用 | 首卡行序对齐 mac（C153）：界面风格（经典 / Nothing）→ 界面动效 → 看板布局 → 刷新间隔（C160：预设 3 / 6 分钟 + 自定义 1–1440 分钟；历史遗留的非预设值回显为「自定义」，禁止静默改写）→ 托盘实时预览；配色模式 / 模糊风格 / 凭据存储 / 外部 CLI 来源为 mac 独占行，不参与对齐；C209 起「额度预警气泡」行整体退役（气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递），mac 侧「锁屏暂停订阅刷新」同步退役；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；全局快捷键分组卡为「唤出看板 → 卡片快捷键（只读，C211）」（C067）；版本展示在维护页「软件更新」卡（07 §4.2 R3），通用页不再有版本行 |
 | 窗口观感（C067） | 设置窗口恒用 Fluent 平面 token（mac `SettingsDemoTokens` dark 侧），界面风格只作用于看板，**设置窗口不得套用 `.theme-nothing`**；侧栏宽度按窗口锁定 **17.6%**（1000 宽窗口下 176px，C152，与 mac 同比例）、最小 160px、项 12.5pt / 内边距 10·7 / 圆角 5、选中左缘 3pt accent 条，底部为版本号（无 Windows 自创标题）；内容区内边距 24·18，crumb · 标题 · 内容间距 14；分组标题（11pt 半粗 tertiary）位于卡片上方而非卡内；行标题 13pt 常规；按钮 12pt / 12·5 / 圆角 5，主按钮 `#4C9CFF`。设置窗口默认 1000×680、最小 980×620 且可缩放；设置即时生效、无全局保存栏（C069，见规则 15） |
 | 维护 | `清理用量缓存`（后端 `clear_snapshot_cache`：仅删快照文件，不动配置/凭证，幂等）+ `诊断预览`（客户端拼装**脱敏** JSON：版本、模块阶段、诊断码、目录**末段名**，不含路径分隔符/凭证/账号/业务数据） |
 | 品牌图形产物 | `apps/win/src/provider-brand.js` 为生成产物第三目标（与 Swift 数据、app.js 内联块同源），由 `scripts/gen-provider-glyphs.mjs --check` 锁定；设置窗口须在 `settings.js` 之前加载它 |
