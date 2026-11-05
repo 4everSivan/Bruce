@@ -3,7 +3,7 @@ use crate::signing::{
 };
 use crate::{
     bounded_http_body, codex_service_id, parse_claude_usage, parse_codex_usage,
-    parse_deepseek_balance, parse_grok_usage, parse_kimi_usage, parse_opencode_go_body,
+    parse_deepseek_balance, parse_grok_usage, parse_kimi_usage, parse_opencode_go_usage,
     parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog,
     service_template, AccountDescriptor, CancellationToken, CatalogInput, CodexProvider,
     HttpClient, HttpRequest, HttpResponse, ProviderError, ProviderRequest, QuotaProvider,
@@ -970,15 +970,54 @@ fn zhipu_current_credit_limit_array_response_is_rendered() {
     assert_eq!(zhipu["windows"][1]["resetsAt"], 1_800_100_000);
 }
 
+/// C204: 官方端点 `/zen/go/v1/usage` 公开实测响应样例 (issue #43983 形状) 三窗口全解析.
 #[test]
-fn opencode_seroval_parser_omits_unsubscribed_windows() {
-    let body = br#";((self.$R=self.$R||{})["server-fn:x"]=[],($R=>$R[0]={mine:!0,rollingUsage:{status:"ok",usagePercent:12.5,resetInSec:60},weeklyUsage:{status:"ok",usagePercent:20,resetInSec:3600},monthlyUsage:{status:"not_subscribed",usagePercent:99}})($R["server-fn:x"]))"#;
-    let parsed = parse_opencode_go_body(body, 1_800_000_000)
-        .unwrap()
-        .unwrap();
-    assert_eq!(parsed["windows"].as_array().unwrap().len(), 2);
-    assert_eq!(parsed["windows"][0]["usedPercent"], 12.5);
-    assert_eq!(parsed["windows"][0]["resetsAt"], 1_800_000_060i64);
+fn opencode_usage_parser_reads_official_endpoint_shape() {
+    let payload = json!({
+        "usage": {
+            "rolling": {"status": "ok", "percent": 1, "resetsAt": "2026-09-30T17:15:45.084Z"},
+            "weekly": {"status": "ok", "percent": 25, "resetsAt": "2026-10-05T00:00:00.000Z"},
+            "monthly": {"status": "ok", "percent": 29, "resetsAt": "2026-10-21T07:45:46.000Z"}
+        }
+    });
+    let parsed = parse_opencode_go_usage(&payload).unwrap().unwrap();
+    let windows = parsed["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 3);
+    assert_eq!(windows[0]["label"], "每 5 小时");
+    assert_eq!(windows[0]["usedPercent"], 1.0);
+    assert_eq!(windows[0]["windowMinutes"], 300);
+    assert_eq!(windows[0]["resetsAt"], 1_790_788_545);
+    assert_eq!(windows[1]["label"], "每周");
+    assert_eq!(windows[1]["resetsAt"], 1_791_158_400);
+    assert_eq!(windows[2]["label"], "每月");
+    assert_eq!(windows[2]["resetsAt"], 1_792_568_746);
+}
+
+/// C204: rate-limited 窗口照常输出 (percent 即权威用量), 个别窗口缺失跳过,
+/// percent 截断到 [0,100].
+#[test]
+fn opencode_usage_parser_keeps_limited_windows_and_skips_missing() {
+    let payload = json!({
+        "usage": {
+            "rolling": {"status": "rate-limited", "percent": 100, "resetsAt": "2026-09-30T17:15:45Z"},
+            "monthly": {"status": "ok", "percent": 250.0, "resetsAt": "2026-10-21T07:45:46Z"}
+        }
+    });
+    let parsed = parse_opencode_go_usage(&payload).unwrap().unwrap();
+    let windows = parsed["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 2, "rate-limited 不丢弃, 缺失的 weekly 跳过");
+    assert_eq!(windows[0]["usedPercent"], 100.0);
+    assert_eq!(windows[1]["usedPercent"], 100.0, "250 截断到 100");
+
+    // usage 缺失 / 非对象 / 三窗口全缺 → fail-visible 报错.
+    assert!(parse_opencode_go_usage(&json!({})).is_err());
+    assert!(parse_opencode_go_usage(&json!({"usage": "ok"})).is_err());
+    assert!(parse_opencode_go_usage(&json!({"usage": {}})).is_err());
+    // 个别窗口缺 percent 字段 → 报错 (不静默置 0).
+    assert!(parse_opencode_go_usage(
+        &json!({"usage": {"rolling": {"status": "ok", "resetsAt": "2026-09-30T17:15:45Z"}}})
+    )
+    .is_err());
 }
 
 #[test]
