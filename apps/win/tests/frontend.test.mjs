@@ -14,6 +14,29 @@ test("valid collector view model renders cards and keyboard-accessible collapse"
   assert.equal(head.getAttribute("aria-expanded"), "true");
 });
 
+test("stack card shortcuts use fixed identity, ignore bare keys and repeats (C211)", async () => {
+  const app = await boot();
+  const head = app.node("stack").querySelector('[data-card="usage"] .card-head');
+  assert.equal(head.getAttribute("aria-expanded"), "true");
+  await app.window.dispatch("keydown", { key: "1" });
+  assert.equal(head.getAttribute("aria-expanded"), "true", "裸数字不再触发");
+  await app.window.dispatch("keydown", { key: "1", ctrlKey: true });
+  assert.equal(head.getAttribute("aria-expanded"), "false", "Ctrl+1 收起 Token 卡");
+  await app.window.dispatch("keydown", { key: "1", ctrlKey: true, repeat: true });
+  assert.equal(head.getAttribute("aria-expanded"), "false", "长按不连发");
+  await app.window.dispatch("keydown", { key: "1", ctrlKey: true });
+  assert.equal(head.getAttribute("aria-expanded"), "true", "再次触发展开");
+});
+
+test("tab mode card shortcuts require ctrl and bare digits are retired (C211)", async () => {
+  const app = await boot({ settings: { ...defaults, layoutMode: "tabbed", activeCardId: "usage" } });
+  await app.window.dispatch("keydown", { key: "2" });
+  assert.equal(app.node("tab-btn-usage").classList.contains("active"), true, "裸数字不切页签");
+  await app.window.dispatch("keydown", { key: "2", ctrlKey: true });
+  await settle();
+  assert.equal(app.node("tab-btn-subscription").classList.contains("active"), true, "Ctrl+2 切到订阅页签");
+});
+
 test("dashboard has no tabs and footer button invokes open_settings", async () => {
   const app = await boot();
   assert.equal(app.document.querySelector("#tabs"), null);
@@ -23,6 +46,18 @@ test("dashboard has no tabs and footer button invokes open_settings", async () =
   const start = app.calls.length;
   await app.node("foot-settings").click();
   assert.deepEqual(app.calls.slice(start).map(x => x.command), ["open_settings"]);
+});
+
+test("general pane shows read-only card shortcut keycaps (C211)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const row = [...app.node("pane-general").querySelectorAll(".fluent-row")]
+    .find((node) => node.textContent.includes("卡片快捷键"));
+  assert.ok(row, "通用页存在卡片快捷键行");
+  assert.match(row.textContent, /Ctrl\+1/);
+  assert.match(row.textContent, /固定快捷键，不可修改/);
+  assert.equal(row.querySelector("input"), null, "无输入控件");
+  assert.equal(row.querySelector("select"), null, "无下拉控件");
+  assert.equal(row.querySelector("button"), null, "无录制按钮");
 });
 
 test("settings window navigation switches categories and persists configuration", async () => {
@@ -339,7 +374,7 @@ test("styles.css consumes tier variables and keeps Nothing overrides on new comp
   }
 });
 
-test("agent rows keep distribution details collapsed until expanded, then show mac groups", async () => {
+test("agent rows default-open first expandable agent and toggle details", async () => {
   const panel = structuredClone(fixture);
   panel.hourly.rows[0].models = [
     { name: "m1", share: 0.5, total: 62000, totalText: "62K" },
@@ -350,15 +385,21 @@ test("agent rows keep distribution details collapsed until expanded, then show m
   ];
   const app = await boot({ panel });
   const firstRow = () => app.node("stack").querySelectorAll(".agent-row")[0];
-  // 默认收起 (mac @State 同语义): 明细不渲染, chevron 与 aria 状态一致
-  assert.equal(firstRow().querySelectorAll(".legend-row").length, 0);
-  assert.equal(firstRow().querySelector(".line1").getAttribute("aria-expanded"), "false");
-  assert.equal(firstRow().querySelector(".row-chev").classList.contains("open"), false, "chevron.right 未旋转");
+  // C212: 默认打开第一个有明细 agent
+  assert.equal(firstRow().querySelectorAll(".legend-row").length, 7);
+  assert.equal(firstRow().querySelector(".line1").getAttribute("aria-expanded"), "true");
+  assert.equal(firstRow().querySelector(".row-chev").classList.contains("open"), true, "chevron 旋转 90°");
   assert.ok(firstRow().querySelector(".row-chev svg"), "chevron 为线性图标 (mac SF Symbol 等价)");
+  // 点击收起
   await firstRow().querySelector(".line1").click();
-  const row = firstRow();
+  let row = firstRow();
+  assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "false");
+  assert.equal(row.querySelector(".row-chev").classList.contains("open"), false, "chevron.right 复位");
+  assert.equal(row.querySelectorAll(".legend-row").length, 0);
+  // 再次点击展开并核对内容
+  await firstRow().querySelector(".line1").click();
+  row = firstRow();
   assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "true");
-  assert.equal(row.querySelector(".row-chev").classList.contains("open"), true, "展开后 chevron 旋转 90°");
   assert.deepEqual([...row.querySelectorAll(".detail-title")].map((n) => n.textContent), ["模型占比", "项目分布"]);
   // 模型 5 条 (含「其他」与极小份额) + 项目 2 条, 全部渲染 (前端不得截断)
   assert.equal(row.querySelectorAll(".legend-row").length, 7);
@@ -371,12 +412,79 @@ test("agent rows keep distribution details collapsed until expanded, then show m
   // 100% 堆叠条: 每组一条, 段宽按 share
   assert.equal(row.querySelectorAll(".share-bar").length, 2);
   assert.equal(row.querySelectorAll(".share-bar")[0].querySelectorAll(".share-seg").length, 5);
-  // 键盘可展开
+  // 键盘可收起
   await firstRow().querySelector(".line1").dispatch("keydown", { key: "Enter" });
   assert.equal(firstRow().querySelectorAll(".legend-row").length, 0, "可再次收起");
 });
 
-test("hourly chart, sparklines and live badge follow mac shapes", async () => {
+test("agent card shows today-empty under 14-day history with one refresh entry (C212)", async () => {
+  const panel = structuredClone(fixture);
+  panel.hourly.rows = [];
+  const app = await boot({ panel });
+  const card = app.node("stack").querySelector('[data-card="hourly"]');
+  assert.ok(card.querySelector(".daily-chart"), "有历史时保留 14 日柱");
+  assert.equal(card.querySelector(".hourly-title-row"), null, "空态不显示今日行");
+  assert.ok(card.querySelector(".hourly-empty"));
+  assert.equal(card.querySelector(".hourly-empty-title").textContent, "今天还没有 Agent 用量");
+  assert.equal(card.querySelectorAll(".hourly-refresh").length, 1, "空态只有一个刷新入口");
+  const start = app.calls.length;
+  await card.querySelector(".hourly-refresh").click();
+  assert.ok(app.calls.slice(start).some((call) => call.command === "refresh_now"));
+});
+
+test("agent card hides chart and says no usage when there is no history (C212)", async () => {
+  const panel = structuredClone(fixture);
+  panel.hourly.rows = [];
+  panel.usage.days = [];
+  panel.usage.legend = [];
+  const app = await boot({ panel });
+  const card = app.node("stack").querySelector('[data-card="hourly"]');
+  assert.equal(card.querySelector(".daily-chart"), null);
+  assert.equal(card.querySelector(".hourly-empty-title").textContent, "暂无 Agent 用量");
+  assert.equal(card.querySelectorAll(".hourly-refresh").length, 1);
+});
+
+test("data state shows today row with icon-only refresh (C212)", async () => {
+  const app = await boot();
+  const card = app.node("stack").querySelector('[data-card="hourly"]');
+  const titleRow = card.querySelector(".hourly-title-row");
+  assert.ok(titleRow);
+  assert.equal(titleRow.querySelector(".sec").textContent, "今日");
+  assert.equal(titleRow.querySelectorAll(".hourly-refresh").length, 1);
+  assert.equal(titleRow.textContent.includes("刷新"), false, "图标按钮不带文字");
+  assert.equal(card.querySelector(".hourly-empty"), null);
+});
+
+test("tab entry and card re-expand reset first expandable agent (C212)", async () => {
+  const app = await boot({ settings: { ...defaults, layoutMode: "tabbed", activeCardId: "usage" } });
+  await app.window.dispatch("keydown", { key: "3", ctrlKey: true });
+  await settle();
+  const firstLine = () => app.node("stack").querySelector(".agent-row .line1");
+  assert.equal(firstLine().getAttribute("aria-expanded"), "true", "进入 hourly 默认展开首个");
+  await firstLine().click();
+  assert.equal(firstLine().getAttribute("aria-expanded"), "false");
+  await app.window.dispatch("keydown", { key: "1", ctrlKey: true });
+  await settle();
+  await app.window.dispatch("keydown", { key: "3", ctrlKey: true });
+  await settle();
+  assert.equal(firstLine().getAttribute("aria-expanded"), "true", "重新进入重置首行");
+});
+
+test("stack card expand resets first expandable agent (C212)", async () => {
+  const app = await boot();
+  const card = () => app.node("stack").querySelector('[data-card="hourly"]');
+  const firstLine = () => card().querySelector(".agent-row .line1");
+  assert.equal(firstLine().getAttribute("aria-expanded"), "true");
+  await firstLine().click();
+  assert.equal(firstLine().getAttribute("aria-expanded"), "false");
+  const head = card().querySelector(".card-head");
+  await head.click();
+  assert.equal(card().classList.contains("collapsed"), true);
+  await head.click();
+  assert.equal(firstLine().getAttribute("aria-expanded"), "true");
+});
+
+test("hourly chart and sparklines follow mac shapes", async () => {
   const app = await boot();
   const stack = () => app.node("stack");
   // 24 点走势为 SVG 折线 (mac LineMark 默认线性插值, 非点柱)
@@ -385,8 +493,9 @@ test("hourly chart, sparklines and live badge follow mac shapes", async () => {
   // 14 日柱顶恒显每日总量
   const totals = [...stack().querySelectorAll(".day-total")].map((n) => n.textContent);
   assert.deepEqual(totals, ["127K", "184K"]);
-  // LIVE 文案 (mac LiveIndicator)
-  assert.equal(stack().querySelector(".live-text").textContent, "LIVE");
+  // C210: 卡内 LIVE 徽标退役, 顶部 Header 状态灯保留
+  assert.equal(stack().querySelector(".live-badge"), null, "Token 卡不再渲染 LIVE 徽标");
+  assert.equal(stack().querySelector(".live-text"), null, "Token 卡不再渲染 LIVE 文案");
   // 收起态迷你曲线 + 峰值文案
   const hourlyCard = stack().querySelector('[data-card="hourly"]');
   await hourlyCard.querySelector(".card-head").click();
@@ -475,9 +584,8 @@ test("Nothing theme renders hero dot-square, threshold legend, project console, 
     assert.equal(legend.querySelector(".updated")?.textContent, panel.subscription.updatedText, "Nothing 底栏右侧包含平齐的最后更新");
   }
 
-  // 3. 项目统计控制台: 展开首个 agent 检验 Dot-Leader console
+  // 3. 项目统计控制台: 首个 agent 已按 C212 默认展开
   const getFirstRow = () => stack.querySelectorAll(".agent-row")[0];
-  await getFirstRow().querySelector(".line1").click();
   const prjConsole = getFirstRow().querySelector(".nothing-prj-console");
   assert.ok(prjConsole, "Nothing 主题下项目分布使用点阵终端控制台渲染");
   assert.match(prjConsole.querySelector(".prj-console-title").textContent, /PRJ\.CONSOLE/);
@@ -496,14 +604,14 @@ test("Nothing theme renders hero dot-square, threshold legend, project console, 
   assert.match(css, /@font-face\s*\{[^}]*font-family:\s*"Space Mono"/, "必须引入 Space Mono 字体");
   assert.match(css, /\.theme-nothing #panel\s*\{[^}]*border-radius:\s*10px/, "面板圆角对齐 macOS 10px");
   assert.match(css, /\.theme-nothing #panel\s*\{[^}]*background:\s*#000000/, "面板底色对齐 macOS #000000 OLED 纯黑");
-  // mac: 卡内 LIVE 为 5pt 实心方点; 顶部 Header 状态灯在 Nothing 下仍是圆点 (Circle)
-  assert.match(css, /\.theme-nothing \.live-dot::after\s*\{[^}]*border-radius:\s*0/, "LIVE 指示灯对齐方块几何");
+  // C210: 卡内 LIVE 样式退役; 顶部 Header 状态灯在 Nothing 下仍是圆点 (Circle)
+  assert.doesNotMatch(css, /\.live-badge|\.live-dot|\.live-text/, "LIVE 徽标样式已随 C210 退役");
   assert.doesNotMatch(css, /\.theme-nothing \.hud-dot\s*\{[^}]*border-radius:\s*0/, "Header 状态灯保持圆形");
 });
 
 test("styles.css defines the P2 shapes and keeps theme overrides for them", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-  for (const rule of [".daily-chart .day-total", ".share-bar", ".legend-row", ".mini-spark", ".live-text", ".drag-handle", ".card.usage-card"]) {
+  for (const rule of [".daily-chart .day-total", ".share-bar", ".legend-row", ".mini-spark", ".drag-handle", ".card.usage-card"]) {
     assert.ok(css.includes(rule), `styles.css 缺少 ${rule}`);
   }
   // 拖拽手柄仅折叠态可见; Nothing 走势色为 heroGreen; 趋势/纹样不得用内联色
@@ -535,7 +643,7 @@ test("settings expose Cline with mac-aligned display names", async () => {
 
 test("styles.css hides head metadata when collapsed and defines subscription components", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-  // 折叠态 status 槽被 mini 摘要取代: 「最后更新」与 LIVE 所在的状态件必须随折叠隐藏
+  // 折叠态 status 槽被 mini 摘要取代: 状态件必须随折叠隐藏
   assert.match(css, /\.card\.collapsed > \.card-head \.card-status\s*\{\s*display:\s*none/);
   assert.match(css, /\.card\.collapsed > \.card-head \.collapsed-summary\s*\{\s*display:\s*flex/);
   for (const rule of [".sub-extra", ".sub-name-toggle", ".account-card", ".account-head", ".last-success", ".tag-chip", ".bal-slots", ".slot-value"]) {
@@ -1139,7 +1247,8 @@ test("card header follows mac CollapsibleCardHeader order and embeds the collaps
   const head = usage.querySelector(".card-head");
   const order = head.children.map((child) => child.className);
   assert.deepEqual(order, ["drag-handle", "card-title", "card-status", "collapsed-summary", "chev"]);
-  assert.equal(head.querySelector(".card-status .live-text").textContent, "LIVE", "LIVE 位于状态件 (行尾)");
+  assert.equal(head.querySelector(".card-status").textContent, "", "Token 卡状态槽为空 (C210)");
+  assert.equal(head.querySelector(".live-text"), null, "Token 卡不再渲染 LIVE");
   const sub = app.node("stack").querySelector('[data-card="subscription"]');
   // C182: 订阅卡最后更新已由标题行状态件移至卡片底栏右侧 (与三档标注平齐)
   assert.equal(sub.querySelector(".card-head .card-status .updated"), null, "标题行状态件不再包含最后更新");
@@ -1466,8 +1575,11 @@ test("dashboard tabbed layout toggles single card, supports directional slide an
   assert.equal(tabApp.node("stack").children.length, 1);
   assert.equal(tabApp.state.settings.activeCardId, "subscription", "持久化已激活卡片");
 
-  // 4. 键盘数字键 3 切至 hourly
+  // 4. C211: 裸数字退役, Ctrl+3 切至 hourly
   await tabApp.window.dispatch("keydown", { key: "3" });
+  await settle();
+  assert.equal(tabApp.node("tab-btn-subscription").classList.contains("active"), true, "裸数字不切卡");
+  await tabApp.window.dispatch("keydown", { key: "3", ctrlKey: true });
   await settle();
   assert.equal(tabApp.node("tab-btn-hourly").classList.contains("active"), true);
   assert.equal(tabApp.node("stack").children.length, 1);

@@ -57,9 +57,7 @@ struct UsageHeroCard: View {
                 onToggle: onToggleCollapse,
                 cardID: .usage
             ) {
-                if viewModel.isLive {
-                    LiveIndicator(nothingStyle: isNothing)
-                }
+                EmptyView()
             } mini: {
                 collapsedMini
             }
@@ -1110,54 +1108,13 @@ private struct CodeStreamBackground: View {
     }
 }
 
-// MARK: - LIVE 呼吸灯
-
-/// 绿点 + 光晕, 2.4 秒一周期的透明度呼吸; Reduce Motion 时静止常亮.
-/// Nothing 主题: 5pt 实心方点 (success 色), 去光晕, 文本 Space Mono.
-private struct LiveIndicator: View {
-    let nothingStyle: Bool
-
-    var body: some View {
-        HStack(spacing: 5) {
-            ZStack {
-                if nothingStyle {
-                    Rectangle()
-                        .fill(Self.nothingSuccess)
-                        .frame(width: 5, height: 5)
-                } else {
-                    // 光晕: mockup 为 3px 扩散环 (18% 透明度).
-                    Circle()
-                        .fill(Self.green.opacity(0.18))
-                        .frame(width: 12, height: 12)
-                    Circle()
-                        .fill(Self.green)
-                        .frame(width: 6, height: 6)
-                }
-            }
-            Text("LIVE")
-                .font(nothingStyle ? NothingFont.mono(9) : .system(size: 9.5, weight: .semibold))
-                .tracking(nothingStyle ? 1.08 : 0)
-                .foregroundStyle(nothingStyle ? Self.nothingText : Self.textGreen)
-        }
-    }
-
-    private static let green = Color(hex: "#30d158")
-    /// 深绿文字在深色玻璃上对比度不足, 深色下退回亮绿.
-    private static let textGreen = Color.adaptive(light: Color(hex: "#0a7d3b"), dark: Color(hex: "#30d158"))
-    private static let nothingSuccess = Color(hex: "#4A9E5C")
-    private static let nothingText = Color.adaptive(
-        light: Color(hex: "#666666"),
-        dark: Color(hex: "#999999")
-    )
-}
-
 // MARK: - Preview
 
 // 命令行工具链 (无 Xcode) 缺少 PreviewsMacros 插件, 用 canImport 守住,
 // 保证 swift build 在两种工具链下都能通过; Xcode 下预览照常生效.
 #if DEBUG && canImport(PreviewsMacros)
 /// 预览 fixture: 以 artifact JSON 经 PanelViewModelMapper 生成真实 view model,
-/// 覆盖 4 个 agent, 2-4 段堆叠, 成本文案, LIVE 态和完整四格细分.
+/// 覆盖 4 个 agent, 2-4 段堆叠, 成本文案和完整四格细分.
 /// (UsageHeroViewModel 暂无 package 级构造器, 不能直接 memberwise 构造.)
 private enum UsageHeroPreviewFixture {
     static func makeViewModel() -> UsageHeroViewModel {

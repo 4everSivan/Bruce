@@ -432,14 +432,6 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .card.dragging { opacity: .45; }
 .card.drop-target { outline: 1px dashed var(--accent); outline-offset: 2px; }
 
-/* LIVE 指示 (mac LiveIndicator classic): 12pt 18% 光环 + 6pt 圆点 + 9.5pt 半粗绿字 */
-.live-badge { display: inline-flex; align-items: center; gap: 5px; }
-.live-dot { position: relative; width: 12px; height: 12px; flex: none; }
-.live-dot::before, .live-dot::after { content: ""; position: absolute; border-radius: 50%; }
-.live-dot::before { inset: 0; background: rgba(48,209,88,.18); }
-.live-dot::after { width: 6px; height: 6px; left: 3px; top: 3px; background: #30d158; }
-.live-text { font-size: 9.5px; font-weight: 600; color: #30d158; }
-
 /* ---------- Token 用量卡 (mac UsageHeroCard) ---------- */
 .card.usage-card { isolation: isolate; }
 /* 背景纹样层: classic 为代码流字符 (CodeStreamBackground, 底部 45%→95% 渐隐);
@@ -734,8 +726,59 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .daily-legend > span { display: inline-flex; align-items: center; gap: 4px; }
 .daily-legend .sw { width: 7px; height: 7px; border-radius: 2px; flex: none; }
 .hourly-body > .divider { margin: 10px 0 8px; }
-.hourly-title-row { display: flex; align-items: baseline; margin-bottom: 2px; }
-.hourly-title-row .range { margin-left: auto; font-size: 10px; color: var(--secondary); }
+.hourly-title-row { display: flex; align-items: center; margin-bottom: 2px; }
+/* C212: 卡内刷新入口 — 有数据时仅图标, 空态时图标+文字并位于文案下方 */
+.hourly-refresh {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 3px;
+  background: rgba(255,255,255,.055);
+  color: var(--secondary);
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hourly-refresh svg { width: 11px; height: 11px; display: block; }
+.hourly-refresh:hover { color: var(--ink); border-color: var(--secondary); }
+.hourly-refresh:disabled { opacity: .55; cursor: default; }
+.hourly-refresh.spinning svg { animation: foot-spin .9s linear infinite; }
+html[data-motion="off"] .hourly-refresh.spinning svg { animation: none; }
+.hourly-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 0 3px;
+  text-align: center;
+}
+.hourly-empty-frame {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(255,255,255,.22);
+  border-radius: 9px;
+  color: var(--secondary);
+}
+.hourly-empty-frame svg { width: 16px; height: 16px; display: block; }
+.hourly-empty-title { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.hourly-empty-desc {
+  max-width: 258px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--secondary);
+}
+.hourly-empty-refresh { margin-left: 0; margin-top: 2px; }
+.hourly-empty-mini { font-size: 10.5px; color: var(--secondary); }
 /* agent 行 (mac agentRow): 垂直 7, 行间 1px 分隔 */
 .agent-row { padding: 7px 0; }
 .agent-row + .agent-row { border-top: 1px solid var(--divider); }
@@ -1014,6 +1057,23 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 }
 .fluent-card > .fluent-row:first-of-type {
   border-top: none;
+}
+
+/* C211: 卡片快捷键只读键帽 (通用页说明行) */
+.keycap-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.keycap {
+  font: 600 10.5px var(--mono-font);
+  color: var(--text-2);
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-hover);
+  white-space: nowrap;
 }
 
 .row-meta {
@@ -1781,16 +1841,6 @@ details summary {
 .theme-nothing .drag-handle i { width: 2px; height: 2px; border-radius: 0; }
 .theme-nothing .drag-handle:hover { background: #222222; }
 
-/* LIVE: 5pt 实心方点 (success) 去光晕, 文本 Space Mono 9 字距 1.08 */
-.theme-nothing .live-dot { width: 5px; height: 5px; }
-.theme-nothing .live-dot::before { display: none; }
-.theme-nothing .live-dot::after { left: 0; top: 0; width: 5px; height: 5px; border-radius: 0; background: #4A9E5C; }
-.theme-nothing .live-text {
-  font: 400 9px/normal "Space Mono", var(--mono-font);
-  letter-spacing: 1.08px;
-  color: #999999;
-}
-
 /* 用量卡背景: 16pt 网格 2pt 圆点 (secondary 13%), 底部 42%→88% 渐隐 */
 .theme-nothing .usage-bg {
   background-image: radial-gradient(circle, #999999 1px, transparent 1.2px);
@@ -2014,9 +2064,27 @@ details summary {
 }
 .theme-nothing .daily-legend { font: 400 9px/normal "Space Mono", var(--mono-font); color: #999999; }
 .theme-nothing .daily-legend .sw { width: 8px; height: 8px; border-radius: 0; }
-.theme-nothing .hourly-title-row .range {
-  font: 400 9px/normal "Space Mono", var(--mono-font);
-  letter-spacing: .54px;
+.theme-nothing .hourly-refresh {
+  border-radius: 2px;
+  border-color: #333333;
+  background: transparent;
+  font-family: var(--mono-font);
+  font-size: 9px;
+  letter-spacing: .4px;
+}
+.theme-nothing .hourly-empty-refresh { margin-left: 0; }
+.theme-nothing .hourly-empty-frame { border-radius: 2px; border-color: #333333; }
+.theme-nothing .hourly-empty-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11.5px;
+}
+.theme-nothing .hourly-empty-desc {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 10px;
+}
+.theme-nothing .hourly-empty-mini {
+  font-family: var(--mono-font);
+  font-size: 9px;
   color: #666666;
 }
 .theme-nothing .agent-row .dot { border-radius: 0; }

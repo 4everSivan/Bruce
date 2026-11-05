@@ -20,6 +20,10 @@ struct HourlyLineCard: View {
     /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你折线.
     var isCollapsed: Bool = false
     var onToggleCollapse: () -> Void = {}
+    /// C212: 卡片内刷新入口 (Agent 用量模块).
+    var onRefresh: () -> Void = {}
+    /// C212: 刷新中禁用并旋转图标.
+    var isRefreshing: Bool = false
     /// Nothing 点阵柱状图当前悬停的日期列 (触碰列顶才显示当日总量).
     @State private var hoveredDayDate: String?
     /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
@@ -36,14 +40,21 @@ struct HourlyLineCard: View {
     ///   - viewModel: 逐小时卡 view model.
     ///   - dailyDays: 14 日柱状图数据, 默认空 (预览用).
     ///   - dailyLegend: 柱状图分段图例, 默认空 (预览用).
-    ///   - initiallyExpandedAgentIDs: 初始展开的 agent id, 默认全收起 (预览用).
+    ///   - initiallyExpandedAgentIDs: 初始展开的 agent id; nil 表示按 C212 规则默认打开第一个可展开行.
+    ///   - isCollapsed: 卡片收起态.
+    ///   - onToggleCollapse: 标题行收放回调.
+    ///   - onRefresh: 正文刷新回调.
+    ///   - isRefreshing: 刷新中状态.
+    ///   - panelVisible: 面板可见性, 用于刷新图标旋转门控.
     init(
         viewModel: HourlyLineViewModel,
         dailyDays: [UsageChartDay] = [],
         dailyLegend: [UsageLegendItem] = [],
-        initiallyExpandedAgentIDs: Set<String> = [],
+        initiallyExpandedAgentIDs: Set<String>? = nil,
         isCollapsed: Bool = false,
         onToggleCollapse: @escaping () -> Void = {},
+        onRefresh: @escaping () -> Void = {},
+        isRefreshing: Bool = false,
         panelVisible: Bool = true
     ) {
         self.viewModel = viewModel
@@ -51,8 +62,12 @@ struct HourlyLineCard: View {
         self.dailyLegend = dailyLegend
         self.isCollapsed = isCollapsed
         self.onToggleCollapse = onToggleCollapse
+        self.onRefresh = onRefresh
+        self.isRefreshing = isRefreshing
         self.panelVisible = panelVisible
-        _expandedAgentIDs = State(initialValue: initiallyExpandedAgentIDs)
+        let initialExpansion = initiallyExpandedAgentIDs
+            ?? Self.defaultExpandedAgentIDs(viewModel.rows, isCollapsed: isCollapsed)
+        _expandedAgentIDs = State(initialValue: initialExpansion)
     }
 
     var body: some View {
@@ -85,26 +100,49 @@ struct HourlyLineCard: View {
             .clipped()
         }
         .clipped()
+        // C212: 每次从收起态展开都重置为第一个有明细的 agent.
+        .onChange(of: isCollapsed) { _, collapsed in
+            guard !collapsed else { return }
+            expandedAgentIDs = Self.defaultExpandedAgentIDs(
+                viewModel.rows,
+                isCollapsed: false
+            )
+        }
+    }
+
+    /// C212: 默认展开集合; 无可展开行时为空.
+    private static func defaultExpandedAgentIDs(
+        _ rows: [HourlyAgentRow],
+        isCollapsed: Bool
+    ) -> Set<String> {
+        guard !isCollapsed, let agentID = rows.first(where: \.isExpandable)?.agentID else {
+            return []
+        }
+        return [agentID]
     }
 
     /// 展开态内容 (标题行由 CollapsibleCardHeader 承担, 全周期唯一不跳动).
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !dailyDays.isEmpty {
+            if hasHistory {
                 dailySection
                 rowDivider
                     .padding(.top, 10)
                     .padding(.bottom, 8)
             }
 
-            titleRow
-                .padding(.bottom, 2)
+            if viewModel.rows.isEmpty {
+                emptyTodayState
+            } else {
+                todayTitleRow
+                    .padding(.bottom, 2)
 
-            ForEach(Array(viewModel.rows.enumerated()), id: \.element.agentID) { index, row in
-                if index > 0 {
-                    rowDivider
+                ForEach(Array(viewModel.rows.enumerated()), id: \.element.agentID) { index, row in
+                    if index > 0 {
+                        rowDivider
+                    }
+                    agentRow(row, index: index)
                 }
-                agentRow(row, index: index)
             }
         }
     }
@@ -113,50 +151,60 @@ struct HourlyLineCard: View {
 
     /// 收起态: 24 点全 agent 合计迷你折线 (1.5pt 描线 + 淡面积, subdued 色)
     /// + 右侧峰值文案; Nothing 下无面积渐变, 峰值用 Space Mono.
+    /// C212: 今日无任何 agent 用量时只显示「暂无用量」.
+    @ViewBuilder
     private var collapsedMini: some View {
-        let points = viewModel.collapsedPoints
-        let maxPoint = max(points.max() ?? 0, 1)
-        let lineColor = isNothing
-            ? nothingTokens.secondary
-            : Color.primary.opacity(0.5)
-        return HStack(spacing: 15) {
-            Chart(Array(points.enumerated()), id: \.offset) { point in
-                LineMark(
-                    x: .value("时", point.offset),
-                    y: .value("量", point.element)
-                )
-                .foregroundStyle(lineColor)
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
-                if !isNothing {
-                    AreaMark(
+        if viewModel.isEmptyToday {
+            Text("暂无用量")
+                .font(isNothing ? NothingFont.mono(9) : .system(size: 9.5))
+                .foregroundStyle(isNothing ? nothingTokens.disabled : Color.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .transition(.opacity)
+        } else {
+            let points = viewModel.collapsedPoints
+            let maxPoint = max(points.max() ?? 0, 1)
+            let lineColor = isNothing
+                ? nothingTokens.secondary
+                : Color.primary.opacity(0.5)
+            HStack(spacing: 15) {
+                Chart(Array(points.enumerated()), id: \.offset) { point in
+                    LineMark(
                         x: .value("时", point.offset),
                         y: .value("量", point.element)
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [lineColor.opacity(0.18), lineColor.opacity(0.02)],
-                            startPoint: .top,
-                            endPoint: .bottom
+                    .foregroundStyle(lineColor)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    if !isNothing {
+                        AreaMark(
+                            x: .value("时", point.offset),
+                            y: .value("量", point.element)
                         )
-                    )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [lineColor.opacity(0.18), lineColor.opacity(0.02)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    }
                 }
+                .chartYScale(domain: 0...(Double(maxPoint) * 1.1))
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .frame(height: 12)
+                .frame(maxWidth: .infinity)
+                // 阻断继承父级的折叠动画事务，避免迷你折线在进入时执行线条形变或插值拉扯，保持静态保真
+                .transaction { $0.animation = nil }
+                Text(viewModel.collapsedPeakText)
+                    .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                    .monospacedDigit()
+                    .foregroundStyle(isNothing
+                        ? nothingTokens.disabled
+                        : Color.primary.opacity(0.5))
+                    .fixedSize()
             }
-            .chartYScale(domain: 0...(Double(maxPoint) * 1.1))
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .frame(height: 12)
-            .frame(maxWidth: .infinity)
-            // 阻断继承父级的折叠动画事务，避免迷你折线在进入时执行线条形变或插值拉扯，保持静态保真
-            .transaction { $0.animation = nil }
-            Text(viewModel.collapsedPeakText)
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
-                .monospacedDigit()
-                .foregroundStyle(isNothing
-                    ? nothingTokens.disabled
-                    : Color.primary.opacity(0.5))
-                .fixedSize()
+            .transition(.opacity)
         }
-        .transition(.opacity)
     }
 
     // MARK: - Nothing 主题判定
@@ -430,25 +478,98 @@ struct HourlyLineCard: View {
         .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.75))
     }
 
-    // MARK: - 逐小时小标题
+    // MARK: - 今日小标题与卡内刷新
 
-    /// 区块小标题样式的「逐小时」行, 右侧保留时段范围说明.
-    /// Nothing 右侧说明用 .meta 样式 (mono 9 + 字距 + disabled).
-    private var titleRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            sectionTitle("逐小时")
-            Spacer()
-            if isNothing {
-                Text("0 – 23 时")
-                    .font(NothingFont.mono(9))
-                    .tracking(0.54)
-                    .foregroundStyle(nothingTokens.disabled)
-            } else {
-                Text("0 – 23 时")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
+    /// 有数据时的「今日」小标题行, 右侧为仅图标刷新按钮 (C212).
+    private var todayTitleRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            sectionTitle("今日")
+            Spacer(minLength: 8)
+            refreshIconButton
         }
+    }
+
+    private var refreshIconButton: some View {
+        Button(action: onRefresh) {
+            HourlyRefreshIcon(isRefreshing: isRefreshing, panelVisible: panelVisible)
+                .foregroundStyle(isNothing ? nothingTokens.secondary : Color.secondary)
+                .frame(width: 18, height: 18)
+                .background(
+                    isNothing ? Color.clear : Color.primary.opacity(0.045),
+                    in: RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
+                        .strokeBorder(
+                            isNothing
+                                ? Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#333333"))
+                                : Color.primary.opacity(0.10),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(isRefreshing)
+        .help("刷新 Agent 用量")
+        .accessibilityLabel("刷新 Agent 用量")
+    }
+
+    /// 近 14 日是否存在任何非零用量; 无历史时连柱状图一起隐藏 (C212).
+    private var hasHistory: Bool {
+        dailyDays.contains { $0.total > 0 }
+    }
+
+    /// 今日无任何 agent 用量时的空态: 有历史则保留柱状图, 只把今日区置空;
+    /// 无历史不渲染柱状图. 刷新按钮在空态图标/文案下方, 与「今日」行互斥 (C212).
+    private var emptyTodayState: some View {
+        let title = hasHistory ? "今天还没有 Agent 用量" : "暂无 Agent 用量"
+        return VStack(spacing: 7) {
+            VStack(spacing: 7) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(isNothing ? nothingTokens.secondary : Color.secondary)
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: isNothing ? 2 : 9, style: .continuous)
+                            .strokeBorder(
+                                isNothing
+                                    ? Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#333333"))
+                                    : Color.primary.opacity(0.18),
+                                style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                            )
+                    }
+
+                Text(title)
+                    .font(isNothing
+                        ? NothingFont.ui(11.5, weight: .semibold)
+                        : .system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(isNothing ? nothingTokens.primary : Color.primary)
+
+                Text("检测到 Agent 活动后，这里会显示今日逐小时折线与模型、项目明细。")
+                    .font(isNothing ? NothingFont.ui(10) : .system(size: 10.5))
+                    .foregroundStyle(isNothing ? nothingTokens.secondary : Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(1.5)
+                    .frame(maxWidth: 258)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Agent 用量，\(title)。检测到 Agent 活动后，这里会显示今日逐小时折线与模型、项目明细。")
+
+            Button(action: onRefresh) {
+                HStack(spacing: 5) {
+                    HourlyRefreshIcon(isRefreshing: isRefreshing, panelVisible: panelVisible)
+                    Text("刷新")
+                }
+                .font(.system(size: 11, weight: .medium))
+            }
+            .panelGlassButtonStyle()
+            .disabled(isRefreshing)
+            .accessibilityLabel("刷新 Agent 用量")
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 10)
+        .padding(.bottom, 3)
     }
 
     // MARK: - agent 行
@@ -905,6 +1026,37 @@ struct HourlyLineCard: View {
         "#7ad4e1",
         "#9fe5ed",
     ]
+}
+
+// MARK: - C212 卡内刷新图标
+
+/// 刷新图标: 刷新中且面板可见、未关闭动效时旋转; 其余状态静止.
+private struct HourlyRefreshIcon: View {
+    let isRefreshing: Bool
+    let panelVisible: Bool
+
+    @Environment(\.motionSuppressed) private var motionSuppressed
+    @State private var rotation = 0.0
+
+    var body: some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: 10, weight: .semibold))
+            .rotationEffect(.degrees(rotation))
+            .onAppear { updateAnimation() }
+            .onChange(of: isRefreshing) { _, _ in updateAnimation() }
+            .onChange(of: panelVisible) { _, _ in updateAnimation() }
+    }
+
+    private func updateAnimation() {
+        guard isRefreshing, panelVisible, !motionSuppressed else {
+            rotation = 0
+            return
+        }
+        rotation = 0
+        withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
+            rotation = 360
+        }
+    }
 }
 
 // MARK: - Nothing 主题样式辅助

@@ -455,6 +455,32 @@ struct SettingsView: View {
                         )
                     )
                 }
+                // C211: 固定卡片快捷键只读说明; 无录制/编辑控件.
+                FluentRow(
+                    "卡片快捷键",
+                    sub: "⌘1 Token 用量 · ⌘2 订阅 · ⌘3 Agent 用量；纵向级联下展开/收起，顶栏 Tab 下切换页签。固定快捷键，不可修改。",
+                    divided: true
+                ) {
+                    HStack(spacing: 5) {
+                        ForEach(["⌘1", "⌘2", "⌘3"], id: \.self) { key in
+                            Text(key)
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(SettingsDemoTokens.text2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    SettingsDemoTokens.surfaceHover,
+                                    in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                )
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .strokeBorder(SettingsDemoTokens.separator, lineWidth: 1)
+                                }
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("卡片快捷键：Command 1、Command 2、Command 3，固定不可修改")
+                }
                 FluentRow(
                     "刷新间隔",
                     sub: "本地统计采集与订阅额度自动刷新周期；订阅额度最短 3 分钟查询一次，遇 429 限流时自动冷却",

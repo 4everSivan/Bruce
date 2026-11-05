@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-11-01 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-11-05 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -128,7 +128,8 @@
 
 | 规则 | mac 语义 | Windows 渲染层 |
 |---|---|---|
-| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；按键 1/2/3 切卡并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
+| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；C211 起固定快捷键为 ⌘1/⌘2/⌘3（Tab 切页签 / 纵向级联先滚动再收放，裸 1/2/3 退役），并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器，并在布局行后展示只读 `Ctrl+1/2/3` 键帽；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
+| Agent 用量卡（C212） | 进入/展开默认打开首个有模型/项目明细的 agent；有数据时「今日」+ 图标刷新；今日空态保留 14 日柱状图（无历史不渲染），空态图标/文案下唯一刷新；收起空态「暂无用量」 | 同语义（`hourlyExpansionPending` + `makeCollapsible(onExpand)` 重置；`refresh_now` 刷新；空态复用订阅空态视觉语法） |
 | 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
 | `account.note` | 仅 `account.status == "error"` 渲染 | 同 |
@@ -136,11 +137,11 @@
 | 账号状态 | 卡内无 status→中文 标签行，仅经 note 与 `lastSuccessText` 呈现 | 同 |
 | 余额胶囊 | 纯余额型抑制头部胶囊（改走双槽） | 同 |
 | 收起态迷你摘要 | `collapsedPeakWindow` = `windows ∪ accounts[].windows` 中 `usedPercent` 最大者；纯余额型（无窗口）不出迷你条 | 渲染层按同语义推导（不改契约字段，避免 golden 漂移） |
-| 折叠态可见性 | 折叠时 status 槽（`LIVE` / 最后更新时间）被 mini 摘要取代 | 同（C067 起标题行结构为 `[.drag-handle] [.card-title] [.card-status] [.collapsed-summary] [.chev]`：状态件经 `margin-left:auto` 推到行尾，折叠态隐藏 `.card-status`、迷你摘要嵌入标题行铺满中间区，而非另起一行） |
+| 折叠态可见性 | 折叠时 status 槽（最后更新时间等）被 mini 摘要取代 | 同（C067 起标题行结构为 `[.drag-handle] [.card-title] [.card-status] [.collapsed-summary] [.chev]`：状态件经 `margin-left:auto` 推到行尾，折叠态隐藏 `.card-status`、迷你摘要嵌入标题行铺满中间区，而非另起一行） |
 | Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发）。**实现约束（C029）**：档位色必须以 CSS 自定义属性（`--hero-grad-start` / `--hero-grad-end`）下发，由 `.hero-num` / `.mini-num` 消费，**严禁用内联 style 直接写 background/前景** —— 内联 `background-image` 会压过 `.theme-nothing .hero-num` 的纯色覆写（C027 实测回归时该类尚带 4px 点阵遮罩，叠加成平铺条纹；C067 起 Nothing hero 改为 Doto 字体自身点阵 + 纯色 accent，不再叠加遮罩） |
 | 模型/项目分布 | 渲染视图模型给出的全部行（Top3 + 「其他」聚合） | 同（前端不得再截断） |
 | Nothing 主题覆写 | 新增任何卡片内组件时，除 Fluent 形态外必须同时给出 `.theme-nothing` 覆写（圆角 3 / `#1A1A1A` 底 / `#222222` 描边；阈值红 `#D71921` 只用于 ≥80 档，当月/选中等强调色一律取 hero accent `#4A9E5C`；C067 起 Nothing 块不再覆写 `--accent`） | 同（C029 起：账号子卡、余额双槽、tag 胶囊、成本数字均有 Nothing 覆写与断言） |
-| Nothing 形态（C034/C066） | 订阅量条 = 24 段方角（高 10 / 段间 2 / 填充段数 = `round(clamp(fraction,0,1)×24)` / 阈值档纯色 `#4A9E5C`·`#D4A843`·`#D71921`）；14 日柱 = 3×8 点阵（6×6 格 / 段间 2 / 填充区自底向上增长 / 填充数 = `max(1, round(total/maxDayTotal×24))` / 格子自上而下编号、从第 `24 - filled` 格起按段序落槽，故首段在填充区顶部，非末段至少 1 格且末段吃剩余直至末格（mac `nothingCellSlots`，C067 校正段序）/ 退化时统一 accent 单色 / 日总量 hover 显示）；24 点走势线 = heroGreen `#30D158`（C067 校正，原 `#4A9E5C`）；agent 配色取 5 档绿阶（已知 agent 固定档位、未知 agent FNV-1a 落档）；**C066 深度对齐**：捆绑分发开源 OFL 许可官方 Doto / Space Grotesk / Space Mono 字体族（`apps/win/src/fonts/`），Hero 数字拆分 4×4px 实心小方块小数点并带呼吸微光晕；面板锁定 10px 紧凑圆角、`#000000` OLED 纯黑底座、无毛玻璃透明；卡内 LIVE 指示灯为 5×5px 纯色方块（顶部 Header 状态灯仍为圆点）；订阅卡底部渲染 `<50` / `50–79` / `≥80` 三档方块阈值图例；Agent 展开区渲染 P4 斜点阵堆叠条与 Dot-Leader 控制台（`PRJ.CONSOLE` + 6-Tick 进度块）。~~设置中心 T07 工作台全量 Nothing 纯黑单色化~~（C067 撤销：mac 设置窗口恒用 `SettingsDemoTokens` Fluent 平面 token，不随界面风格切换） | 同（Windows 恒深色，只实现 dark 侧色序）。 |
+| Nothing 形态（C034/C066） | 订阅量条 = 24 段方角（高 10 / 段间 2 / 填充段数 = `round(clamp(fraction,0,1)×24)` / 阈值档纯色 `#4A9E5C`·`#D4A843`·`#D71921`）；14 日柱 = 3×8 点阵（6×6 格 / 段间 2 / 填充区自底向上增长 / 填充数 = `max(1, round(total/maxDayTotal×24))` / 格子自上而下编号、从第 `24 - filled` 格起按段序落槽，故首段在填充区顶部，非末段至少 1 格且末段吃剩余直至末格（mac `nothingCellSlots`，C067 校正段序）/ 退化时统一 accent 单色 / 日总量 hover 显示）；24 点走势线 = heroGreen `#30D158`（C067 校正，原 `#4A9E5C`）；agent 配色取 5 档绿阶（已知 agent 固定档位、未知 agent FNV-1a 落档）；**C066 深度对齐**：捆绑分发开源 OFL 许可官方 Doto / Space Grotesk / Space Mono 字体族（`apps/win/src/fonts/`），Hero 数字拆分 4×4px 实心小方块小数点并带呼吸微光晕；面板锁定 10px 紧凑圆角、`#000000` OLED 纯黑底座、无毛玻璃透明；卡内不再渲染 LIVE 指示灯（C210 双端退役，顶部 Header 状态灯仍为圆点）；订阅卡底部渲染 `<50` / `50–79` / `≥80` 三档方块阈值图例；Agent 展开区渲染 P4 斜点阵堆叠条与 Dot-Leader 控制台（`PRJ.CONSOLE` + 6-Tick 进度块）。~~设置中心 T07 工作台全量 Nothing 纯黑单色化~~（C067 撤销：mac 设置窗口恒用 `SettingsDemoTokens` Fluent 平面 token，不随界面风格切换） | 同（Windows 恒深色，只实现 dark 侧色序）。 |
 
 **Windows 侧验证纪律（C029，因维护者无 Windows 机器）**：
 
@@ -165,7 +166,7 @@
 | 订阅额度行 | 每行 = 品牌图形徽章（26px，与看板同一套生成产物）+ 显示名 + 凭证形态副标题（`Web 令牌`/`API Key`/`OAuth 设备码`/`CLI 登录态`/`Step Plan Token`，多账号追加 `N 个账号`）+ 套餐标签（取自 artifact `service.plan`，C024 起只在设置页呈现）+ 状态尾件（`未配置`/`已配置`/`需要重新授权`）+ 行内启用开关 + 上移/下移 |
 | Claude 本机登录态（C075） | 「Claude 本机登录态」卡：状态文案（已跟随 / 未发现 / 已过期，对齐 mac `ClaudeProviderSettingsSection`）+ `立即检测`（`claude_local_status`）+ `读取本机登录态`（`import_claude_from_local`，持久化为 `claude-cli` 账号）；启用 Claude 后自动只读跟随，粘贴入口保留作多账号兜底（见规则 17） |
 | 授权与隐私 | mac 语义：单一 `Agent 用量` 开关 + 四条动态说明（含刷新间隔与已启用 provider 名单）+ `当前授权有效` 状态 + `确认授权` / `撤销全部授权` 两个**即时生效**按钮（不走全局保存）；采集与云端额度查询同属一次授权 |
-| 通用 | 首卡行序对齐 mac（C153）：界面风格（经典 / Nothing）→ 界面动效 → 看板布局 → 刷新间隔（C160：预设 3 / 6 分钟 + 自定义 1–1440 分钟；历史遗留的非预设值回显为「自定义」，禁止静默改写）→ 托盘实时预览；配色模式 / 模糊风格 / 凭据存储 / 外部 CLI 来源为 mac 独占行，不参与对齐；C209 起「额度预警气泡」行整体退役（气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递），mac 侧「锁屏暂停订阅刷新」同步退役；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067）；版本展示在维护页「软件更新」卡（07 §4.2 R3），通用页不再有版本行 |
+| 通用 | 首卡行序对齐 mac（C153）：界面风格（经典 / Nothing）→ 界面动效 → 看板布局 → 卡片快捷键（只读，C211）→ 刷新间隔（C160：预设 3 / 6 分钟 + 自定义 1–1440 分钟；历史遗留的非预设值回显为「自定义」，禁止静默改写）→ 托盘实时预览；配色模式 / 模糊风格 / 凭据存储 / 外部 CLI 来源为 mac 独占行，不参与对齐；C209 起「额度预警气泡」行整体退役（气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递），mac 侧「锁屏暂停订阅刷新」同步退役；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067）；版本展示在维护页「软件更新」卡（07 §4.2 R3），通用页不再有版本行 |
 | 窗口观感（C067） | 设置窗口恒用 Fluent 平面 token（mac `SettingsDemoTokens` dark 侧），界面风格只作用于看板，**设置窗口不得套用 `.theme-nothing`**；侧栏宽度按窗口锁定 **17.6%**（1000 宽窗口下 176px，C152，与 mac 同比例）、最小 160px、项 12.5pt / 内边距 10·7 / 圆角 5、选中左缘 3pt accent 条，底部为版本号（无 Windows 自创标题）；内容区内边距 24·18，crumb · 标题 · 内容间距 14；分组标题（11pt 半粗 tertiary）位于卡片上方而非卡内；行标题 13pt 常规；按钮 12pt / 12·5 / 圆角 5，主按钮 `#4C9CFF`。设置窗口默认 1000×680、最小 980×620 且可缩放；设置即时生效、无全局保存栏（C069，见规则 15） |
 | 维护 | `清理用量缓存`（后端 `clear_snapshot_cache`：仅删快照文件，不动配置/凭证，幂等）+ `诊断预览`（客户端拼装**脱敏** JSON：版本、模块阶段、诊断码、目录**末段名**，不含路径分隔符/凭证/账号/业务数据） |
 | 品牌图形产物 | `apps/win/src/provider-brand.js` 为生成产物第三目标（与 Swift 数据、app.js 内联块同源），由 `scripts/gen-provider-glyphs.mjs --check` 锁定；设置窗口须在 `settings.js` 之前加载它 |

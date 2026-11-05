@@ -846,6 +846,16 @@ package struct HourlyLineViewModel: Equatable, Sendable {
         self.rows = rows
     }
 
+    /// C212: 今日没有任何 agent 用量.
+    package var isEmptyToday: Bool {
+        rows.isEmpty
+    }
+
+    /// C212: 第一个有模型/项目明细的 agent; 无则 nil.
+    package var firstExpandableAgentID: String? {
+        rows.first(where: \.isExpandable)?.agentID
+    }
+
     /// 收起态迷你折线: 全 agent 逐小时合计, 固定 24 点 (0-23 时);
     /// 行数据不足 24 点的缺口按 0 计.
     package var collapsedPoints: [Int] {
@@ -903,6 +913,44 @@ package enum DashboardCardID: String, CaseIterable, Equatable, Sendable, Identif
         case .usage: return "chart.bar.xaxis"
         case .subscription: return "creditcard"
         case .hourly: return "waveform.path.ecg"
+        }
+    }
+}
+
+/// C211: ⌘1/2/3 固定卡片快捷键动作.
+package enum DashboardShortcutAction: Equatable, Sendable {
+    /// Tab 模式: 切到对应页签.
+    case selectTab(DashboardCardID)
+    /// 纵向级联: 先滚动到卡片, 再切换折叠/展开.
+    case toggleCollapsed(DashboardCardID)
+    /// 键位无映射或卡片当前不可用 (静默 no-op).
+    case none
+}
+
+/// C211: 快捷键的纯映射策略; 身份固定, 与 cardOrder 无关.
+package enum DashboardShortcutPolicy {
+    package static func cardID(for digit: Int) -> DashboardCardID? {
+        switch digit {
+        case 1: return .usage
+        case 2: return .subscription
+        case 3: return .hourly
+        default: return nil
+        }
+    }
+
+    package static func action(
+        digit: Int,
+        layoutMode: DashboardLayoutMode,
+        isAvailable: (DashboardCardID) -> Bool
+    ) -> DashboardShortcutAction {
+        guard let cardID = cardID(for: digit), isAvailable(cardID) else {
+            return .none
+        }
+        switch layoutMode {
+        case .tabbed:
+            return .selectTab(cardID)
+        case .stack:
+            return .toggleCollapsed(cardID)
         }
     }
 }

@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- **新增仪表盘固定卡片快捷键 ⌘/Ctrl 1/2/3 与通用页只读说明 (C211)**：
+  - **固定身份映射**：⌘1 / ⌘2 / ⌘3 分别对应 Token 用量 / 订阅 / Agent 用量，与卡片拖拽顺序无关；顶栏 Tab 模式切换页签，纵向级联模式先滚动到目标卡片再切换折叠/展开；仅响应 key down（长按不连发），卡片当前不可用时静默 no-op；裸 1/2/3 正式退役；
+  - **通用页只读说明**：mac 在「仪表盘卡片布局」行后、Windows 在「看板布局」行后新增「卡片快捷键」行，右侧仅展示 `⌘1/⌘2/⌘3`（Windows `Ctrl+1/2/3`）键帽，说明固定映射与双模式语义，不提供录制/编辑控件或持久化字段；
+  - **双端同构**：Windows 全局 keydown 使用 `Ctrl` 组合并忽略 `event.repeat`；mac `DashboardShortcutPolicy` 纯映射由 Harness 覆盖。
 - **用量历史聚合台账与全量读取：来源解耦、移除 30k 截断、覆盖全部 10 个 Agent (T26)**：
   - **collector 自有 SQLite 台账**：新增 `collector-history` crate，在 `~/Library/Application Support/Bruce/usage-history-v1.sqlite`（Windows `%LOCALAPPDATA%\Bruce\`）按 agent / 日期 / 日×模型 / 月×模型 / 今日小时 / 今日工程保存**派生数值**（不存消息正文、路径、凭据）；每轮全量本机扫描单事务单调合并（新扫描 total ≥ 存量才替换、扫描未出现的日期保留），来源修剪、会话文件删除、换根或部分扫描失败都不再抹掉已有历史；
   - **artifact 从台账投影**：`daily` / `today` / `hours` / `dailyModels` / `monthModels` / `hourModels` / `projects` 全部由台账窗口重建，成本仍按当前价表重算；App 侧数据来源不变（双端仍只读 artifact），`清理用量缓存` 仍只清快照与元数据、不删台账；
@@ -37,6 +41,11 @@
   - 设置中心「通用」面板的菜单栏实时预览条同步对齐，保持所见即所得。
 
 ### Changed
+- **移除 Token 用量卡 LIVE 徽标与绿色方点 (C210)**：mac `UsageHeroCard` 标题行状态槽不再渲染 `LiveIndicator`（绿点光环 + LIVE 文本，Nothing 方点变体），Windows `usageCard` 同步移除 `live-badge` 与 `.live-*` 样式；顶部 Bruce 左侧四色状态灯及其 `isLive` 新鲜度光环保留不变。
+- **Agent 用量卡默认展开首个有明细 Agent、正文刷新与今日空态 (C212)**：
+  - **默认展开**：每次进入 Agent 页签或从收起态展开卡片，自动打开第一个有模型/项目明细的 agent；无明细行保持全收起，数据刷新不重置用户手动状态；
+  - **正文刷新**：有数据时「今日」行右侧仅显示刷新图标（删除「0 – 23 时」文案），点击触发 Agent 用量模块刷新并在刷新中禁用/旋转；面板隐藏或关闭动效时不旋转；
+  - **今日空态**：今日无用量时不显示「今日」行；有近 14 日历史则保留柱状图、只在图标/文案下方显示唯一刷新按钮；无历史则不渲染柱状图，标题为「暂无 Agent 用量」；收起态迷你摘要显示「暂无用量」，不再显示峰值 0。
 - **移除「锁屏暂停订阅刷新」「额度预警气泡」两项通用配置，转为恒开默认行为 (C209)**：
   - **锁屏订阅抑制恒开**：电脑锁屏期间照旧抑制非手动的云端订阅额度查询、跳过额度边界提前唤醒，解锁后按相位与去重窗口补偿一次刷新；`RefreshScheduler` 不再读取开关，`OnboardingConfiguration.pauseSubscriptionRefreshOnScreenLock` 持久化键退役（旧配置遗留键按未知键忽略）；
   - **额度预警气泡恒开**：菜单栏 / 托盘图标锚定气泡恒可投递（mac 仍受主看板可见时静默的展示策略约束；Windows 自动刷新跨越即投递、手动刷新仅观察不投递，50/80/95 阶梯去重与窗口重置恢复不变）；`systemNotificationsEnabled` / `notifications_enabled` 持久化键退役，设置中心通用页两行与官网设置演示同步移除；

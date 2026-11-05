@@ -129,6 +129,8 @@ struct MenuBarDashboardView: View {
     @Namespace private var tabPillNamespace
     /// Tab 模式当前卡片的自然高度 (C148); 容器高度只跟它走一个数值, 切换时单程插值.
     @State private var tabCardHeight: CGFloat = 0
+    /// C211: 纵向级联快捷键请求; 先滚到卡片, 再切换折叠态.
+    @State private var shortcutScrollTarget: DashboardCardID?
 
     var body: some View {
         let panel = model.makePanelViewModel()
@@ -149,39 +151,53 @@ struct MenuBarDashboardView: View {
                 headerHeight = height
             }
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    // macOS 26 上 scrollIndicators(.hidden) 会被系统重设, 用
-                    // AppKit 看门狗持续压制 scroller; 滚轮滚动不受影响.
-                    // 看门狗随面板可见性启停 (C044).
-                    ScrollIndicatorSuppressor(panelVisible: model.dashboardPanelVisible)
-                        .frame(width: 0, height: 0)
-                    glassCardStack(panel)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // macOS 26 上 scrollIndicators(.hidden) 会被系统重设, 用
+                        // AppKit 看门狗持续压制 scroller; 滚轮滚动不受影响.
+                        // 看门狗随面板可见性启停 (C044).
+                        ScrollIndicatorSuppressor(panelVisible: model.dashboardPanelVisible)
+                            .frame(width: 0, height: 0)
+                        glassCardStack(panel)
+                    }
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                        // 仅变化时更新, 并忽略微小抖动, 避免回环引起布局振荡.
+                        guard height > 0, abs(height - cardStackHeight) > 1.0 else { return }
+                        cardStackHeight = height
+                    }
                 }
+                // C148: 视口高度由窗口高度决定 (内容填满窗口, 底栏贴窗口底边),
+                // 因此这里不再按内容高度封顶; 内容超出视口时由 ScrollView 滚动.
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
-                    // 仅变化时更新, 并忽略微小抖动, 避免回环引起布局振荡.
-                    guard height > 0, abs(height - cardStackHeight) > 1.0 else { return }
-                    cardStackHeight = height
+                    guard height >= 0, abs(height - cardStackViewportHeight) > 0.5 else { return }
+                    cardStackViewportHeight = height
                 }
-            }
-            // C148: 视口高度由窗口高度决定 (内容填满窗口, 底栏贴窗口底边),
-            // 因此这里不再按内容高度封顶; 内容超出视口时由 ScrollView 滚动.
-            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
-                guard height >= 0, abs(height - cardStackViewportHeight) > 0.5 else { return }
-                cardStackViewportHeight = height
-            }
-            // 隐藏滚动指示条, 滚轮/触控板滚动不受影响.
-            .scrollIndicators(.hidden)
-            .overlay(alignment: .bottom) {
-                // 内容溢出视口时呈现轻柔渐隐下潜提示, 杜绝卡片被生硬腰斩
-                if cardStackViewportHeight > 0.5, cardStackHeight > cardStackViewportHeight + 0.5 {
-                    LinearGradient(
-                        colors: [.clear, Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 12)
-                    .allowsHitTesting(false)
+                // 隐藏滚动指示条, 滚轮/触控板滚动不受影响.
+                .scrollIndicators(.hidden)
+                .overlay(alignment: .bottom) {
+                    // 内容溢出视口时呈现轻柔渐隐下潜提示, 杜绝卡片被生硬腰斩
+                    if cardStackViewportHeight > 0.5, cardStackHeight > cardStackViewportHeight + 0.5 {
+                        LinearGradient(
+                            colors: [.clear, Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 12)
+                        .allowsHitTesting(false)
+                    }
+                }
+                // C211: 同一动画事务先滚动定位, 再切换高度; 避免窗口高度动画
+                // 与滚动目标争抢, 保证"先滚动再收放"的可见顺序.
+                .onChange(of: shortcutScrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve) {
+                        scrollProxy.scrollTo(target, anchor: .top)
+                    }
+                    withAnimation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve) {
+                        model.toggleCardCollapsed(target)
+                    }
+                    shortcutScrollTarget = nil
                 }
             }
 
@@ -221,26 +237,44 @@ struct MenuBarDashboardView: View {
         .onChange(of: coordinator.appearanceMode) { _, _ in
             onSurfaceThemeChange?(coordinator.resolvedTheme, coordinator.appearanceMode.colorScheme)
         }
-        .onKeyPress("1") {
-            if model.layoutMode == .tabbed {
-                selectTab(.usage)
-                return .handled
+        // C211: 固定卡片快捷键, 仅响应 Command 组合; 裸 1/2/3 不再切卡.
+        .onKeyPress(phases: .down) { press in
+            guard press.modifiers.contains(.command),
+                  let digit = Int(press.characters) else {
+                return .ignored
             }
-            return .ignored
+            return handleDashboardShortcut(digit, panel: panel)
         }
-        .onKeyPress("2") {
-            if model.layoutMode == .tabbed {
-                selectTab(.subscription)
-                return .handled
+    }
+
+    /// C211: ⌘1/2/3 固定映射; Tab 模式切页签, 纵向级联先滚动再收放.
+    private func handleDashboardShortcut(
+        _ digit: Int,
+        panel: PanelViewModel
+    ) -> KeyPress.Result {
+        let action = DashboardShortcutPolicy.action(
+            digit: digit,
+            layoutMode: model.layoutMode,
+            isAvailable: { cardID in
+                switch cardID {
+                case .usage:
+                    return panel.usage != nil
+                case .subscription:
+                    return panel.subscription != nil || panel.subscriptionEmpty != nil
+                case .hourly:
+                    return panel.hourly != nil
+                }
             }
-            return .ignored
-        }
-        .onKeyPress("3") {
-            if model.layoutMode == .tabbed {
-                selectTab(.hourly)
-                return .handled
-            }
-            return .ignored
+        )
+        switch action {
+        case .none:
+            return .handled
+        case .selectTab(let cardID):
+            selectTab(cardID)
+            return .handled
+        case .toggleCollapsed(let cardID):
+            shortcutScrollTarget = cardID
+            return .handled
         }
     }
 
@@ -585,6 +619,8 @@ struct MenuBarDashboardView: View {
                         dailyLegend: panel.usage?.legend ?? [],
                         isCollapsed: false,
                         onToggleCollapse: {},
+                        onRefresh: refreshAgentUsage,
+                        isRefreshing: isAgentUsageRefreshing,
                         panelVisible: model.dashboardPanelVisible
                     )
                 }
@@ -631,12 +667,23 @@ struct MenuBarDashboardView: View {
                     dailyLegend: panel.usage?.legend ?? [],
                     isCollapsed: false,
                     onToggleCollapse: {},
+                    onRefresh: refreshAgentUsage,
+                    isRefreshing: isAgentUsageRefreshing,
                     panelVisible: model.dashboardPanelVisible
                 )
             }
         } else {
             emptyPanelState
         }
+    }
+
+    /// C212: Agent 用量卡内刷新入口; 与底栏刷新共用同一次模块刷新.
+    private var isAgentUsageRefreshing: Bool {
+        model.busyModules.contains(.agentUsage)
+    }
+
+    private func refreshAgentUsage() {
+        coordinator.refresh(.agentUsage)
     }
 
     /// 切换 Tab 并自动判定水平滑入方向.
@@ -731,6 +778,8 @@ struct MenuBarDashboardView: View {
                         dailyLegend: panel.usage?.legend ?? [],
                         isCollapsed: model.isCardCollapsed(.hourly),
                         onToggleCollapse: { model.toggleCardCollapsed(.hourly) },
+                        onRefresh: refreshAgentUsage,
+                        isRefreshing: isAgentUsageRefreshing,
                         panelVisible: model.dashboardPanelVisible
                     )
                 }

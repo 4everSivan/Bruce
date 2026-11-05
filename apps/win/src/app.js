@@ -117,6 +117,8 @@ const ICON_PATHS = {
   chevronDown: ["M3.5 6 L8 10.5 L12.5 6"],
   // arrow.clockwise: 300° 圆弧 + 顶部向右箭头 (与底栏刷新图标同一几何)
   arrowClockwise: ["M12.76 5.25A5.5 5.5 0 1 1 8 2.5", "M6.3 0.8L8.3 2.5L6.3 4.2"],
+  // activity (mac SF Symbol waveform.path.ecg): 空态脉冲线
+  activity: ["M1 8h2.2l1.4-4.2 2.6 8.4 1.9-5.8 1.3 1.6H15"],
   // creditcard (mac SF Symbol creditcard): 圆角卡体 + 磁条
   creditCard: ["M2 4.5h12a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z", "M1 7.25h14"],
 };
@@ -270,7 +272,7 @@ function cardHead(card, title, status) {
   return head;
 }
 
-function makeCollapsible(card, summary) {
+function makeCollapsible(card, summary, onExpand = null) {
   const head = card.querySelector(".card-head");
   head.setAttribute("role", "button");
   head.setAttribute("tabindex", "0");
@@ -288,6 +290,8 @@ function makeCollapsible(card, summary) {
     const collapsed = card.classList.toggle("collapsed");
     head.classList.toggle("collapsed", collapsed);
     head.setAttribute("aria-expanded", String(!collapsed));
+    // C212: 展开时通知卡片重置默认明细 (仅 Agent 卡使用).
+    if (!collapsed && typeof onExpand === "function") onExpand();
   };
   head.addEventListener("click", toggle);
   head.addEventListener("keydown", event => {
@@ -307,12 +311,7 @@ function usageCard(usage) {
   const background = el("div", "usage-bg");
   background.setAttribute("aria-hidden", "true");
   card.append(background);
-  let live = null;
-  if (usage.isLive) {
-    live = el("span", "live-badge");
-    live.append(el("span", "live-dot"), el("span", "live-text", "LIVE"));
-  }
-  cardHead(card, "Token 用量", live);
+  cardHead(card, "Token 用量", null);
   // 收起态: 17pt 总量 + 近 7 天迷你热力条 (level 0-5, 与展开态热力图同源配色)
   makeCollapsible(card, () => {
     const mini = el("span", "usage-mini");
@@ -903,6 +902,8 @@ function subscriptionCard(sub) {
 /* ---------- Agent 用量卡 (展开: 14 日日柱 + 逐小时行 + 行级明细下钻) ---------- */
 // 行级展开状态: mac 用 @State(默认收起, 不持久化), 前端同语义跨刷新保持。
 const expandedAgents = new Set();
+// C212: 首次建立 / 切到 hourly 页签时默认打开首个有明细 agent; 消费后普通刷新不重置.
+let hourlyExpansionPending = true;
 
 // 100% 堆叠条 (mac stackedShareBar): 段宽按 share, 段不足 100% 时露出轨道底。
 function stackedShareBar(bars, shadeAt) {
@@ -1067,21 +1068,52 @@ function agentRow(row, rerender) {
 function hourlyCard(hourly, usage) {
   const card = el("div", "card");
   cardHead(card, "Agent 用量", null);
-  // 收起态: 12pt 全 agent 合计迷你折线 + 峰值文案 (mac collapsedMini 同结构)
-  makeCollapsible(card, () => {
-    const mini = el("span", "hourly-mini");
-    const points = hourly.collapsedPoints?.length ? hourly.collapsedPoints : new Array(24).fill(0);
-    const chart = el("span", "mini-spark");
-    chart.append(lineSpark(points, 12));
-    mini.append(chart, el("span", "mini-peak", hourly.collapsedPeakText || "逐小时用量"));
-    return mini;
-  });
+
+  const hasHistory = () => Boolean(
+    usage && usage.days && usage.days.some((day) => day.total > 0)
+  );
+  const resetExpansion = () => {
+    expandedAgents.clear();
+    const first = hourly.rows.find((row) => row.isExpandable);
+    if (first) expandedAgents.add(first.agentId);
+  };
+  // C212: 首次建立或切到 hourly 页签时消费一次默认展开; 普通刷新保留手动状态.
+  if (hourlyExpansionPending) {
+    hourlyExpansionPending = false;
+    resetExpansion();
+  }
 
   const body = el("div", "hourly-body");
+  const renderRefreshButton = (withLabel) => {
+    const button = el(
+      "button",
+      withLabel ? "hourly-refresh hourly-empty-refresh" : "hourly-refresh"
+    );
+    button.type = "button";
+    button.setAttribute("aria-label", "刷新 Agent 用量");
+    button.append(icon("arrowClockwise"));
+    if (withLabel) button.append(el("span", null, "刷新"));
+    button.addEventListener("click", () => requestAgentRefresh(button));
+    return button;
+  };
+
+  const renderEmpty = () => {
+    const wrap = el("div", "hourly-empty");
+    const frame = el("span", "hourly-empty-frame");
+    frame.append(icon("activity", 1.6));
+    wrap.append(
+      frame,
+      el("span", "hourly-empty-title", hasHistory() ? "今天还没有 Agent 用量" : "暂无 Agent 用量"),
+      el("span", "hourly-empty-desc", "检测到 Agent 活动后，这里会显示今日逐小时折线与模型、项目明细。"),
+      renderRefreshButton(true)
+    );
+    return wrap;
+  };
+
   // 行级展开只重建本卡正文, 不触发整栈重渲染 (保留其他卡片的局部状态)。
   const renderRows = () => {
     body.replaceChildren();
-    if (usage && usage.days.length) {
+    if (hasHistory()) {
       const chart = el("div", "daily-chart");
       const maxTotal = Math.max(...usage.days.map((day) => day.total), 1);
       const nothing = isNothingTheme();
@@ -1152,16 +1184,52 @@ function hourlyCard(hourly, usage) {
       body.append(el("div", "divider"));
     }
 
+    if (!hourly.rows.length) {
+      body.append(renderEmpty());
+      return;
+    }
+
     const titleRow = el("div", "hourly-title-row");
-    titleRow.append(el("span", "sec", "逐小时"));
-    titleRow.append(el("span", "range", "0 – 23 时"));
+    titleRow.append(el("span", "sec", "今日"), renderRefreshButton(false));
     body.append(titleRow);
 
     for (const row of hourly.rows) body.append(agentRow(row, renderRows));
   };
+
+  makeCollapsible(card, () => {
+    if (!hourly.rows.length) return el("span", "hourly-empty-mini", "暂无用量");
+    const mini = el("span", "hourly-mini");
+    const points = hourly.collapsedPoints?.length ? hourly.collapsedPoints : new Array(24).fill(0);
+    const chart = el("span", "mini-spark");
+    chart.append(lineSpark(points, 12));
+    mini.append(chart, el("span", "mini-peak", hourly.collapsedPeakText || "逐小时用量"));
+    return mini;
+  }, () => {
+    resetExpansion();
+    renderRows();
+  });
+
   renderRows();
   card.append(body);
   return card;
+}
+
+/// C212: Agent 卡内刷新; Windows 当前仅一个 collector 模块, refresh_now 即整模块刷新.
+async function requestAgentRefresh(button) {
+  if (button.disabled) return;
+  button.disabled = true;
+  button.classList.add("spinning");
+  try {
+    await invoke("refresh_now");
+    setTimeout(() => {
+      button.disabled = false;
+      button.classList.remove("spinning");
+    }, 700);
+  } catch (error) {
+    button.disabled = false;
+    button.classList.remove("spinning");
+    showError(error);
+  }
 }
 
 /* ---------- 应用层: 缓存读取与单一刷新意图 ---------- */
@@ -1209,6 +1277,7 @@ async function selectTab(targetKey) {
   const tabKeys = ["usage", "subscription", "hourly"];
   const currentKey = currentSettings.activeCardId || currentSettings.activeCardID || "usage";
   if (targetKey === currentKey) return;
+  if (targetKey === "hourly") hourlyExpansionPending = true;
   const fromIndex = tabKeys.indexOf(currentKey);
   const toIndex = tabKeys.indexOf(targetKey);
   lastSlideDirection = toIndex > fromIndex ? "right" : "left";
@@ -1588,13 +1657,43 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("focus", () => {
   triggerCurtainEnter();
 });
+function cardShortcutAvailable(cardID) {
+  if (!currentPanel) return false;
+  if (cardID === "usage") return Boolean(currentPanel.usage);
+  if (cardID === "subscription") return Boolean(currentPanel.subscription || currentPanel.subscriptionEmpty);
+  if (cardID === "hourly") return Boolean(currentPanel.hourly);
+  return false;
+}
+
 window.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     requestHideDashboard();
-  } else if (currentSettings.layoutMode === "tabbed") {
-    if (event.key === "1") selectTab("usage");
-    else if (event.key === "2") selectTab("subscription");
-    else if (event.key === "3") selectTab("hourly");
+    return;
+  }
+  // C211: Ctrl+1/2/3 固定卡片快捷键; 长按不连发, 裸数字退役.
+  if (!event.ctrlKey || event.repeat) return;
+  const cardID = event.key === "1" ? "usage"
+    : event.key === "2" ? "subscription"
+    : event.key === "3" ? "hourly"
+    : null;
+  if (!cardID) return;
+  if (currentSettings.layoutMode === "tabbed") {
+    if (!cardShortcutAvailable(cardID)) return;
+    event.preventDefault();
+    selectTab(cardID);
+    return;
+  }
+  const card = document.querySelector(`#stack [data-card="${cardID}"]`);
+  if (!card) return;
+  event.preventDefault();
+  if (typeof card.scrollIntoView === "function") {
+    card.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+  const head = card.querySelector(".card-head");
+  const collapsed = card.classList.toggle("collapsed");
+  if (head) {
+    head.classList.toggle("collapsed", collapsed);
+    head.setAttribute("aria-expanded", String(!collapsed));
   }
 });
 (async function init() {

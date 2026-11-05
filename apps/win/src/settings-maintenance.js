@@ -79,6 +79,11 @@
     layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
     row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
       "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
+    // C211: 固定卡片快捷键只读说明; 右侧仅键帽, 无录制/编辑控件.
+    const shortcutKeys = node("span", null, { class: "keycap-row" });
+    for (const key of ["Ctrl+1", "Ctrl+2", "Ctrl+3"]) shortcutKeys.append(node("span", key, { class: "keycap" }));
+    row(c1, "卡片快捷键", shortcutKeys,
+      "Ctrl+1 Token 用量 · Ctrl+2 订阅 · Ctrl+3 Agent 用量；纵向级联下展开/收起，顶栏 Tab 下切换页签。固定快捷键，不可修改。");
     // C160: 预设 3 / 6 分钟, 其余 1–1440 分钟经「自定义」输入; 与 mac 同语义。
     // 历史值 (含默认 30) 不在预设集合时由 loadSettings 回显为「自定义」, 禁止静默改写。
     const interval = node("select", null, { id: "setting-interval" });

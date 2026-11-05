@@ -33,8 +33,10 @@ struct AppModelCacheHarness {
         try menuBarSummaryRebuildsAfterArtifactChange()
         try menuBarQuotaSummaryHonorsDashboardVerificationGate()
         try dashboardLayoutModeAndCardSelectionPersists()
+        try dashboardShortcutPolicyMapsFixedCards()
+        try hourlyEmptyAndFirstExpandablePolicies()
         try subscriptionEmptyStateFollowsProviderConfiguration()
-        print("AppModelCache tests passed: 5")
+        print("AppModelCache tests passed: 7")
     }
 
     /// C157: 订阅空态随 provider 配置变化重算, 不得命中旧的面板缓存.
@@ -227,6 +229,72 @@ struct AppModelCacheHarness {
         let model2 = AppModel(collapsedDefaults: suite)
         try expect(model2.layoutMode == .tabbed, "恢复后布局应维持 .tabbed")
         try expect(model2.selectedCardID == .hourly, "恢复后选中卡片应维持 .hourly")
+    }
+
+    /// C211: 快捷键身份固定, Tab 切页签 / 纵向级联收放 / 缺卡 no-op.
+    private static func dashboardShortcutPolicyMapsFixedCards() throws {
+        let all: Set<DashboardCardID> = [.usage, .subscription, .hourly]
+        try expect(
+            DashboardShortcutPolicy.action(
+                digit: 1,
+                layoutMode: .tabbed,
+                isAvailable: { all.contains($0) }
+            ) == .selectTab(.usage),
+            "Tab 模式 1 应切 Token 用量"
+        )
+        try expect(
+            DashboardShortcutPolicy.action(
+                digit: 2,
+                layoutMode: .stack,
+                isAvailable: { all.contains($0) }
+            ) == .toggleCollapsed(.subscription),
+            "纵向级联 2 应收放订阅卡"
+        )
+        try expect(
+            DashboardShortcutPolicy.action(
+                digit: 3,
+                layoutMode: .tabbed,
+                isAvailable: { $0 != .hourly }
+            ) == .none,
+            "缺卡时应 no-op"
+        )
+        try expect(
+            DashboardShortcutPolicy.action(
+                digit: 4,
+                layoutMode: .stack,
+                isAvailable: { _ in true }
+            ) == .none,
+            "非 1/2/3 应 no-op"
+        )
+    }
+
+    /// C212: 今日空态与首个可展开 agent 的纯模型判据.
+    private static func hourlyEmptyAndFirstExpandablePolicies() throws {
+        let empty = HourlyLineViewModel(rows: [])
+        try expect(empty.isEmptyToday, "空 rows 应为今日无用量")
+        try expect(empty.firstExpandableAgentID == nil, "空 rows 不应有可展开 agent")
+
+        let plain = HourlyAgentRow(
+            agentID: "plain",
+            name: "Plain",
+            color: .blue,
+            todayTotal: 10,
+            points: [],
+            models: [],
+            projects: []
+        )
+        let detailed = HourlyAgentRow(
+            agentID: "detailed",
+            name: "Detailed",
+            color: .green,
+            todayTotal: 20,
+            points: [],
+            models: [DistributionBar(name: "m", total: 20, share: 1)],
+            projects: []
+        )
+        let model = HourlyLineViewModel(rows: [plain, detailed])
+        try expect(!model.isEmptyToday, "有 rows 不应为今日空态")
+        try expect(model.firstExpandableAgentID == "detailed", "应跳过无明细行, 选第一个可展开 agent")
     }
 
     /// 构造通过 ArtifactValidator 的最小合法 agent-usage artifact.

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C211",
+  "title": "新增 ⌘/Ctrl 1/2/3 固定卡片快捷键并在通用页提供只读说明（双端）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "draft",
+  "branch": "fix/C211-card-shortcuts",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "仪表盘卡片快捷键 (MenuBarViews / app.js) 与设置通用页只读描述行",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 要求：纵向级联布局下用 ⌘1/2/3 操作三张卡片，重复触发收缩/打开对应卡片；顶栏 Tab 模式统一改为 ⌘ 组合键，移除裸 1/2/3；通用页增加固定快捷键的只读说明（不可修改）；Windows 同步 Ctrl+1/2/3。当前 mac/Windows 仅 Tab 模式支持裸 1/2/3 切卡，纵向级联无快捷键，也没有任何设置页说明，键盘用户必须移动鼠标点击卡片标题。",
+  "precheck": {
+    "description": "确认双端当前仅有裸数字 Tab 切卡、纵向级联无快捷键，且通用页无快捷键说明",
+    "command": "zsh -c 'grep -q onKeyPress apps/macos/Sources/BruceApp/MenuBarViews.swift && grep -q selectTab apps/win/src/app.js && grep -q 仪表盘卡片布局 apps/macos/Sources/BruceApp/SettingsView.swift && grep -q 看板布局 apps/win/src/settings-maintenance.js'",
+    "expected": "退出码 0（双端现有切卡链路与两个设置页布局行均在库，需新增快捷键与只读说明）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：MenuBarViews.swift 224-244 仅 tabbed 模式裸 1/2/3，纵向级联无快捷键；app.js 1586-1594 同样仅 tabbed 裸数字；mac SettingsView 通用页有「仪表盘卡片布局」行、Windows buildGeneral 有「看板布局」行，均无快捷键说明。实现后 DashboardShortcutPolicy + Windows keydown 测试覆盖固定映射与 Ctrl 语义。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C211 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C211 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 面板快捷键",
+      "before": "MenuBarViews 在根视图挂 .onKeyPress(\"1\"/\"2\"/\"3\")，仅在 layoutMode == .tabbed 时 selectTab；纵向级联无快捷键；无 Command 修饰键处理",
+      "after": "新增 ⌘1/⌘2/⌘3 固定身份快捷键（usage/subscription/hourly，与 cardOrder 无关）：Tab 模式 selectTab；纵向级联先用 ScrollViewReader.scrollTo(cardID, anchor: .top) 滚到卡片再 toggleCardCollapsed；只响应 key down（不连发），缺卡 no-op；动画沿用 DashboardMotionTiming.contentResize；移除裸 1/2/3",
+      "impact": "apps/macos/Sources/BruceApp/MenuBarViews.swift；必要时抽取纯映射到 BruceAppCore 以便 Harness 覆盖"
+    },
+    {
+      "scope": "Windows 面板快捷键",
+      "before": "app.js 全局 keydown 仅在 currentSettings.layoutMode === tabbed 时用 event.key === \"1\"/\"2\"/\"3\" 调 selectTab；没有 Ctrl 组合键，也没有纵向级联收放",
+      "after": "改为 Ctrl+1/2/3：Tab 模式 selectTab；纵向级联先 scrollIntoView（block: start）再切换对应 [data-card] 的 collapsed 状态；event.repeat 忽略；缺卡 no-op；移除裸数字分支",
+      "impact": "apps/win/src/app.js；如需样式调整仅限焦点/滚动行为，不改卡片外观"
+    },
+    {
+      "scope": "设置通用页只读说明",
+      "before": "mac SettingsView 通用页「仪表盘卡片布局」行后无快捷键说明；Windows settings-maintenance.js 通用页「看板布局」行后无快捷键说明",
+      "after": "两端在布局行后新增只读行「卡片快捷键」：说明文案为「⌘1 Token 用量 · ⌘2 订阅 · ⌘3 Agent 用量；纵向级联下展开/收起，顶栏 Tab 下切换页签。固定快捷键，不可修改。」（Windows 用 Ctrl+1/2/3），右侧仅展示键帽，无录制/编辑控件；mac 不新增持久化字段",
+      "impact": "apps/macos/Sources/BruceApp/SettingsView.swift（可加局部 Keycap 视图）、apps/win/src/settings-maintenance.js 与 settings.html/styles.css（键帽样式）"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "设计 03 FR-5 只描述顶栏 Tab 点击切卡；设计 04 通用页行序无「卡片快捷键」；设计 05 无快捷键对拍说明；无快捷键映射单测",
+      "after": "设计 03 新增固定快捷键规则（身份映射、Tab/纵向语义、滚动先行、不连发、缺卡 no-op）；设计 04 通用页行序补只读行；设计 05 补 Windows Ctrl 对拍；mac 增加纯映射/可用性 Harness（或在既有 AppModelCacheHarness 补用例），Windows 增加 keydown 行为测试或 render harness 断言",
+      "impact": "docs/devel/design/03、04、05；apps/macos/Tests、apps/win/tests；CHANGELOG.md（收口时）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-5：顶栏 Tab 通过右上角小图标点击切换；无键盘快捷键规则；设计 04 通用页行序为 配色模式 → 界面风格 → 模糊风格 → 界面动效 → 仪表盘卡片布局 → 刷新间隔 → 开机自启动 → 凭据与来源；设计 05 未记录卡片快捷键",
+      "after": "C211 起：⌘1/⌘2/⌘3 固定映射 Token 用量/订阅/Agent 用量，与拖拽顺序无关；Tab 模式切换页签，纵向级联先滚动到卡片再折叠/展开；长按不连发，缺卡 no-op；通用页在布局行后增加只读「卡片快捷键」说明，不可修改；Windows 以 Ctrl+1/2/3 等价实现"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-05",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "快捷键映射/可用性单测通过；mac swift build 与 Windows node --test/check-win-frontend 全绿；verify-local 通过",
+        "false_if": "任一构建或测试失败，或键位映射用例缺失",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（末行「Bruce 本地验证全部通过」）；mac swift build（含 tests）Build complete；Windows `node --test apps/win/tests/frontend.test.mjs` 125/125 pass、`node scripts/check-win-frontend.mjs` 通过。 AppModelCacheHarness 7 passed（含 C211 固定映射/缺卡 no-op 用例）。",
+        "result": true
+      },
+      {
+        "item": "快捷键行为",
+        "true_if": "Tab 模式 ⌘1/2/3 切页签且裸数字不再触发；纵向级联 ⌘N 先滚动再收放对应固定卡片，长按不连发，缺卡无异常",
+        "false_if": "裸数字仍生效、快捷键误作用其他卡、长按反复切换或滚动/收放顺序不符",
+        "evidence": "Windows DOM 用例：裸数字不触发；Ctrl+1 收放 Token 卡、再次触发恢复、repeat 忽略；Tab 模式裸数字不切页签、Ctrl+2 切到订阅；mac DashboardShortcutPolicy Harness 覆盖 Tab→selectTab / stack→toggleCollapsed / 缺卡/越界 no-op。",
+        "result": true
+      },
+      {
+        "item": "设置页只读与反向影响",
+        "true_if": "通用页仅展示键帽与说明，无编辑/录制控件；原布局、刷新间隔、全局快捷键等其他行行为不变",
+        "false_if": "出现可编辑快捷键控件、行序错乱或挤占其他设置",
+        "evidence": "Windows 新增用例断言通用页「卡片快捷键」行含 Ctrl+1 与「固定快捷键，不可修改」，且行内无 input/select/button；mac 通用页新增只读 FluentRow（Text 键帽，无控件），其余行序与控件未改；verify-local 通过。",
+        "result": true
+      },
+      {
+        "item": "mac 实机按键",
+        "true_if": "装机版面板 key 窗口内 ⌘1/⌘2/⌘3 可稳定触发；纵向级联先滚动再收放，Tab 模式切页签，长按不连发",
+        "false_if": "Command 事件不可达、裸数字仍响应或滚动/收放顺序异常",
+        "evidence": "本轮未在装机版实机按键验证；mac 侧已通过纯映射 Harness 与构建。若 .onKeyPress 收不到带 Command 的事件，实现已保留退回面板宿主 local key monitor 的路径。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
