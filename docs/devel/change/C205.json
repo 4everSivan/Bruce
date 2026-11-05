@@ -4,7 +4,7 @@
   "title": "OpenCode GO 配置入口对齐 API Key 表单族（DeepSeek 同款）：多账号列表管理与选填 Workspace ID",
   "version": "0.17.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C205-opencode-go-apikey-dialog",
   "is_hotfix": false,
   "target": {
@@ -113,7 +113,11 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.6.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "重新部署让我测试，然后清理掉你拉取的opencode 相关代码缓存文件",
+    "signed_rejection_count": 0
   }
 }
