@@ -333,20 +333,31 @@ extension SubscriptionService {
         refreshOfficialLocalAvailability()
     }
 
-    // MARK: - OpenCode GO 手动导入 (网页会话凭证)
+    // MARK: - OpenCode GO 手动导入 (Console API Key)
 
-    /// OpenCode GO: 引导粘贴导入 ({"auth": <Fe26 cookie>, "workspaceId": "wrk_..."} JSON).
+    /// OpenCode GO: 引导粘贴导入 (C204). 接受裸 API Key 字符串 (oc_sk_...)
+    /// 或 {"apiKey": ..., "workspaceId": ...} JSON (多 workspace 高级用法).
     func importOpenCodeGoFromPaste(_ paste: String) {
         let trimmed = paste.trimmingCharacters(in: .whitespacesAndNewlines)
         if let data = trimmed.data(using: .utf8),
            let object = try? JSONSerialization.jsonObject(with: data),
            let dict = object as? [String: Any] {
-            // 已是 JSON: 原样保存
+            // 已是 JSON: 原样保存 (评估器校验 apiKey)
             _ = dict
             saveOpenCodeGoOAuthJSON(trimmed)
+        } else if trimmed.hasPrefix("oc_sk_"), trimmed.range(of: #"[^A-Za-z0-9_-]"#) == nil {
+            // 裸 key 自动包装为标准形状
+            if let data = try? JSONSerialization.data(
+                withJSONObject: ["apiKey": trimmed], options: [.sortedKeys]
+            ),
+               let wrapped = String(data: data, encoding: .utf8) {
+                saveOpenCodeGoOAuthJSON(wrapped)
+            } else {
+                model.setSettingsError("OpenCode GO 凭证无效, 请粘贴 API Key (oc_sk_...)", for: .opencodeGo)
+            }
         } else {
             model.setSettingsError(
-                "OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId 的 JSON",
+                "OpenCode GO 凭证无效, 请粘贴 OpenCode Console 的 API Key (oc_sk_...)",
                 for: .opencodeGo
             )
         }
@@ -358,15 +369,15 @@ extension SubscriptionService {
         switch status {
             case .missing, .malformed:
             model.setSettingsError(
-                "OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId",
+                "OpenCode GO 凭证无效, 请粘贴 API Key (oc_sk_...)",
                 for: .opencodeGo
             )
             return
             // refreshPending 仅 Claude 评估器会产出; 此处防御性同 valid 收口.
             case .valid, .refreshPending:
-            let workspace = Self.opencodeGoWorkspaceID(from: json) ?? json
+            let apiKey = Self.opencodeGoAPIKey(from: json) ?? json
             let accountID = ProviderAccountIDGenerator.opencodeGoAccountID(
-                accessToken: workspace
+                apiKey: apiKey
             )
             guard saveProviderAccountCredential(
                 for: .opencodeGo,
@@ -376,7 +387,10 @@ extension SubscriptionService {
             model.setSubscriptionCredentialConfigured(true, for: .opencodeGo)
             finishVerification(.opencodeGo, status: .ok)
             case .expired:
-            model.setSettingsError("OpenCode GO 登录已过期, 请粘贴新凭证", for: .opencodeGo)
+            model.setSettingsError(
+                "OpenCode GO 配置方式已升级, 旧会话凭证不再支持, 请改用 API Key (oc_sk_...)",
+                for: .opencodeGo
+            )
             finishVerification(.opencodeGo, status: .needsRelogin)
         }
     }
@@ -529,16 +543,16 @@ extension SubscriptionService {
         return record
     }
 
-    /// 从 OpenCode GO 凭证 JSON 提取 workspaceId; 失败返回 nil.
-    static func opencodeGoWorkspaceID(from json: String) -> String? {
+    /// 从 OpenCode GO 凭证 JSON 提取 apiKey (C204 身份字段); 失败返回 nil.
+    static func opencodeGoAPIKey(from json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dict = object as? [String: Any] else {
             return nil
         }
-        let workspace = (dict["workspaceId"] as? String ?? "")
+        let apiKey = (dict["apiKey"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return workspace.isEmpty ? nil : workspace
+        return apiKey.isEmpty ? nil : apiKey
     }
 
     /// Codex: 从 CLI `~/.codex/auth.json` 发现账号 (用户点击触发).

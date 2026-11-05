@@ -186,9 +186,9 @@ public enum ProviderAccountIDGenerator {
         ProviderAccountKeys.sha256Hex(key)
     }
 
-    /// OpenCode GO: access_token SHA-256 前 16 位 (console OAuth 身份).
-    public static func opencodeGoAccountID(accessToken: String) -> String {
-        ProviderAccountKeys.sha256Hex(accessToken)
+    /// OpenCode GO: API Key SHA-256 前 16 位 (C204: apiKey 为身份字段).
+    public static func opencodeGoAccountID(apiKey: String) -> String {
+        ProviderAccountKeys.sha256Hex(apiKey)
     }
 
     /// StepFun: token SHA-256 前 16 位.
@@ -625,10 +625,10 @@ public final class ProviderAccountStore: @unchecked Sendable {
             credentialJSON = token
         case .opencodeGo:
             let token = legacyValues[0]
-            let workspace = Self.jsonStringField(
-                in: token, path: ["workspaceId"]
+            let apiKey = Self.jsonStringField(
+                in: token, path: ["apiKey"]
             ) ?? token
-            accountID = ProviderAccountIDGenerator.opencodeGoAccountID(accessToken: workspace)
+            accountID = ProviderAccountIDGenerator.opencodeGoAccountID(apiKey: apiKey)
             displayName = defaultName()
             credentialJSON = token
         case .stepfun:
