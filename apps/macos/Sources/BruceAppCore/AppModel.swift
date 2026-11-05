@@ -213,6 +213,8 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var selectedCardID: DashboardCardID
     /// 设置窗口分类深链请求 (C157): 由菜单栏空态卡写入, SettingsView 消费后清空.
     @Published package var requestedSettingsCategory: SettingsCategory?
+    /// C211: 面板宿主捕获的 ⌘1/2/3 请求; SwiftUI 视图消费后执行滚动/收放或切页签.
+    @Published package private(set) var requestedCardShortcut: DashboardCardID?
     /// 收起状态与顺序持久化存储 (测试注入隔离 suite).
     private let collapsedDefaults: UserDefaults
     private static let collapsedCardsDefaultsKey = "dashboard.collapsedCards"
@@ -261,6 +263,15 @@ package final class AppModel: ObservableObject {
     package func setStatus(_ status: ModuleStatus, for module: DashboardModule) {
         moduleStatuses[module] = status
         invalidatePanelCache()
+    }
+
+    /// C211: 宿主窗口捕获 ⌘1/2/3 后写入, 视图消费即清空.
+    package func requestCardShortcut(_ cardID: DashboardCardID) {
+        requestedCardShortcut = cardID
+    }
+
+    package func consumeCardShortcut() {
+        requestedCardShortcut = nil
     }
 
     package func setArtifact(_ artifact: JSONValue?, for module: DashboardModule) {

@@ -88,6 +88,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         self.openSubscriptionSettings = openSubscriptionSettings
         self.terminateApplication = terminateApplication
         super.init()
+        // C211: 面板成为 key 窗口时拦截 ⌘1/2/3, 经 model 交给 SwiftUI 消费.
+        panel.onCardShortcut = { [weak self] digit in
+            self?.requestCardShortcut(digit)
+        }
         quotaAlertBubbleController.onOpenDashboard = { [weak self] in
             self?.openDashboardIfNeeded()
         }
@@ -594,6 +598,12 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         model.moduleStatuses.values.contains { $0.state == .refreshing }
     }
 
+    /// C211: ⌘1/2/3 固定映射; 视图负责 Tab 切页签或纵向级联滚动+收放.
+    private func requestCardShortcut(_ digit: Int) {
+        guard let cardID = DashboardShortcutPolicy.cardID(for: digit) else { return }
+        model.requestCardShortcut(cardID)
+    }
+
     /// 切换仪表盘开/关 (全局快捷键与状态项点击共用).
     func toggleDashboard() {
         guard installed else {
@@ -962,6 +972,27 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
 
 /// 无边框面板默认不能成为 key; 仪表盘需要 key 窗口支持 ⌘R 等快捷键.
 private final class DashboardPanel: NSPanel {
+    /// C211: ⌘1/2/3 在 key equivalent 阶段捕获, 不依赖 SwiftUI onKeyPress.
+    var onCardShortcut: ((Int) -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags
+        if modifiers.contains(.command),
+           !modifiers.contains(.shift),
+           !modifiers.contains(.option),
+           !modifiers.contains(.control),
+           let characters = event.charactersIgnoringModifiers,
+           let digit = Int(characters),
+           (1...3).contains(digit) {
+            if event.isARepeat {
+                return true
+            }
+            onCardShortcut?(digit)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }

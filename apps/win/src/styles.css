@@ -727,31 +727,27 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .daily-legend .sw { width: 7px; height: 7px; border-radius: 2px; flex: none; }
 .hourly-body > .divider { margin: 10px 0 8px; }
 .hourly-title-row { display: flex; align-items: center; margin-bottom: 2px; }
-/* C212: 卡内刷新入口 — 有数据时仅图标, 空态时图标+文字并位于文案下方 */
+/* C212: 卡内刷新入口 — 与订阅 ProviderRefreshButton 同构: 14×14 无边框,
+   10pt/2.1 stroke arrow.clockwise, secondary 色; 刷新中为 .sub-spinner 进度环 */
 .hourly-refresh {
-  appearance: none;
+  margin-left: auto;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  margin-left: auto;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border: 1px solid rgba(255,255,255,.14);
-  border-radius: 3px;
-  background: rgba(255,255,255,.055);
+  border: none;
+  background: none;
   color: var(--secondary);
-  font-family: inherit;
-  font-size: 10.5px;
-  line-height: 1;
   cursor: pointer;
 }
-.hourly-refresh svg { width: 11px; height: 11px; display: block; }
-.hourly-refresh:hover { color: var(--ink); border-color: var(--secondary); }
-.hourly-refresh:disabled { opacity: .55; cursor: default; }
-.hourly-refresh.spinning svg { animation: foot-spin .9s linear infinite; }
-html[data-motion="off"] .hourly-refresh.spinning svg { animation: none; }
+.hourly-refresh svg { width: 12px; height: 12px; display: block; }
+.hourly-refresh:hover:not(:disabled) { color: var(--ink); }
+.hourly-refresh:disabled { opacity: .45; cursor: default; }
+.hourly-refresh.busy:disabled { opacity: 1; }
+.hourly-empty-refresh { margin-left: 0; margin-top: 6px; }
 .hourly-empty {
   display: flex;
   flex-direction: column;
@@ -2064,15 +2060,6 @@ details summary {
 }
 .theme-nothing .daily-legend { font: 400 9px/normal "Space Mono", var(--mono-font); color: #999999; }
 .theme-nothing .daily-legend .sw { width: 8px; height: 8px; border-radius: 0; }
-.theme-nothing .hourly-refresh {
-  border-radius: 2px;
-  border-color: #333333;
-  background: transparent;
-  font-family: var(--mono-font);
-  font-size: 9px;
-  letter-spacing: .4px;
-}
-.theme-nothing .hourly-empty-refresh { margin-left: 0; }
 .theme-nothing .hourly-empty-frame { border-radius: 2px; border-color: #333333; }
 .theme-nothing .hourly-empty-title {
   font-family: "Space Grotesk", sans-serif;

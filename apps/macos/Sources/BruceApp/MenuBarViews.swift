@@ -237,26 +237,21 @@ struct MenuBarDashboardView: View {
         .onChange(of: coordinator.appearanceMode) { _, _ in
             onSurfaceThemeChange?(coordinator.resolvedTheme, coordinator.appearanceMode.colorScheme)
         }
-        // C211: 固定卡片快捷键, 仅响应 Command 组合; 裸 1/2/3 不再切卡.
-        .onKeyPress(phases: .down) { press in
-            guard press.modifiers.contains(.command),
-                  let digit = Int(press.characters) else {
-                return .ignored
-            }
-            return handleDashboardShortcut(digit, panel: panel)
+        // C211: 宿主面板捕获 ⌘1/2/3 后写入 model, 视图在此消费并执行.
+        .onChange(of: model.requestedCardShortcut) { _, cardID in
+            guard let cardID else { return }
+            model.consumeCardShortcut()
+            performCardShortcut(cardID, panel: panel)
         }
     }
 
-    /// C211: ⌘1/2/3 固定映射; Tab 模式切页签, 纵向级联先滚动再收放.
-    private func handleDashboardShortcut(
-        _ digit: Int,
-        panel: PanelViewModel
-    ) -> KeyPress.Result {
+    /// C211: Tab 模式切页签; 纵向级联写入滚动目标, 由 ScrollViewReader 先滚动再收放.
+    private func performCardShortcut(_ cardID: DashboardCardID, panel: PanelViewModel) {
         let action = DashboardShortcutPolicy.action(
-            digit: digit,
+            cardID: cardID,
             layoutMode: model.layoutMode,
-            isAvailable: { cardID in
-                switch cardID {
+            isAvailable: { target in
+                switch target {
                 case .usage:
                     return panel.usage != nil
                 case .subscription:
@@ -268,13 +263,11 @@ struct MenuBarDashboardView: View {
         )
         switch action {
         case .none:
-            return .handled
-        case .selectTab(let cardID):
-            selectTab(cardID)
-            return .handled
-        case .toggleCollapsed(let cardID):
-            shortcutScrollTarget = cardID
-            return .handled
+            return
+        case .selectTab(let target):
+            selectTab(target)
+        case .toggleCollapsed(let target):
+            shortcutScrollTarget = target
         }
     }
 

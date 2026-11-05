@@ -489,26 +489,31 @@ struct HourlyLineCard: View {
         }
     }
 
+    /// 刷新进度是否可挂载: 面板隐藏时退回静态图标, 避免隐藏窗口持续逐帧布局.
+    private var showsRefreshProgress: Bool {
+        isRefreshing
+            && DashboardPanelAnimationPolicy.allowsRefreshProgress(panelVisible: panelVisible)
+    }
+
+    /// 与订阅卡 ProviderRefreshButton 完全同构: 14×14, 无边框/底色, 10pt 半粗
+    /// arrow.clockwise, secondary 色; 刷新中显示小型进度环并禁用.
     private var refreshIconButton: some View {
         Button(action: onRefresh) {
-            HourlyRefreshIcon(isRefreshing: isRefreshing, panelVisible: panelVisible)
-                .foregroundStyle(isNothing ? nothingTokens.secondary : Color.secondary)
-                .frame(width: 18, height: 18)
-                .background(
-                    isNothing ? Color.clear : Color.primary.opacity(0.045),
-                    in: RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
-                        .strokeBorder(
-                            isNothing
-                                ? Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#333333"))
-                                : Color.primary.opacity(0.10),
-                            lineWidth: 1
-                        )
+            Group {
+                if showsRefreshProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .semibold))
                 }
+            }
+            .frame(width: 14, height: 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .opacity(isRefreshing && !showsRefreshProgress ? 0.45 : 1)
         .disabled(isRefreshing)
         .help("刷新 Agent 用量")
         .accessibilityLabel("刷新 Agent 用量")
@@ -555,17 +560,8 @@ struct HourlyLineCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Agent 用量，\(title)。检测到 Agent 活动后，这里会显示今日逐小时折线与模型、项目明细。")
 
-            Button(action: onRefresh) {
-                HStack(spacing: 5) {
-                    HourlyRefreshIcon(isRefreshing: isRefreshing, panelVisible: panelVisible)
-                    Text("刷新")
-                }
-                .font(.system(size: 11, weight: .medium))
-            }
-            .panelGlassButtonStyle()
-            .disabled(isRefreshing)
-            .accessibilityLabel("刷新 Agent 用量")
-            .padding(.top, 2)
+            refreshIconButton
+                .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 10)
@@ -1026,37 +1022,6 @@ struct HourlyLineCard: View {
         "#7ad4e1",
         "#9fe5ed",
     ]
-}
-
-// MARK: - C212 卡内刷新图标
-
-/// 刷新图标: 刷新中且面板可见、未关闭动效时旋转; 其余状态静止.
-private struct HourlyRefreshIcon: View {
-    let isRefreshing: Bool
-    let panelVisible: Bool
-
-    @Environment(\.motionSuppressed) private var motionSuppressed
-    @State private var rotation = 0.0
-
-    var body: some View {
-        Image(systemName: "arrow.clockwise")
-            .font(.system(size: 10, weight: .semibold))
-            .rotationEffect(.degrees(rotation))
-            .onAppear { updateAnimation() }
-            .onChange(of: isRefreshing) { _, _ in updateAnimation() }
-            .onChange(of: panelVisible) { _, _ in updateAnimation() }
-    }
-
-    private func updateAnimation() {
-        guard isRefreshing, panelVisible, !motionSuppressed else {
-            rotation = 0
-            return
-        }
-        rotation = 0
-        withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-            rotation = 360
-        }
-    }
 }
 
 // MARK: - Nothing 主题样式辅助

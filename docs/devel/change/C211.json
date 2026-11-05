@@ -34,8 +34,8 @@
     {
       "scope": "mac 面板快捷键",
       "before": "MenuBarViews 在根视图挂 .onKeyPress(\"1\"/\"2\"/\"3\")，仅在 layoutMode == .tabbed 时 selectTab；纵向级联无快捷键；无 Command 修饰键处理",
-      "after": "新增 ⌘1/⌘2/⌘3 固定身份快捷键（usage/subscription/hourly，与 cardOrder 无关）：Tab 模式 selectTab；纵向级联先用 ScrollViewReader.scrollTo(cardID, anchor: .top) 滚到卡片再 toggleCardCollapsed；只响应 key down（不连发），缺卡 no-op；动画沿用 DashboardMotionTiming.contentResize；移除裸 1/2/3",
-      "impact": "apps/macos/Sources/BruceApp/MenuBarViews.swift；必要时抽取纯映射到 BruceAppCore 以便 Harness 覆盖"
+      "after": "新增 ⌘1/⌘2/⌘3 固定身份快捷键（usage/subscription/hourly，与 cardOrder 无关）：面板宿主 DashboardPanel.performKeyEquivalent 在 key equivalent 阶段捕获并按 model.requestedCardShortcut 交给 SwiftUI 消费；Tab 模式 selectTab；纵向级联先用 ScrollViewReader.scrollTo(cardID, anchor: .top) 滚到卡片再 toggleCardCollapsed；只响应非重复 key down（不连发），缺卡/非 Command 组合 no-op；移除裸 1/2/3",
+      "impact": "apps/macos/Sources/BruceApp/MenuBarViews.swift、MenuBarStatusItemController.swift（DashboardPanel key equivalent）、BruceAppCore/AppModel.swift（requestedCardShortcut）与 DashboardShortcutPolicy"
     },
     {
       "scope": "Windows 面板快捷键",
@@ -96,7 +96,7 @@
         "item": "mac 实机按键",
         "true_if": "装机版面板 key 窗口内 ⌘1/⌘2/⌘3 可稳定触发；纵向级联先滚动再收放，Tab 模式切页签，长按不连发",
         "false_if": "Command 事件不可达、裸数字仍响应或滚动/收放顺序异常",
-        "evidence": "本轮未在装机版实机按键验证；mac 侧已通过纯映射 Harness 与构建。若 .onKeyPress 收不到带 Command 的事件，实现已保留退回面板宿主 local key monitor 的路径。",
+        "evidence": "首次部署后用户实测快捷键未生效（SwiftUI .onKeyPress 未收到 Command 组合）；已改为面板宿主 DashboardPanel.performKeyEquivalent 捕获并经 model.requestedCardShortcut 交给 SwiftUI，需重新部署后实机复测。",
         "result": false
       }
     ]
@@ -105,7 +105,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "3c1b0ae",
     "tag": ""
   },
   "gate": {

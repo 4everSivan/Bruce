@@ -943,7 +943,18 @@ package enum DashboardShortcutPolicy {
         layoutMode: DashboardLayoutMode,
         isAvailable: (DashboardCardID) -> Bool
     ) -> DashboardShortcutAction {
-        guard let cardID = cardID(for: digit), isAvailable(cardID) else {
+        guard let cardID = cardID(for: digit) else {
+            return .none
+        }
+        return action(cardID: cardID, layoutMode: layoutMode, isAvailable: isAvailable)
+    }
+
+    package static func action(
+        cardID: DashboardCardID,
+        layoutMode: DashboardLayoutMode,
+        isAvailable: (DashboardCardID) -> Bool
+    ) -> DashboardShortcutAction {
+        guard isAvailable(cardID) else {
             return .none
         }
         switch layoutMode {

@@ -129,7 +129,7 @@
 | 规则 | mac 语义 | Windows 渲染层 |
 |---|---|---|
 | 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent 数量仅经悬停提示呈现（C208 起双端不再渲染绿点角标）；C211 起固定快捷键为 ⌘1/⌘2/⌘3（Tab 切页签 / 纵向级联先滚动再收放，裸 1/2/3 退役），并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器，并在布局行后展示只读 `Ctrl+1/2/3` 键帽；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
-| Agent 用量卡（C212） | 进入/展开默认打开首个有模型/项目明细的 agent；有数据时「今日」+ 图标刷新；今日空态保留 14 日柱状图（无历史不渲染），空态图标/文案下唯一刷新；收起空态「暂无用量」 | 同语义（`hourlyExpansionPending` + `makeCollapsible(onExpand)` 重置；`refresh_now` 刷新；空态复用订阅空态视觉语法） |
+| Agent 用量卡（C212） | 进入/展开默认打开首个有模型/项目明细的 agent；有数据时「今日」+ 图标刷新；今日空态保留 14 日柱状图（无历史不渲染），空态图标/文案下唯一刷新；收起空态「暂无用量」 | 同语义（`hourlyExpansionPending` + `makeCollapsible(onExpand)` 重置；`refresh_now` 刷新；刷新按钮与订阅 `ProviderRefreshButton` 同构：14×14 无边框、刷新中 `.sub-spinner`） |
 | 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
 | `account.note` | 仅 `account.status == "error"` 渲染 | 同 |

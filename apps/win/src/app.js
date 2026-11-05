@@ -1084,15 +1084,14 @@ function hourlyCard(hourly, usage) {
   }
 
   const body = el("div", "hourly-body");
-  const renderRefreshButton = (withLabel) => {
+  const renderRefreshButton = (emptyStyle = false) => {
     const button = el(
       "button",
-      withLabel ? "hourly-refresh hourly-empty-refresh" : "hourly-refresh"
+      emptyStyle ? "hourly-refresh hourly-empty-refresh" : "hourly-refresh"
     );
     button.type = "button";
     button.setAttribute("aria-label", "刷新 Agent 用量");
-    button.append(icon("arrowClockwise"));
-    if (withLabel) button.append(el("span", null, "刷新"));
+    button.append(icon("arrowClockwise", 2.1));
     button.addEventListener("click", () => requestAgentRefresh(button));
     return button;
   };
@@ -1215,19 +1214,23 @@ function hourlyCard(hourly, usage) {
 }
 
 /// C212: Agent 卡内刷新; Windows 当前仅一个 collector 模块, refresh_now 即整模块刷新.
+/// 与订阅 ProviderRefreshButton 同构: 14×14 无边框图标, 刷新中替换为小型进度环.
 async function requestAgentRefresh(button) {
   if (button.disabled) return;
   button.disabled = true;
-  button.classList.add("spinning");
+  button.classList.add("busy");
+  button.replaceChildren(el("span", "sub-spinner"));
   try {
     await invoke("refresh_now");
     setTimeout(() => {
       button.disabled = false;
-      button.classList.remove("spinning");
+      button.classList.remove("busy");
+      button.replaceChildren(icon("arrowClockwise", 2.1));
     }, 700);
   } catch (error) {
     button.disabled = false;
-    button.classList.remove("spinning");
+    button.classList.remove("busy");
+    button.replaceChildren(icon("arrowClockwise", 2.1));
     showError(error);
   }
 }
