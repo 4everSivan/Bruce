@@ -1652,7 +1652,12 @@
 
 .hero__lede { max-width: 33ch; }
 
-/* 面板容器定宽，避免 shrink-to-fit 把 zoom 卷进循环 */
+/* 单列布局下 33ch 会把中文正文压成一条窄栏，放宽行宽 */
+@media (max-width: 1100px) {
+  .hero__lede { max-width: 34em; }
+}
+
+/* 面板容器定宽，避免 shrink-to-fit 改变样张的 440pt 设计宽 */
 .panel-wrap {
   width: 440px;
   max-width: 100%;
@@ -1742,7 +1747,8 @@
 .deck {
   position: relative;
   width: 776px;
-  height: 1004px;
+  /* 兜底高度：JS 的 layoutDeck() 会按内容写 inline height */
+  height: 818px;
   transform-origin: top left;
   flex: 0 0 auto;
 }
@@ -1750,11 +1756,16 @@
 .deck__item {
   position: absolute;
   left: calc(var(--i) * 168px);
-  top: calc(var(--i) * 26px);
-  z-index: calc(3 - var(--i));
+  top: calc(var(--i) * 42px);
+  z-index: calc(var(--i) + 1);
 }
 
 .deck__item .bruce-panel { width: 440px; }
+
+.deck__sheet { width: 440px; }
+
+/* 顶条只在 ≤720 的纵向叠放里出现，由 layoutDeck() 打 data-mode="thumb" */
+.deck__peek { display: none; }
 
 /* 后两块面板只露出一条竖切片，给它们一点分层投影 */
 .deck__item::after {
@@ -1796,18 +1807,107 @@
 
 @media (max-width: 1100px) {
   .hero__right { flex: 1 1 auto; width: 100%; }
-  .deck { position: static; width: 440px; height: auto !important; }
-  .deck__item { position: static; display: none; }
-  .deck__item[data-theme="classic"] { display: block; }
+  /* 三卡保留；整堆缩放与占位高度由 panel.js 的 layoutDeck() 负责 */
 }
 
-/* 牌堆：后一块露出左缘（标题 + 大数字），最右是默认经典 */
-.deck__item {
-  top: calc(var(--i) * 42px);
-  z-index: calc(var(--i) + 1);
+/* 纵向缩略叠放（≤720，由 JS 切 data-mode）：
+   当前卡展开，其余两张只留顶条；顶条是切换按钮。 */
+.deck-host[data-mode="thumb"] .deck {
+  position: static;
+  width: min(100%, 440px);
+  height: auto !important;
+  margin-inline: auto;
+  transform: none !important;
 }
 
+.deck-host[data-mode="thumb"] .deck__item {
+  position: static;
+  margin-top: 10px;
+}
+
+.deck-host[data-mode="thumb"] .deck__item:first-child { margin-top: 0; }
+
+.deck-host[data-mode="thumb"] .deck__peek {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 1em;
+  padding: 14px 18px;
+  border: var(--hairline) solid var(--rule);
+  border-radius: 12px;
+  background: var(--paper-raise);
+  text-align: left;
+  transition: border-color 240ms var(--ease), background-color 240ms var(--ease);
+}
+
+.deck-host[data-mode="thumb"] .deck__peek-k {
+  font-size: var(--t-small);
+  letter-spacing: 0.2em;
+}
+
+.deck-host[data-mode="thumb"] .deck__peek-v {
+  margin-left: auto;
+  font-size: var(--t-small);
+  letter-spacing: 0.06em;
+  color: var(--ink-52);
+}
+
+.deck-host[data-mode="thumb"] .deck__peek::after {
+  content: "+";
+  margin-left: 12px;
+  font-size: var(--t-small);
+  color: var(--ink-38);
+}
+
+.deck-host[data-mode="thumb"] .deck__item.is-front .deck__peek {
+  border-color: var(--rule-strong);
+  background: var(--paper);
+}
+
+.deck-host[data-mode="thumb"] .deck__item.is-front .deck__peek::after { content: "−"; }
+
+.deck-host[data-mode="thumb"] .deck__sheet {
+  margin-top: 8px;
+  transform-origin: top left;
+}
+
+.deck-host[data-mode="thumb"] .deck__item:not(.is-front) .deck__sheet { display: none; }
+
+.deck-host[data-mode="thumb"] .deck__sheet .bruce-panel { transform-origin: top left; }
+
+/* 牌堆不再保留旧的固定高度与重复定位规则 */
 .deck { margin-bottom: 0; }
+
+/* ≤720：牌堆移到标题之后、导语之前，三张纵向缩略叠放 */
+@media (max-width: 720px) {
+  .hero__grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+  .hero__left { display: contents; }
+  .hero__eyebrow { order: 1; }
+  .hero__title { order: 2; }
+  .hero__right {
+    order: 3;
+    margin-top: clamp(26px, 4vh, 40px);
+    width: calc(100% + 24px); /* 页边距 20px → 8px，给缩略卡多留宽度 */
+    margin-inline: -12px;
+  }
+  .hero__lede { order: 4; }
+  .hero__action { order: 5; }
+  .hero__spec { order: 6; }
+  .anatomy__stage { margin-inline: -12px; }
+}
+
+/* 双 CTA 在 320px 级窄屏叠成整行，避免右缘裁切 */
+@media (max-width: 360px) {
+  .hero__dl .cta,
+  .hero__dl .cta-stack { flex: 1 1 100%; }
+  .hero__dl .cta-stack .cta { width: 100%; }
+}
 
 /* 章节内的说明文字不该被全局的 34ch 限制压成窄条 */
 .anatomy__copy .panel-hint { max-width: 40em; }
@@ -1822,6 +1922,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  max-width: 100%;
 }
 
 .hero__dl .cta {

@@ -86,13 +86,31 @@
         <div class="deck-host" id="panel-stage">
           <div class="deck" id="panel-deck" role="group" aria-label="三种主题的菜单栏面板重建">
             <div class="deck__item" data-theme="nothing" style="--i:0">
-              <div class="bruce-panel" id="panel-nothing"></div>
+              <button class="deck__peek" type="button" data-deck-theme="nothing" aria-expanded="false" aria-controls="panel-nothing-sheet">
+                <span class="deck__peek-k">Nothing</span>
+                <span class="deck__peek-v"></span>
+              </button>
+              <div class="deck__sheet" id="panel-nothing-sheet">
+                <div class="bruce-panel" id="panel-nothing"></div>
+              </div>
             </div>
             <div class="deck__item" data-theme="liquid" style="--i:1">
-              <div class="bruce-panel" id="panel-liquid"></div>
+              <button class="deck__peek" type="button" data-deck-theme="liquid" aria-expanded="false" aria-controls="panel-liquid-sheet">
+                <span class="deck__peek-k">液态玻璃</span>
+                <span class="deck__peek-v"></span>
+              </button>
+              <div class="deck__sheet" id="panel-liquid-sheet">
+                <div class="bruce-panel" id="panel-liquid"></div>
+              </div>
             </div>
             <div class="deck__item" data-theme="classic" style="--i:2">
-              <div class="bruce-panel" id="panel-classic"></div>
+              <button class="deck__peek" type="button" data-deck-theme="classic" aria-expanded="false" aria-controls="panel-classic-sheet">
+                <span class="deck__peek-k">经典</span>
+                <span class="deck__peek-v"></span>
+              </button>
+              <div class="deck__sheet" id="panel-classic-sheet">
+                <div class="bruce-panel" id="panel-classic"></div>
+              </div>
             </div>
           </div>
         </div>

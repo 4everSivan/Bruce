@@ -13,12 +13,24 @@
 
   var THEMES = ["classic", "liquid", "nothing"];
   var DECK_W = 776;
-  var STEP_X = 168;
   var STEP_Y = 42;
+  var CARD_LABEL = { token: "Token 用量", quota: "订阅用量", hourly: "Agent 用量" };
+  var narrowMq = window.matchMedia("(max-width: 720px)");
+  var front = "classic"; /* ≤720 纵向叠放时展开的那张 */
   var root = deck; /* 事件委托挂在整个牌堆上 */
 
   function slot(theme) {
     return document.getElementById("panel-" + theme);
+  }
+
+  function item(theme) {
+    var el = slot(theme);
+    return el ? el.closest(".deck__item") : null;
+  }
+
+  function sheet(theme) {
+    var el = slot(theme);
+    return el ? el.closest(".deck__sheet") : null;
   }
 
   var M = "classic";
@@ -479,26 +491,81 @@
     THEMES.forEach(function (theme) {
       var el = slot(theme);
       if (el) el.innerHTML = surface(theme, CARD[theme]);
+      var it = item(theme);
+      if (it) {
+        it.classList.toggle("is-front", theme === front);
+        var label = it.querySelector(".deck__peek-v");
+        if (label) label.textContent = CARD_LABEL[CARD[theme]] || "";
+      }
     });
-    sizeDeck();
   }
 
-  function sizeDeck() {
-    var maxH = 0;
-    THEMES.forEach(function (theme) {
-      var el = slot(theme);
-      if (el) maxH = Math.max(maxH, el.offsetHeight);
-    });
-    if (maxH) deck.style.height = maxH + STEP_Y * 2 + "px";
-  }
-
-  function fit() {
+  /* 牌堆布局：>720 三卡横向（整堆 transform 缩放），≤720 纵向缩略叠放。
+     高度一律按面板实测内容计算，不再写死 1004px，也不使用 zoom。 */
+  function layoutDeck() {
     var host = deck.parentElement;
     if (!host) return;
-    var narrow = window.innerWidth < 1100;
-    var natural = narrow ? 440 : DECK_W;
-    deck.style.zoom = Math.min(1, host.clientWidth / natural);
-    if (narrow) deck.style.height = "";
+
+    if (narrowMq.matches) {
+      host.setAttribute("data-mode", "thumb");
+      var avail = host.clientWidth;
+      var scale = Math.min(1, avail / 440);
+      THEMES.forEach(function (theme) {
+        var it = item(theme);
+        var sh = sheet(theme);
+        var panel = slot(theme);
+        var on = theme === front;
+        if (it) {
+          it.classList.toggle("is-front", on);
+          var btn = it.querySelector(".deck__peek");
+          if (btn) btn.setAttribute("aria-expanded", on ? "true" : "false");
+        }
+        if (!sh || !panel) return;
+        if (!on) {
+          sh.style.width = "";
+          sh.style.height = "";
+          panel.style.transform = "";
+          return;
+        }
+        var h = panel.offsetHeight;
+        sh.style.width = Math.round(440 * scale) + "px";
+        sh.style.height = h ? Math.round(h * scale) + "px" : "";
+        panel.style.transform = "scale(" + scale + ")";
+      });
+      deck.style.width = "";
+      deck.style.height = "";
+      deck.style.transform = "";
+      host.style.height = "";
+      return;
+    }
+
+    host.setAttribute("data-mode", "stack");
+    var maxH = 0;
+    THEMES.forEach(function (theme) {
+      var it = item(theme);
+      var sh = sheet(theme);
+      var panel = slot(theme);
+      if (it) {
+        it.classList.remove("is-front");
+        var btn = it.querySelector(".deck__peek");
+        if (btn) btn.setAttribute("aria-expanded", "false");
+      }
+      if (sh) {
+        sh.style.width = "";
+        sh.style.height = "";
+      }
+      if (panel) {
+        panel.style.transform = "";
+        maxH = Math.max(maxH, panel.offsetHeight);
+      }
+    });
+    if (!maxH) maxH = 734;
+    var naturalH = maxH + STEP_Y * 2;
+    var deckScale = Math.min(1, host.clientWidth / DECK_W);
+    deck.style.width = "";
+    deck.style.height = naturalH + "px";
+    deck.style.transform = "scale(" + deckScale + ")";
+    host.style.height = Math.round(naturalH * deckScale) + "px";
   }
 
   /* ---------- 01 看板：纵向 tab 切换单卡 ----------------------------- */
@@ -547,19 +614,30 @@
     });
   }
 
-  window.addEventListener("resize", function () {
-    fit();
-    fitAnatomy();
+  /* ≤720 纵向叠放：点顶条切换展开的卡 */
+  deck.addEventListener("click", function (e) {
+    var btn = e.target.closest(".deck__peek");
+    if (!btn || !deck.contains(btn) || !narrowMq.matches) return;
+    var theme = btn.getAttribute("data-deck-theme");
+    if (!theme || theme === front) return;
+    front = theme;
+    layoutDeck();
   });
 
+  function relayout() {
+    layoutDeck();
+    fitAnatomy();
+  }
+
+  window.addEventListener("resize", relayout);
+  if (narrowMq.addEventListener) narrowMq.addEventListener("change", relayout);
+  else if (narrowMq.addListener) narrowMq.addListener(relayout);
+
   render();
-  fit();
+  layoutDeck();
   renderAnatomy();
 
   if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(function () {
-      fit();
-      fitAnatomy();
-    });
+    document.fonts.ready.then(relayout);
   }
 })();

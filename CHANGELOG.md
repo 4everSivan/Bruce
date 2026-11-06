@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+### Added
+- **官网首屏牌堆手机端适配：三档响应式与纵向缩略叠放 (T33)**：
+  - **三档断点**：`>1100px` 右侧横向三卡；`721–1100px` 保留三卡并整堆等比缩放（不再在 1100px 砍成单卡）；`≤720px` 三张纵向缩略叠放（当前卡展开、其余两张留顶条，点顶条切换），牌堆移到标题之后、导语之前，手机首屏可见；
+  - **缩放与高度**：用定宽占位容器 + `transform: scale()` 替换非标准 `zoom`，移除固定 1004px 高度，统一由 `layoutDeck()` 按面板实测内容计算，修掉窄→宽 resize 后约 186px 死区；01 章看板卡同步适配，粗指针放大面板 tab 热区，热力图日期提示补点按显示、点空白关闭；
+  - **窄屏细节**：`≤1100px` 放宽导语行宽；`≤360px` 双 CTA 改为整行堆叠，320px 不再裁切；
+  - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
+
 ### Fixed
 - **订阅额度预警窗口未重置却重复弹气泡：窗口身份、观测、状态与投递四层重构 (T28–T31)**：
   - **窗口语义身份**：collector 为 `services[].windows[]` 输出 `windowKey`（`five_hour` / `weekly` / `monthly` / `weekly_scoped:*` / `credits` / `topup_credits` / `extra_usage` / `generic`）与 `windowMode`（`block` / `rolling` / `unknown`）；`label` 退化为纯展示字段，去重键改为 `serviceID|windowKey`；

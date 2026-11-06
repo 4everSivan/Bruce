@@ -129,7 +129,7 @@
       var i = idx++;
       var date = dates[i];
       if (!date) return;
-      cell.addEventListener("pointerenter", function (e) {
+      function showTip() {
         if (!tip) return;
         var level = cell.dataset.band;
         var band = level === null ? "未发生" : BAND[Number(level)];
@@ -139,10 +139,18 @@
         var r = cell.getBoundingClientRect();
         tip.style.left = r.left + r.width / 2 + "px";
         tip.style.top = r.top + "px";
-      });
+      }
+      cell.addEventListener("pointerenter", showTip);
+      cell.addEventListener("click", showTip); /* 触屏没有 hover，点按显示 */
       cell.addEventListener("pointerleave", function () {
         if (tip) tip.classList.remove("is-on");
       });
+    });
+
+    /* 点空白处收起触屏上的日期提示 */
+    document.addEventListener("click", function (e) {
+      if (!tip || e.target.closest(".heatmap__cell")) return;
+      tip.classList.remove("is-on");
     });
 
     var range = document.getElementById("heatmap-range");
