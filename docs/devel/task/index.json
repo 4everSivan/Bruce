@@ -310,7 +310,7 @@
     },
     "T33": {
       "title": "官网首屏牌堆与看板章节的手机端适配（三档响应式 + 缩略叠放）",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T33-site-mobile",
       "topic": "OfficialWebsite",
       "milestone": "M17-官方网站移动端适配",

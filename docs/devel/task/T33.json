@@ -4,7 +4,7 @@
   "title": "官网首屏牌堆与看板章节的手机端适配（三档响应式 + 缩略叠放）",
   "version": "0.18.0",
   "milestone": "M17-官方网站移动端适配",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T33-site-mobile",
   "depends_on": [],
   "target": {
@@ -60,14 +60,14 @@
       "id": "T33-5",
       "title": "收口与节点回执",
       "capability": "跑 site 门禁与响应式断言，按 ad-flow 预检 --to completed --record，同步卡片与索引，--receipt 输出回执；人工确认原话写入 acceptance。",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261106-12",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "设计基线一致",
@@ -100,12 +100,14 @@
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "c2f0486"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-06",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }
