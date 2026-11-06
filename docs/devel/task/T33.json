@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T33",
+  "title": "官网首屏牌堆与看板章节的手机端适配（三档响应式 + 缩略叠放）",
+  "version": "0.18.0",
+  "milestone": "M17-官方网站移动端适配",
+  "status": "in_progress",
+  "branch": "feat/T33-site-mobile",
+  "depends_on": [],
+  "target": {
+    "module": "website/",
+    "component": "首屏三主题牌堆与 01 章看板卡片的响应式布局",
+    "design_doc": "docs/devel/design/13-官方网站.md",
+    "design_topic": "OfficialWebsite"
+  },
+  "goal": "把首屏牌堆从“>1100px 才有三卡”改为三档响应式：桌面横向三卡、平板保留三卡并整堆缩放、手机纵向缩略叠放且移到标题之后；用 transform 替换 zoom，消除断点重复与高度记账冲突；01 章卡片同步适配触控与窄屏阅读。",
+  "precheck": {
+    "description": "检查 website/js/panel.js 是否已存在三档布局/缩略叠放实现，确认任务未被前序提交完成",
+    "command": "node -e 'const fs=require(\"fs\");const js=fs.readFileSync(\"website/js/panel.js\",\"utf8\");console.log(/deck__peek/.test(js)&&/data-mode/.test(js)?\"implemented\":\"absent\")'",
+    "expected": "输出 absent（未实现）",
+    "is_completed": false,
+    "evidence": "2026-11-06 建卡时全仓无 deck__peek / data-mode；实测 390px 首屏牌堆 y≈905 不可见，1100px 只保留经典卡"
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/T33-site-mobile"
+    ],
+    "after": [
+      "node scripts/check-site-sync.mjs",
+      "node scripts/build-site.mjs",
+      "node website/tools/responsive-check.mjs --shots"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T33-1",
+      "title": "设计基线回写",
+      "capability": "更新 design/13 §3.7 牌堆缩放口径、§3.8 顶条交互边界、§3.9 三档断点与触控要求、§5 响应式验收项、§6.7 变更纪要。",
+      "done": true
+    },
+    {
+      "id": "T33-2",
+      "title": "牌堆三档布局",
+      "capability": ">1100 横向三卡、721–1100 三卡整堆 transform 缩放、≤720 纵向缩略叠放（当前卡展开、顶条切换）；移除 zoom 与固定 1004px 高度，高度统一由布局函数计算。",
+      "done": true
+    },
+    {
+      "id": "T33-3",
+      "title": "01 章与窄屏细节",
+      "capability": "01 章看板卡复用缩放工具，粗指针控件热区、热力图悬停信息补点击；≤1100 放宽导语行宽；≤360 双 CTA 纵排。",
+      "done": true
+    },
+    {
+      "id": "T33-4",
+      "title": "多宽度双内核验证",
+      "capability": "Playwright（Chrome + WebKit）在 320/360/375/390/430/768/1024/1100/1101/1440 断言牌堆可见、三卡数量、缩放比、无横向溢出、顶条切换；更新 site-mobile.png 等截图。",
+      "done": true
+    },
+    {
+      "id": "T33-5",
+      "title": "收口与节点回执",
+      "capability": "跑 site 门禁与响应式断言，按 ad-flow 预检 --to completed --record，同步卡片与索引，--receipt 输出回执；人工确认原话写入 acceptance。",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "设计基线一致",
+        "true_if": "design/13 §3.7/3.8/3.9/§5/§6.7 与实现的三档断点、缩放方式、顶条交互一致",
+        "false_if": "文档仍描述 ≤1100 只保留经典一块或 zoom 缩放",
+        "evidence": "design/13 §3.7 牌堆三档、§3.8 顶条边界、§3.9 断点/触控、§5 响应式验收、§6.7 纪要与实现逐条核对",
+        "result": true
+      },
+      {
+        "item": "牌堆响应式",
+        "true_if": "320/390/768/1024/1100/1101/1440 下首屏可见牌堆；721–1100 三卡全部渲染；≤720 三张顶条可切换且当前卡展开",
+        "false_if": "任一宽度出现零可见卡、三卡缺失或横向溢出",
+        "evidence": "website/tools/responsive-check.mjs：Chromium + WebKit 共 124 项断言全 PASS（320/390/768/1024/1100/1101/1440，含顶条切换与同宽断言）",
+        "result": true
+      },
+      {
+        "item": "缩放与高度",
+        "true_if": "全站无 zoom 缩放；牌堆高度在窄→宽 resize 后与实际内容一致（无 >10px 死区）",
+        "false_if": "仍使用 zoom 或 resize 后残留固定高度空白",
+        "evidence": "全站无 zoom；1440→1100→720→390→720→1100→1101→1440 序列下 deck/host 高度 818px 一致，panelBottom 785，无死区",
+        "result": true
+      },
+      {
+        "item": "构建门禁",
+        "true_if": "check-site-sync.mjs 与 build-site.mjs 退出码 0，响应式断言脚本退出码 0",
+        "false_if": "任一脚本失败或存在残留占位符",
+        "evidence": "check-site-sync Exit 0（图标 10 个）；build-site Exit 0（28 文件 / 373 KB / 16 占位符）；responsive-check Exit 0",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

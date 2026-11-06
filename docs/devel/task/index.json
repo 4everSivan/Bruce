@@ -130,6 +130,13 @@
         "T31",
         "T32"
       ]
+    },
+    "M17-官方网站移动端适配": {
+      "title": "官网首屏牌堆三档响应式：桌面横向三卡、平板保留三卡缩放、手机纵向缩略叠放（transform 替换 zoom）",
+      "design_doc": "docs/devel/design/13-官方网站.md",
+      "tasks": [
+        "T33"
+      ]
     }
   },
   "topics": {
@@ -183,7 +190,9 @@
     },
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
-      "tasks": []
+      "tasks": [
+        "T33"
+      ]
     }
   },
   "tasks": {
@@ -298,6 +307,15 @@
       ],
       "file": "docs/devel/task/T32.json",
       "branch_note": "同批实施于 T28 分支"
+    },
+    "T33": {
+      "title": "官网首屏牌堆与看板章节的手机端适配（三档响应式 + 缩略叠放）",
+      "status": "in_progress",
+      "branch": "feat/T33-site-mobile",
+      "topic": "OfficialWebsite",
+      "milestone": "M17-官方网站移动端适配",
+      "depends_on": [],
+      "file": "docs/devel/task/T33.json"
     }
   }
 }
