@@ -175,7 +175,7 @@
     "C226": {
       "title": "现行总账瘦身：归档登记迁入 13 个归档批次总账，现行总账只留活跃卡（ad-flow 1.7.0 分层总账）",
       "type": "Refactor",
-      "status": "verified",
+      "status": "closed",
       "branch": "chore/C226-ledger-compaction",
       "topic": "SystemOverview",
       "version": "0.17.1",

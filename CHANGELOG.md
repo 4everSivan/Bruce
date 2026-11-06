@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Changed
+- **现行总账瘦身：归档登记迁入归档批次总账，现行总账只留活跃卡 (C226)**：
+  - **分层总账**：随 ad-flow 1.7.0 规范，`docs/devel/change/index.json` 与 `docs/devel/task/index.json` 中 212 / 19 条归档登记连同主题归属原样迁入 13 个 `docs/archive/<version>/index.json`（`adflow-archive-batch-v1`），现行变更总账 86,801 B / 2,319 行 → 6,500 B / 185 行；卡片文件零改动，历史查询改用 `scripts/adflow-verify --topic <主题>`；
+  - **门禁不降级**：`scripts/check-change-ledger.mjs` 同时校验批次总账的主题归属、孤儿编号、路径存在与跨总账重号，`verify-local` 继续覆盖全部归档登记。
+
 ## [0.17.0] - 2026-11-06
 
 ### Added

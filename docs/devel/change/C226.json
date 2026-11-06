@@ -4,7 +4,7 @@
   "title": "现行总账瘦身：归档登记迁入 13 个归档批次总账，现行总账只留活跃卡（ad-flow 1.7.0 分层总账）",
   "version": "0.17.1",
   "type": "Refactor",
-  "status": "verified",
+  "status": "closed",
   "branch": "chore/C226-ledger-compaction",
   "is_hotfix": false,
   "target": {
@@ -93,8 +93,8 @@
   "rejections": [],
   "sync": {
     "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "changelog": true,
+    "commit": "d70db35",
     "tag": ""
   },
   "gate": {
@@ -102,8 +102,8 @@
     "version": "1.7.0",
     "ran_at": "2026-11-05",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "I'm accepting C226.",
     "signed_rejection_count": 0
   }
