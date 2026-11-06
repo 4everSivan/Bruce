@@ -69,6 +69,9 @@ pub struct SubscriptionProviderSection {
     pub collapsed_window: Option<SubscriptionWindowRow>,
     pub balance: Option<BalanceRow>,
     pub account_count_text: Option<String>,
+    /// C224: 单账号段的上次成功时间文案 (仅 freshness=stale); 多账号段为 None,
+    /// 由各账号子卡的 last_success_text 呈现 (对齐 mac section.lastSuccessText)。
+    pub last_success_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -508,6 +511,8 @@ impl PanelViewModelMapper {
                     ),
                     tag: None,
                 };
+                // C224: 单账号段不渲染账号子卡, 上次成功时间提到 section 级供卡片直接呈现。
+                let section_last_success = account.last_success_text.clone();
                 sections.push(SubscriptionProviderSection {
                     id: svc.id.clone(),
                     name: group_display_name(provider),
@@ -536,6 +541,7 @@ impl PanelViewModelMapper {
                         }
                     }),
                     account_count_text: None,
+                    last_success_text: section_last_success,
                 });
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow。
@@ -575,6 +581,7 @@ impl PanelViewModelMapper {
                     collapsed_window: collapsed,
                     balance: None,
                     account_count_text: Some(format!("{} 个账号", services.len())),
+                    last_success_text: None,
                 });
             }
         }

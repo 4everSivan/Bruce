@@ -68,7 +68,9 @@
         "C220",
         "C221",
         "C222",
-        "C223"
+        "C223",
+        "C224",
+        "C225"
       ]
     },
     "PricingEngine": {
@@ -2284,6 +2286,24 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
       "file": "docs/devel/change/C223.json"
+    },
+    "C224": {
+      "title": "单账号订阅段补显「上次成功」时间，旧快照不再伪装成实时（双端）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C224-C225-subscription-stale-status",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C224.json"
+    },
+    "C225": {
+      "title": "纯余额型订阅「订阅状态」槽改用状态灯映射表：中文态名 + 分档点色（双端）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C224-C225-subscription-stale-status",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.0",
+      "file": "docs/devel/change/C225.json"
     }
   }
 }

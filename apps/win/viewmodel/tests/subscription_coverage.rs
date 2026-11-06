@@ -313,3 +313,58 @@ fn updated_text_follows_mapper_timezone_and_rejects_bad_date() {
     assert_eq!(subscription.updated_text, None);
     assert_eq!(subscription.sections.len(), 1);
 }
+
+#[test]
+fn single_account_stale_section_carries_last_success_like_mac() {
+    // C224: 单账号段 (窗口型与纯余额型) 沿用旧快照时 section 级携带上次成功时间;
+    // fresh 为 None; 多账号段 section 级为 None, 由账号子卡各自携带。
+    let (subscription, _) = map(json!([
+        {"id": "kimi", "name": "Kimi", "status": "ok", "kind": "windows",
+         "windows": [{"label": "每周", "usedPercent": 40.0, "windowMinutes": 10080}],
+         "capturedAt": "2026-07-28T11:05:00+08:00", "freshness": "stale"},
+        {"id": "deepseek", "name": "DeepSeek", "status": "error", "kind": "balance",
+         "windows": [], "balance": 38.21, "currency": "CNY",
+         "capturedAt": "2026-07-28T10:40:00+08:00", "freshness": "stale"},
+        {"id": "volcengine", "name": "火山引擎", "status": "ok", "kind": "windows",
+         "windows": [{"label": "每月", "usedPercent": 20.0, "windowMinutes": 43200}],
+         "capturedAt": "2026-07-28T12:00:00+08:00", "freshness": "fresh"}
+    ]));
+    let subscription = subscription.unwrap();
+    let section = |id: &str| {
+        subscription
+            .sections
+            .iter()
+            .find(|section| section.id == id)
+            .unwrap_or_else(|| panic!("缺少 {id} 段"))
+    };
+    assert_eq!(
+        section("kimi").last_success_text.as_deref(),
+        Some("上次成功 11:05")
+    );
+    assert_eq!(
+        section("deepseek").last_success_text.as_deref(),
+        Some("上次成功 10:40")
+    );
+    assert_eq!(
+        section("volcengine").last_success_text,
+        None,
+        "fresh 单账号段不携带"
+    );
+
+    let (multi, _) = map(json!([
+        {"id": "codex_a", "name": "Codex · a", "status": "error", "kind": "windows",
+         "windows": [], "app": "codex",
+         "capturedAt": "2026-07-28T11:05:00+08:00", "freshness": "stale"},
+        {"id": "codex_b", "name": "Codex · b", "status": "ok", "kind": "windows",
+         "windows": [{"label": "每周", "usedPercent": 10.0, "windowMinutes": 10080}],
+         "app": "codex", "freshness": "fresh"}
+    ]));
+    let group = &multi.unwrap().sections[0];
+    assert_eq!(group.accounts.len(), 2, "两个 Codex 账号合并为多账号段");
+    assert_eq!(group.last_success_text, None, "多账号段 section 级不携带");
+    assert_eq!(
+        group.accounts[0].last_success_text.as_deref(),
+        Some("上次成功 11:05"),
+        "多账号 stale 账号仍由子卡携带"
+    );
+}

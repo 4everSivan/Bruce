@@ -673,6 +673,10 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 }
 .slot-value.status { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; opacity: .8; }
 .slot-dot { width: 5px; height: 5px; border-radius: 50%; background: #4A9E5C; flex: none; }
+/* C225: 状态点按 sectionTone 取订阅阈值三色, 中性态取 disabled 灰 (mac statusDotColor 同源) */
+.slot-dot.warn { background: #D4A843; }
+.slot-dot.error { background: #D71921; }
+.slot-dot.neutral { background: #666666; }
 
 /* C158: 数字列滚动 (mac .numericText 的 Web 等价实现). 静止态列内只有数字本身,
    行盒与改动前逐像素一致; 滚动期由隐藏占位 (.motion-hold) 撑住宽度与基线,

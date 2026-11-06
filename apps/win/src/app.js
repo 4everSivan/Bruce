@@ -745,7 +745,8 @@ function balanceSlots(section) {
   const status = el("div", "slot");
   status.append(el("div", "slot-title", "订阅状态"));
   const statusValue = el("div", "slot-value status");
-  statusValue.append(el("span", "slot-dot"), el("span", null, section.status === "ok" ? "正常" : section.status));
+  // C225: 态名与点色取顶部状态灯同一张映射表, 不再直出状态码、不再恒绿。
+  statusValue.append(el("span", `slot-dot ${sectionTone(section.status)}`), el("span", null, statusLabel(section.status)));
   status.append(statusValue);
   wrap.append(amount, status);
   return wrap;
@@ -858,6 +859,13 @@ function subscriptionCard(sub) {
       // error/empty 段保留 collector 说明, 不静默吞掉 (与 mac 门控一致)
       if ((section.status === "error" || section.status === "empty") && section.note) {
         block.append(el("div", "note-line", section.note));
+      }
+      // C224: 单账号段 (含纯余额型) 沿用旧快照时标注上次成功时间, 与账号子卡同款;
+      // 多账号段由各账号子卡自行呈现 (单账号段不读 section.accounts, 见 design/05)。
+      if (!multi && section.lastSuccessText) {
+        const line = el("div", "last-success", section.lastSuccessText);
+        line.setAttribute("aria-label", "这是上次成功的数据");
+        block.append(line);
       }
       body.append(block);
     }

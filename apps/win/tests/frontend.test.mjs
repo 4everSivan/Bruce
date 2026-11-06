@@ -342,6 +342,46 @@ test("balance-only sections render the amount and status dual slot without a hea
   assert.match(card.textContent, /订阅状态/);
   assert.match(card.textContent, /¥ 38\.21/);
   assert.match(card.textContent, /正常/);
+  assert.ok(card.querySelector(".slot-dot").classList.contains("ok"), "ok 态点色为绿");
+});
+
+test("balance-only status slot maps codes through the shared tone table (C225)", async () => {
+  const section = status => ({ id: "deepseek", name: "DeepSeek", status,
+    windows: [], accounts: [], balance: { label: "账户余额", amountText: "¥ 38.21" } });
+  for (const [status, label, tone] of [["error", "失败", "error"], ["partial", "部分失败", "warn"], ["empty", "暂无数据", "neutral"]]) {
+    const panel = { ...fixture, subscription: { updatedText: null, sections: [section(status)] } };
+    const app = await boot({ panel });
+    const slot = app.node("stack").querySelector('[data-card="subscription"] .slot-value.status');
+    assert.equal(slot.textContent, label, `${status} 态名应为 ${label}`);
+    assert.doesNotMatch(slot.textContent, new RegExp(status), "不得直出状态码");
+    assert.ok(slot.querySelector(".slot-dot").classList.contains(tone), `${status} 点色应为 ${tone}`);
+  }
+});
+
+test("single-account stale sections show last success time; multi-account sections defer to sub-cards (C224)", async () => {
+  const panel = { ...fixture, subscription: { updatedText: null, sections: [
+    { id: "kimi", name: "Kimi", status: "ok", windows: [{ label: "每周", usedPercent: 40, percentText: "40%", resetText: "3 天后", ownRow: false }],
+      accounts: [], balance: null, lastSuccessText: "上次成功 11:05" },
+    { id: "deepseek", name: "DeepSeek", status: "error", windows: [], accounts: [],
+      balance: { label: "账户余额", amountText: "¥ 38.21" }, lastSuccessText: "上次成功 10:40" },
+    { id: "volcengine", name: "火山引擎", status: "ok", windows: [{ label: "每月", usedPercent: 20, percentText: "20%", resetText: "", ownRow: false }],
+      accounts: [], balance: null, lastSuccessText: null },
+  ] } };
+  const app = await boot({ panel });
+  const card = app.node("stack").querySelector('[data-card="subscription"]');
+  const lines = [...card.querySelectorAll(".sub-section .last-success")].map(node => node.textContent);
+  assert.deepEqual(lines, ["上次成功 11:05", "上次成功 10:40"], "窗口型与纯余额型单账号段各一行, fresh 段不出");
+  assert.equal(card.querySelector(".sub-section .last-success").getAttribute("aria-label"), "这是上次成功的数据");
+
+  const multi = { ...fixture, subscription: { updatedText: null, sections: [{ id: "codex", name: "ChatGPT", status: "error",
+    windows: [], balance: null, accountCountText: "2 个账号", collapsedWindow: null, lastSuccessText: "上次成功 09:00",
+    accounts: [
+      { id: "codex_a", name: "a", status: "error", windows: [], lastSuccessText: "上次成功 11:05" },
+      { id: "codex_b", name: "b", status: "ok", windows: [], lastSuccessText: null },
+    ] }] } };
+  const multiApp = await boot({ panel: multi });
+  const multiCard = multiApp.node("stack").querySelector('[data-card="subscription"]');
+  assert.equal(multiCard.querySelectorAll(".sub-section .last-success").length, 0, "多账号段不在段级重复呈现");
 });
 
 test("hero accent gradient travels as CSS variables and never as inline background (C220)", async () => {

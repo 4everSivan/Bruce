@@ -134,8 +134,8 @@
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
 | `account.note` | 仅 `account.status == "error"` 渲染 | 同 |
 | `extraText` | 随头部行渲染（9pt secondary），不占正文、不用告警色 | 同 |
-| 账号状态 | 卡内无 status→中文 标签行，仅经 note 与 `lastSuccessText` 呈现 | 同 |
-| 余额胶囊 | 纯余额型抑制头部胶囊（改走双槽） | 同 |
+| 账号状态 | 卡内无 status→中文 标签行，仅经 note 与 `lastSuccessText` 呈现；C224 起单账号段（含纯余额型）读 section 级 `lastSuccessText`，在 note 之后渲染同款「上次成功」行，多账号段 section 级恒空、由子卡呈现 | 同（`last_success_text` 进对拍协议；单账号段仍不读 `section.accounts`） |
+| 余额胶囊 | 纯余额型抑制头部胶囊（改走双槽）；C225 起双槽右槽态名取 `statusLabel`、点色按 `sectionTone` 取阈值三色（中性灰），不直出状态码 | 同（`.slot-dot.warn / .error / .neutral`） |
 | 收起态迷你摘要 | `collapsedPeakWindow` = `windows ∪ accounts[].windows` 中 `usedPercent` 最大者；纯余额型（无窗口）不出迷你条 | 渲染层按同语义推导（不改契约字段，避免 golden 漂移） |
 | 折叠态可见性 | 折叠时 status 槽（最后更新时间等）被 mini 摘要取代 | 同（C067 起标题行结构为 `[.drag-handle] [.card-title] [.card-status] [.collapsed-summary] [.chev]`：状态件经 `margin-left:auto` 推到行尾，折叠态隐藏 `.card-status`、迷你摘要嵌入标题行铺满中间区，而非另起一行） |
 | Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发）。**实现约束（C029）**：档位色必须以 CSS 自定义属性（`--hero-grad-start` / `--hero-grad-end`）下发，由 `.hero-num` / `.mini-num` 消费，**严禁用内联 style 直接写 background/前景** —— 内联 `background-image` 会压过 `.theme-nothing .hero-num` 的纯色覆写（C027 实测回归时该类尚带 4px 点阵遮罩，叠加成平铺条纹；C067 起 Nothing hero 改为 Doto 字体自身点阵 + 纯色 accent，不再叠加遮罩） |

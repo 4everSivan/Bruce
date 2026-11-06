@@ -112,6 +112,7 @@
         "collapsedWindow" : null,
         "extraText" : null,
         "id" : "deepseek",
+        "lastSuccessText" : null,
         "name" : "DeepSeek",
         "note" : "fixture: 临时不可用",
         "plan" : null,

@@ -261,6 +261,15 @@ private struct ProviderSectionView: View {
                     .foregroundStyle(Color(hex: "#ff9f0a"))
                     .padding(.top, 2)
             }
+            // C224: 单账号段 (含纯余额型) 沿用旧快照时标注上次成功时间, 与账号子卡同款;
+            // 多账号段由各账号子卡自行呈现, 这里不重复.
+            if !section.isMultiAccount, let lastSuccessText = section.lastSuccessText {
+                Text(lastSuccessText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                    .accessibilityLabel("这是上次成功的数据")
+            }
         }
         .padding(.top, isFirst ? 10 : 8)
         .padding(.bottom, 8)
@@ -593,10 +602,11 @@ private struct BalanceDualSlotView: View {
 
             HStack(spacing: 4) {
                 Circle()
-                    .fill(NothingTokens.success)
+                    .fill(statusDotColor)
                     .frame(width: 5, height: 5)
                 // 套餐名不在仪表盘展示 (C024): 统一在设置中心「订阅额度」行内呈现.
-                let statusText = section.status == "ok" ? "正常" : section.status
+                // C225: 态名与点色取顶部状态灯同一张映射表, 不再直出状态码、不再恒绿.
+                let statusText = DashboardStatusToneResolver.statusLabel(for: section.status)
                 Text(statusText)
                     .font(isNothing ? NothingFont.mono(11, weight: .medium) : .system(size: 12, weight: .medium))
                     .foregroundStyle(isNothing ? NothingTokens.secondary(colorScheme) : Color.primary.opacity(0.8))
@@ -627,6 +637,20 @@ private struct BalanceDualSlotView: View {
                     lineWidth: isNothing ? 1 : 0.5
                 )
         )
+    }
+
+    /// C225: 状态点按 section.status 的灯色语义取订阅阈值三色; 中性态用 disabled 灰.
+    private var statusDotColor: Color {
+        switch DashboardStatusToneResolver.sectionTone(for: section.status) {
+        case .ok:
+            NothingTokens.success
+        case .warn:
+            NothingTokens.warning
+        case .error:
+            NothingTokens.accent
+        case .neutral:
+            NothingTokens.disabled(colorScheme)
+        }
     }
 }
 

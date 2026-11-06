@@ -704,6 +704,9 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     package let accountCountText: String?
     package let egress: EgressPresentationInfo?
     package let hasProtectedSnapshot: Bool
+    /// C224: 单账号段的上次成功时间文案 ("上次成功 HH:mm", 仅 freshness=stale);
+    /// 多账号段为 nil, 由各账号子卡的 lastSuccessText 呈现.
+    package let lastSuccessText: String?
 
     package init(
         id: String,
@@ -718,7 +721,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         balance: BalanceRow?,
         accountCountText: String?,
         egress: EgressPresentationInfo? = nil,
-        hasProtectedSnapshot: Bool = false
+        hasProtectedSnapshot: Bool = false,
+        lastSuccessText: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -733,6 +737,7 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         self.accountCountText = accountCountText
         self.egress = egress
         self.hasProtectedSnapshot = hasProtectedSnapshot
+        self.lastSuccessText = lastSuccessText
     }
 
     /// 是否为多账号 section (>= 2 个账号).

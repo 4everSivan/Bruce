@@ -297,6 +297,8 @@ struct PanelViewModelHarness {
         try codexErrorShowsLastSuccessTime()
         try codexFreshnessStaleShowsLastSuccess()
         try codexFreshnessUnavailableHidesLastSuccess()
+        try singleAccountStaleSectionCarriesLastSuccess()
+        try balanceSlotStatusUsesSharedToneTable()
         try codexDisplayNameStripsPrefixOnly()
         try providerOrderOverridesDefaultSort()
         try providerOrderUnknownIDsGoLast()
@@ -322,7 +324,7 @@ struct PanelViewModelHarness {
         try meterMotionPolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 67")
+        print("PanelViewModel tests passed: 69")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1553,6 +1555,111 @@ struct PanelViewModelHarness {
             account?.lastSuccessText == nil,
             "unavailable 不应显示上次成功时间: \(account?.lastSuccessText ?? "nil")"
         )
+    }
+
+    // C224: 单账号段 (窗口型与纯余额型) 沿用旧快照时 section 级携带上次成功时间;
+    // fresh 为 nil; 多账号段 section 级为 nil, 由账号子卡各自携带.
+    private static func singleAccountStaleSectionCarriesLastSuccess() throws {
+        let staleWindowService = makeService(
+            id: "kimi",
+            name: "Kimi",
+            status: "ok",
+            kind: "windows",
+            windows: [makeWindow(label: "每周", usedPercent: 40, windowMinutes: 10080)],
+            capturedAt: "2026-07-30T12:05:00+00:00",
+            freshness: "stale"
+        )
+        let staleBalanceService = makeService(
+            id: "deepseek",
+            name: "DeepSeek",
+            status: "error",
+            kind: "balance",
+            balance: 38.21,
+            currency: "CNY",
+            capturedAt: "2026-07-30T11:40:00+00:00",
+            freshness: "stale"
+        )
+        let freshService = makeService(
+            id: "volcengine",
+            name: "火山引擎",
+            status: "ok",
+            kind: "windows",
+            windows: [makeWindow(label: "每月", usedPercent: 20, windowMinutes: 43200)],
+            capturedAt: "2026-07-30T13:50:00+00:00",
+            freshness: "fresh"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(
+                agents: [],
+                services: [staleWindowService, staleBalanceService, freshService]
+            ),
+            moduleStatuses: readyStatuses
+        )
+        let sections = vm.subscription?.sections ?? []
+        func section(_ id: String) -> SubscriptionProviderSection? {
+            sections.first { $0.id == id }
+        }
+        try expect(
+            section("kimi")?.lastSuccessText == "上次成功 12:05",
+            "单账号窗口型 stale 段应携带上次成功时间: \(section("kimi")?.lastSuccessText ?? "nil")"
+        )
+        try expect(
+            section("deepseek")?.lastSuccessText == "上次成功 11:40",
+            "单账号纯余额型 stale 段应携带上次成功时间: \(section("deepseek")?.lastSuccessText ?? "nil")"
+        )
+        try expect(
+            section("volcengine")?.lastSuccessText == nil,
+            "fresh 单账号段不应携带上次成功时间"
+        )
+
+        let multi = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [
+                makeService(
+                    id: "codex_a",
+                    name: "Codex · a",
+                    status: "error",
+                    kind: "windows",
+                    app: "codex",
+                    capturedAt: "2026-07-30T12:05:00+00:00",
+                    freshness: "stale"
+                ),
+                makeService(
+                    id: "codex_b",
+                    name: "Codex · b",
+                    status: "ok",
+                    kind: "windows",
+                    windows: [makeWindow(label: "每周", usedPercent: 10, windowMinutes: 10080)],
+                    app: "codex",
+                    freshness: "fresh"
+                ),
+            ]),
+            moduleStatuses: readyStatuses
+        )
+        let group = multi.subscription?.sections.first
+        try expect(group?.isMultiAccount == true, "两个 Codex 账号应合并为多账号段")
+        try expect(group?.lastSuccessText == nil, "多账号段 section 级不应携带上次成功时间")
+        try expect(
+            group?.accounts.first?.lastSuccessText == "上次成功 12:05",
+            "多账号 stale 账号仍由子卡携带上次成功时间"
+        )
+    }
+
+    // C225: 余额双槽「订阅状态」与顶部状态灯共用同一张态名/灯色映射, 不直出状态码.
+    private static func balanceSlotStatusUsesSharedToneTable() throws {
+        let cases: [(status: String, label: String, tone: DashboardStatusTone)] = [
+            ("ok", "正常", .ok),
+            ("error", "失败", .error),
+            ("partial", "部分失败", .warn),
+            ("stale", "数据过期", .warn),
+            ("authRequired", "需要授权", .warn),
+            ("empty", "暂无数据", .neutral),
+        ]
+        for item in cases {
+            let label = DashboardStatusToneResolver.statusLabel(for: item.status)
+            let tone = DashboardStatusToneResolver.sectionTone(for: item.status)
+            try expect(label == item.label, "\(item.status) 态名应为 \(item.label): \(label)")
+            try expect(tone == item.tone, "\(item.status) 灯色应为 \(item.tone): \(tone)")
+        }
     }
 
     // 账号行名称只删除开头固定前缀 "Codex · ", 不用 replacingOccurrences 全局替换.

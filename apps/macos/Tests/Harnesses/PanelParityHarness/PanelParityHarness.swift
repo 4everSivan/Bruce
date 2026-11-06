@@ -225,6 +225,7 @@ private func encodeSection(_ section: SubscriptionProviderSection) -> J {
             J.o([("label", .s(balance.label)), ("amountText", .s(balance.amountText))])
         } ?? .nul),
         ("accountCountText", section.accountCountText.map(J.s) ?? .nul),
+        ("lastSuccessText", section.lastSuccessText.map(J.s) ?? .nul),
     ])
 }
 

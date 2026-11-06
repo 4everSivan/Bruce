@@ -98,8 +98,8 @@ package enum DashboardStatusToneResolver {
         }
     }
 
-    /// 单个订阅 section.status 映射为灯色.
-    private static func sectionTone(for status: String) -> DashboardStatusTone {
+    /// 单个订阅 section.status 映射为灯色; 订阅卡余额双槽的状态点同源 (C225).
+    package static func sectionTone(for status: String) -> DashboardStatusTone {
         switch status {
         case "error", "failed", "unavailable":
             return .error

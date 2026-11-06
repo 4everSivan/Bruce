@@ -119,7 +119,9 @@ extension PanelViewModelMapper {
                     },
                     accountCountText: nil,
                     egress: svc.service.egress,
-                    hasProtectedSnapshot: svc.service.egress?.status == .blocked && svc.service.freshness == "stale"
+                    hasProtectedSnapshot: svc.service.egress?.status == .blocked && svc.service.freshness == "stale",
+                    // C224: 单账号段不渲染账号子卡, 上次成功时间提到 section 级供卡片直接呈现.
+                    lastSuccessText: accountVM.lastSuccessText
                 ))
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow.
