@@ -1627,3 +1627,33 @@
   font-weight: 700;
   color: #fff;
 }
+
+/* ================================================================
+   01 看板：可交互的卡片预览（顶部 tab 可点）
+   ================================================================ */
+.anatomy__stage .bp-tab {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.anatomy__stage .bp-tab:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.anatomy__stage .bp-tab:focus-visible {
+  outline: 1.5px solid #0b5cbb;
+  outline-offset: 2px;
+}
+
+/* Nothing 肤下，01 看板的面板顶部 tab 仍保留可点的 hover 反馈 */
+.anatomy__stage .bp-surface[data-material="nothing"] .bp-tab:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #000;
+}

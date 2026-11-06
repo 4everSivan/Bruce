@@ -24,6 +24,17 @@
   var M = "classic";
   var CARD = { nothing: "token", liquid: "hourly", classic: "quota" };
 
+  /* ---------- 01 看板：可交互的卡片预览 ----------------------------- */
+  /* 三张卡各用首屏牌堆里的同一套肤：Nothing → Token、经典 → 订阅、液态玻璃 → Agent */
+  var ANATOMY_THEMES = { token: "nothing", quota: "classic", hourly: "liquid" };
+  var anatomyPanel = document.getElementById("anatomy-panel");
+  var anatomyBox = document.getElementById("anatomy-panelbox");
+  var anatomyStage = document.getElementById("anatomy-stage");
+  var anatomyTabs = Array.prototype.slice.call(
+    document.querySelectorAll(".anatomy__tabs [data-anatomy-card]")
+  );
+  var anatomyCard = "token";
+
 
   /* ---------- formatters ------------------------------------------ */
   function trim(s) {
@@ -412,16 +423,28 @@
     ["hourly", "wave", "Agent 用量"],
   ];
 
-  function header(cardName) {
+  function header(cardName, interactive) {
+    var tabs = TABS.map(function (t) {
+      var active = t[0] === cardName;
+      if (interactive) {
+        return (
+          '<button type="button" class="bp-tab' + (active ? " is-active" : "") + '"' +
+          ' role="tab" aria-selected="' + (active ? "true" : "false") + '"' +
+          ' data-anatomy-card="' + t[0] + '" aria-label="' + t[2] + '">' +
+          ICON[t[1]] + "</button>"
+        );
+      }
+      return (
+        '<span class="bp-tab' + (active ? " is-active" : "") + '">' +
+        ICON[t[1]] + "</span>"
+      );
+    }).join("");
     return (
       '<header class="bp-head"><span class="bp-dot"></span><span class="bp-brand">Bruce</span>' +
-      '<div class="bp-head__right"><div class="bp-tabs" aria-hidden="true">' +
-      TABS.map(function (t) {
-        return (
-          '<span class="bp-tab' + (t[0] === cardName ? " is-active" : "") + '">' +
-          ICON[t[1]] + "</span>"
-        );
-      }).join("") +
+      '<div class="bp-head__right"><div class="bp-tabs"' +
+      (interactive ? ' role="tablist" aria-label="切换卡片"' : ' aria-hidden="true"') +
+      ">" +
+      tabs +
       "</div></div></header>"
     );
   }
@@ -438,13 +461,13 @@
     );
   }
 
-  function surface(material, cardName) {
+  function surface(material, cardName, opts) {
     M = material;
     var body =
       cardName === "quota" ? quotaCard() : cardName === "hourly" ? hourlyCard() : tokenCard();
     return (
       '<div class="bp-surface" data-material="' + material + '" data-layout="tabs">' +
-      header(cardName) +
+      header(cardName, opts && opts.interactive) +
       '<div class="bp-cards">' + body + "</div>" +
       footer() +
       "</div>"
@@ -478,8 +501,65 @@
     if (narrow) deck.style.height = "";
   }
 
-  window.addEventListener("resize", fit);
+  /* ---------- 01 看板：纵向 tab 切换单卡 ----------------------------- */
+  function fitAnatomy() {
+    if (!anatomyPanel || !anatomyBox || !anatomyStage) return;
+    var scale = Math.min(1, anatomyStage.clientWidth / 440);
+    anatomyPanel.style.transform = "scale(" + scale + ")";
+    anatomyBox.style.width = Math.round(440 * scale) + "px";
+    anatomyBox.style.height = Math.round(anatomyPanel.offsetHeight * scale) + "px";
+  }
+
+  function renderAnatomy() {
+    if (!anatomyPanel) return;
+    var theme = ANATOMY_THEMES[anatomyCard] || "nothing";
+    anatomyPanel.innerHTML = surface(theme, anatomyCard, { interactive: true });
+    anatomyTabs.forEach(function (tab) {
+      var on = tab.getAttribute("data-anatomy-card") === anatomyCard;
+      tab.classList.toggle("is-current", on);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    if (anatomyStage) {
+      anatomyStage.setAttribute("data-material", theme);
+      anatomyStage.setAttribute("aria-labelledby", "anatomy-tab-" + anatomyCard);
+    }
+    fitAnatomy();
+  }
+
+  function selectAnatomy(cardName) {
+    if (!cardName || cardName === anatomyCard) return;
+    anatomyCard = cardName;
+    renderAnatomy();
+  }
+
+  anatomyTabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      selectAnatomy(tab.getAttribute("data-anatomy-card"));
+    });
+  });
+
+  if (anatomyPanel) {
+    anatomyPanel.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-anatomy-card]");
+      if (btn && anatomyPanel.contains(btn)) {
+        selectAnatomy(btn.getAttribute("data-anatomy-card"));
+      }
+    });
+  }
+
+  window.addEventListener("resize", function () {
+    fit();
+    fitAnatomy();
+  });
 
   render();
   fit();
+  renderAnatomy();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      fit();
+      fitAnatomy();
+    });
+  }
 })();
