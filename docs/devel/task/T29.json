@@ -4,9 +4,9 @@
   "title": "共享额度预警决策内核：collector-policy::alerts 与 alertDecide 契约",
   "version": "0.18.0",
   "milestone": "M16-订阅额度预警架构重构",
-  "status": "pending",
-  "branch": "refactor/T29-alert-decision-core",
-  "branch_note": "按 AGENTS.md 第五节建专属特性分支；依赖 T28 的 windowKey/windowMode 契约",
+  "status": "completed",
+  "branch": "refactor/T28-quota-alert-contract",
+  "branch_note": "T28–T32 同批实施于 refactor/T28-quota-alert-contract（原计划各卡独立分支，实际按批次在一分支落地）",
   "depends_on": [
     "T28"
   ],
@@ -104,12 +104,14 @@
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "7876652"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-06",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

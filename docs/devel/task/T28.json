@@ -4,7 +4,7 @@
   "title": "订阅窗口语义身份契约：collector 输出 windowKey/windowMode 与 artifact 窗口契约",
   "version": "0.18.0",
   "milestone": "M16-订阅额度预警架构重构",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "refactor/T28-quota-alert-contract",
   "branch_note": "按 AGENTS.md 第五节建专属特性分支；设计基线修订与 collector 契约同卡交付",
   "depends_on": [],
@@ -103,12 +103,14 @@
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "7876652"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-06",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

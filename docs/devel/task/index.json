@@ -243,7 +243,7 @@
     },
     "T28": {
       "title": "订阅窗口语义身份契约：collector 输出 windowKey/windowMode 与 artifact 窗口契约",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "refactor/T28-quota-alert-contract",
       "topic": "SubscriptionQuota",
       "milestone": "M16-订阅额度预警架构重构",
@@ -252,48 +252,52 @@
     },
     "T29": {
       "title": "共享额度预警决策内核：collector-policy::alerts 与 alertDecide 契约",
-      "status": "pending",
-      "branch": "refactor/T29-alert-decision-core",
+      "status": "completed",
+      "branch": "refactor/T28-quota-alert-contract",
       "topic": "SharedPolicyCore",
       "milestone": "M16-订阅额度预警架构重构",
       "depends_on": [
         "T28"
       ],
-      "file": "docs/devel/task/T29.json"
+      "file": "docs/devel/task/T29.json",
+      "branch_note": "同批实施于 T28 分支"
     },
     "T30": {
       "title": "mac 宿主接入：状态持久化、单一投递出口与旧去重状态机退役",
-      "status": "pending",
-      "branch": "refactor/T30-mac-alert-host",
+      "status": "completed",
+      "branch": "refactor/T28-quota-alert-contract",
       "topic": "SubscriptionQuota",
       "milestone": "M16-订阅额度预警架构重构",
       "depends_on": [
         "T29"
       ],
-      "file": "docs/devel/task/T30.json"
+      "file": "docs/devel/task/T30.json",
+      "branch_note": "同批实施于 T28 分支"
     },
     "T31": {
       "title": "Windows 宿主接入：共享预警状态机、状态文件与单出口投递",
-      "status": "pending",
-      "branch": "refactor/T31-win-alert-host",
+      "status": "completed",
+      "branch": "refactor/T28-quota-alert-contract",
       "topic": "WindowsCompat",
       "milestone": "M16-订阅额度预警架构重构",
       "depends_on": [
         "T29"
       ],
-      "file": "docs/devel/task/T31.json"
+      "file": "docs/devel/task/T31.json",
+      "branch_note": "同批实施于 T28 分支"
     },
     "T32": {
       "title": "额度预警架构重构收口：死代码清理、文档/CHANGELOG 与全量验收",
-      "status": "pending",
-      "branch": "refactor/T32-alert-closure",
+      "status": "completed",
+      "branch": "refactor/T28-quota-alert-contract",
       "topic": "SubscriptionQuota",
       "milestone": "M16-订阅额度预警架构重构",
       "depends_on": [
         "T30",
         "T31"
       ],
-      "file": "docs/devel/task/T32.json"
+      "file": "docs/devel/task/T32.json",
+      "branch_note": "同批实施于 T28 分支"
     }
   }
 }
