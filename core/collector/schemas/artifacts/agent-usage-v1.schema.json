@@ -225,7 +225,37 @@
           "type": "string"
         },
         "windows": {
-          "type": "array"
+          "type": "array",
+          "description": "订阅额度窗口; label 仅用于展示, 预警身份一律取 windowKey (design/02 规则 15)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "展示文案, 不作为去重键或窗口身份"
+              },
+              "windowKey": {
+                "type": "string",
+                "description": "稳定语义身份 (five_hour / weekly / monthly / weekly_scoped:<model> / credits / topup_credits / extra_usage / generic); 同一 service 内唯一"
+              },
+              "windowMode": {
+                "type": "string",
+                "enum": ["block", "rolling", "unknown"],
+                "description": "换窗判定模式: block 离散换窗 / rolling 滑动窗 / unknown 未知"
+              },
+              "usedPercent": {
+                "type": "number"
+              },
+              "windowMinutes": {
+                "type": ["integer", "null"]
+              },
+              "resetsAt": {
+                "type": ["integer", "null"],
+                "description": "窗口重置时刻 (epoch 秒); 缺失/null/非正数视为无重置时刻"
+              }
+            },
+            "additionalProperties": true
+          }
         },
         "provider": {
           "type": "string",

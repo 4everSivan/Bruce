@@ -18,10 +18,8 @@ final class ApplicationBootstrap {
     /// Codex token manager: 启动时发布一次非敏感状态,
     /// 并在每个调度周期后刷新, 供设置页订阅.
     private let codexTokenManager: CodexTokenManager
-    /// 通用状态预警回调 (支持额度超限与网络出口阻断多态微卡 T24)
+    /// 通用状态预警回调 (支持额度超限与网络出口阻断多态微卡 T24); 唯一投递入口.
     var onStatusAlerts: (([StatusBubbleAlertItem]) -> Void)?
-    /// 额度预警回调 (兼容旧版)
-    var onQuotaAlerts: (([QuotaAlert]) -> Void)?
     private weak var model: AppModel?
     private var started = false
     private var appearanceObserver: AnyCancellable?
@@ -85,9 +83,7 @@ final class ApplicationBootstrap {
         scheduler.onStatusAlerts = { [weak self] _, items in
             self?.onStatusAlerts?(items)
         }
-        scheduler.onQuotaAlerts = { [weak self] _, alerts in
-            self?.onQuotaAlerts?(alerts)
-        }
+        // onQuotaAlerts 仅保留为调度器测试观测回调, 生产展示统一走 onStatusAlerts.
         // 每个调度周期后刷新 Codex 账号状态 (token 决议会改变授权/存储状态).
         scheduler.onRunCycleCompleted = { [weak self] in
             self?.refreshCodexAccountStatuses()

@@ -68,8 +68,6 @@ struct ModuleScheduleState: Equatable, Sendable {
     var lastTriggerWasManual: Bool = false
     /// 最近一轮刷新的作用域; 失败退避重试继承该作用域, 避免定向刷新失败后放大成全量 (C185).
     var lastScope: RefreshScope = .all
-    /// 额度预警去重与窗口重置恢复状态 (design/02 规则 15).
-    var quotaAlertDelivery = QuotaAlertDeliveryState()
     /// 上次刷新后处于出口阻断的 serviceID 集合；只有新跳变至阻断才报警 (边沿跳变防打扰 T24).
     var egressBlockedServiceIDs: Set<String> = []
 }
@@ -81,6 +79,12 @@ package final class RefreshScheduler {
     private let executor: CollectorExecuting
     /// 额度门禁与回填: 经共享 collector-policy 计算, 默认进程内调用静态库 (T16).
     private let quotaPolicy: any QuotaPolicyComputing
+    /// 额度预警决策: 共用 collector-policy::alerts, 默认进程内调用静态库 (T29).
+    private let quotaAlertPolicy: any QuotaAlertDeciding
+    /// 预警状态持久化; nil 时仅进程内保留 (测试/无持久化场景).
+    private let quotaAlertStateStore: QuotaAlertStateStore?
+    /// 上次持久状态; nil 表示状态文件缺失/损坏, 本轮按静默 bootstrap 处理.
+    private var quotaAlertState: JSONValue?
     private let store: ArtifactStore
     private let clock: RefreshClock
     private let timerScheduler: RunnerTimerScheduling
@@ -136,7 +140,8 @@ package final class RefreshScheduler {
         runInputProvider: OnboardingRunInputProvider? = nil,
         credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
         networkReachability: (any NetworkReachabilityProviding)? = nil,
-        screenLockState: (any ScreenLockStateProviding)? = nil
+        screenLockState: (any ScreenLockStateProviding)? = nil,
+        quotaAlertStateStore: QuotaAlertStateStore? = nil
     ) {
         self.init(
             executor: executor,
@@ -151,7 +156,8 @@ package final class RefreshScheduler {
             runInputProvider: runInputProvider,
             credentialUpdateCoordinator: credentialUpdateCoordinator,
             networkReachability: networkReachability,
-            screenLockState: screenLockState
+            screenLockState: screenLockState,
+            quotaAlertStateStore: quotaAlertStateStore
         )
     }
 
@@ -169,10 +175,15 @@ package final class RefreshScheduler {
         credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
         networkReachability: (any NetworkReachabilityProviding)? = nil,
         screenLockState: (any ScreenLockStateProviding)? = nil,
-        quotaPolicy: (any QuotaPolicyComputing)? = nil
+        quotaPolicy: (any QuotaPolicyComputing)? = nil,
+        quotaAlertPolicy: (any QuotaAlertDeciding)? = nil,
+        quotaAlertStateStore: QuotaAlertStateStore? = nil
     ) {
         self.executor = executor
         self.quotaPolicy = quotaPolicy ?? CollectorQuotaPolicy.inProcess()
+        self.quotaAlertPolicy = quotaAlertPolicy ?? CollectorQuotaAlertPolicy.inProcess()
+        self.quotaAlertStateStore = quotaAlertStateStore
+        self.quotaAlertState = quotaAlertStateStore?.load()
         self.store = store
         self.clock = clock
         self.timerScheduler = timerScheduler
@@ -426,10 +437,7 @@ package final class RefreshScheduler {
             if var state = states[module] {
                 state.lastSuccessAt = stored.metadata.lastSuccessAt
                     .flatMap { ISODate.parse($0) }
-                // 用缓存快照回填预警阈值状态, 重启后不对已超的窗口重复报警;
-                // 观察快照一并回填, 保留跨重启的窗口重置识别 (design/02 规则 15).
-                let cachedEntries = QuotaAlertEvaluator.overThresholdEntries(artifact: stored.artifact)
-                state.quotaAlertDelivery.seed(from: cachedEntries)
+                // 额度预警状态由独立 metadata 文件承载 (QuotaAlertStateStore), 不再从展示快照反推.
                 // 用缓存快照回填出口阻断状态, 避免重启后对已知阻断服务重复弹窗打扰
                 let cachedBlocked = EgressAlertEvaluator.blockedEntries(artifact: stored.artifact)
                 state.egressBlockedServiceIDs = Set(cachedBlocked.map(\.serviceID))
@@ -602,7 +610,7 @@ package final class RefreshScheduler {
         ))
         // 定向刷新: 在模块级结果映射之外, 单独向目标 Provider 发状态回调.
         emitSubscriptionState(for: intent.scope, result: result)
-        apply(result, for: module)
+        await apply(result, for: module)
         // 取消路径不触发 onRunCycleCompleted (与迁出前一致).
         if case .cancelled = result {
             return
@@ -636,7 +644,7 @@ package final class RefreshScheduler {
 
     /// 将 Pipeline 结果映射到 phase / 状态回调 / timer / 额度预警 / pending 排空.
     /// 不重复 apply 凭证或 publish (已在 Pipeline 落地).
-    private func apply(_ result: RefreshPipelineResult, for module: CollectorModule) {
+    private func apply(_ result: RefreshPipelineResult, for module: CollectorModule) async {
         switch result {
         case .cancelled:
             handleCancellation(for: module)
@@ -651,7 +659,7 @@ package final class RefreshScheduler {
             applyStorageFailure(for: module)
 
         case .completed(let run):
-            applyCompleted(run, for: module)
+            await applyCompleted(run, for: module)
         }
     }
 
@@ -744,7 +752,7 @@ package final class RefreshScheduler {
 
     /// Pipeline 已完成 credential apply / 可选 publish / quota 候选计算.
     /// 此处只做 phase 映射, 状态回调与额度预警决策.
-    private func applyCompleted(_ run: CompletedRun, for module: CollectorModule) {
+    private func applyCompleted(_ run: CompletedRun, for module: CollectorModule) async {
         guard !stopped else {
             handleCancellation(for: module)
             return
@@ -768,15 +776,30 @@ package final class RefreshScheduler {
             // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
             windowBoundaries = SubscriptionBoundaryWakePolicy.boundaries(in: artifact)
 
-            // 额度预警: 阶梯状态每次都同步 (回落后再次跨越、窗口重置后重新爬升
-            // 或跨越到更高阶梯都会报警), 但只有非 manual 且新跨越更高阶梯才弹通知.
-            // includesManual 来自本轮 intent (与 lastTriggerWasManual 一致).
-            // 窗口重置恢复判定见 QuotaAlertDeliveryState (design/02 规则 15).
-            let entries = run.quotaAlertEntries
-            let newAlerts = state.quotaAlertDelivery.alerts(
-                for: entries,
-                deliver: !run.includesManual
-            )
+            // 额度预警: 共享 collector-policy::alerts 决策; 状态持久化到独立 metadata 文件,
+            // 不再从展示快照反推, 也不在调度器内维护第二份状态机 (design/02 规则 15).
+            // activeKeys 暂为 nil (无 GC): 调度器尚未持有启用账号集合; 缺失只影响已删除账号的陈旧状态.
+            let services = artifact.objectValue?["services"]?.arrayValue ?? []
+            var newAlerts: [QuotaAlert] = []
+            do {
+                let decision = try await quotaAlertPolicy.decide(
+                    services: services,
+                    previousState: quotaAlertState,
+                    deliverable: !run.includesManual,
+                    activeKeys: nil,
+                    now: now
+                )
+                quotaAlertState = decision.state
+                if let quotaAlertStateStore, !quotaAlertStateStore.save(decision.state) {
+                    logger.error("quota alert state save failed; module=\(module.rawValue, privacy: .public)")
+                }
+                newAlerts = decision.events.map(\.quotaAlert)
+            } catch {
+                // 入口失败不猜测: 本轮不投递, 保留旧状态, 下一轮重试.
+                logger.error(
+                    "quota alert decision failed; module=\(module.rawValue, privacy: .public), error=\(String(describing: error), privacy: .public)"
+                )
+            }
 
             // 网络出口阻断预警: 边沿跳变触发 (Edge-Triggered Anti-Spam T24/C185)
             // 仅当网络状态由「放行」跳变至「阻断」时弹出一次气泡；

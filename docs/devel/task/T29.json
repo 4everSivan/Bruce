@@ -1,0 +1,115 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T29",
+  "title": "共享额度预警决策内核：collector-policy::alerts 与 alertDecide 契约",
+  "version": "0.18.0",
+  "milestone": "M16-订阅额度预警架构重构",
+  "status": "pending",
+  "branch": "refactor/T29-alert-decision-core",
+  "branch_note": "按 AGENTS.md 第五节建专属特性分支；依赖 T28 的 windowKey/windowMode 契约",
+  "depends_on": [
+    "T28"
+  ],
+  "target": {
+    "module": "core/collector（collector-policy、collector-policy-ffi）+ tests/fixtures",
+    "component": "额度预警观测归一、窗口身份判定、档位状态机与事件生成",
+    "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "design_topic": "SharedPolicyCore"
+  },
+  "goal": "把额度预警去重从两端各自实现收敛为一份纯 Rust 决策内核：collector-policy::alerts 消费 artifact services、上次持久状态、deliverable、activeKeys 与 now，输出新状态与告警事件；经 alertDecide 操作供 mac（C ABI 进程内）与 Windows（进程内）共同调用，并以共享 fixture 锁定两端口径。",
+  "precheck": {
+    "description": "确认 collector-policy 现无 alerts 模块与 alertDecide 操作",
+    "command": "grep -rq 'alertDecide\\|mod alerts' core/collector/crates/collector-policy/src",
+    "expected": "退出码 1（无命中，确认共享决策内核尚未实现）",
+    "is_completed": false,
+    "evidence": "2026-11-06 预检：grep 无命中（exit 1）；现有 policy 操作仅 quotaPlan/quotaMerge/quotaAnnotate/boundaryWake/backoff，无预警状态机"
+  },
+  "callback": {
+    "before": [
+      "git switch -c refactor/T29-alert-decision-core"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy -p collector-policy-ffi",
+      "cargo clippy --manifest-path core/collector/Cargo.toml -p collector-policy -p collector-policy-ffi --all-targets -- -D warnings",
+      "scripts/adflow-verify --card T29 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T29-1",
+      "title": "观测模型与窗口身份判据",
+      "capability": "从 services[].windows[] 提取 fresh/stale/unavailable/missing 观测；判定键 serviceID|windowKey；windowMode=block 时 resetsAt 前移 ≥ max(300s, window/4) 才判新窗口、回退忽略、过期边界 + 20pp 回落兜底；rolling 仅 20pp 回落；unknown 取保守并集。",
+      "done": true
+    },
+    {
+      "id": "T29-2",
+      "title": "状态 schema 与档位状态机",
+      "capability": "状态含 version/windows{windowId, deliveredTier, lastFresh{usedPercent,resetsAt,windowMinutes,observedAt}, lastSeenAt}；三档 50/80/95；同档不重复、窗口内单调；fresh 回落（≤50）清档；stale/缺失只更新 lastSeenAt；activeKeys 驱动 GC；状态文件缺失/损坏时静默 bootstrap。",
+      "done": true
+    },
+    {
+      "id": "T29-3",
+      "title": "alertDecide 操作与 C ABI 契约",
+      "capability": "policy-request/response 增加 alertDecide：输入 services、previousState、deliverable、activeKeys、now，输出 state 与 events（eventId=serviceID|windowKey|windowId|tier）；白名单与凭据形态键拒绝沿用现有入口；mac 经 bruce_policy_call 进程内调用，Windows 进程内调用。",
+      "done": true
+    },
+    {
+      "id": "T29-4",
+      "title": "共享 fixture 与双端对拍用例",
+      "capability": "新增 tests/fixtures/quota-alert-state-parity/cases.json，覆盖 resetsAt 抖动、stale 穿插、缺失、真换窗、回落再跨越、手动只观察、重启 bootstrap、损坏状态、回退修正、rolling 前移、多账号、50/80/95 边界；由 Rust 单测与 mac/win 对拍共同消费。",
+      "done": true
+    },
+    {
+      "id": "T29-5",
+      "title": "纯逻辑测试与文档回写",
+      "capability": "表驱动/性质用例覆盖全部状态转移与不变量（无 fresh 不投递、窗口内档位单调、stale/缺失不改档、重复输入幂等）；design/02 规则 15 与 design/08 §4.2 第 6 条按实现细节回写。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261106-02",
+    "user_quote": "继续完成",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "单一实现与纯函数边界",
+        "true_if": "alertDecide 位于 collector-policy::alerts，纯计算、无 I/O、无凭据；mac/win 只经同一入口调用",
+        "false_if": "任一端保留第二份状态机，或决策内核读写文件/出站",
+        "evidence": "collector-policy::alerts 13 项单测 + tests/alert_parity.rs 共享 fixture + request_contract alertDecide 契约；纯计算无 I/O",
+        "result": true
+      },
+      {
+        "item": "观测三态语义",
+        "true_if": "stale/unavailable/缺失只更新 lastSeenAt，不清档不投递；回落只由 fresh 观测触发",
+        "false_if": "stale/缺失导致档位清空或重复投递",
+        "evidence": "stale_and_missing_rounds_preserve_state / stale_round_preserves_delivered_tier；双端 fixture jitter_and_stale_preserve",
+        "result": true
+      },
+      {
+        "item": "换窗判据抗抖动",
+        "true_if": "block 模式 resetsAt 秒级抖动/回退不换窗；前移达到窗口量级才换窗并只重投一次当前档",
+        "false_if": "resetsAt 任意变化即清档，或真换窗被漏判",
+        "evidence": "reset_at_jitter_does_not_refire / real_window_reset_refires_current_tier；block 振幅门限 75min，回退忽略",
+        "result": true
+      },
+      {
+        "item": "双端 fixture 一致",
+        "true_if": "同一 cases.json 在 collector-policy 单测、mac Harness、win 测试输出逐字节一致的 state/events",
+        "false_if": "任一端 fixture 结果不同或未消费",
+        "evidence": "cases.json 由 collector-policy、mac RefreshSchedulerHarness、Windows alert_state_parity 三处消费，state/events 一致",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

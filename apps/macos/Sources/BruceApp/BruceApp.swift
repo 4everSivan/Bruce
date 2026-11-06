@@ -87,7 +87,8 @@ struct BruceApp: App {
             runInputProvider: runInputProvider,
             credentialUpdateCoordinator: credentialUpdateCoordinator,
             networkReachability: SystemNetworkReachability(),
-            screenLockState: SystemScreenLockMonitor()
+            screenLockState: SystemScreenLockMonitor(),
+            quotaAlertStateStore: .standard
         )
         // 任务 9: 把 Codex token manager 挂到 Scheduler, 支持
         // quota 401 定向重试自愈 (强制刷新被挑战账号).
@@ -177,11 +178,12 @@ struct BruceApp: App {
         settingsController.onReopenWelcome = { [weak welcomeController] in
             welcomeController?.present()
         }
-        bootstrap.onStatusAlerts = { [weak statusController] items in
+        // 单一投递出口: quota + egress 合并批次, eventId 去重后只 show 一次 (T30).
+        let statusAlertCenter = StatusAlertCenter { [weak statusController] items in
             statusController?.showStatusAlertBubble(items: items)
         }
-        bootstrap.onQuotaAlerts = { [weak statusController] alerts in
-            statusController?.showQuotaAlertBubble(alerts: alerts)
+        bootstrap.onStatusAlerts = { items in
+            statusAlertCenter.deliver(items)
         }
         let monitor = GlobalHotkeyMonitor(
             onPress: { [weak statusController] in

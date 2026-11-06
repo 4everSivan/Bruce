@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-11-05 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-11-06 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -283,6 +283,7 @@ Windows Tauri 后端 (Rust)
 | C221 | 界面对齐 | Nothing 浅色 Agent 卡图表改杏色（macOS） | Windows 恒深色，不涉及；深色绿阶与 Windows NOTHING_RAMP 保持 |
 | C222 | 界面对齐 | 14 日柱总量改为悬停显示（双端） | `.daily-chart .day-total` 全主题默认 opacity 0 + `.day:hover` 显示；标注行高保留，柱高公式不变 |
 | C223 | 缺陷修复 | 热力图改为连续 7 天块、末格为今天（双端） | `make_usage_heatmap(artifact, today)` 以今天为最后一格向前每 7 天切块；首块可早于数据首日补 level 0，无 nil/未来格，网格恒为完整矩形；仅统计近 182 天 |
+| T28–T32 | 架构重构 | 额度预警判定改由共享 `collector-policy::alerts` 承担，状态落 `%APPDATA%`，双端 fixture 对拍 | 规则 35 补共享判定 / 持久化 / 单出口；§6.2 映射表把 `alerts.rs` 改为薄适配层 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -433,6 +434,7 @@ Windows Tauri 后端 (Rust)
       - 鼠标移入浮层（`mouseenter`）立即挂起淡出定时器保持常亮，鼠标移出（`mouseleave`）后重新开始 3 秒淡出；
       - 点击卡片主体：立即隐藏气泡，并联动呼出主看板面板（`show_dashboard`）；点击右侧关闭 `✕`：立即注销每秒定时器并收起气泡；
       - 气泡关闭后彻底注销每秒 1 次的读秒定时器，满足 0% CPU 空转要求。
+    - **判定、状态与投递（2026-11-06 架构修订）**：Windows 不再维护 `alerts.rs` 的本地状态机；调度器每轮以 artifact services + 持久状态调用共享 `collector-policy::alerts`（`alertDecide`），状态落 `%APPDATA%\Bruce\metadata\quota-alert-state-v1.json`（原子写、仅当前用户可读写，对齐 mac `0600` 语义），由单一投递出口合并 quota / egress 事件并只 show 一次。手动刷新只观察不投递；stale / 缺失轮次保留档位记忆，不得清空。与 mac 共用 `tests/fixtures/quota-alert-state-parity/cases.json` 对拍；规则细节见 design/02 规则 15。
 36. **前端安全基线：严格 CSP + 应用命令按窗口最小授权**（C178）：
     - **CSP**：`tauri.conf.json` 的 `app.security.csp` 为 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'`。脚本只能来自应用自身文件 —— 窗口页面不得写内联 `<script>`，页面与 innerHTML 模板不得使用 `onclick=` 等内联事件属性（`preview.html` / `quota-alert.html` 的脚本已移入 `preview.js` / `quota-alert.js`，关闭按钮改为事件委托）；样式保留 `'unsafe-inline'`（页面与模板大量使用 style 属性，样式注入只能改外观）；不放行任何远程源，`data:` 只用于图片（内联 SVG 背景）。
     - **命令授权**：`build.rs` 以 `tauri_build::AppManifest::commands` 声明 `generate_handler!` 的全部应用命令，声明后每个命令只对 `capabilities/commands-<窗口>.json` 中显式授予 `allow-<command>` 的窗口开放、未授予即被 ACL 拒绝；各窗口只授予其页面及外链脚本实际调用的命令（dashboard 8、settings 51、preview 5、quota-alert 2）。未被任何窗口调用的已注册命令（`import_codex_auth`、`save_credentials_command`）不授予任何窗口，IPC 不可达。远程页面（StepFun 网页登录窗）本就无法调用应用命令（Tauri 2.11 对非本地源一律校验 ACL），不得为其配置 `remote` capability。
@@ -463,7 +465,7 @@ Windows Tauri 后端 (Rust)
 |---|---|---|
 | `viewmodel/src/usage.rs` | `UsageMapping.swift` / `PanelViewModelMapper` | artifact → 今日总量/Agent 明细/逐小时/热力图/模型用量视图模型 |
 | `viewmodel/src/subscription.rs` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
-| `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `QuotaAlertDeliveryState.swift`（C206；C209 前对应 `SystemNotificationDeliveryPolicy`，该文件已删除） | 配额告警判定与通知去重（C209 起气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递） |
+| `src-tauri/src/alerts.rs` | 共享 `collector-policy::alerts`（mac 侧 `QuotaAlertEvaluator.swift` / `QuotaAlertDeliveryState.swift` 已退役） | 额度告警 artifact 适配与事件转换（薄封装）；窗口身份、档位状态机与去重由共享 crate 承担（C209 起气泡恒开：自动刷新跨越即投递、手动刷新只观察不投递） |
 | `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略（T17 起退避与窗口边界唤醒经共享 `collector-policy::refresh`） |
 | `src-tauri/src/reachability.rs` | `NetworkReachability.swift` | 网络可达性闸门状态机与可注入探针（C076，见规则 18） |
 | `src-tauri/src/quota_policy.rs` | `QuotaPolicyClient.swift`（T16 起经静态库 `collector-policy-ffi` 进程内调用同一 crate） | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19）；T13 起为共享 crate `core/collector/crates/collector-policy` 的薄封装 |

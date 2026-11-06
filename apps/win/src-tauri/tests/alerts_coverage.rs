@@ -1,172 +1,245 @@
-//! 配额预警覆盖 —— 阈值边界、stale 排除、多服务排序、跨越沿去重。
+//! 配额预警覆盖 (T31): 共享 collector-policy::alerts 决策 + Windows 前端载荷映射。
+//!
+//! 状态机、窗口身份、stale/缺失语义在共享 crate 中单份实现; 本文件锁定宿主适配结果。
 
-use bruce_win_lib::alerts::{over_threshold_entries, AlertDeliveryState};
-use serde_json::json;
+use bruce_win_lib::alerts::{decide, AlertState};
+use serde_json::{json, Value};
 
-fn service(id: &str, name: &str, windows: serde_json::Value) -> serde_json::Value {
-    json!({"id": id, "name": name, "status": "ok", "kind": "windows", "windows": windows})
+fn service(id: &str, name: &str, windows: Value) -> Value {
+    json!({
+        "id": id, "name": name, "provider": id, "status": "ok",
+        "freshness": "fresh", "windows": windows
+    })
+}
+
+fn window(percent: f64, resets_at: Option<i64>) -> Value {
+    json!({
+        "label": "5h", "windowKey": "five_hour", "windowMode": "block",
+        "windowMinutes": 300, "usedPercent": percent, "resetsAt": resets_at
+    })
+}
+
+fn artifact(services: Value) -> Value {
+    json!({"services": services})
+}
+
+fn one(percent: f64) -> Value {
+    artifact(json!([service(
+        "kimi_coding",
+        "Kimi",
+        json!([window(percent, Some(1000))])
+    )]))
 }
 
 #[test]
 fn threshold_tier_boundaries_are_strictly_evaluated() {
-    // 50% 边界: 50.0% 不触发, 50.01% 触发 50 档
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 50.0}]))]});
-    assert!(over_threshold_entries(&artifact).is_empty(), "50% 不触发");
-
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 50.01}]))]});
-    let alerts = over_threshold_entries(&artifact);
-    assert_eq!(alerts.len(), 1);
-    assert_eq!(alerts[0].tier, 50);
-
-    // 80% 边界: 80.0% 属于 50 档, 80.01% 跃升为 80 档
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 80.0}]))]});
-    let alerts = over_threshold_entries(&artifact);
-    assert_eq!(alerts.len(), 1);
-    assert_eq!(alerts[0].tier, 50);
-
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 80.01}]))]});
-    let alerts = over_threshold_entries(&artifact);
-    assert_eq!(alerts.len(), 1);
-    assert_eq!(alerts[0].tier, 80);
-
-    // 95% 边界: 94.99% 属于 80 档, 95.0% 属于 95 档 (>=95.0%)
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 94.99}]))]});
-    let alerts = over_threshold_entries(&artifact);
-    assert_eq!(alerts[0].tier, 80);
-
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 95.0}]))]});
-    let alerts = over_threshold_entries(&artifact);
-    assert_eq!(alerts[0].tier, 95);
+    let cases = [
+        (50.0, None),
+        (50.01, Some(50)),
+        (80.0, Some(50)),
+        (80.01, Some(80)),
+        (94.99, Some(80)),
+        (95.0, Some(95)),
+    ];
+    for (percent, expected) in cases {
+        let (_, alerts) = decide(
+            &one(percent),
+            Some(AlertState::default()),
+            true,
+            None,
+            1_000_000,
+        );
+        match expected {
+            None => assert!(alerts.is_empty(), "{percent}% 不应触发"),
+            Some(tier) => {
+                assert_eq!(alerts.len(), 1, "{percent}% 应触发");
+                assert_eq!(alerts[0].tier, tier, "{percent}% 档位");
+            }
+        }
+    }
 }
 
 #[test]
 fn integer_used_percent_is_accepted() {
-    let artifact = json!({"services": [service("kimi_coding", "Kimi",
-        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 85}]))]});
-    let alerts = over_threshold_entries(&artifact);
+    let artifact = artifact(json!([service(
+        "kimi_coding",
+        "Kimi",
+        json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 85}])
+    )]));
+    let (_, alerts) = decide(
+        &artifact,
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
+    );
     assert_eq!(alerts[0].used_percent, 85.0, "整数百分比按 f64 语义");
 }
 
 #[test]
-fn stale_services_never_trigger_alerts() {
-    let artifact = json!({"services": [
-        {"id": "kimi_coding", "name": "Kimi", "status": "ok", "freshness": "stale",
-         "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 99.0}]}
-    ]});
-    assert!(
-        over_threshold_entries(&artifact).is_empty(),
-        "旧额度不得重复告警"
+fn stale_round_preserves_delivered_tier() {
+    let (state, alerts) = decide(
+        &one(99.0),
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
     );
+    assert_eq!(alerts[0].tier, 95);
+
+    let stale = artifact(json!([{
+        "id": "kimi_coding", "name": "Kimi", "status": "ok", "freshness": "stale",
+        "windows": [window(99.0, Some(1000))]
+    }]));
+    let (state, alerts) = decide(&stale, Some(state), true, None, 1_001_000);
+    assert!(alerts.is_empty(), "stale 轮次不投递");
+
+    let (_, alerts) = decide(&one(99.0), Some(state), true, None, 1_002_000);
+    assert!(alerts.is_empty(), "stale 不得清空档位记忆");
 }
 
 #[test]
-fn only_five_hour_windows_trigger_with_label_fallback() {
-    let artifact = json!({"services": [service("kimi_coding", "Kimi", json!([
-        {"label": "5h", "windowMinutes": 300, "usedPercent": 90.0},
-        {"label": "每周", "windowMinutes": 10080, "usedPercent": 95.0},
-        {"label": "5小时窗口", "usedPercent": 96.0},
-        {"label": "5 小时", "usedPercent": 97.0},
-        {"label": "月度", "usedPercent": 98.0}
-    ]))]});
-    let alerts = over_threshold_entries(&artifact);
-    let labels: Vec<&str> = alerts
-        .iter()
-        .map(|alert| alert.window_label.as_str())
-        .collect();
-    assert_eq!(
-        labels,
-        vec!["5h", "5小时窗口", "5 小时"],
-        "windowMinutes 300 与文本回退命中, 其他不触发"
+fn only_five_hour_windows_trigger() {
+    let artifact = artifact(json!([service(
+        "kimi_coding",
+        "Kimi",
+        json!([
+            {"label": "每周", "windowKey": "weekly", "windowMinutes": 10_080, "usedPercent": 99.0},
+            {"label": "5h", "windowMinutes": 300, "usedPercent": 90.0},
+            {"label": "5小时窗口", "usedPercent": 96.0}
+        ])
+    )]));
+    let (_, alerts) = decide(
+        &artifact,
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
     );
+    assert_eq!(alerts.len(), 1, "只有 5h 窗口命中; label-only 不再猜身份");
+    assert_eq!(alerts[0].window_label, "5h");
 }
 
 #[test]
-fn multiple_services_keep_artifact_order() {
-    let artifact = json!({"services": [
-        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 90.0}])),
-        service("kimi_coding", "Kimi", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 85.0}]))
-    ]});
-    let alerts = over_threshold_entries(&artifact);
+fn multiple_services_are_independent() {
+    let artifact = artifact(json!([
+        service("kimi_coding", "Kimi", json!([window(90.0, Some(1000))])),
+        service("zhipu", "Z.ai", json!([window(95.0, Some(2000))]))
+    ]));
+    let (_, alerts) = decide(
+        &artifact,
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
+    );
     assert_eq!(alerts.len(), 2);
-    assert_eq!(alerts[0].service_id, "zhipu", "保持 artifact 顺序");
-    assert_eq!(alerts[1].service_id, "kimi_coding");
+    let ids: Vec<&str> = alerts
+        .iter()
+        .map(|alert| alert.service_id.as_str())
+        .collect();
+    assert!(ids.contains(&"kimi_coding") && ids.contains(&"zhipu"));
+}
+
+#[test]
+fn dedup_fires_only_on_crossing_transitions() {
+    let (state, alerts) = decide(
+        &one(85.0),
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
+    );
+    assert_eq!(alerts.len(), 1);
+    assert_eq!(alerts[0].tier, 80);
+
+    let (state, alerts) = decide(&one(90.0), Some(state), true, None, 1_001_000);
+    assert!(alerts.is_empty(), "持续超标不重复");
+
+    let (state, alerts) = decide(&one(50.0), Some(state), true, None, 1_002_000);
+    assert!(alerts.is_empty(), "回落不通知");
+    assert_eq!(state.windows["kimi_coding|five_hour"].delivered_tier, 0);
+
+    let (_, alerts) = decide(&one(95.0), Some(state), true, None, 1_003_000);
+    assert_eq!(alerts.len(), 1, "再次跨越重新通知");
+    assert_eq!(alerts[0].tier, 95);
+}
+
+#[test]
+fn jitter_does_not_refire() {
+    let (state, alerts) = decide(
+        &one(64.0),
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
+    );
+    assert_eq!(alerts.len(), 1);
+    for (index, reset) in [1001_i64, 999].into_iter().enumerate() {
+        let artifact = artifact(json!([service(
+            "kimi_coding",
+            "Kimi",
+            json!([window(64.0, Some(reset))])
+        )]));
+        let (next, alerts) = decide(
+            &artifact,
+            Some(state.clone()),
+            true,
+            None,
+            1_001_000 + index as i64 * 1_000,
+        );
+        assert!(alerts.is_empty(), "resetsAt 抖动/回退不应重报");
+        assert_eq!(next.windows["kimi_coding|five_hour"].delivered_tier, 50);
+    }
 }
 
 #[test]
 fn missing_or_malformed_fields_are_skipped_silently() {
     let artifact = json!({"services": [
-        {"id": "a", "status": "ok"},                                                     // 无 windows
-        {"id": "b", "status": "ok", "windows": ["not-an-object"]},                       // 窗口非对象
-        {"id": "c", "status": "ok", "windows": [{"usedPercent": 90.0}]},                 // 缺 label
-        {"id": "d", "status": "ok", "windows": [{"label": "5h"}]},                       // 缺 usedPercent
-        service("e", "E", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 99.0}]))
+        {"id": "a", "status": "ok"},
+        {"id": "b", "status": "ok", "windows": ["not-an-object"]},
+        {"id": "c", "status": "ok", "windows": [{"usedPercent": 90.0}]},
+        {"id": "d", "status": "ok", "windows": [{"windowKey": "five_hour"}]},
+        service("e", "E", json!([window(99.0, Some(1000))]))
     ]});
-    let alerts = over_threshold_entries(&artifact);
+    let (_, alerts) = decide(
+        &artifact,
+        Some(AlertState::default()),
+        true,
+        None,
+        1_000_000,
+    );
     assert_eq!(alerts.len(), 1, "只有 service e 有效");
     assert_eq!(alerts[0].service_id, "e");
 }
 
 #[test]
-fn dedup_fires_only_on_crossing_transitions() {
-    let mut state = AlertDeliveryState::default();
-    let alerts_at = |percent| {
-        over_threshold_entries(&json!({"services": [service("kimi_coding", "Kimi",
-            json!([{"label": "5h", "windowMinutes": 300, "usedPercent": percent}]))]}))
-    };
-    assert_eq!(
-        state.filter_new_alerts(&alerts_at(85.0)).len(),
-        1,
-        "首次超标通知"
+fn manual_refresh_observes_without_delivery() {
+    let (state, alerts) = decide(
+        &one(85.0),
+        Some(AlertState::default()),
+        false,
+        None,
+        1_000_000,
     );
-    assert!(
-        state.filter_new_alerts(&alerts_at(90.0)).is_empty(),
-        "持续超标不重复"
-    );
-    assert!(
-        state.filter_new_alerts(&alerts_at(50.0)).is_empty(),
-        "回落不通知"
-    );
-    assert_eq!(
-        state.filter_new_alerts(&alerts_at(95.0)).len(),
-        1,
-        "再次跨越重新通知"
-    );
+    assert!(alerts.is_empty());
+    assert_eq!(state.windows["kimi_coding|five_hour"].delivered_tier, 80);
+    let (_, alerts) = decide(&one(85.0), Some(state), true, None, 1_001_000);
+    assert!(alerts.is_empty(), "手动已观察的档位不应在自动刷新重投");
 }
 
 #[test]
-fn dedup_tracks_each_service_window_independently() {
-    let mut state = AlertDeliveryState::default();
-    let artifact = json!({"services": [
-        service("kimi_coding", "Kimi", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 90.0}])),
-        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 95.0}]))
-    ]});
-    assert_eq!(
-        state
-            .filter_new_alerts(&over_threshold_entries(&artifact))
-            .len(),
-        2
+fn bootstrap_is_silent_and_event_payload_is_frontend_ready() {
+    let (state, alerts) = decide(&one(85.0), None, true, None, 1_000_000);
+    assert!(alerts.is_empty(), "无状态文件时静默 bootstrap");
+    let (_, alerts) = decide(&one(96.0), Some(state), true, None, 1_001_000);
+    assert_eq!(alerts.len(), 1);
+    let alert = &alerts[0];
+    assert!(!alert.event_id.is_empty(), "事件 ID 供去重");
+    assert_eq!(alert.tier, 95);
+    assert!(
+        alert.resets_at.is_some(),
+        "epoch 转为 RFC3339 供前端 new Date"
     );
-
-    // kimi 回落, zhipu 持续: 下一轮无通知。
-    let artifact = json!({"services": [
-        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 96.0}]))
-    ]});
-    assert!(state
-        .filter_new_alerts(&over_threshold_entries(&artifact))
-        .is_empty());
-
-    // kimi 再次超标: 仅 kimi 通知。
-    let artifact = json!({"services": [
-        service("kimi_coding", "Kimi", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 88.0}])),
-        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 97.0}]))
-    ]});
-    let pending = state.filter_new_alerts(&over_threshold_entries(&artifact));
-    assert_eq!(pending.len(), 1);
-    assert_eq!(pending[0].service_id, "kimi_coding");
+    assert!(alert.resets_at.as_deref().unwrap().contains('T'));
 }

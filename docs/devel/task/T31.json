@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T31",
+  "title": "Windows 宿主接入：共享预警状态机、状态文件与单出口投递",
+  "version": "0.18.0",
+  "milestone": "M16-订阅额度预警架构重构",
+  "status": "pending",
+  "branch": "refactor/T31-win-alert-host",
+  "branch_note": "按 AGENTS.md 第五节建专属特性分支；依赖 T29 的 alertDecide 内核",
+  "depends_on": [
+    "T29"
+  ],
+  "target": {
+    "module": "apps/win（src-tauri、viewmodel/tests、fixtures）",
+    "component": "Windows 额度预警宿主：共享策略调用、状态文件与托盘气泡投递",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "goal": "Windows 侧删除 alerts.rs 的本地去重状态机，改为每轮以 artifact services + 持久状态调用共享 alertDecide；状态落 %APPDATA%\\Bruce\\metadata\\quota-alert-state-v1.json；quota 与 egress 事件合并为单一批次投递，与 mac 共用同一 fixture 对拍。",
+  "precheck": {
+    "description": "确认 Windows 现有 AlertDeliveryState 本地状态机仍在，尚未接入共享内核",
+    "command": "grep -q 'delivered_tiers' apps/win/src-tauri/src/alerts.rs",
+    "expected": "退出码 0（本地状态机存在，确认待重构）",
+    "is_completed": false,
+    "evidence": "2026-11-06 预检：alerts.rs 仍持有 delivered_tiers/observations 与 filter_new_alerts，窗口重置判据与 mac 旧实现同源"
+  },
+  "callback": {
+    "before": [
+      "git switch -c refactor/T31-win-alert-host"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test alerts_coverage --test runtime_coverage --lib",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card T31 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T31-1",
+      "title": "alerts.rs 改为共享内核薄适配",
+      "capability": "删除 AlertDeliveryState 与 window_did_reset 的本地实现；alerts.rs 只做 artifact 适配、调用 collector_policy alertDecide、把事件转换为前端载荷（保留 usedPercent/tier/resetText/resetsAt 展示字段与 eventId）。",
+      "done": true
+    },
+    {
+      "id": "T31-2",
+      "title": "Windows 状态持久化",
+      "capability": "新增 alert state store：%APPDATA%\\Bruce\\metadata\\quota-alert-state-v1.json，原子写、仅当前用户可读写（对齐 mac 0600 语义）；只在变化时写；缺失/损坏/版本不匹配静默 bootstrap；清理用量缓存不删除。",
+      "done": true
+    },
+    {
+      "id": "T31-3",
+      "title": "调度器集成与单出口",
+      "capability": "每轮自动刷新调用 alertDecide 并持久化状态；手动刷新 deliverable=false 只观察；quota+egress 合并为单一批次投递；删除任何重复通知/重复 show 路径。",
+      "done": true
+    },
+    {
+      "id": "T31-4",
+      "title": "前端事件载荷与兼容",
+      "capability": "quota-alert 前端消费事件批次（含 eventId）；展示字段保持现有契约；多事件合并渲染；不改气泡几何与主题。",
+      "done": true
+    },
+    {
+      "id": "T31-5",
+      "title": "Windows 测试与双端对拍",
+      "capability": "alerts_coverage / runtime_coverage / fixture parity 覆盖抖动、stale、缺失、真换窗、回落、重启、手动、单次投递；消费 tests/fixtures/quota-alert-state-parity/cases.json 并与 mac 逐字节一致。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261106-04",
+    "user_quote": "继续完成",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "本地状态机退役",
+        "true_if": "alerts.rs 不再持有 delivered_tiers/observations，窗口身份与档位全部由共享 alertDecide 决定",
+        "false_if": "Windows 仍保留第二份状态机或与共享内核并存",
+        "evidence": "alerts.rs 仅适配 collector-policy::alerts；AlertDeliveryState/over_threshold_entries 删除",
+        "result": true
+      },
+      {
+        "item": "跨重启与 stale 不重报",
+        "true_if": "状态文件存在时重启不重报；stale/缺失轮次保留档位记忆",
+        "false_if": "重启或任一未观测轮次后同档位重投",
+        "evidence": "scheduler alert_state_tests roundtrip/损坏；stale_round_preserves_delivered_tier",
+        "result": true
+      },
+      {
+        "item": "单批次投递",
+        "true_if": "每轮 quota+egress 事件合并为一次投递，前端只收到一个批次",
+        "false_if": "同一事件多次通知或 quota/egress 分成多条独立气泡",
+        "evidence": "deliver_alerts 单次 decide + 单次 show_quota_alert；事件以 Vec 批次下发",
+        "result": true
+      },
+      {
+        "item": "双端 fixture 对拍",
+        "true_if": "同一 cases.json 在 Windows 与 mac/collector-policy 的 state/events 逐字节一致",
+        "false_if": "任一端输出不同或未消费 fixture",
+        "evidence": "apps/win/tests/alert_state_parity.rs + mac fixture 测试通过",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

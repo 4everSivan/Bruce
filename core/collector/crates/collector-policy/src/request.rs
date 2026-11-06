@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+use crate::alerts::{decide, AlertState};
 use crate::quota::{annotate_services, merge, plan, PlanInput, QuotaRunPolicy};
 use crate::refresh::{
     backoff_seconds, boundary_delay, boundary_ids, boundary_vec, DEFAULT_BOUNDARY_SLACK_SECS,
@@ -21,13 +22,14 @@ pub const POLICY_SCHEMA_VERSION: u64 = 1;
 /// 请求上限: 与采集请求同为 4 MiB (正常请求只含 services, 约数 KB)。
 pub const MAX_POLICY_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 
-const OPERATIONS: [&str; 6] = [
+const OPERATIONS: [&str; 7] = [
     "quotaPlan",
     "quotaMerge",
     "quotaAnnotate",
     "boundaryIds",
     "boundaryWake",
     "backoff",
+    "alertDecide",
 ];
 
 #[derive(Deserialize)]
@@ -96,6 +98,18 @@ struct BackoffRequest {
     rate_limit: f64,
     #[serde(default)]
     jitter_fraction: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AlertDecideRequest {
+    now_ms: i64,
+    deliverable: bool,
+    services: Vec<Value>,
+    #[serde(default)]
+    previous_state: Option<AlertState>,
+    #[serde(default)]
+    active_keys: Option<Vec<String>>,
 }
 
 struct Failure {
@@ -185,7 +199,7 @@ fn validate_envelope(input: &[u8]) -> Result<(String, Value), Failure> {
         }
         _ => Err(Failure::new(
             "POLICY_UNKNOWN_OPERATION",
-            "operation 必须是 quotaPlan / quotaMerge / quotaAnnotate / boundaryIds / boundaryWake / backoff",
+            "operation 必须是 quotaPlan / quotaMerge / quotaAnnotate / boundaryIds / boundaryWake / backoff / alertDecide",
         )),
     }
 }
@@ -256,6 +270,19 @@ fn run(operation: &str, fields: Value) -> Result<Value, Failure> {
                     request.jitter_fraction,
                 )
             }))
+        }
+        "alertDecide" => {
+            let request: AlertDecideRequest = parse(fields)?;
+            let active_keys: Option<BTreeSet<String>> =
+                request.active_keys.map(|keys| keys.into_iter().collect());
+            let (state, events) = decide(
+                &request.services,
+                request.previous_state,
+                request.deliverable,
+                active_keys.as_ref(),
+                request.now_ms,
+            );
+            Ok(json!({"state": state, "events": events}))
         }
         _ => Err(Failure::new("POLICY_UNKNOWN_OPERATION", "未知的策略操作")),
     }

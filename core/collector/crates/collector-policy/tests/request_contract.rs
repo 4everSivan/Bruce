@@ -232,3 +232,51 @@ fn diagnostic_codes_match_response_schema() {
     declared_sorted.sort_unstable();
     assert_eq!(used, declared_sorted, "诊断码与 policy-response-v1 一致");
 }
+
+#[test]
+fn alert_decide_envelope_bootstraps_and_crosses() {
+    let service = |used: f64| {
+        json!({
+            "id": "claude_acc", "name": "Claude", "provider": "claude",
+            "freshness": "fresh",
+            "windows": [{
+                "label": "每 5 小时", "windowKey": "five_hour", "windowMode": "block",
+                "windowMinutes": 300, "usedPercent": used, "resetsAt": 1_000
+            }]
+        })
+    };
+    let request = json!({
+        "schemaVersion": 1,
+        "operation": "alertDecide",
+        "nowMs": 1_000_000,
+        "deliverable": true,
+        "services": [service(85.0)],
+        "previousState": null,
+        "activeKeys": null,
+    });
+    let first = call(&request);
+    assert_eq!(first["status"], "success");
+    assert!(
+        first["result"]["events"].as_array().unwrap().is_empty(),
+        "无状态文件时静默 bootstrap"
+    );
+    assert_eq!(
+        first["result"]["state"]["windows"]["claude_acc|five_hour"]["deliveredTier"],
+        80
+    );
+
+    let second = call(&json!({
+        "schemaVersion": 1,
+        "operation": "alertDecide",
+        "nowMs": 1_001_000,
+        "deliverable": true,
+        "services": [service(96.0)],
+        "previousState": first["result"]["state"].clone(),
+        "activeKeys": ["claude_acc|five_hour"],
+    }));
+    assert_eq!(second["status"], "success");
+    let events = second["result"]["events"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["tier"], 95);
+    assert_eq!(events[0]["windowKey"], "five_hour");
+}

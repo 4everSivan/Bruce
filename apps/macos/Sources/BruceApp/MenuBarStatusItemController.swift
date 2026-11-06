@@ -637,11 +637,6 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         )
     }
 
-    /// 弹出额度预警气泡 (方案 A · 280pt 胶囊微卡，兼容旧接口)
-    func showQuotaAlertBubble(alerts: [QuotaAlert]) {
-        showStatusAlertBubble(items: alerts.map { .quota($0) })
-    }
-
     /// 若主看板未处于打开状态则展开主看板
     func openDashboardIfNeeded() {
         guard installed, let button = statusItem?.button else { return }

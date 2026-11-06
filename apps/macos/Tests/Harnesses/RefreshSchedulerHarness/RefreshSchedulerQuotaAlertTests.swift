@@ -10,28 +10,31 @@ extension RefreshSchedulerHarness {
     /// 构造 services 含单个 5h 窗口的 artifact.
     static func makeQuotaArtifact(
         usedPercent: Double,
-        resetsAt: JSONValue = .null
+        resetsAt: JSONValue = .null,
+        freshness: String? = nil
     ) -> JSONValue {
-        .object([
+        var service: [String: JSONValue] = [
+            "id": .string("kimi"),
+            "name": .string("Kimi"),
+            "status": .string("ok"),
+            "windows": .array([
+                .object([
+                    "label": .string("5小时窗口"),
+                    "usedPercent": .double(usedPercent),
+                    "windowMinutes": .integer(300),
+                    "resetsAt": resetsAt,
+                ])
+            ]),
+        ]
+        if let freshness {
+            service["freshness"] = .string(freshness)
+        }
+        return .object([
             "schemaVersion": .integer(1),
             "module": .string("agent-usage"),
             "generatedAt": .string("2026-07-28T12:00:00Z"),
             "agents": .array([]),
-            "services": .array([
-                .object([
-                    "id": .string("kimi"),
-                    "name": .string("Kimi"),
-                    "status": .string("ok"),
-                    "windows": .array([
-                        .object([
-                            "label": .string("5小时窗口"),
-                            "usedPercent": .double(usedPercent),
-                            "windowMinutes": .integer(300),
-                            "resetsAt": resetsAt,
-                        ])
-                    ]),
-                ])
-            ]),
+            "services": .array([.object(service)]),
         ])
     }
 
@@ -40,11 +43,16 @@ extension RefreshSchedulerHarness {
         repository: URL,
         executor: MockCollectorExecutor,
         timers: FakeTimerScheduler,
-        alerts: AlertCapture
+        alerts: AlertCapture,
+        seedAlertState: Bool = true
     ) throws -> (RefreshScheduler, URL) {
         let clock = ManualClock()
         let (scheduler, _, root) = try makeScheduler(
-            repository: repository, executor: executor, clock: clock, timers: timers
+            repository: repository,
+            executor: executor,
+            clock: clock,
+            timers: timers,
+            seedAlertState: seedAlertState
         )
         scheduler.onQuotaAlerts = { _, newAlerts in
             alerts.items.append(contentsOf: newAlerts)
@@ -80,6 +88,13 @@ extension RefreshSchedulerHarness {
                 && alerts.items.first?.usedPercent == 85,
             "预警内容错误: \(alerts.items)"
         )
+        try refreshExpect(
+            alerts.statusItems.count == 1,
+            "单次跨越只应投递一个 status 批次: \(alerts.statusItems)"
+        )
+        guard case .quota? = alerts.statusItems.first else {
+            throw RefreshTestFailure.expectation("status 批次应为 quota 项")
+        }
     }
 
     // 持续超阈值 -> 后续后台刷新不重复报警.
@@ -260,6 +275,140 @@ extension RefreshSchedulerHarness {
             alerts.items.count == 2,
             "窗口重置时刻更新后同一档位应重新报警, 实际未报警: \(alerts.items.map(\.tier))"
         )
+    }
+
+    // MARK: - T30 宿主集成: 抖动 / stale / bootstrap / 清快照缓存
+
+    // resetsAt 秒级抖动与回退不重报.
+    static func quotaAlertJitterDoesNotRepeat(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeQuotaArtifact(
+            usedPercent: 64,
+            resetsAt: .integer(1_000)
+        )
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "首次跨越应报警: \(alerts.items)")
+
+        for (index, resetsAt) in [1_001, 999].enumerated() {
+            executor.artifactOverride = makeQuotaArtifact(
+                usedPercent: 64,
+                resetsAt: .integer(resetsAt)
+            )
+            timers.fireFirst()
+            await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: index + 2)
+            await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        }
+        try refreshExpect(alerts.items.count == 1, "resetsAt 抖动/回退不应重报: \(alerts.items)")
+    }
+
+    // stale 轮次与缺失轮次保留档位记忆.
+    static func quotaAlertStaleDoesNotClearState(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeQuotaArtifact(
+            usedPercent: 64,
+            resetsAt: .integer(1_000)
+        )
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "首次跨越应报警: \(alerts.items)")
+
+        executor.artifactOverride = makeQuotaArtifact(
+            usedPercent: 64,
+            resetsAt: .integer(1_000),
+            freshness: "stale"
+        )
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+        executor.artifactOverride = makeQuotaArtifact(
+            usedPercent: 64,
+            resetsAt: .integer(1_000)
+        )
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 3)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "stale 轮次不应清空档位: \(alerts.items)")
+    }
+
+    // 状态文件缺失时静默 bootstrap, 不重复弹; 下一次跨越正常.
+    static func quotaAlertBootstrapIsSilent(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 85)
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository,
+            executor: executor,
+            timers: timers,
+            alerts: alerts,
+            seedAlertState: false
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.isEmpty, "无状态文件时不应投递: \(alerts.items)")
+
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 96)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "bootstrap 后跨越更高档应报警: \(alerts.items)")
+        try refreshExpect(alerts.items.first?.tier == 95, "应为 95 档: \(alerts.items.map(\.tier))")
+    }
+
+    // 清理用量快照缓存不删除独立预警状态.
+    static func quotaAlertStateSurvivesSnapshotCacheClear(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 64)
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "首次跨越应报警: \(alerts.items)")
+
+        try scheduler.clearSnapshotCaches()
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(alerts.items.count == 1, "清理快照缓存不应清空预警状态: \(alerts.items)")
     }
 
     // MARK: - 网络出口阻断预警与防频繁打扰契约 (T24)

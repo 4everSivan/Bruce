@@ -45,14 +45,11 @@ struct RefreshPipelineRequest: Sendable {
 /// 类型对齐本仓库真实命名:
 /// - 运行产物: `CollectorRunOutput` (`BridgeResponse` + 可选 stderr 诊断)
 /// - 凭证写回: `CredentialUpdateApplyResult`
-/// - 额度预警候选: `QuotaAlertEvaluator.overThresholdEntries` 返回的
-///   `[(key: String, alert: QuotaAlert)]` (无独立 `Entry` 类型)
 /// - `publishedArtifact`: 非 nil 表示 Pipeline 已 `store.publish`; nil 表示
 ///   auth/error/无 artifact 等未写入路径, Scheduler 只做 phase 映射
 struct CompletedRun: Sendable {
     let output: CollectorRunOutput
     let credentialApply: CredentialUpdateApplyResult
-    let quotaAlertEntries: [(key: String, alert: QuotaAlert)]
     let includesManual: Bool
     /// 本轮刷新作用域; 出口告警重派按此收敛到目标 Provider (C185).
     let scope: RefreshScope
@@ -62,14 +59,12 @@ struct CompletedRun: Sendable {
     init(
         output: CollectorRunOutput,
         credentialApply: CredentialUpdateApplyResult,
-        quotaAlertEntries: [(key: String, alert: QuotaAlert)],
         includesManual: Bool,
         scope: RefreshScope,
         publishedArtifact: JSONValue?
     ) {
         self.output = output
         self.credentialApply = credentialApply
-        self.quotaAlertEntries = quotaAlertEntries
         self.includesManual = includesManual
         self.scope = scope
         self.publishedArtifact = publishedArtifact
@@ -448,7 +443,6 @@ struct RefreshExecutionPipeline {
             return .completed(CompletedRun(
                 output: output,
                 credentialApply: applyResult,
-                quotaAlertEntries: [],
                 includesManual: includesManual,
                 scope: request.intent.scope,
                 publishedArtifact: nil
@@ -458,7 +452,6 @@ struct RefreshExecutionPipeline {
             return .completed(CompletedRun(
                 output: output,
                 credentialApply: applyResult,
-                quotaAlertEntries: [],
                 includesManual: includesManual,
                 scope: request.intent.scope,
                 publishedArtifact: nil
@@ -502,7 +495,6 @@ struct RefreshExecutionPipeline {
             return .completed(CompletedRun(
                 output: finalOutput,
                 credentialApply: applyResult,
-                quotaAlertEntries: [],
                 includesManual: includesManual,
                 scope: request.intent.scope,
                 publishedArtifact: nil
@@ -519,12 +511,11 @@ struct RefreshExecutionPipeline {
             return .publishFailed(error)
         }
 
-        // 8. evaluateQuotaAlerts — 纯候选; 是否弹由 Scheduler 结合 includesManual
-        let entries = QuotaAlertEvaluator.overThresholdEntries(artifact: artifact)
+        // 8. 额度预警由 Scheduler 调用共享 collector-policy::alerts 决策 (T29/T30);
+        // pipeline 只负责 publish, 不再计算候选条目.
         return .completed(CompletedRun(
             output: finalOutput,
             credentialApply: applyResult,
-            quotaAlertEntries: entries,
             includesManual: includesManual,
             scope: request.intent.scope,
             publishedArtifact: artifact

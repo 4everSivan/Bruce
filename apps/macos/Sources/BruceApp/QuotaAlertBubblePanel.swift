@@ -35,6 +35,8 @@ final class QuotaAlertBubbleController {
     private var panel: QuotaAlertBubblePanel?
     private var dismissTimer: Timer?
     private var isMouseHovering = false
+    /// 当前展示项; 相同 items 再次 show 时只续期, 不重建视图/重播动画 (T30).
+    private var currentItems: [StatusBubbleAlertItem] = []
 
     /// 外部回调: 点击气泡主体打开主看板 (额度告警)
     var onOpenDashboard: (() -> Void)?
@@ -52,6 +54,13 @@ final class QuotaAlertBubbleController {
         relativeTo button: NSStatusBarButton?
     ) {
         guard !items.isEmpty else { return }
+
+        if let panel, panel.isVisible, currentItems == items {
+            dismissTimer?.invalidate()
+            scheduleDismiss(after: 6.0)
+            return
+        }
+        currentItems = items
 
         // 如果已有气泡，先取消旧的淡出定时器
         dismissTimer?.invalidate()
@@ -136,6 +145,7 @@ final class QuotaAlertBubbleController {
         dismissTimer?.invalidate()
         dismissTimer = nil
         isMouseHovering = false
+        currentItems = []
 
         guard let panel, panel.isVisible else { return }
 

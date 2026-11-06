@@ -581,27 +581,21 @@ fn hotkey_registration_and_persistence_failures_keep_old_shortcut() {
 
 #[test]
 fn manual_alert_refresh_observes_threshold_without_delivery() {
-    let mut state = bruce_win_lib::alerts::AlertDeliveryState::default();
-    let alert = bruce_win_lib::alerts::QuotaAlert {
-        service_id: "codex".into(),
-        service_name: "Codex".into(),
-        window_label: "5h".into(),
-        used_percent: 90.0,
-        tier: 80,
-        provider_id: Some("codex".into()),
-        reset_text: None,
-        resets_at: None,
-        reset_token: None,
-    };
+    let artifact = json!({"services": [{
+        "id": "codex", "name": "Codex", "provider": "codex", "freshness": "fresh",
+        "windows": [{
+            "label": "5h", "windowKey": "five_hour", "windowMode": "block",
+            "windowMinutes": 300, "usedPercent": 90.0, "resetsAt": 1000
+        }]
+    }]});
     // C209: 气泡恒开, 手动刷新仅观察不投递, 自动刷新投递。
-    assert!(state
-        .alerts_for_refresh(std::slice::from_ref(&alert), true)
-        .is_empty());
-    assert!(state
-        .alerts_for_refresh(std::slice::from_ref(&alert), false)
-        .is_empty());
-    assert!(state.alerts_for_refresh(&[], false).is_empty());
-    assert_eq!(state.alerts_for_refresh(&[alert], false).len(), 1);
+    let empty = collector_policy::alerts::AlertState::default();
+    let (state, alerts) =
+        bruce_win_lib::alerts::decide(&artifact, Some(empty), false, None, 1_000_000);
+    assert!(alerts.is_empty(), "手动刷新只观察");
+    assert_eq!(state.windows["codex|five_hour"].delivered_tier, 80);
+    let (_, alerts) = bruce_win_lib::alerts::decide(&artifact, Some(state), true, None, 1_001_000);
+    assert!(alerts.is_empty(), "手动已观察的档位不应在自动刷新重投");
 }
 
 #[test]

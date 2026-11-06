@@ -341,13 +341,25 @@ func makeScheduler(
     screenLock: (any ScreenLockStateProviding)? = nil,
     refreshInterval: TimeInterval = 1800,
     quotaRefreshInterval: TimeInterval = 0,
-    wakeDedupSeconds: TimeInterval = 0
+    wakeDedupSeconds: TimeInterval = 0,
+    seedAlertState: Bool = true
 ) throws -> (RefreshScheduler, ArtifactStore, URL) {
     executor.repository = repository
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("Bruce-sched-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let store = try ArtifactStore(rootURL: root)
+    // 预警测试以「状态文件已存在但尚无 key」为基线, 保留首轮跨越即投递的旧语义;
+    // bootstrap 静默由显式不注入 store 的用例覆盖.
+    let alertStateStore = QuotaAlertStateStore(
+        url: root.appendingPathComponent("quota-alert-state-v1.json")
+    )
+    if seedAlertState {
+        alertStateStore.save(.object([
+            "version": .integer(1),
+            "windows": .object([:]),
+        ]))
+    }
     let config = SchedulerConfiguration(
         refreshInterval: refreshInterval,
         staleAfter: 3600,
@@ -368,7 +380,8 @@ func makeScheduler(
         jitterProvider: { 0 },
         registerWakeNotifications: false,
         networkReachability: reachability,
-        screenLockState: screenLock
+        screenLockState: screenLock,
+        quotaAlertStateStore: alertStateStore
     )
     return (scheduler, store, root)
 }

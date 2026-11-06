@@ -737,7 +737,7 @@ struct PanelViewModelHarness {
         let egressItem = StatusBubbleAlertItem.egressIssue(claudeAlert!)
 
         try expect(quotaItem.serviceName == "DeepSeek", "quota item 服务名错误")
-        try expect(quotaItem.id == "quota|deepseek|5小时窗口", "quota item ID 规范不匹配")
+        try expect(quotaItem.id == "quota|deepseek|5小时窗口|80", "quota item ID 规范不匹配")
 
         try expect(egressItem.serviceName == "Claude", "egress item 服务名错误")
         try expect(egressItem.id == "egress|claude", "egress item ID 规范不匹配")

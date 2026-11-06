@@ -301,10 +301,16 @@ fn cline_provider_reads_server_usage_limits() {
     assert_eq!(windows.len(), 3);
     // 服务端整数百分比原样透传
     assert_eq!(windows[0]["label"], "每 5 小时");
+    assert_eq!(windows[0]["windowKey"], "five_hour");
+    assert_eq!(windows[0]["windowMode"], "block");
     assert_eq!(windows[0]["windowMinutes"], json!(300));
     assert!((windows[0]["usedPercent"].as_f64().unwrap() - 2.0).abs() < 1e-6);
+    assert_eq!(windows[1]["windowKey"], "weekly");
+    assert_eq!(windows[1]["windowMode"], "block");
     assert_eq!(windows[1]["windowMinutes"], json!(10080));
     assert!((windows[1]["usedPercent"].as_f64().unwrap() - 34.0).abs() < 1e-6);
+    assert_eq!(windows[2]["windowKey"], "monthly");
+    assert_eq!(windows[2]["windowMode"], "block");
     assert_eq!(windows[2]["windowMinutes"], json!(43200));
     assert!((windows[2]["usedPercent"].as_f64().unwrap() - 17.0).abs() < 1e-6);
     // 纳秒级 resetsAt 截断到秒 (chrono rfc3339 原生解析任意位小数)

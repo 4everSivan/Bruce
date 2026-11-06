@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T32",
+  "title": "额度预警架构重构收口：死代码清理、文档/CHANGELOG 与全量验收",
+  "version": "0.18.0",
+  "milestone": "M16-订阅额度预警架构重构",
+  "status": "pending",
+  "branch": "refactor/T32-alert-closure",
+  "branch_note": "按 AGENTS.md 第五节建专属特性分支；依赖 T30/T31 双端接入完成",
+  "depends_on": [
+    "T30",
+    "T31"
+  ],
+  "target": {
+    "module": "apps/macos + apps/win + core/collector + docs",
+    "component": "额度预警架构重构收口与全量验收",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "goal": "删除重构后遗留的旧状态机、双回调与兼容 shim，确认生产路径只剩共享 alertDecide + 状态文件 + 单一投递出口；完成设计正文回写、CHANGELOG 记账与全量验证，并在真实 App 上完成稳定窗口的重复弹窗观察验收。",
+  "precheck": {
+    "description": "确认前置 T30/T31 尚未 completed，本卡不具备开工条件",
+    "command": "node -e 'const j=require(\"./docs/devel/task/index.json\"); const d=[\"T30\",\"T31\"].filter(id=>(j.tasks[id]||{}).status!==\"completed\"); process.exit(d.length?0:1)'",
+    "expected": "退出码 0（存在未完成前置）",
+    "is_completed": false,
+    "evidence": "2026-11-06 建卡时 T30/T31 均为 pending；待双端接入完成后开工"
+  },
+  "callback": {
+    "before": [
+      "git switch -c refactor/T32-alert-closure"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T32 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T32-1",
+      "title": "死代码与兼容路径清理",
+      "capability": "删除 QuotaAlertDeliveryState、QuotaAlertEvaluator 旧阈值/去重职责、mac onQuotaAlerts/showQuotaAlertBubble、win AlertDeliveryState 与任何双状态并存路径；确认生产代码无残留引用。",
+      "done": true
+    },
+    {
+      "id": "T32-2",
+      "title": "设计正文与 CHANGELOG 定稿",
+      "capability": "design/01/02/03/05/08 与实现字段/路径/流程一致；@topic 锚标存在；CHANGELOG 记录本次架构重构与旧行为退役。",
+      "done": true
+    },
+    {
+      "id": "T32-3",
+      "title": "全量验证",
+      "capability": "scripts/verify-local.sh 全绿（Rust fmt/test/clippy + fixture 扫描 + Swift build + 全部 Harness）；Windows cargo 测试与 check-win-frontend 通过。",
+      "done": true
+    },
+    {
+      "id": "T32-4",
+      "title": "真实 App 重复弹窗观察",
+      "capability": "安装版连续运行 ≥30 分钟（5 分钟刷新），选择 resetsAt 稳定的窗口，确认同档位不重复弹；记录观察起止、窗口用量与 resetsAt、事件计数。",
+      "done": false
+    },
+    {
+      "id": "T32-5",
+      "title": "收口与节点回执",
+      "capability": "按 ad-flow 预检 --to completed --record、同步卡片与索引、--receipt 输出节点回执；人工确认原话与签署写入 acceptance。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261106-05",
+    "user_quote": "继续完成",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "旧路径彻底退役",
+        "true_if": "全仓 grep 不再有 QuotaAlertDeliveryState / AlertDeliveryState / onQuotaAlerts 投递 / showQuotaAlertBubble 的生产引用",
+        "false_if": "残留任一旧状态机或双投递路径",
+        "evidence": "全仓 grep 无 QuotaAlertEvaluator/QuotaAlertDeliveryState/AlertDeliveryState；onQuotaAlerts 仅测试观测，生产投递只走 onStatusAlerts",
+        "result": true
+      },
+      {
+        "item": "全量验证通过",
+        "true_if": "scripts/verify-local.sh Exit 0；Windows cargo 测试与前端门禁 Exit 0",
+        "false_if": "任一测试、clippy、fixture 或构建失败",
+        "evidence": "zsh scripts/verify-local.sh Exit 0（local/verify-T28-T31.log 末行「Bruce 本地验证全部通过」）；Windows cargo test/clippy/check-win-frontend 通过",
+        "result": true
+      },
+      {
+        "item": "实机不重复弹",
+        "true_if": "稳定窗口连续 ≥30 分钟、多次刷新后同档位事件计数不增加",
+        "false_if": "窗口未重置且 resetsAt 稳定时出现第二次同档气泡",
+        "evidence": "未执行 30 分钟实机观察；待部署后由用户实测，届时回填",
+        "result": false
+      },
+      {
+        "item": "文档与实现一致",
+        "true_if": "design/01/02/03/05/08 与 CHANGELOG 的字段、路径、流程与实现一致",
+        "false_if": "存在陈旧描述或未回写的规则差异",
+        "evidence": "design/01/02/03/05/08、design/README 与 CHANGELOG [Unreleased] 已同步",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

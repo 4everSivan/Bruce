@@ -563,6 +563,8 @@ fn codex_parser_and_provider_preserve_account_quota_contract() {
     assert_eq!(parsed["kind"], "windows");
     assert_eq!(parsed["plan"], "fixture-plan");
     assert_eq!(parsed["windows"][0]["label"], "5小时窗口");
+    assert_eq!(parsed["windows"][0]["windowKey"], "five_hour");
+    assert_eq!(parsed["windows"][0]["windowMode"], "block");
     assert_eq!(parsed["windows"][0]["windowMinutes"], 300);
     assert_eq!(parsed["windows"][0]["usedPercent"], 42.0);
     assert_eq!(parsed["extra"], "Credits 不限量");
@@ -589,6 +591,23 @@ fn codex_parser_and_provider_preserve_account_quota_contract() {
     assert_eq!(sent.headers["Authorization"], "Bearer fixture-token");
     assert_eq!(sent.headers["chatgpt-account-id"], "acc-1");
     assert!(!sent.url.contains("fixture-token"));
+}
+
+/// T28: Codex 的窗口身份由 limit_window_seconds 决定, 不随标签文案变化.
+#[test]
+fn codex_window_identity_follows_window_length() {
+    let parsed = parse_codex_usage(&json!({
+        "rate_limit": {
+            "primary_window": {"limit_window_seconds": 18000, "used_percent": 10},
+            "secondary_window": {"limit_window_seconds": 604800, "used_percent": 20}
+        }
+    }))
+    .unwrap()
+    .unwrap();
+    assert_eq!(parsed["windows"][0]["windowKey"], "five_hour");
+    assert_eq!(parsed["windows"][0]["windowMode"], "block");
+    assert_eq!(parsed["windows"][1]["windowKey"], "weekly");
+    assert_eq!(parsed["windows"][1]["windowMode"], "block");
 }
 
 fn sha256_prefix(value: &str) -> String {
@@ -739,7 +758,11 @@ fn provider_parsers_preserve_quota_shapes_and_reset_units() {
         .unwrap()
         .unwrap();
     assert_eq!(kimi["windows"][0]["usedPercent"], 75.0);
+    assert_eq!(kimi["windows"][0]["windowKey"], "five_hour");
+    assert_eq!(kimi["windows"][0]["windowMode"], "block");
     assert_eq!(kimi["windows"][0]["windowMinutes"], 300);
+    assert_eq!(kimi["windows"][1]["windowKey"], "weekly");
+    assert_eq!(kimi["windows"][1]["windowMode"], "block");
     assert_eq!(kimi["windows"][1]["windowMinutes"], 10080);
 
     let deepseek = parse_deepseek_balance(&json!({
@@ -776,7 +799,11 @@ fn provider_parsers_preserve_quota_shapes_and_reset_units() {
     .unwrap()
     .unwrap();
     assert_eq!(volc["windows"][0]["usedPercent"], 100.0);
+    assert_eq!(volc["windows"][0]["windowKey"], "five_hour");
+    assert_eq!(volc["windows"][0]["windowMode"], "block");
     assert_eq!(volc["windows"][0]["resetsAt"], Value::Null);
+    assert_eq!(volc["windows"][1]["windowKey"], "weekly");
+    assert_eq!(volc["windows"][1]["windowMode"], "block");
     assert_eq!(volc["windows"][1]["resetsAt"], 1_800_000_000);
 
     let claude = parse_claude_usage(&json!({
@@ -787,11 +814,14 @@ fn provider_parsers_preserve_quota_shapes_and_reset_units() {
     .unwrap()
     .unwrap();
     assert_eq!(claude["windows"].as_array().unwrap().len(), 3);
-    assert!(claude["windows"]
+    let extra = claude["windows"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|window| window["ownRow"] == true));
+        .find(|window| window["ownRow"] == true)
+        .expect("extra_usage row");
+    assert_eq!(extra["windowKey"], "extra_usage");
+    assert_eq!(extra["windowMode"], "unknown");
 }
 
 /// C058: limits[] weekly_scoped 模型专属周限额被解析 (对照 cc-switch 用例)。
@@ -824,6 +854,12 @@ fn claude_usage_renders_scoped_model_weekly_limits() {
         .map(|window| window["label"].as_str().unwrap())
         .collect();
     assert_eq!(labels, ["每 5 小时", "每周", "每周 Fable"]);
+    let keys: Vec<&str> = windows
+        .iter()
+        .map(|window| window["windowKey"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, ["five_hour", "weekly", "weekly_scoped:fable"]);
+    assert!(windows.iter().all(|window| window["windowMode"] == "block"));
     assert_eq!(windows[2]["usedPercent"], 37.5);
     assert_eq!(windows[2]["windowMinutes"], 10080);
     assert_eq!(windows[2]["resetsAt"], 1_789_171_200);
@@ -963,9 +999,13 @@ fn zhipu_current_credit_limit_array_response_is_rendered() {
     assert_eq!(zhipu["plan"], Value::Null);
     assert_eq!(zhipu["windows"].as_array().unwrap().len(), 2);
     assert_eq!(zhipu["windows"][0]["label"], "每 5 小时");
+    assert_eq!(zhipu["windows"][0]["windowKey"], "five_hour");
+    assert_eq!(zhipu["windows"][0]["windowMode"], "block");
     assert_eq!(zhipu["windows"][0]["usedPercent"], 100.0);
     assert_eq!(zhipu["windows"][0]["resetsAt"], 1_800_000_000);
     assert_eq!(zhipu["windows"][1]["label"], "每周");
+    assert_eq!(zhipu["windows"][1]["windowKey"], "weekly");
+    assert_eq!(zhipu["windows"][1]["windowMode"], "block");
     assert_eq!(zhipu["windows"][1]["usedPercent"], 20.0);
     assert_eq!(zhipu["windows"][1]["resetsAt"], 1_800_100_000);
 }
@@ -984,6 +1024,8 @@ fn opencode_usage_parser_reads_official_endpoint_shape() {
     let windows = parsed["windows"].as_array().unwrap();
     assert_eq!(windows.len(), 3);
     assert_eq!(windows[0]["label"], "每 5 小时");
+    assert_eq!(windows[0]["windowKey"], "five_hour");
+    assert_eq!(windows[0]["windowMode"], "block");
     assert_eq!(windows[0]["usedPercent"], 1.0);
     assert_eq!(windows[0]["windowMinutes"], 300);
     assert_eq!(windows[0]["resetsAt"], 1_790_788_545);
@@ -1038,6 +1080,8 @@ fn grok_parser_handles_bounded_grpc_web_heuristic() {
     let parsed = parse_grok_usage(&body, 1_800_000_000).unwrap().unwrap();
     assert_eq!(parsed["windows"][0]["usedPercent"], 20.0);
     assert_eq!(parsed["windows"][0]["label"], "每 5 小时");
+    assert_eq!(parsed["windows"][0]["windowKey"], "five_hour");
+    assert_eq!(parsed["windows"][0]["windowMode"], "block");
 }
 
 fn encode_varint(mut value: u64) -> Vec<u8> {

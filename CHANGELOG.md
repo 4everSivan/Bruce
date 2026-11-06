@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### Fixed
+- **订阅额度预警窗口未重置却重复弹气泡：窗口身份、观测、状态与投递四层重构 (T28–T31)**：
+  - **窗口语义身份**：collector 为 `services[].windows[]` 输出 `windowKey`（`five_hour` / `weekly` / `monthly` / `weekly_scoped:*` / `credits` / `topup_credits` / `extra_usage` / `generic`）与 `windowMode`（`block` / `rolling` / `unknown`）；`label` 退化为纯展示字段，去重键改为 `serviceID|windowKey`；
+  - **共享决策内核**：预警观测归一、换窗判定与 50/80/95 档位状态机收敛至 `collector-policy::alerts`，经 `alertDecide` 操作供 mac（C ABI 进程内）与 Windows（进程内）共同调用；`resetsAt` 秒级抖动/回退不再被误判为换窗，stale/缺失轮次只更新 `lastSeenAt`、不再清空档位记忆；
+  - **独立持久化**：预警状态落 mac `~/Library/Application Support/Bruce/metadata/quota-alert-state-v1.json` / Windows `%APPDATA%\Bruce\metadata\quota-alert-state-v1.json`，原子写且与展示快照解耦（清理用量缓存不删除）；状态缺失/损坏时静默 bootstrap，重启不再重弹；
+  - **单一投递出口**：mac `StatusAlertCenter` 统一合并 quota/egress 事件并按 `eventId` 去重，删除 `onQuotaAlerts` 展示接线与 `showQuotaAlertBubble` 旧接口；气泡对相同 items 幂等，不再重建视图/重播入场动画；
+  - **退役旧路径**：mac `QuotaAlertEvaluator` / `QuotaAlertDeliveryState` 与 Windows `AlertDeliveryState` 本地状态机删除；双端共用 `tests/fixtures/quota-alert-state-parity/cases.json` 对拍。
+
 ### Changed
 - **现行总账瘦身：归档登记迁入归档批次总账，现行总账只留活跃卡 (C226)**：
   - **分层总账**：随 ad-flow 1.7.0 规范，`docs/devel/change/index.json` 与 `docs/devel/task/index.json` 中 212 / 19 条归档登记连同主题归属原样迁入 13 个 `docs/archive/<version>/index.json`（`adflow-archive-batch-v1`），现行变更总账 86,801 B / 2,319 行 → 6,500 B / 185 行；卡片文件零改动，历史查询改用 `scripts/adflow-verify --topic <主题>`；

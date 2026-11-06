@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T30",
+  "title": "mac 宿主接入：状态持久化、单一投递出口与旧去重状态机退役",
+  "version": "0.18.0",
+  "milestone": "M16-订阅额度预警架构重构",
+  "status": "pending",
+  "branch": "refactor/T30-mac-alert-host",
+  "branch_note": "按 AGENTS.md 第五节建专属特性分支；依赖 T29 的 alertDecide 内核",
+  "depends_on": [
+    "T29"
+  ],
+  "target": {
+    "module": "apps/macos（BruceAppCore、BruceApp、RefreshSchedulerHarness）",
+    "component": "mac 额度预警宿主：状态文件、策略调用与气泡投递",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "goal": "mac 侧不再持有第二份去重状态机：每轮刷新以 artifact services + 持久状态调用共享 alertDecide，状态落 metadata/quota-alert-state-v1.json；删除 seed 反推、删除 onQuotaAlerts/showQuotaAlertBubble 双通道，由 StatusAlertCenter 单出口合并投递并保证同一事件只 show 一次。",
+  "precheck": {
+    "description": "确认 mac 现有 QuotaAlertDeliveryState 与双回调仍在，工作尚未接入共享内核",
+    "command": "grep -rq 'QuotaAlertDeliveryState' apps/macos/Sources && grep -rq 'onQuotaAlerts' apps/macos/Sources/BruceApp/BruceApp.swift",
+    "expected": "退出码 0（两处均存在，确认待重构）",
+    "is_completed": false,
+    "evidence": "2026-11-06 预检：QuotaAlertDeliveryState.swift 存在；BruceApp.swift 同时接线 onStatusAlerts 与 onQuotaAlerts，单次跨越会走两条 show 路径"
+  },
+  "callback": {
+    "before": [
+      "git switch -c refactor/T30-mac-alert-host"
+    ],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests && $(swift build --package-path apps/macos --show-bin-path)/RefreshSchedulerHarness .'",
+      "scripts/adflow-verify --card T30 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T30-1",
+      "title": "mac 状态持久化",
+      "capability": "新增 QuotaAlertStateStore：读写 metadata/quota-alert-state-v1.json，父目录 0700、文件 0600、临时文件 + 原子替换；只在状态变化时写；缺失/损坏/版本不匹配静默 bootstrap；清理用量缓存不删除该文件。",
+      "done": true
+    },
+    {
+      "id": "T30-2",
+      "title": "策略客户端接入 alertDecide",
+      "capability": "BruceAppCore 经现有 BrucePolicyFFI 进程内调用 alertDecide；输入 services、上一状态、deliverable（!includesManual）、activeKeys（启用账号集合）、now；入口失败不投递不猜测，保留旧状态并记结构化诊断。",
+      "done": true
+    },
+    {
+      "id": "T30-3",
+      "title": "调度器集成与旧状态机退役",
+      "capability": "RefreshScheduler 每轮调用共享内核并持久化返回状态；删除 QuotaAlertDeliveryState、QuotaAlertEvaluator 的阈值/去重职责与 loadCachedSnapshot 的 seed 反推；窗口重置/回落/stale 语义全部由共享内核承担。",
+      "done": true
+    },
+    {
+      "id": "T30-4",
+      "title": "单一投递出口与气泡幂等",
+      "capability": "新增 StatusAlertCenter：quota+egress 合并、eventId 去重（TTL 10 分钟）、主看板打开时静默；删除 onQuotaAlerts/showQuotaAlertBubble 生产接线；QuotaAlertBubbleController.show 对相同 items 幂等（不重建 hosting view、不重播入场动画）。",
+      "done": true
+    },
+    {
+      "id": "T30-5",
+      "title": "Harness 回归",
+      "capability": "RefreshSchedulerHarness 覆盖 resetsAt 抖动、stale 穿插、缺失、真换窗、回落再跨越、手动只观察、重启两次不重报、清理快照缓存不重报、单次跨越只 show 一次、状态文件损坏 bootstrap。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261106-03",
+    "user_quote": "继续完成",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "跨重启不重报",
+        "true_if": "状态文件存在时重建 Scheduler 不产生新事件；清理用量缓存后状态仍在",
+        "false_if": "重启或清缓存后对同一窗口同档位重新投递",
+        "evidence": "QuotaAlertStateStore roundtrip/损坏 → nil 测试；Scheduler init 读取 metadata 状态；清理快照缓存后状态保留",
+        "result": true
+      },
+      {
+        "item": "stale/缺失不重报",
+        "true_if": "额度查询失败、锁屏本地刷新、定向刷新导致窗口未观测时，档位记忆保留",
+        "false_if": "任一未观测轮次清空档位并在下一轮重投",
+        "evidence": "quotaAlertStaleDoesNotClearState；共享内核 stale 只更新 lastSeenAt",
+        "result": true
+      },
+      {
+        "item": "单次跨越单次展示",
+        "true_if": "每次跨越只触发一次 StatusAlertCenter.deliver 与一次 show；相同 items 不重建视图",
+        "false_if": "同一事件走两条回调、show 两次或动画重播",
+        "evidence": "quotaAlertFiresOnBackgroundCrossing 断言 statusItems 单批次；StatusAlertCenter eventId 去重测试；气泡 show 幂等",
+        "result": true
+      },
+      {
+        "item": "旧状态机彻底退役",
+        "true_if": "生产代码不再引用 QuotaAlertDeliveryState / showQuotaAlertBubble / onQuotaAlerts 投递路径",
+        "false_if": "残留任一旧路径或双状态并存",
+        "evidence": "删除 QuotaAlertEvaluator/QuotaAlertDeliveryState/showQuotaAlertBubble；生产仅 onStatusAlerts 单出口",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

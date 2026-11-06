@@ -1047,12 +1047,16 @@ pub(crate) fn service_result(kind: &str, plan: Option<Value>, windows: Vec<Value
 
 pub(crate) fn window(
     label: &str,
+    window_key: &str,
+    window_mode: &str,
     used_percent: f64,
     window_minutes: Option<u64>,
     resets_at: Option<i64>,
 ) -> Value {
     json!({
         "label": label,
+        "windowKey": window_key,
+        "windowMode": window_mode,
         "usedPercent": used_percent,
         "windowMinutes": window_minutes,
         "resetsAt": resets_at,

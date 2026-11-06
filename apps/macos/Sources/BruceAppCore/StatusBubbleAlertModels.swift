@@ -47,7 +47,8 @@ package enum StatusBubbleAlertItem: Equatable, Sendable, Identifiable {
     package var id: String {
         switch self {
         case .quota(let alert):
-            return "quota|\(alert.serviceID)|\(alert.windowLabel)"
+            return alert.eventId
+                ?? "quota|\(alert.serviceID)|\(alert.windowLabel)|\(alert.tier)"
         case .egressIssue(let item):
             return "egress|\(item.serviceID)"
         }

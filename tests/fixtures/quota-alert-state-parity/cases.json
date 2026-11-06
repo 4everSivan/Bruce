@@ -1,0 +1,538 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "jitter_and_stale_preserve",
+      "deliverable": true,
+      "previousState": {
+        "version": 1,
+        "windows": {}
+      },
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 64,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              50
+            ],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1001000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 64,
+                  "resetsAt": 1001
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1002000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "stale",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 64,
+                  "resetsAt": 1001
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1003000,
+          "services": [],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1004000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 64,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "real_reset_refires_current_tier",
+      "deliverable": true,
+      "previousState": {
+        "version": 1,
+        "windows": {}
+      },
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 96,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              95
+            ],
+            "deliveredTier": 95,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1001000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 60,
+                  "resetsAt": 19000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              50
+            ],
+            "deliveredTier": 50,
+            "windowId": "epoch:19000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "recovery_then_crossing",
+      "deliverable": true,
+      "previousState": {
+        "version": 1,
+        "windows": {}
+      },
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 85,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              80
+            ],
+            "deliveredTier": 80,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1001000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 40,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 0,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1002000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 60,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              50
+            ],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "manual_refresh_observes_only",
+      "deliverable": false,
+      "previousState": {
+        "version": 1,
+        "windows": {}
+      },
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 85,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 80,
+            "windowId": "epoch:1000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_silent_then_crosses",
+      "deliverable": true,
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 85,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 80,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1001000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "block",
+                  "windowMinutes": 300,
+                  "usedPercent": 96,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              95
+            ],
+            "deliveredTier": 95,
+            "windowId": "epoch:1000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rolling_advance_ignored",
+      "deliverable": true,
+      "previousState": {
+        "version": 1,
+        "windows": {}
+      },
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "opencode_acc",
+              "name": "OpenCode",
+              "provider": "opencodeGo",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "rolling",
+                  "windowMinutes": 300,
+                  "usedPercent": 85,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              80
+            ],
+            "deliveredTier": 80,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1001000,
+          "services": [
+            {
+              "id": "opencode_acc",
+              "name": "OpenCode",
+              "provider": "opencodeGo",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "rolling",
+                  "windowMinutes": 300,
+                  "usedPercent": 85,
+                  "resetsAt": 1300
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 80,
+            "windowId": "epoch:1000"
+          }
+        },
+        {
+          "nowMs": 1002000,
+          "services": [
+            {
+              "id": "opencode_acc",
+              "name": "OpenCode",
+              "provider": "opencodeGo",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "rolling",
+                  "windowMinutes": 300,
+                  "usedPercent": 40,
+                  "resetsAt": 1600
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [],
+            "deliveredTier": 0,
+            "windowId": "epoch:1600"
+          }
+        },
+        {
+          "nowMs": 1003000,
+          "services": [
+            {
+              "id": "opencode_acc",
+              "name": "OpenCode",
+              "provider": "opencodeGo",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowKey": "five_hour",
+                  "windowMode": "rolling",
+                  "windowMinutes": 300,
+                  "usedPercent": 60,
+                  "resetsAt": 1900
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              50
+            ],
+            "deliveredTier": 50,
+            "windowId": "epoch:1600"
+          }
+        }
+      ]
+    },
+    {
+      "name": "legacy_without_window_key",
+      "deliverable": true,
+      "previousState": {
+        "version": 1,
+        "windows": {}
+      },
+      "steps": [
+        {
+          "nowMs": 1000000,
+          "services": [
+            {
+              "id": "claude_acc",
+              "name": "Claude",
+              "provider": "claude",
+              "freshness": "fresh",
+              "windows": [
+                {
+                  "label": "每 5 小时",
+                  "windowMinutes": 300,
+                  "usedPercent": 60,
+                  "resetsAt": 1000
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "eventTiers": [
+              50
+            ],
+            "deliveredTier": 50,
+            "windowId": "epoch:1000"
+          }
+        }
+      ]
+    }
+  ]
+}

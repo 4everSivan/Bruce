@@ -20,7 +20,7 @@ import BruceOnboardingCore
 /// - 已断开账号的旧 service (既不匹配 currentID 也不唯一匹配 legacyID) 不出现在
 ///   输出中, 不从旧快照复活; 首轮非 Codex 数据与首轮未授权占位条目原样保留。
 /// - generatedAt 取 retry (更新) 的生成时间, 无 retry 时取 first; stale 条目
-///   由 QuotaAlertEvaluator 排除在阈值预警之外。
+///   由共享额度预警内核 (collector-policy::alerts) 排除在阈值预警之外。
 package struct CodexQuotaSnapshotMerger: Sendable {
     package init() {}
 

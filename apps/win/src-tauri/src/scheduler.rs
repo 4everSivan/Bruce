@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::sync::{mpsc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::alerts::AlertDeliveryState;
+use crate::alerts::AlertState;
 pub use crate::runtime_core::RefreshOutcome;
 use crate::runtime_core::SnapshotState;
 
@@ -12,11 +12,39 @@ const BASE_BACKOFF_SECS: u64 = 30;
 const MAX_BACKOFF_SECS: u64 = 1800;
 const RATE_LIMIT_BACKOFF_SECS: u64 = 300;
 
+/// 额度预警持久状态: `loaded=false` 时首次刷新从独立 metadata 文件按需读取;
+/// 文件缺失/损坏保持 None, 由共享内核按静默 bootstrap 处理 (T31).
+#[derive(Default)]
+pub struct QuotaAlertRuntimeState {
+    loaded: bool,
+    state: Option<AlertState>,
+}
+
+impl QuotaAlertRuntimeState {
+    fn previous(&mut self, path: &std::path::Path) -> Option<AlertState> {
+        if !self.loaded {
+            self.state = load_alert_state(path);
+            self.loaded = true;
+        }
+        self.state.clone()
+    }
+
+    fn update(&mut self, state: AlertState) {
+        self.state = Some(state);
+    }
+}
+
+fn load_alert_state(path: &std::path::Path) -> Option<AlertState> {
+    let data = std::fs::read(path).ok()?;
+    let state: AlertState = serde_json::from_slice(&data).ok()?;
+    (state.version == collector_policy::alerts::ALERT_STATE_VERSION).then_some(state)
+}
+
 #[derive(Default)]
 pub struct SchedulerControl {
     manual_refresh: Mutex<Option<mpsc::SyncSender<()>>>,
     pub retry_count: Mutex<u32>,
-    pub alert_state: Mutex<AlertDeliveryState>,
+    pub alert_state: Mutex<QuotaAlertRuntimeState>,
     pub snapshot: Mutex<SnapshotState>,
     /// 采集通道互斥: 全量周期与 Provider 定向刷新串行执行, 快照写入不交错
     /// (mac RefreshScheduler 同一容量约束)。
@@ -106,7 +134,7 @@ pub fn classify_rate_limited(response: &collector_domain::BridgeResponse) -> boo
 #[cfg(feature = "desktop")]
 mod desktop {
     use super::*;
-    use crate::alerts::{over_threshold_entries, QuotaAlert};
+    use crate::alerts::decide;
     use crate::reachability::NetworkProbe;
     use crate::runtime_core::next_delay;
     use crate::settings::{load_settings, AppSettings};
@@ -116,15 +144,30 @@ mod desktop {
     use tauri::{AppHandle, Emitter, Manager};
 
     fn deliver_alerts(app: &AppHandle, artifact: &Value, manual: bool) {
-        let alerts = over_threshold_entries(artifact);
-        // Observe crossings on manual refresh but deliver only automatic notifications.
-        // C209: 气泡恒开, 不再读 notifications_enabled (键已退役)。
-        let to_notify: Vec<QuotaAlert> = app
-            .state::<SchedulerControl>()
-            .alert_state
-            .lock()
-            .map(|mut state| state.alerts_for_refresh(&alerts, manual))
-            .unwrap_or_default();
+        // 状态文件与展示快照解耦: 清理用量缓存不删除该文件 (design/02 规则 15).
+        let path = paths::data_root()
+            .join("metadata")
+            .join("quota-alert-state-v1.json");
+        let control = app.state::<SchedulerControl>();
+        let (to_notify, state) = {
+            let Ok(mut guard) = control.alert_state.lock() else {
+                return;
+            };
+            let previous = guard.previous(&path);
+            let (state, alerts) = decide(
+                artifact,
+                previous,
+                !manual,
+                None,
+                chrono::Utc::now().timestamp_millis(),
+            );
+            guard.update(state.clone());
+            (alerts, state)
+        };
+        if let Ok(data) = serde_json::to_vec(&state) {
+            // 非敏感状态快照: 复用 credentials 的 ACL + 原子替换语义 (T31).
+            let _ = credentials::atomic_private_write(&path, &data);
+        }
         if !to_notify.is_empty() {
             // C159: 退役 Windows Toast 弹窗通知, 改为向托盘气泡浮层派发并展现
             crate::show_quota_alert(app, &to_notify);
@@ -520,3 +563,34 @@ pub use desktop::{
     cached_artifact, cached_panel, publish, refresh_agent_usage_local, refresh_subscription,
     run_refresh, spawn,
 };
+
+#[cfg(test)]
+mod alert_state_tests {
+    use super::*;
+
+    #[test]
+    fn alert_state_round_trips_and_corrupt_is_ignored() {
+        let dir = std::env::temp_dir().join(format!(
+            "bruce-alert-state-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("quota-alert-state-v1.json");
+        let state = AlertState {
+            version: collector_policy::alerts::ALERT_STATE_VERSION,
+            windows: std::collections::BTreeMap::new(),
+        };
+        let data = serde_json::to_vec(&state).unwrap();
+        crate::credentials::atomic_private_write(&path, &data).unwrap();
+        assert_eq!(load_alert_state(&path), Some(state));
+
+        std::fs::write(&path, b"not-json").unwrap();
+        assert_eq!(load_alert_state(&path), None, "损坏状态按 bootstrap 处理");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

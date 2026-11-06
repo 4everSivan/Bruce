@@ -4,12 +4,14 @@
 //!
 //! 第一期含订阅额度门禁 (`plan`) 与额度回填 (`merge` / `merge_round` / 尝试时间戳标注);
 //! T17 起含窗口边界唤醒 (`boundary_delay`) 与刷新退避 (`capped_backoff` / `backoff_seconds`)。
+//! T29 起含订阅额度预警观测/状态机 (`alerts::decide`)。
 //! 由 Windows 进程内调用、mac 经策略入口 (`request::handle_request`, 静态库
 //! `collector-policy-ffi` 的 C ABI, T16) 进程内调用。纯函数: 不做网络、文件 I/O, 不接触凭据;
 //! 输入输出均为 artifact 的 `serde_json::Value`。
 //! 双端口径由 `tests/fixtures/quota-policy-parity`、`quota-carry-over-parity` 与
 //! `refresh-policy-parity` 三份共享用例裁判。
 
+pub mod alerts;
 pub mod quota;
 pub mod refresh;
 pub mod request;

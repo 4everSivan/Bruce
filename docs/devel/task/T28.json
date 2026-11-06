@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T28",
+  "title": "订阅窗口语义身份契约：collector 输出 windowKey/windowMode 与 artifact 窗口契约",
+  "version": "0.18.0",
+  "milestone": "M16-订阅额度预警架构重构",
+  "status": "in_progress",
+  "branch": "refactor/T28-quota-alert-contract",
+  "branch_note": "按 AGENTS.md 第五节建专属特性分支；设计基线修订与 collector 契约同卡交付",
+  "depends_on": [],
+  "target": {
+    "module": "core/collector（collector-provider、schemas）+ docs",
+    "component": "订阅额度窗口 artifact 契约",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "goal": "从源头补齐窗口身份：provider 解析器在 artifact services[].windows[] 输出稳定的语义身份 windowKey 与 windowMode，label 退化为展示字段；宿主与预警决策不再按文案或精确 resetsAt 现算窗口身份。同步完成 design/01、02、03、05、08 的基线修订并登记 T29–T32 依赖。",
+  "precheck": {
+    "description": "确认 collector 现无 windowKey/windowMode，artifact 窗口只有 label/windowMinutes/usedPercent/resetsAt",
+    "command": "grep -rq '\"windowKey\"\\|windowMode\\|window_key' core/collector/crates/collector-provider/src core/collector/schemas",
+    "expected": "退出码 1（无命中，确认字段尚未实现）",
+    "is_completed": false,
+    "evidence": "2026-11-06 预检：grep 无命中（exit 1）；window() helper 仅输出 label/usedPercent/windowMinutes/resetsAt；Codex/Grok 的 5h 标签还会随时长/重置距离变化，证明确需语义身份"
+  },
+  "callback": {
+    "before": [
+      "git switch -c refactor/T28-quota-alert-contract"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-provider",
+      "cargo clippy --manifest-path core/collector/Cargo.toml -p collector-provider --all-targets -- -D warnings",
+      "zsh scripts/check-collector-fixtures.sh",
+      "scripts/adflow-verify --card T28 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T28-1",
+      "title": "设计基线修订",
+      "capability": "design/02 规则 15 重写（观测/决策/持久化/投递四层）、design/01 规则 3 新增订阅窗口语义身份、design/03 规则 14 单出口与幂等、design/05 规则 35 Windows 共享状态机、design/08 §4.2 第 6 条 alertDecide；design/README 与 TODO A9 同步。",
+      "done": true
+    },
+    {
+      "id": "T28-2",
+      "title": "window() helper 与全部 provider 解析器输出 windowKey/windowMode",
+      "capability": "collector-provider 的 window 构造统一携带 windowKey（five_hour/weekly/monthly/weekly_scoped:*/credits/extra_usage 等）与 windowMode（block/rolling/unknown）；Kimi、Zhipu、Codex、Claude、Cline、OpenCode、Grok、StepFun、DeepSeek、火山引擎等全部 5h 窗口映射为 five_hour；无法确定模式的 provider 标 unknown，滑动窗口标 rolling。",
+      "done": true
+    },
+    {
+      "id": "T28-3",
+      "title": "artifact schema 与文档同步、旧 artifact 兼容",
+      "capability": "agent-usage-v1 schema 增加可选 windowKey/windowMode；旧 artifact 缺字段时由下游按 windowMinutes 推导兼容键（仅升级首轮），不把 label 文本当身份；schemas 校验与 collector fixture 同步。",
+      "done": true
+    },
+    {
+      "id": "T28-4",
+      "title": "provider parser 测试与 fixture 断言",
+      "capability": "每个 provider 的解析用例断言 windowKey/windowMode；Codex 时长标签变化、Grok 重置距离标签变化时 windowKey 保持 five_hour/weekly/monthly 不变；未知窗口仍稳定输出。",
+      "done": true
+    },
+    {
+      "id": "T28-5",
+      "title": "collector 全量验证",
+      "capability": "cargo fmt / collector-provider 测试 / clippy -D warnings / check-collector-fixtures.sh 全绿；无残留 label 身份推导。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261106-01",
+    "user_quote": "继续完成",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "窗口身份覆盖",
+        "true_if": "全部 provider 的 5h 窗口输出 windowKey=five_hour 且 windowMode 非空，测试逐 provider 断言",
+        "false_if": "任一 provider 的 5h 窗口缺少 windowKey/windowMode，或仍由 label 文本推导身份",
+        "evidence": "collector-provider 全部解析器更新；cargo test -p collector-provider 61 passed；Kimi/Zhipu/Volc/Claude/Codex/Cline/OpenCode/Grok 均断言 windowKey/windowMode",
+        "result": true
+      },
+      {
+        "item": "展示与身份分离",
+        "true_if": "Codex/Grok 等标签随时长或重置距离变化时，windowKey 保持不变，并有测试锁定",
+        "false_if": "windowKey 随 label 变化，或 label 被用作去重键/窗口判定",
+        "evidence": "Codex 身份取 limit_window_seconds（codex_window_identity_follows_window_length）；Grok 身份取重置距离推导的窗口时长（grok_window_identity_maps_minutes_to_stable_keys）；label 仅作为展示字段",
+        "result": true
+      },
+      {
+        "item": "旧 artifact 兼容",
+        "true_if": "缺 windowKey/windowMode 的旧 artifact 仍能解析，兼容键仅按 windowMinutes 推导且只用于升级首轮",
+        "false_if": "旧 artifact 解析失败，或把 label 文本当兼容键",
+        "evidence": "artifact schema 中 windowKey/windowMode 为可选字段并保留 additionalProperties；collector 不消费旧 artifact；兼容键推导由 T29 按 windowMinutes 实现",
+        "result": true
+      },
+      {
+        "item": "设计基线一致",
+        "true_if": "design/01、02、03、05、08 与 README 的规则、字段名、路径互相一致，@topic 锚标存在",
+        "false_if": "任一文档字段名/路径与实现不一致，或缺 @topic 锚标",
+        "evidence": "design/01 规则 3、design/02 规则 15、design/03 规则 14、design/05 规则 35、design/08 §4.2 第 6 条与 design/README 已同步；scripts/adflow-verify Exit 0",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

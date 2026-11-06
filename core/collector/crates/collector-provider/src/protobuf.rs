@@ -119,6 +119,15 @@ fn looks_like_protobuf(data: &[u8]) -> bool {
         .is_some_and(|byte| byte >> 3 > 0 && matches!(byte & 7, 0 | 1 | 2 | 5))
 }
 
+fn grok_window_identity(minutes: Option<u64>) -> (&'static str, &'static str) {
+    match minutes {
+        Some(300) => ("five_hour", "block"),
+        Some(10080) => ("weekly", "block"),
+        Some(43200) => ("monthly", "block"),
+        _ => ("generic", "unknown"),
+    }
+}
+
 fn grok_window(resets_at: Option<i64>, now_epoch: i64) -> (&'static str, Option<u64>) {
     let Some(reset) = resets_at else {
         return ("额度", None);
@@ -184,9 +193,31 @@ pub fn parse_grok_usage(body: &[u8], now_epoch: i64) -> Result<Option<Value>, Pr
     }
     let percent = percent.ok_or_else(invalid_payload)?;
     let (label, minutes) = grok_window(reset, now_epoch);
+    let (window_key, window_mode) = grok_window_identity(minutes);
     Ok(Some(service_result(
         "windows",
         None,
-        vec![window(label, clamp_percent(percent), minutes, reset)],
+        vec![window(
+            label,
+            window_key,
+            window_mode,
+            clamp_percent(percent),
+            minutes,
+            reset,
+        )],
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::grok_window_identity;
+
+    /// T28: Grok 的窗口身份随重置距离推导的窗口时长确定, 标签变化不影响身份.
+    #[test]
+    fn grok_window_identity_maps_minutes_to_stable_keys() {
+        assert_eq!(grok_window_identity(Some(300)), ("five_hour", "block"));
+        assert_eq!(grok_window_identity(Some(10080)), ("weekly", "block"));
+        assert_eq!(grok_window_identity(Some(43200)), ("monthly", "block"));
+        assert_eq!(grok_window_identity(None), ("generic", "unknown"));
+    }
 }

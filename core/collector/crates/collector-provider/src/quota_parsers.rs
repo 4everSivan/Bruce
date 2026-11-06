@@ -47,8 +47,17 @@ pub fn parse_codex_usage(payload: &Value) -> Result<Option<Value>, ProviderError
             None | Some(Value::Null) => 0.0,
             Some(value) => number(Some(value)).ok_or_else(invalid_payload)?,
         };
+        let label = codex_window_label(seconds);
+        let (window_key, window_mode) = match label {
+            "5小时窗口" => ("five_hour", "block"),
+            "每周窗口" => ("weekly", "block"),
+            "每月窗口" => ("monthly", "block"),
+            _ => ("generic", "unknown"),
+        };
         windows.push(json!({
-            "label": codex_window_label(seconds),
+            "label": label,
+            "windowKey": window_key,
+            "windowMode": window_mode,
             "usedPercent": clamp_percent(used_percent),
             "windowMinutes": seconds.map(|value| value / 60),
             "resetsAt": window.get("reset_at").cloned().unwrap_or(Value::Null),
@@ -100,6 +109,8 @@ pub fn parse_kimi_usage(payload: &Value) -> Result<Option<Value>, ProviderError>
             };
             windows.push(window(
                 "5小时窗口",
+                "five_hour",
+                "block",
                 percent,
                 Some(300),
                 reset_epoch(detail.get("resetTime")),
@@ -117,6 +128,8 @@ pub fn parse_kimi_usage(payload: &Value) -> Result<Option<Value>, ProviderError>
         };
         windows.push(window(
             "7天窗口",
+            "weekly",
+            "block",
             percent,
             Some(7 * 24 * 60),
             reset_epoch(usage.get("resetTime")),
@@ -258,10 +271,24 @@ fn zhipu_windows(limits: Option<&Value>) -> Vec<Value> {
     }
     let mut windows = Vec::new();
     if let Some((reset, percent)) = five_hour {
-        windows.push(window("每 5 小时", percent, Some(300), reset));
+        windows.push(window(
+            "每 5 小时",
+            "five_hour",
+            "block",
+            percent,
+            Some(300),
+            reset,
+        ));
     }
     if let Some((reset, percent)) = weekly {
-        windows.push(window("每周", percent, Some(10080), reset));
+        windows.push(window(
+            "每周",
+            "weekly",
+            "block",
+            percent,
+            Some(10080),
+            reset,
+        ));
     }
     windows
 }
@@ -345,12 +372,26 @@ pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderErr
                         t as i64
                     }
                 });
-            windows.push(window("Credits", used_percent, None, resets_at));
+            windows.push(window(
+                "Credits",
+                "credits",
+                "unknown",
+                used_percent,
+                None,
+                resets_at,
+            ));
         }
         if let Some(topup_left_rate) = number(credit_limit.get("topup_credit_left_rate")) {
             if topup_left_rate > 0.0 && topup_left_rate < 1.0 {
                 let used_percent = clamp_percent((1.0 - topup_left_rate) * 100.0);
-                windows.push(window("加油包 Credits", used_percent, None, None));
+                windows.push(window(
+                    "加油包 Credits",
+                    "topup_credits",
+                    "unknown",
+                    used_percent,
+                    None,
+                    None,
+                ));
             }
         }
     }
@@ -366,7 +407,14 @@ pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderErr
         });
         if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
             let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
-            windows.push(window("5小时窗口", used_percent, Some(300), resets_at));
+            windows.push(window(
+                "5小时窗口",
+                "five_hour",
+                "block",
+                used_percent,
+                Some(300),
+                resets_at,
+            ));
         }
     }
 
@@ -381,7 +429,14 @@ pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderErr
         });
         if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
             let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
-            windows.push(window("每周窗口", used_percent, Some(10080), resets_at));
+            windows.push(window(
+                "每周窗口",
+                "weekly",
+                "block",
+                used_percent,
+                Some(10080),
+                resets_at,
+            ));
         }
     }
 
@@ -409,7 +464,12 @@ fn object_value<'a>(
     })
 }
 
-fn volc_window(node: Option<&Value>, label: &str) -> Option<Value> {
+fn volc_window(
+    node: Option<&Value>,
+    label: &str,
+    window_key: &str,
+    window_mode: &str,
+) -> Option<Value> {
     let object = node?.as_object()?;
     let limit = object_value(object, &["Limit", "Total", "Quota", "TotalQuota"]);
     let used = object_value(object, &["Used", "Usage", "UsedQuota"]);
@@ -417,7 +477,7 @@ fn volc_window(node: Option<&Value>, label: &str) -> Option<Value> {
     let percent = parse_window_percentage(limit, used, remaining)?;
     let reset = object_value(object, &["ResetTime", "QuotaResetTime"])
         .and_then(|value| reset_epoch(Some(value)));
-    Some(window(label, percent, None, reset))
+    Some(window(label, window_key, window_mode, percent, None, reset))
 }
 
 /// Parse both known Volcengine quota response shapes.
@@ -434,30 +494,37 @@ pub fn parse_volcengine_usage(payload: &Value) -> Result<Option<Value>, Provider
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            let label = match level.as_str() {
-                "session" => "5小时窗口",
-                "weekly" => "每周窗口",
-                "monthly" => "每月窗口",
-                _ if !level.is_empty() => level.as_str(),
-                _ => "窗口",
+            let (label, window_key, window_mode) = match level.as_str() {
+                "session" => ("5小时窗口", "five_hour", "block"),
+                "weekly" => ("每周窗口", "weekly", "block"),
+                "monthly" => ("每月窗口", "monthly", "block"),
+                _ if !level.is_empty() => (level.as_str(), "generic", "unknown"),
+                _ => ("窗口", "generic", "unknown"),
             };
             let Some(percent) = number(item.get("Percent")) else {
                 continue;
             };
             let reset = reset_epoch(item.get("ResetTimestamp"));
-            windows.push(window(label, clamp_percent(percent), None, reset));
+            windows.push(window(
+                label,
+                window_key,
+                window_mode,
+                clamp_percent(percent),
+                None,
+                reset,
+            ));
         }
     } else {
-        for (key, label) in [
-            ("AFPFiveHour", "5小时窗口"),
-            ("FiveHour", "5小时窗口"),
-            ("AFPWeekly", "每周窗口"),
-            ("Weekly", "每周窗口"),
-            ("AFPMonthly", "每月窗口"),
-            ("Monthly", "每月窗口"),
+        for (key, label, window_key) in [
+            ("AFPFiveHour", "5小时窗口", "five_hour"),
+            ("FiveHour", "5小时窗口", "five_hour"),
+            ("AFPWeekly", "每周窗口", "weekly"),
+            ("Weekly", "每周窗口", "weekly"),
+            ("AFPMonthly", "每月窗口", "monthly"),
+            ("Monthly", "每月窗口", "monthly"),
         ] {
             if windows.is_empty() || !windows.iter().any(|value| value["label"] == label) {
-                if let Some(value) = volc_window(object.get(key), label) {
+                if let Some(value) = volc_window(object.get(key), label, window_key, "block") {
                     windows.push(value);
                 }
             }
@@ -465,17 +532,17 @@ pub fn parse_volcengine_usage(payload: &Value) -> Result<Option<Value>, Provider
         if windows.is_empty() {
             for (key, value) in object {
                 let lower = key.to_ascii_lowercase();
-                let label = if lower.contains("fivehour") || lower.contains("5hour") {
-                    Some("5小时窗口")
+                let (label, window_key) = if lower.contains("fivehour") || lower.contains("5hour") {
+                    (Some("5小时窗口"), Some("five_hour"))
                 } else if lower.contains("weekly") || lower.contains("week") {
-                    Some("每周窗口")
+                    (Some("每周窗口"), Some("weekly"))
                 } else if lower.contains("monthly") || lower.contains("month") {
-                    Some("每月窗口")
+                    (Some("每月窗口"), Some("monthly"))
                 } else {
-                    None
+                    (None, None)
                 };
-                if let Some(label) = label {
-                    if let Some(parsed) = volc_window(Some(value), label) {
+                if let (Some(label), Some(window_key)) = (label, window_key) {
+                    if let Some(parsed) = volc_window(Some(value), label, window_key, "block") {
                         windows.push(parsed);
                     }
                 }
@@ -524,6 +591,19 @@ fn claude_tier(key: &str) -> (&str, Option<u64>) {
         .unwrap_or((key, None))
 }
 
+/// Claude 窗口的语义身份: 已知档位映射为稳定 key, 未知档位沿用上游键名
+/// (键名本身稳定, 不随展示文案变化).
+fn claude_window_key(key: &str) -> &str {
+    match key {
+        "five_hour" => "five_hour",
+        "seven_day" => "weekly",
+        "seven_day_fable" => "weekly_scoped:fable",
+        "seven_day_opus" => "weekly_scoped:opus",
+        "seven_day_sonnet" => "weekly_scoped:sonnet",
+        other => other,
+    }
+}
+
 /// 已知档位输出序 (对照 cc-switch KNOWN_TIERS 排序); 未知窗口返回 len 稳定排后。
 fn claude_tier_rank(key: &str) -> usize {
     CLAUDE_TIERS
@@ -565,7 +645,14 @@ pub fn parse_cline_usage_limits(
         };
         let percent = clamp_percent(number(limit.get("percentUsed")).ok_or_else(invalid_payload)?);
         let resets_at = reset_epoch(limit.get("resetsAt"));
-        windows.push(window(label, percent, window_minutes, resets_at));
+        windows.push(window(
+            label,
+            kind,
+            "block",
+            percent,
+            window_minutes,
+            resets_at,
+        ));
     }
     // C020: 不再注入订阅生命周期注记 (extra), 卡片仅展示计划名与三窗口.
     Ok(Some(service_result(
@@ -586,18 +673,22 @@ pub fn parse_opencode_go_usage(payload: &Value) -> Result<Option<Value>, Provide
         .and_then(Value::as_object)
         .ok_or_else(invalid_payload)?;
     let mut windows = Vec::new();
-    for (key, label, minutes) in [
-        ("rolling", "每 5 小时", 300_u64),
-        ("weekly", "每周", 10080),
-        ("monthly", "每月", 43200),
+    for (key, label, window_key, minutes) in [
+        ("rolling", "每 5 小时", "five_hour", 300_u64),
+        ("weekly", "每周", "weekly", 10080),
+        ("monthly", "每月", "monthly", 43200),
     ] {
         let Some(meter) = usage.get(key).and_then(Value::as_object) else {
             continue;
         };
         let percent = number(meter.get("percent")).ok_or_else(invalid_payload)?;
         let resets_at = reset_epoch(meter.get("resetsAt"));
+        // 上游 rolling 指「5 小时滚动块」, resetsAt 仍是该块的绝对结束时刻,
+        // 因此按 block 判换窗 (不按滑动窗口处理); 若将来观测到 resetsAt 持续前移再改 rolling.
         windows.push(window(
             label,
+            window_key,
+            "block",
             clamp_percent(percent),
             Some(minutes),
             resets_at,
@@ -682,10 +773,17 @@ pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderErro
             continue;
         };
         let (label, minutes) = claude_tier(key);
+        let window_mode = if minutes.is_some() {
+            "block"
+        } else {
+            "unknown"
+        };
         windows.push((
             claude_tier_rank(key),
             window(
                 label,
+                claude_window_key(key),
+                window_mode,
                 clamp_percent(percent),
                 minutes,
                 reset_epoch(entry.get("resets_at")),
@@ -728,7 +826,14 @@ pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderErro
                 continue;
             }
             let (label, minutes) = claude_tier(tier);
-            let row = window(label, clamp_percent(percent), minutes, resets_at);
+            let row = window(
+                label,
+                claude_window_key(tier),
+                "block",
+                clamp_percent(percent),
+                minutes,
+                resets_at,
+            );
             let rank = claude_tier_rank(tier);
             match windows.iter_mut().find(|(existing, _)| *existing == rank) {
                 Some(slot) => slot.1 = row,
@@ -741,7 +846,14 @@ pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderErro
     if let Some(extra) = object.get("extra_usage").and_then(Value::as_object) {
         if extra.get("is_enabled").and_then(Value::as_bool) == Some(true) {
             if let Some(percent) = number(extra.get("utilization")) {
-                let mut value = window("额外用量", clamp_percent(percent), None, None);
+                let mut value = window(
+                    "额外用量",
+                    "extra_usage",
+                    "unknown",
+                    clamp_percent(percent),
+                    None,
+                    None,
+                );
                 if let Some(value) = value.as_object_mut() {
                     value.insert("ownRow".to_owned(), Value::Bool(true));
                 }

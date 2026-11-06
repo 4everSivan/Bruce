@@ -984,40 +984,4 @@ static func isCodexServiceTest(_ value: JSONValue) -> Bool {
     }
     return app == "codex"
 }
-
-/// 补充: stale 条目不参与 quota alert 阈值穿越.
-static func quotaAlertSkipsStaleEntries() throws {
-    // stale Codex service 保留 85% 旧窗口, 不得触发预警
-    let stale = mergerArtifact(
-        codexServices: [
-            mergerCodexService(
-                id: mergerService1, status: "error", usedPercent: 85,
-                capturedAt: "2026-07-28T10:00:00Z", freshness: "stale",
-                failureKind: "network"
-            ),
-        ],
-        generatedAt: "2026-07-28T12:00:00Z"
-    )
-    let staleEntries = QuotaAlertEvaluator.overThresholdEntries(artifact: stale)
-    try refreshExpect(
-        staleEntries.isEmpty,
-        "stale 条目不得触发 quota alert, got \(staleEntries)"
-    )
-
-    // fresh 同窗口仍正常报警
-    let fresh = mergerArtifact(
-        codexServices: [
-            mergerCodexService(
-                id: mergerService1, status: "ok", usedPercent: 85,
-                capturedAt: "2026-07-28T12:00:00Z", freshness: "fresh"
-            ),
-        ],
-        generatedAt: "2026-07-28T12:00:00Z"
-    )
-    let freshEntries = QuotaAlertEvaluator.overThresholdEntries(artifact: fresh)
-    try refreshExpect(
-        freshEntries.count == 1,
-        "fresh 超过阈值条目必须报警, got \(freshEntries)"
-    )
-}
 }
