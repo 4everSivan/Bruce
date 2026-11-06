@@ -326,6 +326,105 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
       "file": "docs/archive/0.17.0/change/C225.json"
+    },
+    "C179": {
+      "title": "卡片展开动画掉帧：用量热力图逐格 SwiftUI 视图与逐格 repeatForever 呼吸改为图层宿主 + Core Animation 呼吸",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C179-heatmap-breathing",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C179.json"
+    },
+    "C180": {
+      "title": "菜单栏图标与字体升级：I-2 双同心子母环 + Nothing 主题自动切 T-4 极客等宽",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C180-menubar-dual-ring-typo",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C180.json"
+    },
+    "C181": {
+      "title": "菜单栏 Nothing 主题字体微调：字号由 11pt 放大至 12.5pt 消除视觉偏小",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C181-menubar-nothing-font-size",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C181.json"
+    },
+    "C182": {
+      "title": "调整仪表盘：订阅用量最后刷新时间由标题右侧移至卡片底部右侧与三档用量标注平齐",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C182-subscription-updated-time-layout",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C182.json"
+    },
+    "C183": {
+      "title": "菜单栏图标高级重构：德系包豪斯整体订阅单轨星环 + 新三档动态色阶 (>50%绿 / 20%~50%橙 / <20%红)",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C183-menubar-single-orbit-satellite",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C183.json"
+    },
+    "C184": {
+      "title": "修复出口IP检查线路测试结果为不匹配时状态点与文案错误显示为绿色问题，修正为红色警示并持久化保留上次测试结果及地址",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C184-egress-mismatch-status-color",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C184.json"
+    },
+    "C185": {
+      "title": "定向刷新订阅时不再重弹其它订阅的出口阻断告警，并让失败退避重试保持定向作用域",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C185-C187-egress-dashboard-ux",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C185.json"
+    },
+    "C186": {
+      "title": "出口阻断快照的订阅窗口倒计时改为「已拦截」，不再误显示「刷新中」",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C185-C187-egress-dashboard-ux",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C186.json"
+    },
+    "C187": {
+      "title": "修复默认纵向布局下订阅卡「去设置」无响应：补齐路由并在跳转设置中心前关闭仪表盘",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C185-C187-egress-dashboard-ux",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C187.json"
+    },
+    "C188": {
+      "title": "订阅卡出口问题卡改为单行紧凑布局，标题改用「出口 IP 泄漏」并放大上下留白",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C188-egress-issue-card-single-line",
+      "topic": "NetworkEgressCountry",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C188.json"
+    },
+    "C189": {
+      "title": "Agent 用量新增 dsh (DeepSeek Harness) 会话统计：zstd JSONL 适配器、双端品牌配色与首次启动探测对齐",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C189-dsh-agent-usage",
+      "topic": "TokenUsage",
+      "version": "0.16.1",
+      "file": "docs/archive/0.17.0/change/C189.json"
     }
   },
   "tasks": {
@@ -348,6 +447,48 @@
       "depends_on": [],
       "file": "docs/archive/0.17.0/task/T27.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T27-official-website"
+    },
+    "T22": {
+      "title": "首次启动欢迎与三步引导向导（方案 A · macOS / Windows 双端同构）",
+      "status": "completed",
+      "branch": "feat/T22-first-launch-welcome-wizard",
+      "topic": "FirstLaunchWelcome",
+      "milestone": "M11-首次启动欢迎与引导向导",
+      "depends_on": [],
+      "file": "docs/archive/0.17.0/task/T22.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T22-first-launch-welcome-wizard"
+    },
+    "T23": {
+      "title": "订阅额度网络出口国家校验（双卡分立 + Cloudflare Trace 两级检测 + 仪表盘紧凑问题卡）",
+      "status": "completed",
+      "branch": "main",
+      "topic": "NetworkEgressCountry",
+      "milestone": "M12-网络出口国家校验",
+      "depends_on": [],
+      "file": "docs/archive/0.17.0/task/T23.json",
+      "branch_note": "按用户要求在主分支 main 上执行，不新建分支"
+    },
+    "T24": {
+      "title": "状态预警微气泡通用化与分流路由（弹窗支持点击跳设置，额度超限跳看板）",
+      "status": "completed",
+      "branch": "main",
+      "topic": "NetworkEgressCountry",
+      "milestone": "M12-网络出口国家校验",
+      "depends_on": [
+        "T23"
+      ],
+      "file": "docs/archive/0.17.0/task/T24.json",
+      "branch_note": "按用户要求在主分支 main 上执行，不新建分支"
+    },
+    "T25": {
+      "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置",
+      "status": "completed",
+      "branch": "feat/T25-launch-at-login",
+      "topic": "LaunchAtLogin",
+      "milestone": "M13-开机自启动",
+      "depends_on": [],
+      "file": "docs/archive/0.17.0/task/T25.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T25-launch-at-login"
     }
   },
   "topics": {
@@ -372,7 +513,12 @@
         "C222",
         "C223",
         "C224",
-        "C225"
+        "C225",
+        "C179",
+        "C180",
+        "C181",
+        "C182",
+        "C183"
       ]
     },
     "PricingEngine": {
@@ -400,12 +546,36 @@
         "C197",
         "C198",
         "C199",
-        "C201"
+        "C201",
+        "C189"
       ]
     },
     "OfficialWebsite": {
       "tasks": [
         "T27"
+      ]
+    },
+    "NetworkEgressCountry": {
+      "changes": [
+        "C184",
+        "C185",
+        "C186",
+        "C187",
+        "C188"
+      ],
+      "tasks": [
+        "T23",
+        "T24"
+      ]
+    },
+    "FirstLaunchWelcome": {
+      "tasks": [
+        "T22"
+      ]
+    },
+    "LaunchAtLogin": {
+      "tasks": [
+        "T25"
       ]
     }
   }

@@ -22,7 +22,7 @@
 
 | 项目版本或阶段 | 归档路径 | 归档日期 | 范围说明 |
 |---|---|---|---|
-| v0.17.0 | `docs/archive/0.17.0/` | 2026-11-06 | C190–C225（36 张 closed：采集口径与台账健壮性修复 C190–C201、热力图/订阅卡与预警配置 C202–C209、面板交互与主题视觉 C210–C225）+ T26（1 张 completed：用量历史聚合台账）+ T27（1 张 completed：官方网站落地主仓与 Pages 发布）；T01–T04 未声明 version，留在活跃区 |
+| v0.17.0 | `docs/archive/0.17.0/` | 2026-11-06 | C190–C225（36 张 closed：采集口径与台账健壮性修复 C190–C201、热力图/订阅卡与预警配置 C202–C209、面板交互与主题视觉 C210–C225）+ T26（1 张 completed：用量历史聚合台账）+ T27（1 张 completed：官方网站落地主仓与 Pages 发布）；T01–T04 未声明 version，留在活跃区；2026-11-06 补入 C179–C189（11 张 closed）+ T22–T25（4 张 completed）：0.16.1 未单独发布，其 `sync.commit` 均已包含于 v0.17.0 tag，卡内 `version` 原样保留 |
 | v0.16.0 | `docs/archive/0.16.0/` | 2026-11-02 | C157–C178（22 张 closed：订阅卡空态与动效、额度预警气泡、刷新间隔失焦保存、时序趋势图、品牌徽章、打包资源清单、额度轮询门禁、GPT-6.1 价卡、CI 依赖，以及 C171–C178 对抗审查修复批次）+ T19–T21（3 张 completed：模型价格表远端同步与维护页）；T01–T04 未声明 version，留在活跃区 |
 | v0.15.0 | `docs/archive/0.15.0/` | 2026-10-29 | C130–C140、C143–C156（25 张 closed：技术债批次、设置窗口侧栏比例/配置项行序/按钮样式/凭据存储面板、面板高度失步修复）+ T18（1 张 completed：订阅多账号命名）；T01–T04 未声明 version，留在活跃区 |
 | v0.14.0 | `docs/archive/0.14.0/` | 2026-10-27 | C104–C129（26 张 closed）+ T12–T17（6 张 completed：T12 Windows 托盘预览，T13–T17 M8-跨端共享策略核心）；原 0.13.1 批次统一并入 0.14.0；T01–T04 未声明 version，留在活跃区 |
@@ -108,6 +108,7 @@ git tag -a <version> -m "Release <version>"
 | 版本纪律 | 根 `VERSION`、`website/VERSION`、`apps/win/src-tauri/tauri.conf.json`、README 徽章与正文版本行统一为 `0.17.0`；`check-site-sync` 在 0.17.0 下通过 |
 | 卡片内容 | 迁移仅改物理位置与 `sync.tag`，验收、`gate` 与状态未改写 |
 | 断链核验 | 归档前 `design/03` 指向本批卡的 9 处链接改为归档路径，归档后 0 断链 |
+| 补入（2026-11-06） | 0.16.1 滞留卡 C179–C189（closed）与 T22–T25（completed）：`scripts/adflow-verify --release 0.17.0` 以 `RELEASE_STRANDED` 报出 15 张、`--release 0.16.1` Exit 0；逐卡核实 `sync.commit` 均为 v0.17.0 tag 的祖先且 CHANGELOG 已记于 `[0.17.0]`，故并入本批次。卡片仅迁移位置并为 C 卡填写 `sync.tag = v0.17.0`，验收、`gate`、状态与 `version` 未改写；登记与主题归属写入本批次总账 `index.json`；仓内无 Markdown 链接指向原路径 |
 
 **归档实况（2026-11-02，随 v0.16.0 tag 封箱）**
 

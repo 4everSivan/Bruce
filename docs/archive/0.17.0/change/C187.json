@@ -87,7 +87,7 @@
     "design_pinned": true,
     "changelog": true,
     "commit": "a1cbd2e",
-    "tag": ""
+    "tag": "v0.17.0"
   },
   "gate": {
     "tool": "adflow-verify",

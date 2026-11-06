@@ -153,22 +153,15 @@
     },
     "FirstLaunchWelcome": {
       "design_doc": "docs/devel/design/10-首次启动欢迎与引导向导.md",
-      "tasks": [
-        "T22"
-      ]
+      "tasks": []
     },
     "NetworkEgressCountry": {
       "design_doc": "docs/devel/design/11-网络出口国家校验.md",
-      "tasks": [
-        "T23",
-        "T24"
-      ]
+      "tasks": []
     },
     "LaunchAtLogin": {
       "design_doc": "docs/devel/design/12-开机自启动.md",
-      "tasks": [
-        "T25"
-      ]
+      "tasks": []
     },
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
@@ -229,48 +222,6 @@
       ],
       "file": "docs/devel/task/T04.json",
       "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
-    },
-    "T22": {
-      "title": "首次启动欢迎与三步引导向导（方案 A · macOS / Windows 双端同构）",
-      "status": "completed",
-      "branch": "feat/T22-first-launch-welcome-wizard",
-      "topic": "FirstLaunchWelcome",
-      "milestone": "M11-首次启动欢迎与引导向导",
-      "depends_on": [],
-      "file": "docs/devel/task/T22.json",
-      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T22-first-launch-welcome-wizard"
-    },
-    "T23": {
-      "title": "订阅额度网络出口国家校验（双卡分立 + Cloudflare Trace 两级检测 + 仪表盘紧凑问题卡）",
-      "status": "completed",
-      "branch": "main",
-      "topic": "NetworkEgressCountry",
-      "milestone": "M12-网络出口国家校验",
-      "depends_on": [],
-      "file": "docs/devel/task/T23.json",
-      "branch_note": "按用户要求在主分支 main 上执行，不新建分支"
-    },
-    "T24": {
-      "title": "状态预警微气泡通用化与分流路由（弹窗支持点击跳设置，额度超限跳看板）",
-      "status": "completed",
-      "branch": "main",
-      "topic": "NetworkEgressCountry",
-      "milestone": "M12-网络出口国家校验",
-      "depends_on": [
-        "T23"
-      ],
-      "file": "docs/devel/task/T24.json",
-      "branch_note": "按用户要求在主分支 main 上执行，不新建分支"
-    },
-    "T25": {
-      "title": "macOS 原生开机自启动服务与设置中心/欢迎向导双入口配置",
-      "status": "completed",
-      "branch": "feat/T25-launch-at-login",
-      "topic": "LaunchAtLogin",
-      "milestone": "M13-开机自启动",
-      "depends_on": [],
-      "file": "docs/devel/task/T25.json",
-      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T25-launch-at-login"
     }
   }
 }
