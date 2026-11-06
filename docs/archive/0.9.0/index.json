@@ -1,0 +1,64 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.9.0",
+  "archived_at": "2026-10-23",
+  "cards": {
+    "C001": {
+      "title": "重构项目工程目录为 Monorepo apps/core 分层架构并清理碎片与缓存",
+      "type": "Refactor",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.9.0+",
+      "file": "docs/archive/0.9.0/change/C001.json"
+    },
+    "C002": {
+      "title": "隔离归档历史冗余文档目录至 _adflow_backup 并修订现行设计基线索引",
+      "type": "Refactor",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.9.0+",
+      "file": "docs/archive/0.9.0/change/C002.json"
+    },
+    "C003": {
+      "title": "统一 Agent 用量卡片收起动画与过渡行为，消除图表挤压与折线图跳动",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.9.0+",
+      "file": "docs/archive/0.9.0/change/C003.json"
+    },
+    "C004": {
+      "title": "精简菜单栏状态指示图标：保留外环与配额比例弧，移除圆环中心微点",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.9.0+",
+      "file": "docs/archive/0.9.0/change/C004.json"
+    }
+  },
+  "tasks": {},
+  "topics": {
+    "SystemOverview": {
+      "changes": [
+        "C001",
+        "C002"
+      ]
+    },
+    "MenuBarIndicator": {
+      "changes": [
+        "C003",
+        "C004"
+      ]
+    },
+    "PricingEngine": {
+      "changes": [
+        "C001",
+        "C002"
+      ]
+    }
+  }
+}

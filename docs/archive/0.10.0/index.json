@@ -1,0 +1,64 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.10.0",
+  "archived_at": "2026-10-23",
+  "cards": {
+    "C005": {
+      "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/archive/0.10.0/change/C005.json"
+    },
+    "C006": {
+      "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/archive/0.10.0/change/C006.json"
+    },
+    "C007": {
+      "title": "修正面板隐藏暂停采集偏离 mac 常驻语义：告警不随面板关闭停摆，并加设置加载区间钳制",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/archive/0.10.0/change/C007.json"
+    },
+    "C008": {
+      "title": "修复 Windows 壳采集窗口 14 天偏离 mac 182 天半年口径：热力图/月度统计失真并补齐 home 上下文",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/archive/0.10.0/change/C008.json"
+    },
+    "C009": {
+      "title": "修复 Windows 仪表盘、设置与运行生命周期偏离 mac 基线",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "codex/fix-c009-windows-parity",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/archive/0.10.0/change/C009.json"
+    }
+  },
+  "tasks": {},
+  "topics": {
+    "WindowsCompat": {
+      "changes": [
+        "C005",
+        "C006",
+        "C007",
+        "C008",
+        "C009"
+      ]
+    }
+  }
+}

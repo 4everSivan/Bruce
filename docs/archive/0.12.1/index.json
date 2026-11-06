@@ -1,0 +1,64 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.12.1",
+  "archived_at": "2026-10-23",
+  "cards": {
+    "C058": {
+      "title": "Claude 订阅统计脱节 cc-switch 现行口径：未解析 limits[] 模型专属周限额 (weekly_scoped)，缺 Fable 窗口且坏窗口会炸整卡",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.1",
+      "file": "docs/archive/0.12.1/change/C058.json"
+    },
+    "C059": {
+      "title": "Claude 订阅配置完整 cc-switch 化 (mac)：Keychain 登录态不可见不可导、设置区仍是 Phase 4 旧表单、无 RefreshPending 语义",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.1",
+      "file": "docs/archive/0.12.1/change/C059.json"
+    },
+    "C060": {
+      "title": "Claude 登录态自动读取仍偏离 cc-switch：Keychain 尝试被外部来源白名单/状态门禁挡住、导入规范化丢字段、设置区无显式读取入口",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.1",
+      "file": "docs/archive/0.12.1/change/C060.json"
+    },
+    "C061": {
+      "title": "订阅刷新断网仍反复退避重试：全部订阅接入网络可达性闸门，离线不发起自动刷新、不重试，联网后单次补偿",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.1",
+      "file": "docs/archive/0.12.1/change/C061.json"
+    },
+    "C062": {
+      "title": "Claude 订阅频繁 429：额度查询与本地刷新解耦（30 分钟额度周期 + 429 冷却/保留旧值 + 启动激活去重）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.1",
+      "file": "docs/archive/0.12.1/change/C062.json"
+    }
+  },
+  "tasks": {},
+  "topics": {
+    "SubscriptionQuota": {
+      "changes": [
+        "C058",
+        "C059",
+        "C060",
+        "C061",
+        "C062"
+      ]
+    }
+  }
+}

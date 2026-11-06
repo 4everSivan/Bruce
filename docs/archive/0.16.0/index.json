@@ -1,0 +1,312 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.16.0",
+  "archived_at": "2026-11-02",
+  "cards": {
+    "C157": {
+      "title": "订阅卡空状态（未配置/无数据）与 Tab 回退修正（mac + Windows）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C157-subscription-empty-state",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C157.json"
+    },
+    "C158": {
+      "title": "额度条与余额数字的更新动效（mac spring/numericText + Windows 渲染后补间）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C158-dashboard-update-motion",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C158.json"
+    },
+    "C159": {
+      "title": "订阅额度预警由系统通知升级为双端图标锚定气泡（280pt 方案 A + 50/80/95 三档阶梯 + R3-A 电子表读秒）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C159-quota-alert-bubble",
+      "topic": "MenuBarIndicator",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C159.json"
+    },
+    "C160": {
+      "title": "刷新间隔收敛为 3 / 6 分钟预设 + 自定义 1–1440 分钟，并移除验证期「测试气泡」入口（双端）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C160-refresh-interval-presets",
+      "topic": "PricingEngine",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C160.json"
+    },
+    "C161": {
+      "title": "Agent / 模型身份从色点升级为品牌徽章：真彩 App 图标优先、逐档降级，设置中心与仪表盘双端同构",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C161-agent-brand-badges",
+      "topic": "AgentBrandIdentity",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C161.json"
+    },
+    "C162": {
+      "title": "模型用量「时序趋势」图 X 轴采用方案 A1（3h 严格等步长）+ S2 峰值胶囊高亮（🔥 前缀 + 跟随主导曲线色，双端同构）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C162-timeline-xaxis-ticks",
+      "topic": "AgentAnalytics",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C162.json"
+    },
+    "C163": {
+      "title": "模型用量时序趋势图支持滚轮/双指缩放、水平平移与刻度自适应细化（LOD 1h/2h/3h，双端同构）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C163-timeline-zoom-pan",
+      "topic": "AgentAnalytics",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C163.json"
+    },
+    "C164": {
+      "title": "订阅额度自动查询增加 3 分钟最短间隔：刷新间隔低于 3 分钟时额度接口不再逐分钟轮询（双端共享 collector-policy）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C164-quota-poll-floor",
+      "topic": "SubscriptionQuota",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C164.json"
+    },
+    "C165": {
+      "title": "时序趋势图缩放 / 平移 / 刻度缺陷修复：不劫持页面滚动、捏合不叠乘、Windows 拖拽连续且不卡死、刻度锚定整点、峰值两侧让位、费用维度按费用峰值（修正 C162 / C163，双端对拍）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C165-timeline-gesture-ticks",
+      "topic": "AgentAnalytics",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C165.json"
+    },
+    "C166": {
+      "title": "Agent / 模型品牌徽章补漏：品牌表双端对拍（Windows 补登记 Cline）、Windows 位图加载失败降级、AgentBrandBadge 编译告警（修正 C161）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C166-agent-badge-followups",
+      "topic": "AgentBrandIdentity",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C166.json"
+    },
+    "C167": {
+      "title": "mac 自定义刷新间隔焦点离开即提交：此前只认回车，点别处后输入值未保存却仍显示（修正 C160）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C167-refresh-interval-blur-commit",
+      "topic": "PricingEngine",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C167.json"
+    },
+    "C168": {
+      "title": "打包静态资源单一清单：Preview / Release 共用 BRUCE_BUNDLE_FILES 投放与校验，补 Release 漏装的 Nothing 主题字体",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C168-bundle-resources-shared",
+      "topic": "SystemOverview",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C168.json"
+    },
+    "C169": {
+      "title": "更新 GPT-6.1 系列模型价格（Sol / Terra / Luna 官方单价与缓存读取对齐）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C169-gpt-6.1-pricing",
+      "topic": "PricingEngine",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C169.json"
+    },
+    "C170": {
+      "title": "CI 验证作业补齐 ripgrep 依赖：门禁脚本缺 rg 时明确报错，杜绝「未调用」误判与 fixture 扫描空转",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C170-ci-tool-deps",
+      "topic": "SystemOverview",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C170.json"
+    },
+    "C171": {
+      "title": "额度刷新换得的轮换令牌被丢弃：刷新成功后查询失败、本轮采集失败或超时、claude-cli 首次写回形状不可读，新令牌均无法再用",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C171-rotated-token-loss",
+      "topic": "SubscriptionQuota",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C171.json"
+    },
+    "C172": {
+      "title": "Windows 宿主丢弃 Claude 轮换令牌：刷新换得的新 access / refresh token 被判 CREDENTIAL_UPDATE_UNSUPPORTED 未写回",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C172-win-claude-rotation",
+      "topic": "WindowsCompat",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C172.json"
+    },
+    "C173": {
+      "title": "删除订阅凭据后旧值仍残留在 credentials.json.bak：备份恒为上一版（含刚删除的密钥），损坏现场副本无清理",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C173-credential-bak-residue",
+      "topic": "SubscriptionQuota",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C173.json"
+    },
+    "C174": {
+      "title": "mac 软件更新未校验发布签名：只比对同源清单的 SHA256 后 xattr -cr 剥离隔离属性，清单与包可被一并替换",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C174-mac-update-signature",
+      "topic": "SoftwareUpdate",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C174.json"
+    },
+    "C175": {
+      "title": "本机会话缓存逐条目强制落盘：冷扫描约四分之三耗时在 F_FULLFSYNC，版本升级后全量重建易逼近 90 s 预算",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C175-cache-fsync",
+      "topic": "TokenUsage",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C175.json"
+    },
+    "C176": {
+      "title": "采集进程内存峰值与缓存体积随观测数线性膨胀：40 万条观测热扫描峰值 251 MB、缓存 102 MB",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C176-collector-memory",
+      "topic": "TokenUsage",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C176.json"
+    },
+    "C177": {
+      "title": "Bridge 超时契约失真：localScanSeconds 只校验不执行，mac 与 Windows 预算各异且无记录",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C177-timeout-contract",
+      "topic": "TokenUsage",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C177.json"
+    },
+    "C178": {
+      "title": "Windows 前端 webview 缺少 CSP 与命令按窗口授权：withGlobalTauri 开启且全部应用命令对所有窗口开放",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C178-win-csp",
+      "topic": "WindowsCompat",
+      "version": "0.16.0",
+      "file": "docs/archive/0.16.0/change/C178.json"
+    }
+  },
+  "tasks": {
+    "T19": {
+      "title": "价格表抽离至 config/pricing-catalog.json 与 Collector 动态价卡契约",
+      "status": "completed",
+      "branch": "feat/T19-pricing-catalog-extract-contract",
+      "topic": "PricingCatalogSync",
+      "milestone": "M10-模型价格表远端同步",
+      "depends_on": [],
+      "file": "docs/archive/0.16.0/task/T19.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T19-pricing-catalog-extract-contract"
+    },
+    "T20": {
+      "title": "macOS 模型价格表远端同步服务与维护页卡片",
+      "status": "completed",
+      "branch": "feat/T20-macos-pricing-catalog-sync",
+      "topic": "PricingCatalogSync",
+      "milestone": "M10-模型价格表远端同步",
+      "depends_on": [
+        "T19"
+      ],
+      "file": "docs/archive/0.16.0/task/T20.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T20-macos-pricing-catalog-sync"
+    },
+    "T21": {
+      "title": "Windows 模型价格表远端同步与维护页卡片",
+      "status": "completed",
+      "branch": "feat/T21-windows-pricing-catalog-sync",
+      "topic": "PricingCatalogSync",
+      "milestone": "M10-模型价格表远端同步",
+      "depends_on": [
+        "T19"
+      ],
+      "file": "docs/archive/0.16.0/task/T21.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T21-windows-pricing-catalog-sync"
+    }
+  },
+  "topics": {
+    "SystemOverview": {
+      "changes": [
+        "C168",
+        "C170"
+      ]
+    },
+    "MenuBarIndicator": {
+      "changes": [
+        "C157",
+        "C158",
+        "C159"
+      ]
+    },
+    "PricingEngine": {
+      "changes": [
+        "C160",
+        "C167",
+        "C169"
+      ]
+    },
+    "WindowsCompat": {
+      "changes": [
+        "C157",
+        "C158",
+        "C159",
+        "C160",
+        "C172",
+        "C178"
+      ]
+    },
+    "SubscriptionQuota": {
+      "changes": [
+        "C164",
+        "C171",
+        "C173"
+      ]
+    },
+    "TokenUsage": {
+      "changes": [
+        "C175",
+        "C176",
+        "C177"
+      ]
+    },
+    "AgentAnalytics": {
+      "changes": [
+        "C162",
+        "C163",
+        "C165"
+      ]
+    },
+    "SoftwareUpdate": {
+      "changes": [
+        "C174"
+      ]
+    },
+    "AgentBrandIdentity": {
+      "changes": [
+        "C161",
+        "C166"
+      ]
+    },
+    "PricingCatalogSync": {
+      "tasks": [
+        "T19",
+        "T20",
+        "T21"
+      ]
+    }
+  }
+}

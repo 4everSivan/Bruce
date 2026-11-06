@@ -63,7 +63,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261106-11",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -71,22 +71,22 @@
         "item": "瘦身等价复核",
         "true_if": "瘦身前后 adflow-verify 普通校验退出码与发现清单一致（仅 LEDGER_ARCHIVED_ENTRIES 消失），--next-id change/task 结果不变，全部主题 --topic 结果逐字段一致，且无新增 ARCHIVE_UNREGISTERED",
         "false_if": "任一发现、退出码、下一卡号或主题历史前后不一致，或出现 ARCHIVE_UNREGISTERED",
-        "evidence": "",
-        "result": null
+        "evidence": "node local/C226/snapshot.mjs before|after 取证、node local/C226/compare.mjs 比对（local/C226/equivalence.json，15/15 ✓）：普通校验与 --mode init 瘦身前后均 Exit 0，发现清单仅 LEDGER_ARCHIVED_ENTRIES ×2 消失、无新增发现；--next-id change C227 / task T28 前后一致；全部 15 个主题 --topic 输出逐字段一致；无 ARCHIVE_UNREGISTERED。",
+        "result": true
       },
       {
         "item": "登记无损与卡片零改动",
         "true_if": "瘦身前现行总账的卡号集合等于瘦身后现行总账与 13 个批次总账的并集且无重复，每条登记逐字段一致，主题归属对总数一致，任何 Cxxx/Txx 卡片文件无改动",
         "false_if": "任一卡号丢失或重复、登记字段改变、主题归属丢失，或有卡片文件被改动",
-        "evidence": "",
-        "result": null
+        "evidence": "change 224 条登记 = 现行 12（C179–C189、C226）+ 13 个批次总账 212，task 27 条 = 现行 8（T01–T04、T22–T25）+ 批次 19，逐条字段完全一致且无重复；主题归属对 change 232 / task 26 前后一致（含跨主题多归属）；现行 topics 与 design_doc 全部保留；git status 显示 docs 下无任何 Cxxx/Txx 卡片文件改动。现行 change 总账 86,801 B / 2,319 行 → 6,500 B / 185 行，task 19,166 B / 506 行 → 10,006 B / 276 行（milestones 原样）；13 个批次总账合计约 120 KB，一次写入后只读。",
+        "result": true
       },
       {
         "item": "门禁覆盖与全量验证",
         "true_if": "node scripts/check-change-ledger.mjs 通过且覆盖批次总账（注入孤儿编号、跨总账重号、主题未登记的反例均失败），adflow-verify --mode init Exit 0，zsh scripts/verify-local.sh Exit 0",
         "false_if": "任一门禁失败，或任一反例未被门禁拦截",
-        "evidence": "",
-        "result": null
+        "evidence": "node scripts/check-change-ledger.mjs → 变更总账一致 (cards=12 topics=13 批次总账=13 归档 cards=212)；node local/C226/gate-negative.mjs 在临时副本注入 5 类损坏（批次 topics 孤儿编号、跨总账重号、主题未在现行 topics 登记、卡未列入本批次主题、file 失效）均 exit 1 拦截；scripts/adflow-verify --mode init Exit 0（0 发现）；zsh scripts/verify-local.sh Exit 0（107s，含扩展后的变更总账门禁）。",
+        "result": true
       }
     ]
   },

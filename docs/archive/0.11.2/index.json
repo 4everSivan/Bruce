@@ -1,0 +1,24 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.11.2",
+  "archived_at": "2026-10-23",
+  "cards": {
+    "C014": {
+      "title": "修复 Windows 仪表盘遗留内嵌 Tab 并彻底对齐 macOS 仪表盘与 Fluent 侧栏设置窗口",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "fix/C014-win-dashboard-settings-parity",
+      "topic": "WindowsCompat",
+      "version": "0.11.2",
+      "file": "docs/archive/0.11.2/change/C014.json"
+    }
+  },
+  "tasks": {},
+  "topics": {
+    "WindowsCompat": {
+      "changes": [
+        "C014"
+      ]
+    }
+  }
+}
