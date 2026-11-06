@@ -1,7 +1,7 @@
 # AGENTS.md
 
-<!-- @ad-flow: initialized v1.6.0 -->
-> Bruce 研发与 AI 协作规范 (ad-flow v1.6.0)。文档导航与机器总账位于 [docs/README.md](docs/README.md) 与 [docs/index.json](docs/index.json)。首次初始化后，日常研发遵循本项目内规范；仅在希望同步新版治理规范时再次调用 `$ad-flow` 或 `/ad-flow`。
+<!-- @ad-flow: initialized v1.7.0 -->
+> Bruce 研发与 AI 协作规范 (ad-flow v1.7.0)。文档导航与机器总账位于 [docs/README.md](docs/README.md) 与 [docs/index.json](docs/index.json)。首次初始化后，日常研发遵循本项目内规范；仅在希望同步新版治理规范时再次调用 `$ad-flow` 或 `/ad-flow`。
 
 ## 执行入口与规则作用范围
 
@@ -40,7 +40,7 @@
 ### 1. 功能设计入口 (新功能 / 大需求 / 阶段里程碑)
 1. **方向登记**：在 `docs/devel/todo/` 登记方向级灵感与事项；
 2. **设计基线定稿**：在 `docs/devel/design/` 撰写或修订对应微设计文档（`01~99-[功能名].md`，结构参考 `design/README.md`），批准后状态置为 `baseline`（现行基线），草稿保持 `draft`，并标明概念主题锚标 `<!-- @topic: TopicName -->`；未实现能力由下一步的 T 卡明确记录，不能仅凭设计认定已实现；完成设计并建卡登记后从 `todo/` 移除对应项；
-3. **任务拆解**：从 `docs/standards/task-template.json` 复制并在 `docs/devel/task/` 建立 `Txx.json` 任务卡（卡号按 `task/index.json` 最大编号递增，填写真实发布批次 `version`，声明执行分支 `branch`、DAG 依赖 `depends_on`、`precheck` 预检及 `callback` 钩子），并在 `task/index.json` 总账登记；
+3. **任务拆解**：从 `docs/standards/task-template.json` 复制并在 `docs/devel/task/` 建立 `Txx.json` 任务卡（卡号以 `scripts/adflow-verify --next-id task` 取得，覆盖全部归档批次及本机可见的分支与工作树，填写真实发布批次 `version`，声明执行分支 `branch`、DAG 依赖 `depends_on`、`precheck` 预检及 `callback` 钩子），并在 `task/index.json` 总账登记；
 4. **预检与回调执行流**：
    * **预检 (Precheck)**：开工前在授权范围内执行 `precheck.command`，检测该任务是否已在代码库中实现（若已完成则记录 `is_completed: true` 并跳过重复开发）；
    * **前置回调 (`callback.before`)**：按序执行卡内声明的前置脚本或环境准备命令；
@@ -49,7 +49,7 @@
 5. **核验与代签**：跑通测试并逐项验收，以节点回执（见二.3）在会话中请求人工确认；人工明确确认后，AI 代为在卡内 `acceptance` 写入人类原话 `user_quote` 与 `signoff`，再回填 `sync.commit`、预检 `completed` 并在 `task/index.json` 中闭环，阶段发版时执行归档。
 
 ### 2. Bug 修复入口 (缺陷 / 功能回调 / 参数微调 / 重构)
-1. **登记并移出 (零沉淀)**：在 `docs/devel/todo/now.md` 登记；一旦在 `docs/devel/change/` 从 `docs/standards/change-template.json` 复制新建 `Cxxx.json` 变更卡（卡号按 `change/index.json` 最大编号递增，填写真实发布批次 `version`）并在 `change/index.json` 登记后，**必须立即从 todo 表格中物理删除该项**（落地即删除）；
+1. **登记并移出 (零沉淀)**：在 `docs/devel/todo/now.md` 登记；一旦在 `docs/devel/change/` 从 `docs/standards/change-template.json` 复制新建 `Cxxx.json` 变更卡（卡号以 `scripts/adflow-verify --next-id change` 取得，覆盖全部归档批次及本机可见的分支与工作树，填写真实发布批次 `version`）并在 `change/index.json` 登记后，**必须立即从 todo 表格中物理删除该项**（落地即删除）；
 2. **条件契约与预检钩子**：卡内定义前后逻辑对比、`true_if / false_if` 判据，声明 `branch`、`precheck`（缺陷复现嗅探）与 `callback`（`before / after` 脚本）；
 3. **预检与执行流**：
    * **预检 (Precheck)**：执行 `precheck.command`，确认缺陷现象或验证是否已被前序提交意外修复；
@@ -124,7 +124,8 @@ scripts/adflow-verify --card <卡号> --receipt
 1. **多分支隔离与卡片标签**：
    * 为适配多分支并行开发，新特性开发必须创建专属特性分支（如 `feat/<Txx-简述>`），Bug 修复与微调必须创建专属修复分支（如 `fix/<Cxxx-简述>`）；
    * 对应任务卡（`Txx.json`）与变更卡（`Cxxx.json`）中**必须显式登记执行分支（`"branch": "..."`）**，以便人机随时对齐当前研发上下文；
-   * 最大编号递增与分支名均不提供原子预占；并行分支仍可能撞号。合入时结合 `ID_DUPLICATE` 和 Git 冲突检查处理已汇合记录，冲突先修正卡号及引用，不得覆盖另一事项的卡片；
+   * `--next-id` 取号会合并本机其他工作树与本地/远端跟踪分支中已出现的卡号，但看不到他人尚未推送的分支，分支名也不保证唯一，均不提供原子预占；
+   * **合入主干前先校验合并结果**：`git merge --no-commit --no-ff <分支>` 后运行 `scripts/adflow-verify`，Exit 0 且没有 `LEDGER_DUPLICATE_KEY` / `ARCHIVE_ID_COLLISION` 时再提交合并；否则 `git merge --abort`，修正卡号及引用后重来。rebase 流程在 rebase 后的分支上做同一检查。归档卡与新卡路径不同，撞号可能无 Git 冲突地合入，校验器是唯一信号；处理冲突时不得保留同一卡号的两份登记，不得覆盖另一事项的卡片；
    * 严禁在未经建卡或分支未对齐的情况下向主干随意提交混合代码。
 2. **语义化提交格式**：采用 Conventional Commits 规范，格式为 `<type>(<scope>): <subject>`：
    * `feat`: 新增业务功能
@@ -147,7 +148,7 @@ scripts/adflow-verify --card <卡号> --receipt
    - 文档引用的架构图、流程图、原型图，以及 App 界面截图和文档视觉素材统一存放在 `docs/assets/`；项目运行时加载的资源遵循实际构建契约，不因文档治理迁移其加载路径；
    - 文件命名必须遵循语义化连字符命名（如 `arch-overview.svg`、`ui-login.png`），严禁在项目根目录、源码目录或各级文档子目录中随意散落图片文件；
    - 图片入库前必须经过合理压缩，优先采用矢量图（`.svg`），单张原则上不超过 2MB。
-5. **发版归档 SOP（受发版与归档门禁约束）**：发版封箱前先核定本批次范围，运行 `scripts/adflow-verify --release <版本>` 确认 C 卡均 `closed`、T 卡均 `completed` 且 Exit 0，再按 [归档操作](docs/archive/README.md) 移动卡片、刷新 `index.json` 物理路径映射、定稿 CHANGELOG（`[Unreleased]` 改为版本标题与发布日期，卡片链接改指归档路径）并复核校验，提交后在该提交上打出对应 Git Tag（如 `git tag -a v0.1.0 -m "Release v0.1.0"`）。**严禁将非终态卡移入归档区**；历史批次账实不符的修复按归档 README「历史批次账实修复」流程由人工定口径处置。
+5. **发版归档 SOP（受发版与归档门禁约束）**：发版封箱前先核定本批次范围，运行 `scripts/adflow-verify --release <版本>` 确认 C 卡均 `closed`、T 卡均 `completed` 且 Exit 0，再按 [归档操作](docs/archive/README.md) 移动卡片、写入本批次总账 `docs/archive/<版本>/index.json` 并从现行总账移出本批次登记、定稿 CHANGELOG（`[Unreleased]` 改为版本标题与发布日期，卡片链接改指归档路径）并复核校验，提交后在该提交上打出对应 Git Tag（如 `git tag -a v0.1.0 -m "Release v0.1.0"`）。**严禁将非终态卡移入归档区**；历史批次账实不符的修复按归档 README「历史批次账实修复」流程由人工定口径处置。
 
 ---
 
@@ -214,5 +215,5 @@ scripts/adflow-verify --card <卡号> --receipt
 ### 6. 仓库内禁 Python 资产及其唯一例外
 
 - **红线**：仓库内严禁引入任何 Python 资产（`*.py` / `*.pyc` / `pyproject.toml`），由 `scripts/verify-local.sh` 的 `find` 门禁强制拦截并 `exit 1`；AI 工具脚本一律用 Node 或项目原生语言编写。
-- **唯一例外（2026-10-22 登记，2026-11-02 随 v1.6.0 升级复核）**：`scripts/adflow_verify.py` —— ad-flow 治理规范要求逐字安装的校验器，其 `--mode init` 会校验自身版本与 `docs/index.json` 的 `adflow_version` 一致。该文件属**治理工具链**而非 Python 构建/工具资产，故在门禁中按精确路径白名单放行；除此路径外任何 Python 资产仍一律禁止。**改动该文件即视为改动治理基线**，须同步 `docs/index.json.adflow_version` 与 `AGENTS.md` 顶部标记。
-- **本地判据补丁（2026-10-22 维护者决定，2026-11-02 随 v1.6.0 升级重施）**：`scripts/adflow_verify.py` 内含一处以 `LOCAL PATCH` 标注的本地覆盖 —— 上游（1.5.0/1.6.0）的 `user_quote` 套话判据把中文确认词（`确认`/`已确认`/`同意`/`已通过`）列入套话集合，且长度门槛为 6 字；本项目维护者的确认天然简短（会话存档实测原话为「确认」「确认，推送」「签收」），逐字记录也一律误报，且该门槛无法在不伪造原话的前提下满足。现调整为：套话集合仅保留不含实质确认的通用英文填充词，长度门槛降为 2（空值仍由 `EVIDENCE_QUOTE` 硬拦）。**重新安装或升级校验器副本后必须重新施加本补丁**；`VERSION` 常量保持 `1.6.0` 不变（与 `docs/index.json.adflow_version` 一致）。
+- **唯一例外（2026-10-22 登记，2026-11-02 随 v1.6.0、2026-11-06 随 v1.7.0 升级复核）**：`scripts/adflow_verify.py` —— ad-flow 治理规范要求逐字安装的校验器，其 `--mode init` 会校验自身版本与 `docs/index.json` 的 `adflow_version` 一致。该文件属**治理工具链**而非 Python 构建/工具资产，故在门禁中按精确路径白名单放行；除此路径外任何 Python 资产仍一律禁止。**改动该文件即视为改动治理基线**，须同步 `docs/index.json.adflow_version` 与 `AGENTS.md` 顶部标记。
+- **本地判据补丁（2026-10-22 维护者决定，2026-11-02 随 v1.6.0、2026-11-06 随 v1.7.0 升级重施）**：`scripts/adflow_verify.py` 内含一处以 `LOCAL PATCH` 标注的本地覆盖 —— 上游（1.5.0–1.7.0）的 `user_quote` 套话判据把中文确认词（`确认`/`已确认`/`同意`/`已通过`）列入套话集合，且长度门槛为 6 字；本项目维护者的确认天然简短（会话存档实测原话为「确认」「确认，推送」「签收」），逐字记录也一律误报，且该门槛无法在不伪造原话的前提下满足。现调整为：套话集合仅保留不含实质确认的通用英文填充词，长度门槛降为 2（空值仍由 `EVIDENCE_QUOTE` 硬拦）。**重新安装或升级校验器副本后必须重新施加本补丁**；`VERSION` 常量保持 `1.7.0` 不变（与 `docs/index.json.adflow_version` 一致）。

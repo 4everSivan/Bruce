@@ -1,6 +1,6 @@
 # 文档中心 (docs/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-03 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-06 ｜ **status**: active
 
 ## 1. 简介
 
@@ -19,7 +19,7 @@
 | 暂存尚未建卡的事项 | [待办池](devel/todo/README.md) | `now.md` / `future.md` | 简短问题或方向记录 |
 | 准备、启动或排查环境 | [操作指南](guide/README.md) / [环境治理](devel/env/README.md) | [指南索引](guide/index.json) | 可复现操作及实际结果 |
 | 存放文档图片与图稿 | [资源库](assets/README.md) | 文档中的相对链接 | 可复用的静态资源 |
-| 发布归档或追溯历史 | [归档库](archive/README.md) | C/T 现行总账中的归档路径 | 本批次卡片及总账快照 |
+| 发布归档或追溯历史 | [归档库](archive/README.md) | 归档批次总账 `archive/<version>/index.json` | 本批次卡片及批次总账 |
 | 了解系统机制（面向使用者） | [Bruce 知识库](official/README.md) | 独立流水线的 manifest 与卡片产物 | 源码级静态说明文档 |
 
 机器入口为 [index.json](index.json)。其中 `standards` 登记 [代码编写规范](standards/coding.json)、[变更卡模板](standards/change-template.json) 和 [任务卡模板](standards/task-template.json)。`standards/` 无需另建 README 或索引；真实设计、卡片和研发记录仍在 `devel/`。
@@ -90,7 +90,7 @@ C/T 转入收口状态时，按对应卡池 README 运行 `--card ... --to ... -
 
 ## 附：项目既有约定（升级保留）
 
-> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.6.0。
+> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.7.0。
 
 ### 目录结构与职责
 

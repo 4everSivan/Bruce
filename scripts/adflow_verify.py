@@ -8,6 +8,7 @@
   * 初始化 DoD（--mode init）：核对基础文件、已登记代码规范、禁占位、版本标签、校验器副本版本。
   * 发版预检（--release VERSION）：本批次活跃卡必须已到达本轨终态，只读。
   * 节点回执（--card ID --receipt）：状态同步后复核，并按固定格式输出该卡回执，只读。
+  * 路由查询（--next-id TRACK / --topic NAME）：跨现行总账与归档批次总账输出下一卡号或主题历史，只读。
 
 设计原则：
   * 仅用标准库，栈无关——可在任意目标工程里运行。
@@ -18,6 +19,8 @@
   * 归档区只允许终态卡：非 closed/completed 即 ARCHIVE_NON_TERMINAL 确定性违规
     （v1.1.0 起既有归档前置的机器覆盖；历史冻结卡由人工口径处置，见归档 README）。
     总账路由与归档目录物理扫描双覆盖，未登记的归档卡同样受检。
+  * 分层总账：现行总账只需登记活跃卡，归档卡路由冻结在 docs/archive/<批次>/index.json
+    （adflow-archive-batch-v1），与现行总账适用同一组路由硬检查；旧布局仍有效。
   * 里程碑标记与成员任务状态矛盾仅旁路观察（MILESTONE_STATUS_DRIFT）。
   * gate 证伪：声称 exit_code==0 的终态卡，会被独立复算，矛盾即 GATE_CLAIM_CONTRADICTION。
 
@@ -25,6 +28,7 @@
   adflow-verify [target_dir=.] [--json] [--warn-only] [--mode init]
                 [--card ID [--to verified|closed|completed]] [--record]
                 [--release VERSION] [--card ID --receipt]
+                [--next-id change|task] [--topic NAME]
 """
 import argparse
 import json
@@ -34,7 +38,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 # ---- 常量 ----
 TOPIC_RE = re.compile(r"<!--\s*@topic:\s*([A-Za-z0-9_]+)\s*-->")
@@ -46,7 +50,7 @@ RUNID_RE = re.compile(r"^(\d+|local-[\d\-]+)$")              # 纯数字或 loca
 # Cxxx / Txx；用 ASCII 边界而非 \b，中文紧邻卡号（如“修复C001问题”）也能识别。
 CARD_ID_RE = re.compile(r"(?<![A-Za-z0-9_])([CT]\d{2,3})(?![A-Za-z0-9_])")
 SRC_PATH_RE = re.compile(r"(?:^|/)(src|app|lib|cmd|internal)/[\w/.\-]+\.\w+")
-# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.6.0 内容) ──────────────
+# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.7.0 内容) ──────────────
 # 上游: CANNED_QUOTES 含中文确认词 (已确认/确认/已通过/同意), 且 user_quote 长度门槛为 6。
 # 本项目维护者的确认天然简短 —— 会话存档实测原话为「确认」「确认，推送」「签收」,
 # 逐字记录也一律被误报为套话, 且该门槛无法在不伪造原话的前提下满足。
@@ -65,6 +69,14 @@ TRACK_TERMINAL = {"change": "closed", "task": "completed"}
 TRANSITIONS = {"change": {"verified", "closed"}, "task": {"completed"}}
 STATUSES = {"change": {"draft", "pending", "in_progress", "rejected", "verified", "closed"},
             "task": {"pending", "in_progress", "completed"}}
+# 归档批次总账：冻结的归档卡路由随批次存放，现行总账只承载可变的活跃卡。
+BATCH_SCHEMA = "adflow-archive-batch-v1"
+BATCH_KEYS = {"change": "cards", "task": "tasks"}
+TOPIC_KEYS = {"change": "changes", "task": "tasks"}
+ID_PREFIX = {"change": "C", "task": "T"}
+ID_WIDTH = {"change": 3, "task": 2}
+TOPIC_NAME_RE = re.compile(r"[A-Za-z0-9_]+")
+HERE = "当前工作区"  # --next-id 出处标签：目标目录本身
 
 # Templates and coding standards use root-index registration; legacy layouts stay valid.
 BASE_FILES = [
@@ -114,6 +126,10 @@ class Ctx:
         self._git = None            # None=未知, True/False
         self.proposed_id = None
         self.record_ids = set()
+        self.paths = {}             # 卡号 -> 首个登记路径，供主题查询定位
+        self.ledger_ids = set()     # 现行总账与批次总账出现过的全部卡号（含失效登记）
+        self.legacy_routes = {"change": set(), "task": set()}  # 现行总账中仍登记的归档卡
+        self.dup_keys = {}          # 文件 -> 重名键计数；json 默认只保留最后一个，合并冲突时会静默吞掉登记
 
     # ---- 基础读取 ----
     def read_text(self, rel):
@@ -128,8 +144,19 @@ class Ctx:
             if not p.exists():
                 self._json_cache[rel] = None
             else:
+                dups = {}
+
+                def keep_last(pairs):
+                    seen = set()
+                    for key, _ in pairs:
+                        if key in seen:
+                            dups[key] = dups.get(key, 1) + 1
+                        seen.add(key)
+                    return dict(pairs)
+
                 try:
-                    data = json.loads(p.read_text(encoding="utf-8"))
+                    data = json.loads(p.read_text(encoding="utf-8"), object_pairs_hook=keep_last)
+                    self.dup_keys[rel] = dups
                     if not isinstance(data, dict):
                         self.hard("JSON_TYPE", None, rel, "JSON 顶层必须为对象")
                         data = None
@@ -156,6 +183,17 @@ class Ctx:
             except Exception:  # noqa: BLE001
                 self._git = False
         return self._git
+
+    def git_out(self, *args):
+        """只读 git 查询的标准输出；无 git 或命令失败返回 None。"""
+        if not self.git_ok():
+            return None
+        try:
+            r = subprocess.run(["git"] + list(args), cwd=self.root, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, universal_newlines=True)
+        except Exception:  # noqa: BLE001
+            return None
+        return r.stdout if r.returncode == 0 else None
 
     def is_ancestor(self, commit):
         """commit 是否为 HEAD 祖先。True/False；无 git 返回 None。"""
@@ -212,6 +250,17 @@ def mentions(text, cid):
 def norm_version(v):
     """发布批次比较忽略前导 v：`v0.1.0` 与 `0.1.0` 视为同一批次。"""
     return v.strip().lstrip("vV") if isinstance(v, str) else ""
+
+
+def version_key(v):
+    """取版本号开头的数字段用于比较先后（`0.12.0+` 视为 0.12.0）；末尾补零不影响比较，无法解析返回 None。"""
+    m = re.match(r"\d+(?:\.\d+)*", norm_version(v))
+    if not m:
+        return None
+    key = [int(p) for p in m.group(0).split(".")]
+    while len(key) > 1 and key[-1] == 0:
+        key.pop()
+    return tuple(key)
 
 
 def check_card_shape(ctx, card, cid, rel, full=True):
@@ -560,10 +609,14 @@ def check_archived_terminal(ctx, card, cid, rel, track):
 
 
 def scan_archive(ctx, routed):
-    """物理扫描归档区：未经总账路由的卡同样只允许终态，未登记本身仅旁路提示。"""
+    """物理扫描归档区：未经总账路由的卡同样只允许终态，未登记本身仅旁路提示。
+
+    未登记卡与其他卡撞号时旁路提示（不进入依赖解析：依赖仍须经总账可达）。
+    """
     base = ctx.root / "docs" / "archive"
     if not base.is_dir():
         return
+    unrouted = {}  # 卡号 -> 首个未登记归档路径
     for jf in sorted(base.rglob("*.json")):
         rel = str(jf.relative_to(ctx.root))
         track = jf.parent.name
@@ -585,8 +638,65 @@ def scan_archive(ctx, routed):
             continue
         check_status(ctx, card, cid, rel, track)
         check_archived_terminal(ctx, card, cid, rel, track)
+        if CARD_ID_RE.fullmatch(cid):
+            first = ctx.paths.get(cid) if cid in ctx.all_ids else unrouted.get(cid)
+            if first:
+                ctx.advisory("ARCHIVE_ID_COLLISION", cid, rel,
+                             "未登记的归档卡与 %s 撞号；依赖与主题判定无法区分两张卡，先修正卡号及引用" % first)
+            else:
+                unrouted[cid] = rel
         ctx.advisory("ARCHIVE_UNREGISTERED", cid, rel,
-                     "归档卡未经现行总账路由（缺登记或 file 未指向此处），依赖与主题查询不可达")
+                     "归档卡未经现行总账或批次总账路由（缺登记或 file 未指向此处），依赖与主题查询不可达")
+
+
+def ledger_cards(idx, track):
+    # 任务模板使用 tasks；兼容已经使用 cards 的项目，不迁移其索引结构。
+    return idx.get("tasks", idx.get("cards", {})) if track == "task" else idx.get("cards", {})
+
+
+def batch_manifests(ctx):
+    """归档批次总账：docs/archive/<批次>/index.json 且声明 adflow-archive-batch-v1。
+
+    未声明该 schema 的批次根文件（如项目自建快照）不按清单解析，也不新增检查。
+    """
+    base = ctx.root / "docs" / "archive"
+    if not base.is_dir():
+        return []
+    found = []
+    for p in sorted(base.glob("*/index.json")):
+        rel = str(p.relative_to(ctx.root))
+        if BATCH_SCHEMA not in (ctx.read_text(rel) or ""):
+            continue
+        data = ctx.load_json(rel)
+        if isinstance(data, dict) and data.get("$schema") == BATCH_SCHEMA:
+            found.append(rel)
+    return found
+
+
+def check_duplicate_keys(ctx, idx_rel):
+    """同一登记表内卡号重名：解析时只保留最后一条，另一张卡的登记被静默吞掉；先旁路观察，不新增阻断。"""
+    for key, n in sorted((ctx.dup_keys.get(idx_rel) or {}).items()):
+        if CARD_ID_RE.fullmatch(key):
+            ctx.advisory("LEDGER_DUPLICATE_KEY", key, idx_rel,
+                         "总账中卡号 %s 登记了 %d 次（JSON 重名键只保留最后一条，常见于合并冲突保留两侧登记）；"
+                         "先修正卡号及引用" % (key, n))
+
+
+def check_ledger_layout(ctx):
+    """现行总账仍登记或引用归档卡时旁路提示瘦身；旧布局继续有效，不追溯阻断。"""
+    archived = {cid for cid, rel in ctx.paths.items() if Path(rel).parts[:2] == ("docs", "archive")}
+    for track in ("change", "task"):
+        idx_rel = "docs/devel/%s/index.json" % track
+        topics = (ctx.load_json(idx_rel) or {}).get("topics")
+        refs = sum(1 for t in (topics.values() if isinstance(topics, dict) else [])
+                   if isinstance(t, dict)
+                   for key in TOPIC_KEYS.values() if isinstance(t.get(key), list)
+                   for cid in t[key] if isinstance(cid, str) and cid in archived)
+        entries = len(ctx.legacy_routes[track])
+        if entries or refs:
+            ctx.advisory("LEDGER_ARCHIVED_ENTRIES", None, idx_rel,
+                         "现行总账仍登记 %d 张归档卡、%d 处主题引用归档卡；可按归档 README「现行总账瘦身」"
+                         "迁入 docs/archive/<批次>/index.json（旧布局仍有效）" % (entries, refs))
 
 
 # ---- 采集活跃卡 ----
@@ -605,8 +715,61 @@ def collect_cards(ctx):
             ctx.hard("ID_DUPLICATE", cid, rel, "卡号重复；不可用后一张卡覆盖前一张卡进行依赖判定")
         else:
             ctx.all_ids[cid] = card
+            ctx.paths[cid] = rel
         if active:
             cards.append((rel, card, cid))
+
+    def route(idx_rel, track, cid, ent, batch=None):
+        """核对一条登记并解析所指卡片；batch 为批次总账所在目录，其登记只能指向本批次轨道。"""
+        ctx.ledger_ids.add(cid)
+        if not isinstance(ent, dict):
+            ctx.hard("JSON_TYPE", cid, idx_rel, "卡片登记条目必须为对象")
+            return
+        f = ent.get("file")
+        if not isinstance(f, str) or not f.strip():
+            ctx.hard("INDEX_FILE_MISSING", cid, idx_rel, "索引缺少非空 file 路径")
+            return
+        try:
+            rel = str((ctx.root / f).resolve().relative_to(ctx.root))
+        except ValueError:
+            ctx.hard("INDEX_FILE_INVALID", cid, idx_rel, "索引 file 必须位于目标项目内: %s" % f)
+            return
+        archived = Path(rel).parts[:2] == ("docs", "archive")
+        if archived:
+            routed.add(rel)
+            if batch is None:
+                ctx.legacy_routes[track].add(cid)
+        if batch is not None:
+            if Path(rel).parent != Path(batch, track):
+                ctx.hard("INDEX_FILE_INVALID", cid, idx_rel,
+                         "批次总账 file 必须指向本批次 %s/%s/: %s" % (batch, track, f))
+                return
+        elif ((archived and (len(Path(rel).parts) < 5 or Path(rel).parent.name != track)) or
+                (not archived and str(Path(rel).parent) != "docs/devel/" + track)):
+            ctx.hard("INDEX_FILE_INVALID", cid, idx_rel,
+                     "索引 file 必须指向所属活跃卡池或归档轨道: %s" % f)
+            return
+        if not ctx.exists(rel):
+            ctx.hard("INDEX_FILE_DEAD", cid, idx_rel, "索引 file 路径失效: %s" % f)
+            return
+        card = ctx.load_json(rel)
+        if card is None:
+            return
+        actual_id = card.get("id", Path(rel).stem)
+        if not check_card_shape(ctx, card, actual_id, rel, full=not archived):
+            return
+        check_status(ctx, card, actual_id, rel, track)
+        if archived:
+            check_archived_terminal(ctx, card, actual_id, rel, track)
+        if actual_id != cid:
+            ctx.hard("INDEX_ID_DRIFT", cid, idx_rel,
+                     "索引 %s 指向了身份为 %s 的卡片: %s" % (cid, actual_id, f))
+            return
+        if ent.get("status") != card.get("status"):
+            ctx.hard("INDEX_STATUS_DRIFT", cid, idx_rel,
+                     "索引状态 %r 与卡片 %r 不一致" % (ent.get("status"), card.get("status")))
+        ctx.entries.setdefault(cid, ent)
+        register(rel, card, cid, active=not archived)
 
     for sub in ("docs/devel/change", "docs/devel/task"):
         track = "task" if sub.endswith("/task") else "change"
@@ -614,54 +777,14 @@ def collect_cards(ctx):
         if not ctx.exists(idx_rel):
             ctx.hard("INDEX_MISSING", None, idx_rel, "缺少卡片总账索引")
         idx = ctx.load_json(idx_rel) or {}
-        # 任务模板使用 tasks；兼容已经使用 cards 的项目，不迁移其索引结构。
-        reg = idx.get("tasks", idx.get("cards", {})) if track == "task" else idx.get("cards", {})
+        check_duplicate_keys(ctx, idx_rel)
+        reg = ledger_cards(idx, track)
         if not isinstance(reg, dict):
             ctx.hard("JSON_TYPE", None, idx_rel, "卡片登记表必须为对象")
             reg = {}
         # 总账是路由真理源：先核对每个登记，再解析归档卡供依赖判定。
         for cid, ent in reg.items():
-            if not isinstance(ent, dict):
-                ctx.hard("JSON_TYPE", cid, idx_rel, "卡片登记条目必须为对象")
-                continue
-            f = ent.get("file")
-            if not isinstance(f, str) or not f.strip():
-                ctx.hard("INDEX_FILE_MISSING", cid, idx_rel, "索引缺少非空 file 路径")
-                continue
-            try:
-                rel = str((ctx.root / f).resolve().relative_to(ctx.root))
-            except ValueError:
-                ctx.hard("INDEX_FILE_INVALID", cid, idx_rel, "索引 file 必须位于目标项目内: %s" % f)
-                continue
-            archived = Path(rel).parts[:2] == ("docs", "archive")
-            if archived:
-                routed.add(rel)
-            if ((archived and (len(Path(rel).parts) < 5 or Path(rel).parent.name != track)) or
-                    (not archived and str(Path(rel).parent) != sub)):
-                ctx.hard("INDEX_FILE_INVALID", cid, idx_rel,
-                         "索引 file 必须指向所属活跃卡池或归档轨道: %s" % f)
-                continue
-            if not ctx.exists(rel):
-                ctx.hard("INDEX_FILE_DEAD", cid, idx_rel, "索引 file 路径失效: %s" % f)
-                continue
-            card = ctx.load_json(rel)
-            if card is None:
-                continue
-            actual_id = card.get("id", Path(rel).stem)
-            if not check_card_shape(ctx, card, actual_id, rel, full=not archived):
-                continue
-            check_status(ctx, card, actual_id, rel, track)
-            if archived:
-                check_archived_terminal(ctx, card, actual_id, rel, track)
-            if actual_id != cid:
-                ctx.hard("INDEX_ID_DRIFT", cid, idx_rel,
-                         "索引 %s 指向了身份为 %s 的卡片: %s" % (cid, actual_id, f))
-                continue
-            if ent.get("status") != card.get("status"):
-                ctx.hard("INDEX_STATUS_DRIFT", cid, idx_rel,
-                         "索引状态 %r 与卡片 %r 不一致" % (ent.get("status"), card.get("status")))
-            ctx.entries.setdefault(cid, ent)
-            register(rel, card, cid, active=not archived)
+            route(idx_rel, track, cid, ent)
 
         # 保留物理扫描，发现未登记、错误路由，以及与归档卡撞号的活跃卡。
         d = ctx.root / sub
@@ -693,7 +816,28 @@ def collect_cards(ctx):
                 if isinstance(f, str) and (ctx.root / f).resolve() != jf.resolve():
                     ctx.hard("INDEX_FILE_DRIFT", cid, idx_rel,
                              "索引 file 未指向该活跃卡: %s（实际 %s）" % (f, rel))
+
+    # 归档批次总账与现行总账适用同一组路由检查，冻结路由由此参与撞号与依赖判定。
+    for idx_rel in batch_manifests(ctx):
+        data = ctx.load_json(idx_rel) or {}
+        check_duplicate_keys(ctx, idx_rel)
+        batch = str(Path(idx_rel).parent)
+        for track, key in BATCH_KEYS.items():
+            reg = data.get(key, {})
+            if not isinstance(reg, dict):
+                ctx.hard("JSON_TYPE", None, idx_rel, "%s 必须为对象" % key)
+                continue
+            for cid, ent in reg.items():
+                route(idx_rel, track, cid, ent, batch)
+        topics = data.get("topics", {})
+        if not isinstance(topics, dict) or not all(
+                isinstance(t, dict) and all(isinstance(t.get(k, []), list) and
+                                            all(isinstance(i, str) for i in t.get(k, []))
+                                            for k in TOPIC_KEYS.values())
+                for t in topics.values()):
+            ctx.hard("JSON_TYPE", None, idx_rel, "topics 必须为 {主题: {changes: [卡号], tasks: [卡号]}}")
     scan_archive(ctx, routed)
+    check_ledger_layout(ctx)
     return cards
 
 
@@ -789,14 +933,20 @@ def check_release(ctx, cards, release):
     """本批次活跃卡必须已到达本轨终态；归档区由 ARCHIVE_NON_TERMINAL 覆盖。
 
     卡片 version 缺失时回退读取总账登记；仍无法归属的未收口卡交人工划定批次。
+    批次早于本次发布、却仍留在活跃区的终态卡不会被按版本精确匹配的归档带走，旁路提示人工处置。
     """
     target = norm_version(release)
     for rel, card, cid in cards:
         track = "change" if "/devel/change/" in rel else "task"
-        if card.get("status") == TRACK_TERMINAL[track]:
-            continue
         version = norm_version(card.get("version")) or norm_version(
             (ctx.entries.get(cid) or {}).get("version"))
+        if card.get("status") == TRACK_TERMINAL[track]:
+            key, target_key = version_key(version), version_key(target)
+            if version != target and key and target_key and key < target_key:
+                ctx.advisory("RELEASE_STRANDED", cid, rel,
+                             "终态卡批次 %s 早于本次发布 %s，仍滞留活跃区；确认是否随本批次归档"
+                             "（卡片 version 保持原值）" % (version, release))
+            continue
         if not version:
             ctx.soft("RELEASE_SCOPE_UNKNOWN", cid, rel,
                      "未收口卡未填写 version，无法判定是否属于 %s 批次（先补批次或显式延后）" % release)
@@ -810,6 +960,96 @@ def check_release(ctx, cards, release):
     if not in_batch:
         ctx.advisory("RELEASE_BATCH_EMPTY", None, "-",
                      "未找到 version 为 %s 的卡片；核对版本拼写或确认本次发布确无卡片" % release)
+
+
+# ---- 路由查询 ----
+def card_stems(root, track):
+    return {p.stem for pattern in ("docs/devel/%s/*.json" % track, "docs/archive/**/%s/*.json" % track)
+            for p in root.glob(pattern)}
+
+
+def next_id(ctx, track):
+    """下一卡号：当前工作区、本机其他工作树与本地/远端跟踪分支中已出现的最大卡号 +1。
+
+    只看得到本机可见的分支与工作树，仍不是原子预占；漏网的撞号由合入前校验的 ID_DUPLICATE 兜底。
+    """
+    prefix = ID_PREFIX[track]
+    found = {}  # 卡号 -> 出现位置
+
+    def note(ids, where):
+        for i in ids:
+            if CARD_ID_RE.fullmatch(i) and i[0] == prefix and where not in found.setdefault(i, []):
+                found[i].append(where)
+
+    note(set(ctx.all_ids) | ctx.ledger_ids | card_stems(ctx.root, track), HERE)
+    scanned = {"branches": 0, "worktrees": 0}
+    tips = {}
+    for line in (ctx.git_out("for-each-ref", "--format=%(objectname)\t%(refname)",
+                             "refs/heads", "refs/remotes") or "").splitlines():
+        obj, _, ref = line.partition("\t")
+        tips.setdefault(obj, ref)
+    for obj, ref in sorted(tips.items(), key=lambda t: t[1]):
+        out = ctx.git_out("ls-tree", "-r", "-z", "--name-only", obj, "--",
+                          "docs/devel/" + track, "docs/archive")
+        if out is not None:
+            scanned["branches"] += 1
+            note({Path(f).stem for f in out.split("\0") if f and Path(f).parent.name == track}, ref)
+    # 其他工作树中尚未提交的卡片同样占号；项目可位于仓库子目录。
+    sub = (ctx.git_out("rev-parse", "--show-prefix") or "").strip()
+    for line in (ctx.git_out("worktree", "list", "--porcelain") or "").splitlines():
+        if line.startswith("worktree "):
+            root = (Path(line[len("worktree "):]) / sub).resolve()
+            if root != ctx.root and root.is_dir():
+                scanned["worktrees"] += 1
+                note(card_stems(root, track), "工作树 %s" % root)
+
+    top = max(found, key=lambda i: int(i[1:]), default=None)
+    width = max([ID_WIDTH[track]] + [len(i) - 1 for i in found])
+    nid = "%s%0*d" % (prefix, width, int(top[1:]) + 1 if top else 1)
+    return nid, {"max": top, "found_in": found.get(top, []), "scanned": scanned}
+
+
+def topic_history(ctx, cards, name):
+    """主题历史：现行总账与批次总账的主题登记、登记条目 topic 及活跃卡 design_topic 的并集。"""
+    members, docs = set(), []
+
+    def take(topics, regs):
+        entry = topics.get(name) if isinstance(topics, dict) else None
+        if isinstance(entry, dict):
+            doc = entry.get("design_doc")
+            if isinstance(doc, str) and doc and doc not in docs:
+                docs.append(doc)
+            for key in TOPIC_KEYS.values():
+                if isinstance(entry.get(key), list):
+                    members.update(i for i in entry[key] if isinstance(i, str))
+        for reg in regs:
+            if isinstance(reg, dict):
+                members.update(cid for cid, ent in reg.items()
+                               if isinstance(ent, dict) and ent.get("topic") == name)
+
+    for track in ("change", "task"):
+        idx = ctx.load_json("docs/devel/%s/index.json" % track) or {}
+        take(idx.get("topics"), [ledger_cards(idx, track)])
+    for rel in batch_manifests(ctx):
+        data = ctx.load_json(rel) or {}
+        take(data.get("topics"), [data.get(key) for key in BATCH_KEYS.values()])
+    members.update(cid for _, card, cid in cards
+                   if (card.get("target") or {}).get("design_topic") == name)
+
+    rows = []
+    for cid in sorted(members, key=lambda i: (i[:1], int(i[1:]) if i[1:].isdigit() else 0, i)):
+        card, ent = ctx.all_ids.get(cid) or {}, ctx.entries.get(cid) or {}
+        rows.append({"id": cid, "status": card.get("status") or ent.get("status"),
+                     "version": card.get("version") or ent.get("version"),
+                     "title": card.get("title") or ent.get("title"), "file": ctx.paths.get(cid)})
+    if not rows and not docs:
+        ctx.advisory("TOPIC_EMPTY", None, "-", "未找到主题 %s 的登记或卡片；核对主题拼写" % name)
+    lines = ["### 主题 %s · %s" % (name, " / ".join(docs) or "—"), "",
+             "| 卡号 | 状态 | 批次 | 标题 | 路径 |", "|---|---|---|---|---|"]
+    lines += ["| %s | %s | %s | %s | %s |" % (cell(r["id"]), cell(r["status"] or "缺失"),
+                                             cell(r["version"]), cell(r["title"]), cell(r["file"]))
+              for r in rows] or ["| （无卡片） | — | — | — | — |"]
+    return {"name": name, "design_docs": docs, "cards": rows}, "\n".join(lines)
 
 
 # ---- 初始化 DoD ----
@@ -1001,7 +1241,8 @@ def summarize(ctx):
     return errs, warns, code
 
 
-def report(ctx, mode, as_json, warn_only, release=None, receipt=None):
+def report(ctx, mode, as_json, warn_only, release=None, payload=None):
+    """payload=(JSON 字段, 文本, 提示)：回执与路由查询在文本模式只输出文本本身，便于原样转交或取用。"""
     errs, warns, code = summarize(ctx)
     if warn_only:
         for f in ctx.findings:
@@ -1017,12 +1258,16 @@ def report(ctx, mode, as_json, warn_only, release=None, receipt=None):
                "findings": ctx.findings}
         if release:
             out["release"] = release
-        if receipt:
-            out["receipt"] = receipt
+        if payload:
+            out.update(payload[0])
         print(json.dumps(out, ensure_ascii=False, indent=2))
-    elif receipt:
-        # 文本模式只输出回执本身，便于原样转交；问题明细用 --json 查看。
-        print(receipt)
+    elif payload:
+        # 问题明细用 --json 查看；回执自带复核退出码，查询结果另在 stderr 提示非零复核。
+        print(payload[1])
+        for note in payload[2]:
+            print("adflow-verify: " + note, file=sys.stderr)
+        if code and "receipt" not in payload[0]:
+            print("adflow-verify: 普通复核 Exit %d，问题明细见 --json" % code, file=sys.stderr)
     else:
         print("adflow-verify v%s  mode=%s%s  target=%s"
               % (VERSION, mode, "  release=%s" % release if release else "", ctx.root))
@@ -1049,7 +1294,20 @@ def main(argv=None):
                     help="发版/归档前只读预检：该批次活跃卡须全部 closed/completed")
     ap.add_argument("--receipt", action="store_true",
                     help="状态同步后只读复核，并按固定格式输出 --card 指定卡的节点回执")
+    ap.add_argument("--next-id", choices=["change", "task"],
+                    help="只读查询：跨现行总账与归档批次输出该轨下一个卡号")
+    ap.add_argument("--topic", metavar="NAME",
+                    help="只读查询：列出主题在现行总账与归档批次中的全部卡片")
     args = ap.parse_args(argv)
+    if args.next_id or args.topic is not None:
+        if args.next_id and args.topic is not None:
+            ap.error("--next-id 与 --topic 一次只能查询一项")
+        if (args.card or args.to or args.record or args.receipt or args.warn_only
+                or args.release is not None or args.mode == "init"):
+            ap.error("--next-id/--topic 为只读查询，不可与 --card/--to/--record/--receipt/"
+                     "--release/--warn-only/--mode init 合用")
+        if args.topic is not None and not TOPIC_NAME_RE.fullmatch(args.topic):
+            ap.error("--topic 需要设计锚标中的主题名，如 MarketService")
     if args.to and not args.card:
         ap.error("--to 需要 --card")
     if args.mode == "init" and (args.card or args.to or args.record or args.receipt
@@ -1069,7 +1327,7 @@ def main(argv=None):
             ap.error("--release 为只读批次预检，不可与 --card/--to/--record 合用")
 
     ctx = Ctx(args.target_dir)
-    receipt = None
+    payload = None
     if args.mode == "init":
         run_init(ctx)
     else:
@@ -1096,8 +1354,17 @@ def main(argv=None):
                 rel, card = matches[0]
                 track = "change" if "/devel/change/" in rel else "task"
                 receipt = render_receipt(ctx, card, args.card, rel, track, summarize(ctx)[2])
+                payload = ({"receipt": receipt}, receipt, [])
+        if args.next_id:
+            nid, basis = next_id(ctx, args.next_id)
+            notes = [] if not basis["max"] or HERE in basis["found_in"] else [
+                "最大卡号 %s 位于 %s，不在当前工作区" % (basis["max"], "、".join(basis["found_in"]))]
+            payload = ({"next_id": nid, "next_id_basis": basis}, nid, notes)
+        elif args.topic is not None:
+            data, text = topic_history(ctx, cards, args.topic)
+            payload = ({"topic": data}, text, [])
 
-    code = report(ctx, args.mode, args.json, args.warn_only, args.release, receipt)
+    code = report(ctx, args.mode, args.json, args.warn_only, args.release, payload)
     return code
 
 
