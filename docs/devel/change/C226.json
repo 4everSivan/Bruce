@@ -19,7 +19,7 @@
     "command": "scripts/adflow-verify --json",
     "expected": "Exit 0 且出现 LEDGER_ARCHIVED_ENTRIES（change 与 task 两轨各一条）",
     "is_completed": false,
-    "evidence": "2026-11-06 于 chore/C226-ledger-compaction（基于 5575d24，校验器 1.7.0 + LOCAL PATCH）：Exit 0；LEDGER_ARCHIVED_ENTRIES ×2——change「现行总账仍登记 212 张归档卡、220 处主题引用归档卡」，task「现行总账仍登记 19 张归档卡、18 处主题引用归档卡」；docs/archive/*/index.json 批次根文件不存在 → 未执行，需瘦身。"
+    "evidence": "2026-11-06 于 chore/C226-ledger-compaction（基于 58e8243，校验器 1.7.0 + LOCAL PATCH）：Exit 0；LEDGER_ARCHIVED_ENTRIES ×2——change「现行总账仍登记 212 张归档卡、220 处主题引用归档卡」，task「现行总账仍登记 19 张归档卡、18 处主题引用归档卡」；docs/archive/*/index.json 批次根文件不存在 → 未执行，需瘦身。"
   },
   "callback": {
     "before": [
@@ -94,7 +94,7 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "d70db35",
+    "commit": "3f57937",
     "tag": ""
   },
   "gate": {
