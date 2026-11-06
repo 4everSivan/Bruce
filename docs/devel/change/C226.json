@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C226",
+  "title": "现行总账瘦身：归档登记迁入 13 个归档批次总账，现行总账只留活跃卡（ad-flow 1.7.0 分层总账）",
+  "version": "0.17.1",
+  "type": "Refactor",
+  "status": "verified",
+  "branch": "chore/C226-ledger-compaction",
+  "is_hotfix": false,
+  "target": {
+    "module": "docs/devel + docs/archive + scripts",
+    "component": "C/T 现行总账 / 归档批次总账 docs/archive/<version>/index.json / 变更总账一致性门禁 check-change-ledger.mjs",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "旧版 ad-flow 规范要求现行总账保留全部历史登记，归档只改写 file，现行总账随卡片总数线性膨胀：v0.17.0 封箱后 docs/devel/change/index.json 为 86,410 字节 / 2,309 行，登记 223 张卡中 212 张（95%）已归档，topics 另有 220 处引用指向归档卡；task/index.json 27 张中 19 张已归档。日常建卡、转状态与发版都要改写这份只增不减的文件，会话中智能体只能用 head/jq/node 切片读取。ad-flow 1.7.0 改为分层总账：现行总账只承载活跃卡，归档卡路由随批次冻结在 docs/archive/<version>/index.json；升级不自动迁移，校验器以 LEDGER_ARCHIVED_ENTRIES 旁路提示，需按归档 README「6. 现行总账瘦身」经人工授权一次性执行（本卡）。另：scripts/check-change-ledger.mjs 只校验现行总账，瘦身后若不扩展，212 条归档登记会静默脱离该门禁。",
+  "precheck": {
+    "description": "确认现行总账仍登记归档卡（瘦身尚未执行）",
+    "command": "scripts/adflow-verify --json",
+    "expected": "Exit 0 且出现 LEDGER_ARCHIVED_ENTRIES（change 与 task 两轨各一条）",
+    "is_completed": false,
+    "evidence": "2026-11-06 于 chore/C226-ledger-compaction（基于 5575d24，校验器 1.7.0 + LOCAL PATCH）：Exit 0；LEDGER_ARCHIVED_ENTRIES ×2——change「现行总账仍登记 212 张归档卡、220 处主题引用归档卡」，task「现行总账仍登记 19 张归档卡、18 处主题引用归档卡」；docs/archive/*/index.json 批次根文件不存在 → 未执行，需瘦身。"
+  },
+  "callback": {
+    "before": [
+      "git checkout chore/C226-ledger-compaction",
+      "保存对照基线至 local/C226/before/：scripts/adflow-verify --json、--next-id change|task --json、全部主题 --topic <主题> --json"
+    ],
+    "after": [
+      "node scripts/check-change-ledger.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C226 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "现行总账 docs/devel/change/index.json 与 docs/devel/task/index.json",
+      "before": "登记全部历史卡（change 224 张含本卡、task 27 张），topics 引用全部历史卡号",
+      "after": "只登记活跃卡（change：C179–C189、C226；task：T01–T04、T22–T25），topics 只列活跃卡号并保留全部 design_doc；task 的 milestones 与 phase 原样保留",
+      "impact": "现行总账体积与行数大幅下降；建卡、转状态与归档只改写在研登记；历史查询改经批次总账或 scripts/adflow-verify --topic"
+    },
+    {
+      "scope": "归档批次总账 docs/archive/<version>/index.json（13 个批次新建）",
+      "before": "无批次总账；0.12.0、0.12.2、0.13.0、0.14.0 另有项目自建快照 <version>/change|task/index.json（bruce-archive-*-snapshot）",
+      "after": "每批次一份 adflow-archive-batch-v1：现行登记条目原样迁入（字段与 file 不变），各卡主题归属随迁（含跨主题多归属），release 取目录名，archived_at 取归档 README「归档批次清单」日期",
+      "impact": "归档路由随批次冻结只读；卡片文件零改动；项目自建快照原样保留；校验器对批次总账执行与现行总账相同的路由硬检查"
+    },
+    {
+      "scope": "变更总账一致性门禁 scripts/check-change-ledger.mjs",
+      "before": "只校验现行总账的主题归属下限、孤儿编号与路径存在",
+      "after": "同时校验每个批次总账的 cards：主题须在现行总账 topics 中登记且列入本批次 topics[].changes、批次 topics 无孤儿编号、file 存在；另查同一卡号跨总账重复登记",
+      "impact": "瘦身后归档登记仍受 verify-local 门禁覆盖，不因迁出现行总账而失去校验"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261106-11",
+    "user_quote": "I'm accepting C226.",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "瘦身等价复核",
+        "true_if": "瘦身前后 adflow-verify 普通校验退出码与发现清单一致（仅 LEDGER_ARCHIVED_ENTRIES 消失），--next-id change/task 结果不变，全部主题 --topic 结果逐字段一致，且无新增 ARCHIVE_UNREGISTERED",
+        "false_if": "任一发现、退出码、下一卡号或主题历史前后不一致，或出现 ARCHIVE_UNREGISTERED",
+        "evidence": "node local/C226/snapshot.mjs before|after 取证、node local/C226/compare.mjs 比对（local/C226/equivalence.json，15/15 ✓）：普通校验与 --mode init 瘦身前后均 Exit 0，发现清单仅 LEDGER_ARCHIVED_ENTRIES ×2 消失、无新增发现；--next-id change C227 / task T28 前后一致；全部 15 个主题 --topic 输出逐字段一致；无 ARCHIVE_UNREGISTERED。",
+        "result": true
+      },
+      {
+        "item": "登记无损与卡片零改动",
+        "true_if": "瘦身前现行总账的卡号集合等于瘦身后现行总账与 13 个批次总账的并集且无重复，每条登记逐字段一致，主题归属对总数一致，任何 Cxxx/Txx 卡片文件无改动",
+        "false_if": "任一卡号丢失或重复、登记字段改变、主题归属丢失，或有卡片文件被改动",
+        "evidence": "change 224 条登记 = 现行 12（C179–C189、C226）+ 13 个批次总账 212，task 27 条 = 现行 8（T01–T04、T22–T25）+ 批次 19，逐条字段完全一致且无重复；主题归属对 change 232 / task 26 前后一致（含跨主题多归属）；现行 topics 与 design_doc 全部保留；git status 显示 docs 下无任何 Cxxx/Txx 卡片文件改动。现行 change 总账 86,801 B / 2,319 行 → 6,500 B / 185 行，task 19,166 B / 506 行 → 10,006 B / 276 行（milestones 原样）；13 个批次总账合计约 120 KB，一次写入后只读。",
+        "result": true
+      },
+      {
+        "item": "门禁覆盖与全量验证",
+        "true_if": "node scripts/check-change-ledger.mjs 通过且覆盖批次总账（注入孤儿编号、跨总账重号、主题未登记的反例均失败），adflow-verify --mode init Exit 0，zsh scripts/verify-local.sh Exit 0",
+        "false_if": "任一门禁失败，或任一反例未被门禁拦截",
+        "evidence": "node scripts/check-change-ledger.mjs → 变更总账一致 (cards=12 topics=13 批次总账=13 归档 cards=212)；node local/C226/gate-negative.mjs 在临时副本注入 5 类损坏（批次 topics 孤儿编号、跨总账重号、主题未在现行 topics 登记、卡未列入本批次主题、file 失效）均 exit 1 拦截；scripts/adflow-verify --mode init Exit 0（0 发现）；zsh scripts/verify-local.sh Exit 0（107s，含扩展后的变更总账门禁）。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "I'm accepting C226.",
+    "signed_rejection_count": 0
+  }
+}

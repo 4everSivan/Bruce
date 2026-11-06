@@ -1,0 +1,237 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.12.2",
+  "archived_at": "2026-10-22",
+  "cards": {
+    "C063": {
+      "title": "对齐 Claude Code (cc) 刷新机制：支持 OAuth 凭据自动续期、401 动态重试换取与轮换凭证持久化写回",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C063.json"
+    },
+    "C064": {
+      "title": "电脑锁屏后禁止订阅刷新：新增 ScreenLock 状态监视闸门与设置中心开关按钮",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C064.json"
+    },
+    "C065": {
+      "title": "回调 30 分钟额度硬编码门禁：订阅刷新周期联动用户配置间隔（5/10 分钟生效）并加固锁屏状态探测",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C065.json"
+    },
+    "C066": {
+      "title": "Windows 端 Nothing 点阵主题 1:1 深度对齐：引入官方 Doto/Space 字体、纯黑 OLED 几何底座、实心方块指示灯、订阅阈值图例与工作台适配",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C066.json"
+    },
+    "C067": {
+      "title": "Windows 看板与设置窗口按 mac 源码逐项对齐 (渲染缺陷修复 / B 级 token 格式化 / 设置窗口不套 Nothing)",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C067.json"
+    },
+    "C068": {
+      "title": "Windows 订阅卡 Provider 定向刷新 (对齐 mac ProviderRefreshButton) 并补齐 Cline 凭证注入",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C068.json"
+    },
+    "C069": {
+      "title": "Windows 设置窗口改为即时生效 (对齐 mac SettingsView), 移除全局保存并按采集输入门控全量采集",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C069.json"
+    },
+    "C070": {
+      "title": "Agent 用量工作台改为真实数据 (采集端逐日/逐月/今日逐小时 × 模型计价, 双端去估算并 golden 对拍)",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "AgentAnalytics",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C070.json"
+    },
+    "C071": {
+      "title": "修复锁屏抑制刷新清空订阅服务：抑制运行回填上一份 services，解锁后订阅卡不再消失",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C071.json"
+    },
+    "C072": {
+      "title": "SQLite 增量缓存补聚合格式版本门禁：C070 升级后旧条目强制全量重建，恢复逐日/逐小时模型明细",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C072.json"
+    },
+    "C073": {
+      "title": "价卡表补 deepseek-flash（官方 API 旧命名）条目：消除工作台唯一未定价模型",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.2",
+      "file": "docs/archive/0.12.2/change/C073.json"
+    },
+    "C074": {
+      "title": "修正 docs/devel/README.md §3.1 的 version 规范归属：Markdown 元数据节误载 JSON 卡必填字段，与 81 张卡实测实现不一致",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C074.json"
+    },
+    "C075": {
+      "title": "Windows 侧 Claude 订阅凭据对齐 mac 零配置跟随：自动读取本机 ~/.claude/.credentials.json（含 ~/.claude.json 回退）替代纯粘贴",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C075.json"
+    },
+    "C076": {
+      "title": "Windows 刷新调度接入网络可达性闸门：离线不发起自动刷新、不重试，联网后单次补偿（对齐 mac C061）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C076.json"
+    },
+    "C077": {
+      "title": "Windows 订阅额度查询补 per-provider 门禁：quotaAttemptedAt/rateLimitedAt 记账与 partial 429 冷却（对齐 mac C062，范围依 C065 订正）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C077.json"
+    },
+    "C078": {
+      "title": "修正 Windows 看板顶部状态行直出诊断码与诊断行过宽：机器码改中文文案、正常重启码不入文案、诊断行收紧到需用户动作的严重故障",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C078.json"
+    },
+    "C079": {
+      "title": "看板顶部撤除运行态状态行与诊断行：完全对齐 mac，服务级失败归入订阅卡内部与设置页",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C079.json"
+    },
+    "C080": {
+      "title": "看板顶部彻底零输出：移除状态行元素、定向刷新拒绝提示与致命错误文案，仅保留 HUD 状态牌",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/archive/0.12.2/change/C080.json"
+    }
+  },
+  "tasks": {
+    "T07": {
+      "title": "设置中心 Agent 用量深度分析、Token 统计与多模型跨源归并工作台",
+      "status": "completed",
+      "branch": "main",
+      "topic": "AgentAnalytics",
+      "milestone": "M4-用量分析与Token统计工作台",
+      "depends_on": [],
+      "file": "docs/archive/0.12.2/task/T07.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T07-agent-analytics-workbench"
+    },
+    "T08": {
+      "title": "Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐",
+      "status": "completed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "milestone": "M5-Windows视觉与工作台重塑",
+      "depends_on": [],
+      "file": "docs/archive/0.12.2/task/T08.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T08-windows-visual-workbench-redesign"
+    }
+  },
+  "topics": {
+    "SystemOverview": {
+      "changes": [
+        "C074"
+      ]
+    },
+    "WindowsCompat": {
+      "changes": [
+        "C066",
+        "C067",
+        "C068",
+        "C069",
+        "C075",
+        "C076",
+        "C077",
+        "C078",
+        "C079",
+        "C080"
+      ],
+      "tasks": [
+        "T08"
+      ]
+    },
+    "SubscriptionQuota": {
+      "changes": [
+        "C063",
+        "C064",
+        "C065",
+        "C071"
+      ]
+    },
+    "TokenUsage": {
+      "changes": [
+        "C072",
+        "C073"
+      ]
+    },
+    "AgentAnalytics": {
+      "changes": [
+        "C070"
+      ],
+      "tasks": [
+        "T07"
+      ]
+    }
+  }
+}

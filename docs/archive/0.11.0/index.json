@@ -1,0 +1,48 @@
+{
+  "$schema": "adflow-archive-batch-v1",
+  "release": "0.11.0",
+  "archived_at": "2026-10-23",
+  "cards": {
+    "C010": {
+      "title": "GPT Credits 改为剩余余额展示并在归零后的下一次刷新自动消失",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.0+",
+      "file": "docs/archive/0.11.0/change/C010.json"
+    },
+    "C011": {
+      "title": "Credits 与余额行升格为订阅段头部元数据胶囊并去掉「余额」措辞",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C011-codex-credits-head-chip",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.0+",
+      "file": "docs/archive/0.11.0/change/C011.json"
+    },
+    "C012": {
+      "title": "收敛双端差异: Windows 品牌色板统一 mac 事实源并显式豁免浅色外观",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "fix/C012-win-brand-color-baseline",
+      "topic": "WindowsCompat",
+      "version": "0.11.0+",
+      "file": "docs/archive/0.11.0/change/C012.json"
+    }
+  },
+  "tasks": {},
+  "topics": {
+    "WindowsCompat": {
+      "changes": [
+        "C012"
+      ]
+    },
+    "SubscriptionQuota": {
+      "changes": [
+        "C010",
+        "C011"
+      ]
+    }
+  }
+}
