@@ -1,0 +1,115 @@
+{
+  "$schema": "https://adflow.org/schemas/change-card.v1.json",
+  "id": "C219",
+  "title": "Token 用量热力图首尾列铺满（完整 7 天块，双端）",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C219-C223-dashboard-polish",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "Token 用量卡近半年热力图首尾周列 (UsageHeroCard / heatmap)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 反馈：热力图第一列与最后一列没有铺满。最终口径（经讨论确认）：热力图按连续 7 天块排布、末格为今天，网格恒为完整矩形——首列与末列都铺满，不出现未来格或尾部缺口。本卡负责呈现层：每列 7 格全部渲染，level 0 取空槽色；nil 仅作异常兜底，不再出现透明缺口。",
+  "precheck": {
+    "description": "确认双端热力图仍把窗口外/未来格渲染为透明",
+    "command": "zsh -c 'grep -q \"guard let cell else { continue }\" apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift && grep -q \"\\.heatmap \\.cell\\.empty { background: transparent; }\" apps/win/src/styles.css'",
+    "expected": "退出码 0（mac 跳过 nil 格、Windows empty 透明，需本卡调整）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：mac HeatmapLayerGrid.updateNSView 对 nil 执行 continue，Windows styles.css `.heatmap .cell.empty` / `.theme-nothing .heatmap .cell.empty` 均为透明；实机截图 26/05/08–26/11/05 窗口首列顶部 4 格、末列底部 3 格为空。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C219 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C219 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 热力图渲染",
+      "before": "HeatmapLayerGrid 对 nil 格跳过/透明，首尾列出现缺口",
+      "after": "完整 7 天块模型下每列 7 格均生成 Cell；level 0 取主题空槽色（经典 `Color.primary.opacity(0.07)`，Nothing `surface-raised`）；nil 仅作异常兜底并同样渲染空槽，不跳过",
+      "impact": "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift"
+    },
+    {
+      "scope": "Windows 热力图渲染",
+      "before": "`.heatmap .cell.empty` 透明，首尾列缺口；曾短暂引入 `.future` 透明未来格",
+      "after": "每列 7 格全部渲染；level 0 / empty 沿用 `.cell` 基础空槽底色（经典 `rgba(255,255,255,.07)` / Nothing `#1A1A1A`）；`.future` 类退役",
+      "impact": "apps/win/src/styles.css、apps/win/tests/frontend.test.mjs"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "设计 03 仅说明「窗口外与未来格为 nil」，未规定热力图外缘必须铺满",
+      "after": "设计 03/05 明确热力图恒为完整矩形：首块可早于数据首日补 level 0，末格为今天，无 nil/未来格；Windows 测试断言每列 7 格、末格为今天、footer 起止与网格一致",
+      "impact": "docs/devel/design/03、05；apps/win/tests/frontend.test.mjs"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "热力图窗口外与未来格为 nil，UI 渲染透明，首尾周列呈锯齿缺格",
+      "after": "热力图按连续 7 天块组织，恒为完整矩形：首列与末列均铺满，level 0 用空槽色；不存在未来格与尾部缺口"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-07",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build --build-tests 通过；Windows node --test/check-win-frontend 全绿；verify-local Exit 0",
+        "false_if": "构建/测试失败或既有用例回归",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（末行「Bruce 本地验证全部通过」，日志 local/verify-c219-c223.log）；mac `swift build --package-path apps/macos --build-tests` 通过；Windows `node --test apps/win/tests/frontend.test.mjs` 129/129、`node scripts/check-win-frontend.mjs` 通过。",
+        "result": true
+      },
+      {
+        "item": "首尾列铺满",
+        "true_if": "热力图每列 7 格、首尾列铺满、末格为今天；不出现未来格或缺口",
+        "false_if": "任一列缺格、出现未来格或尾部缺口",
+        "evidence": "2026-11-05 mac 装机截图：首列与末列均满 7 格、末格为今天；Windows 真实 Chromium render-harness 实测 1 个完整块 7 格、末格 2026-07-28、footer 26/07/22–26/07/28，无缺口。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "热力图模型 nil 语义、日期轴、图例、收起态迷你周格与面板高度不受影响",
+        "false_if": "出现日期轴缺失、图例错色或布局抖动",
+        "evidence": "模型层改为完整块（C223）后无 nil；PanelViewModelHarness / Windows viewmodel / parity golden 全部通过；日期轴、图例、迷你周格与面板高度未变。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "mac 装机版目视确认首尾列铺满；Windows 以 render-harness/DOM 用例代替",
+        "false_if": "效果与描述不符或用户驳回",
+        "evidence": "mac 已装机并截图核对首尾列铺满；Windows 以 render-harness DOM/CSS 实测代替真机；待用户最终确认。 2026-11-05 用户确认：「确认」。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "409dac8",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

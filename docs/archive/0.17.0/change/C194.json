@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C194",
+  "title": "修复 Grok 以文件 mtime 重打全部历史时间戳，追加后经台账造成跨日重复计数",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C194-grok-timestamp-estimate",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Grok 适配器",
+    "component": "Grok 观测时间戳来源与追加合并（grok_observation / merge_append）",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现，2026-11-04 复核确认比原卡描述更严重。Grok 适配器把文件 mtime 当作该文件全部观测的时间戳（`jsonl_adapters.rs:591`），追加时 `merge_append` 把已有观测整体重打为新 mtime（`:635-652`），整段历史随最后一次写入漂移到新日期。叠加 T26 台账按日取大（`collector-history/src/lib.rs:247`），漂移变成永久重复计数：实测（Bruce-collector + 临时 home）07-26 写入 300 token，07-27 追加 40 token，台账 07-26=300、07-27=340，7 日视图合计 640（真实 340），月行却为 340，日与月不一致。原卡第二项「标注 chars/4 估算口径」已存在：Grok agent note 为「按消息内容估算, 非精确 token 计数」（`collector-application/src/lib.rs:248`），不再处理；另据代码推断（本机无 Grok，未实测），该估算每条消息只计一次，不含每轮重发的上下文与系统提示，相对实际计费输入系统性偏低，可在 note 中补一句说明。修复只能阻止新的重复，用户台账里已落库的重复值需 C199 的向下修正路径才能清除。",
+  "precheck": {
+    "description": "开工前确认 Grok 追加时仍整体重打 mtime（未被前序提交修复）；顺带确认本机有无真实 Grok 会话",
+    "command": "grep -n \"timestamp_millis: (modified\\|let current_timestamp\\|fn merge_append\" core/collector/crates/collector-local/src/sources/jsonl_adapters.rs; grep -rc '\"timestamp\"' ~/.grok/sessions 2>/dev/null | head -3",
+    "expected": "Grok 观测时间戳来自文件 mtime，追加时全部观测重打为新 mtime；顺带确认真实 Grok 会话是否带消息级时间戳",
+    "is_completed": false,
+    "evidence": "2026-11-04 fix/C192 分支@812df7d 预检命中：jsonl_adapters.rs grok_observation 以 (modified * 1000.0) 作时间戳，merge_append 覆写把已有观测整体重打为 current_timestamp。本机无 ~/.grok（无真实 Grok 会话可核对消息级时间字段）。main 二进制复现（local/c198/c194-behavior.log）：07-26 写入 300、07-27 追加 40 → 07-26=300、07-27=340，7 日合计 640、月行 340"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C194-grok-timestamp-estimate fix/C192-dsh-frame-isolation  # 叠在 C192 上；C199 再叠在本卡上"
+    ],
+    "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C194 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Grok 时间戳来源",
+      "before": "全部观测取文件当前 mtime，追加时整体重打为新 mtime",
+      "after": "来源带消息级时间（timestamp / created_at / createdAt，ISO 或秒 / 毫秒数值）时优先使用；没有时追加段的新观测取当时的 mtime，已有观测保留首次记录的时间（去掉 Grok 的 merge_append 覆写，走引擎默认合并）；缓存重建后整文件退回当前 mtime 的限制写入设计",
+      "impact": "Grok 历史日期稳定，台账不再跨日重复计数"
+    },
+    {
+      "scope": "解析口径版本",
+      "before": "Grok 与其余 JSONL 来源共用 JSONL_CACHE_PARSER_VERSION，口径变化只能整体升版",
+      "after": "Grok 声明独立的 GROK_PARSER_VERSION = 3（其余 JSONL 来源仍为 JSONL_CACHE_PARSER_VERSION = 2），本卡升版只重建 Grok 条目；该版本供 C199 识别口径升级",
+      "impact": "Claude 等其他 JSONL 来源不因 Grok 修复而整体重建"
+    },
+    {
+      "scope": "估算说明",
+      "before": "note 只说明「按消息内容估算」",
+      "after": "note 改为「按消息内容估算 (不含每轮重发的上下文, 偏低), 非精确 token 计数」",
+      "impact": "仅文案"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "Grok 以文件 mtime 作为全部消息的使用时间，追加时整体重打",
+      "after": "Grok 优先取消息级时间；没有时已有观测保留首次记录的时间，只有新追加的观测取当前 mtime；Grok 解析口径独立版本化（design 01 规则 3「Grok 时间戳与独立解析口径 (C194)」，§7.3 已知限制同步）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-11",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：跨日追加后已有观测仍在原日期、新观测在新日期；台账日合计等于真实值且与月一致；全量测试 Exit 0",
+        "false_if": "已有观测仍漂移到新日期，或日与月不一致，或存在测试失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c194-verify-local.log）：Rust 580 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。新增 tests_grok：grok_append_keeps_earlier_observations_on_their_original_day（mtime 07-26 写入 → 07-26=300；追加并改 mtime 为 07-27 → 走追加路径，07-26 仍 300、07-27 只有 40）；grok_prefers_message_timestamps_over_file_mtime（ISO / 秒 / 毫秒三种消息级时间按消息归日、不按 mtime，与参照实现一致）。collector-application grok_cross_day_append_is_not_double_counted_by_the_ledger（真实台账两轮：日 07-26=300、07-27=40，7 日合计 340，modelMonths 2026-07 合计 340，日与月一致）。变异检查：恢复追加时整体重打 → 07-26 变 0；忽略消息级时间 → 07-26 变 0，均失败",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 复现：07-26 写入 300、07-27 追加 40 → 7 日合计 340（07-26=300、07-27=40），月行 340；配合 C199 时已落库的 640 修正为 340",
+        "false_if": "合计仍为 640 或日 / 月不一致",
+        "evidence": "Bruce-collector 真实 BridgeRequest + 临时 home（local/c198/c194-behavior.log）：07-26 写入 300（mtime 07-26 12:00 +08）、07-27 追加 40（mtime 07-27 12:00 +08）—— main：07-26=300、07-27=340，7 日合计 640、月行 340；本分支：07-26=300、07-27=40，7 日合计 340、月行 340。升级路径：先由 main 写出台账（640），再以本分支跑 07-27 → 仍为 640（缓存按 Grok 新版本重建后整文件归到 07-27=340，台账单调保留 07-26=300），已落库的重复值需 C199 修正",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余 JSONL 来源的解析、缓存命中与对拍不变；Grok 多根（sessions / archived_sessions）合并不变",
+        "false_if": "破坏其他来源或缓存语义",
+        "evidence": "其余 JSONL 来源（Claude / CodeBuddy / Kimi / Pi）parser_version 仍为 2，缓存不重建；cached_additive_jsonl_sources_match_cold_and_warm_results 等冷热对拍与全部 JSONL 既有用例通过。Grok 多根（sessions / archived_sessions）合并走 scan_grok_cached 不变，grok_later_root_io_error_preserves_earlier_root_contribution 通过。note 文案只由 collector 输出，双端无断言依赖",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "084fb96",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

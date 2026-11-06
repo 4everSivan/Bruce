@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C198",
+  "title": "修复来源信息级说明一律升格为 agent error 并误用 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C198-source-note-severity",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-application 本机采集汇总",
+    "component": "SourceScan.diagnostic → artifact 诊断码与 agent.status 映射",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-11-04 复核 C190–C196 时发现（原批次未覆盖）：`collect_local_usage` 把所有 `SourceScan.diagnostic` 映射为 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`（`collector-application/src/lib.rs:431-438`），`finalize_local_agent` 只要存在 diagnostic 就置 `status=error`（`:908-913`），macOS 端随即生成 `.agentIssue`（`UsageMapping.swift:17-23`）。而来源层的 diagnostic 既有真实故障（SQLite schema 不兼容），也有信息级说明：Codex「缓存文件格式异常, 已整体重建」（自愈，数字完整）、Codex「会话副本内容冲突」（含 Orca 旧前缀副本这种正常形态，见 C190）。这与设计 01 §6.1「`LOCAL_SOURCE_SCHEMA_INCOMPATIBLE` 仍只用于真实 schema/读取故障」相悖。实测（临时 home）：损坏可再生的 codex-files-v1.json 后，Codex 用量 1,050 完整，但 status=error、note=重建说明；Orca 前缀副本场景每轮都显示 error。C190/C193/C195/C197 计划新增的信息级说明若沿用该通道，会让 Claude 等来源几乎每轮显示 error——本卡是它们的前置。",
+  "precheck": {
+    "description": "开工前确认来源说明仍按故障输出（未被前序提交修复）",
+    "command": "grep -n \"LOCAL_SOURCE_SCHEMA_INCOMPATIBLE\\|agent.status = \\\"error\\\"\" core/collector/crates/collector-application/src/lib.rs | head",
+    "expected": "source.diagnostic 无条件映射为 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE，且任何 diagnostic 都把 agent 置 status=error",
+    "is_completed": false,
+    "evidence": "2026-11-04 main@3595325 预检命中：collector-application/src/lib.rs:435 把 source.diagnostic 无条件映射为 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE，:909 有 diagnostic 即置 agent.status=\"error\"；Codex 两条说明（codex.rs:783 缓存重建、:787 副本冲突）经该通道输出。另核实 apps/win/viewmodel/src/usage.rs:90 仍以 status != \"ok\" 判定 agentIssue。缺陷存在，需修复"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C198-source-note-severity main"
+    ],
+    "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C198 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "来源诊断分级",
+      "before": "SourceScan 只有单一 diagnostic 字段，无严重度；全部按故障输出",
+      "after": "区分故障（schema/读取不可用：保留 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 与 status=error）与说明（缓存重建、副本取舍、截断/解析失败计数等：新信息级诊断码，不改 agent.status、不参与 envelope Partial 判定）",
+      "impact": "Codex 缓存自愈与副本取舍不再显示 error；为 C190/C193/C195/C197 提供可见性通道"
+    },
+    {
+      "scope": "双端消费",
+      "before": "agent.status=error 时 macOS / Windows 生成 agentIssue；Windows viewmodel 以 `status != \"ok\"` 判定（`apps/win/viewmodel/src/usage.rs:90`），T26 的 history 状态也被当作故障，与 macOS（排除 history）及设计 §7.3 不一致",
+      "after": "信息级诊断码不生成 agentIssue（agent.status 保持 ok / history，mac UsageMapping 无需改动）；agent.note 保留来源原说明并在其后附说明（「原 note (说明)」）；Windows 与 macOS 同样排除 history",
+      "impact": "仅 Windows viewmodel 判定调整；现有 Windows / mac 对拍 golden 不含 history 状态，无需重生（PanelParity 5 项对拍照常通过）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "来源任何说明均以 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 输出并把 agent 置 error",
+      "after": "来源说明按严重度分流：SourceScan.diagnostic（故障：SQLite 库不可读 / schema 不兼容 / 查询失败）→ LOCAL_SOURCE_SCHEMA_INCOMPATIBLE + error + Partial；SourceScan.notice（说明：Codex 缓存自愈重建、副本取舍及后续截断 / 解析失败计数）→ 信息级 LOCAL_SOURCE_NOTICE，不改变 agent 状态、不参与 Partial，说明附在 note 后；新增说明严禁再走 diagnostic（design 01 规则 3「来源诊断分级 (C198)」）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-03",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：Codex 缓存损坏重建 → status=ok 且输出信息级诊断码；SQLite schema 不兼容仍为 error + LOCAL_SOURCE_SCHEMA_INCOMPATIBLE；全量测试 Exit 0",
+        "false_if": "自愈说明仍置 error，或真实故障被降级，或存在测试失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/verify-local.log）：Rust 558 passed / 0 failed、fmt 与 clippy 通过、fixture 敏感扫描 0 命中、全部 Swift Harness 与 PanelParity 5 项对拍通过、变更总账一致 cards=197；Windows viewmodel cargo test 62 passed、clippy -D warnings 通过。新增回归：collector-application source_notice_stays_informational_while_source_fault_stays_error（Codex 副本冲突 → status=ok + LOCAL_SOURCE_NOTICE@codex，同轮 OpenCode 库不可解析仍 error + LOCAL_SOURCE_SCHEMA_INCOMPATIBLE，envelope Partial；移除故障后仅剩说明 → Success）、finalize_local_agent_appends_notice_without_changing_status（ok / history 附说明、故障优先）；collector-local codex_file_cache_left_empty_or_truncated_is_rebuilt 补断言（重建轮 notice=「Codex 缓存文件格式异常, 已整体重建」、diagnostic=None，下一轮 notice 消失）；collector-domain 状态判定补 LOCAL_SOURCE_NOTICE → Success、LOCAL_SOURCE_IO_DEGRADED → Partial；Windows history_status_is_not_an_agent_issue（变异检查：回退 usage.rs 后该用例失败）",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 损坏 codex 缓存 → Codex status=ok、用量完整、artifact 含信息级诊断；macOS 面板不出现 agentIssue",
+        "false_if": "Codex 仍显示 error 或面板仍出现故障提示",
+        "evidence": "Bruce-collector 真实 BridgeRequest + 临时 home，main@3595325 与本分支对照（local/c198/behavior.log）。① 损坏 codex-files-v1.json：main → Codex status=error、note=重建说明、LOCAL_SOURCE_SCHEMA_INCOMPATIBLE@codex、envelope partial；本分支 → status=ok、today 1,050 不变、note=「额度见下方 Codex 账号 (实时查询) (Codex 缓存文件格式异常, 已整体重建)」、仅 LOCAL_SOURCE_NOTICE@codex、envelope success，下一轮说明消失。② Orca 旧前缀副本：main 每轮 Codex error + partial；本分支每轮 Codex ok（660）+ LOCAL_SOURCE_NOTICE。③ 同目录损坏 zcode.db：两版均 zcode error + LOCAL_SOURCE_SCHEMA_INCOMPATIBLE@zcode。④ 面板：本分支 artifact（Codex ok+说明、Claude history、zcode error）经真实 mac PanelViewModelMapper（PanelParityHarness）产出的 agentIssue 中无 codex / claude-code，zcode 仍在（local/c198/mac-panel.json）。未在已安装 App 中实测",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "envelope Partial 判定与 LOCAL_SOURCE_IO_DEGRADED / LOCAL_HISTORY_STORE_UNAVAILABLE 语义不变；Windows 端消费一致",
+        "false_if": "其他诊断码或双端呈现语义被破坏",
+        "evidence": "envelope 判定：is_informational_diagnostic 只新增 LOCAL_SOURCE_NOTICE，LOCAL_HISTORY_STORE_UNAVAILABLE（Success）与 LOCAL_SOURCE_IO_DEGRADED（Partial）由 collector-domain 状态用例锁定，history_store_unavailable_falls_back_to_scan 照常通过；SQLite 三类故障（暂不可读 / schema 不兼容 / 查询失败）仍走 diagnostic。双端：同一份真实 artifact 经 Windows dump_panel 与 mac PanelParityHarness 产出的面板诊断逐字段一致（键序归一后 deep-equal）；修复前 Windows 多出 claude-code:history 的 agentIssue。PanelParity 现有 5 项 golden 对拍不变",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "5e6f1c5",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

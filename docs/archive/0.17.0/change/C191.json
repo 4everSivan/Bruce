@@ -1,0 +1,97 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C191",
+  "title": "Codex 仅含累计计数的事件在计数回退时按重置基线计量（低优先级防御）",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C191-codex-counter-rollback",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Codex 适配器",
+    "component": "Codex total_token_usage 增量计算与高水位（仅 last_token_usage 缺失时生效）",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现，2026-11-04 复核修正范围。原卡前提「Codex 用 total_token_usage 的增量计算每轮用量」不准：`parse_codex_file` 优先使用 `last_token_usage`，只有该字段缺失时才用 `total_token_usage` 相对高水位做 saturating_sub（`codex.rs:608-611`）。复核本机真实数据（42 个 rollout，Codex 0.164–0.166）：1,409/1,409 条 token_count 均带 last_token_usage，仅含累计计数的事件 0 条，累计计数回退 0 次，且累计差值与 last 逐条一致（1,366/1,366）——回退记 0 的路径在现行 Codex 上不会执行，只可能影响更早版本的 rollout。保留为低优先级防御：计数回退时按新基线计量而非记 0。建议移出 0.17.0 批次或延后处理，以免阻塞该批次发版。",
+  "precheck": {
+    "description": "开工前确认仅含累计计数事件的回退仍记 0（未被前序提交修复）",
+    "command": "grep -n \"saturating_sub\\|update_codex_high_water\\|else if let Some(last) = signature.last\" core/collector/crates/collector-local/src/sources/codex.rs | head",
+    "expected": "last_token_usage 缺失时以 saturating_sub 计算增量，高水位只升不降，回退区间记 0 且无说明",
+    "is_completed": false,
+    "evidence": "2026-11-04 fix/C190 分支@15c10f3 预检命中：codex.rs codex_delta 以 saturating_sub 计算增量、update_codex_high_water 高水位只升不降、last_token_usage 缺失时走该分支；回退区间记 0 且无说明。本机 ~/.codex 1,413 条 token_count 中仅含累计计数的 0 条（local/c198/c191-real-codex.log），缺陷只影响旧版 rollout"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C191-codex-counter-rollback fix/C190-codex-rollout-dedupe  # 叠在 C190 上：同改 codex.rs 与缓存 schema"
+    ],
+    "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C191 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Codex 累计计数回退处理（仅 last_token_usage 缺失的事件）",
+      "before": "计数回退时 saturating_sub 归零，直到超过旧高水位前的用量全部记 0",
+      "after": "累计计数任一分量低于高水位、且该累计值在文件内从未出现过时视为重置：本条用量取当前累计值，高水位重置为当前值，回退次数记入按文件缓存条目并经 C198 信息级通道说明；累计值在文件内出现过则为重放快照，记 0 且不动基线",
+      "impact": "旧格式 rollout 的会话内重置不再少计；带 last_token_usage 的现行格式行为不变；CODEX_FILE_CACHE_SCHEMA 升 3（首轮整体重解析一次）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "Codex 优先取 last_token_usage；缺失时按累计计数增量计算，回退区间不计",
+      "after": "Codex 优先取 last_token_usage；缺失时按累计计数增量计算，回退到未出现过的值视为重置并按新基线计量，回退到出现过的值视为重放快照不计（design 01 规则 3「Codex 用量口径与累计计数回退 (C191)」）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-06",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：仅含 total_token_usage 的事件序列中途回退 → 回退后各轮按新基线计入；带 last_token_usage 的序列结果与修复前一致；重放快照仍去重；全量测试 Exit 0",
+        "false_if": "回退区间仍记 0、现行格式数值变化，或存在测试失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c191-verify-local.log）：Rust 563 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。新增回归 codex_cumulative_counter_reset_uses_new_baseline：仅含累计计数的序列 110 → 165 → 回退到 33 → 重放 165 → 55，合计 220（C191 前 165）、usage_records=4；缓存冷扫与参照实现一致、说明「Codex 1 个会话的累计用量计数中途回退, 已按新基线计入」，热轮命中且说明不消失。重放快照去重既有用例（codex_deduplicates_replayed_token_snapshots_across_limit_sources、codex_uses_cumulative_total_when_last_usage_is_missing_across_model_switch）照常通过。变异检查：去掉重置分支 → 187；让重放移动基线 → 253，均失败",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "本机真实 ~/.codex 用量与修复前逐项一致（现行格式不走该路径）",
+        "false_if": "真实数据数值变化",
+        "evidence": "本机真实 ~/.codex（只读，local/c198/c191-real-codex.log）：main@3595325 与本分支冷 / 热 182 天合计均为 310,271,653、status=ok、无诊断；1,413 条 token_count 中仅含累计计数的 0 条，本分支缓存 42 条 counter_resets 合计 0",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Codex 按文件缓存语义不变；缓存 schema 如因观测变化升版则冷热对拍等价",
+        "false_if": "破坏缓存或去重语义",
+        "evidence": "按文件缓存：counter_resets 为可缺省字段（0 不落盘），schema 升 3 令旧条目首轮重建；冷热对拍、删除回收、C190 副本合并与 C197 失败兜底既有用例全部通过。重放判定只看文件内是否出现过同一累计值，带 last_token_usage 的事件用量仍取 last，不受影响",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "cbd1592",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

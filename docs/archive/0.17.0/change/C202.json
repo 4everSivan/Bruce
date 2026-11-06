@@ -1,0 +1,105 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C202",
+  "title": "用量热力图底部改为单行排布：起始日期 · 程度图例 · 截止日期（双端对齐）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C202-heatmap-footer-row",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos BruceApp 用量卡视图 / apps/win 前端",
+    "component": "Token 用量卡片热力图底部（起止日期轴与程度图例）",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户指出用量卡片底部热力图的图例位置不对：图例原本独占一行并右对齐，起止日期轴另占一行，底部两行松散且图例与网格不对齐；用户要求改为「起始日期、图例、截止日期」同处热力图正下方一行对齐。",
+  "precheck": {
+    "description": "开工确认底部仍是「日期轴 + 图例」两行结构",
+    "command": "git show main:apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift | grep -n \"heatmapDateAxis\\|heatmapLegend\"; git show main:apps/win/src/app.js | grep -n \"heat-axis\"",
+    "expected": "mac 展开内容里 heatmapDateAxis 与 heatmapLegend 各占一行；Windows 存在 heat-axis 与 heat-legend 两个独立节点",
+    "is_completed": false,
+    "evidence": "2026-11-04 在 main@709cd61 预检命中：UsageHeroCard.swift:116 heatmapDateAxis、:118 heatmapLegend 为展开内容中的两行（heatmapLegend 内含 Spacer 右对齐）；apps/win/src/app.js:486 生成独立的 heat-axis 节点后另起 heat-legend 节点。双端均为两行结构，变更未提前落地"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C202-heatmap-footer-row main"
+    ],
+    "after": [
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C202 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "热力图底部结构（mac）",
+      "before": "起止日期轴一行（左右贴边）+ 程度图例一行（Spacer 右对齐），共两行、各自 5pt 上间距",
+      "after": "单个 heatmapFooter：ZStack 内起止日期 HStack 贴左右缘 + 图例居中于网格中心，仅保留 5pt 上间距",
+      "impact": "Token 用量卡片展开态热力图底部少一行；图例中心恒为网格中心，不随日期文字宽度漂移"
+    },
+    {
+      "scope": "热力图底部结构（Windows）",
+      "before": ".heat-axis（justify-content: space-between）+ .heat-legend（justify-content: flex-end）两个节点、各带 margin-top: 5px",
+      "after": ".heat-footer 三列网格 1fr auto 1fr：.heat-start 贴左、.heat-legend 居中、.heat-end 贴右，margin-top 只在容器上保留一次",
+      "impact": "Windows 看板与 mac 1:1 对齐；Nothing 主题字体与颜色口径不变（.theme-nothing 选择器改指 .heat-footer）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "热力图底部为「起止日期轴 + 右对齐程度图例」两行，图例与网格无对齐关系",
+      "after": "新增规则 16：热力图底部单行三栏 —— 起始日期贴网格左缘、程度图例水平居中于网格中心、截止日期贴网格右缘；mac 用 ZStack、Windows 用 1fr auto 1fr 网格，禁止回退两行或右对齐"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-14",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Windows 前端新增 C202 用例断言底部为单个 .heat-footer、子节点顺序 heat-start → heat-legend → heat-end、图例 7 格结构不变、起止日期格式与先后正确并锁定 1fr auto 1fr 网格；全量测试 Exit 0",
+        "false_if": "结构断言失败、旧 .heat-axis 残留或存在测试失败",
+        "evidence": "node --test apps/win/tests/frontend.test.mjs → 117 passed / 0 failed（新增 `heatmap footer puts start date, legend and end date on one row (C202)` 通过，local/c202/verify-local.log:90）；node scripts/check-win-frontend.mjs → Windows 前端结构冒烟通过；zsh scripts/verify-local.sh → Exit 0（local/c202/verify-local.log）：Rust 全量 test result 全部 ok / 0 failed、Swift 构建 + 全部 Harness 通过、fixture 敏感扫描 files=47 secretFindings=[]、变更总账一致 cards=200 topics=13。变异检查：把 `.heat-footer` 的 `grid-template-columns: 1fr auto 1fr` 改为 `1fr 1fr` 后 C202 用例失败（fail 1），恢复后通过",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实渲染的 Windows 看板 DOM 中热力图底部确为单行三栏，起止日期为窗口首末日",
+        "false_if": "底部仍是两行或图例不在中间",
+        "evidence": "Windows 前端真实渲染（jsdom 载入 app.js + fixture，local/c202/render-check.log）：`#heat-sec` 内 `.heat-footer` 命中 1 个、`.heat-axis` 残留 0 个；子节点顺序 heat-start → heat-legend → heat-end；起始日期 26/07/27、截止日期 26/07/28（= fixture 窗口首末日）；图例仍为「少」 + level 0-5 六格 + 「多」。mac 侧仅完成编译（swift build --build-tests 通过）与代码核对，未在已安装 App 中截图核验",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "图例配色（经典绿阶 / Nothing 透明阶）、日期文案与字号、呼吸动画与网格布局不变；mac 构建通过",
+        "false_if": "图例色块或日期口径被破坏、其他卡片布局受影响",
+        "evidence": "图例配色未改：C067「heatmap legend swatches carry level colors in both themes」用例照常通过（`.heat-legend .sw.l1-l5` 与 `.theme-nothing` 规则保留，后者的选择器只由 `.heat-axis` 换成 `.heat-footer`）；日期仍取 `heatmapBoundaryText` 首末格并输出 yy/MM/dd、字号 9pt（Nothing 为 `NothingFont.mono(9)` / Space Mono）；`HeatmapGridView` 图层宿主与呼吸门控未触碰，C179 相关规则不受影响；win 前端 117 项全过、verify-local Exit 0（含 mac 全部 Harness、Panel 视图模型 golden 对拍），其余卡片布局无改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "69f9390",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

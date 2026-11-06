@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C200",
+  "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C200-partial-detail-skips-notices",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos BruceAppCore 刷新调度",
+    "component": "RefreshScheduler partial 状态说明（ModuleStatus.detail，状态灯 hover 原因）的诊断选取",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "2026-11-04 C198 收尾时发现，用户决定另开卡：RefreshScheduler 在 envelope 为 partial 时以 `response.diagnostics.first?.message` 作为模块状态说明（`RefreshScheduler.swift:834`），该说明即状态灯 hover 的「具体原因」（design 03 FR-7）。C198 起来源说明以信息级 `LOCAL_SOURCE_NOTICE` 输出且不参与 Partial 判定，但 collector 按来源顺序输出诊断，说明可能排在真实故障之前（实测：Codex 副本说明在前、ZCode 库损坏故障在后，状态灯原因会显示 Codex 说明）；宿主自己追加的 `CREDENTIAL_PERSIST_FAILED` 排在 collector 诊断之后，有说明时同样被盖住。`LOCAL_HISTORY_STORE_UNAVAILABLE`（T26）已有同样问题。Windows 以 `runtime.error` 机器码给原因，不取诊断首条，不受影响。",
+  "precheck": {
+    "description": "开工时确认问题仍存在",
+    "command": "grep -n \"diagnostics.first?.message\" apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+    "expected": "partial 分支直接取诊断首条作为说明",
+    "is_completed": false,
+    "evidence": "2026-11-04 fix/C199 分支@1d97f5a 预检命中：RefreshScheduler.swift:834 let detail = response.diagnostics.first?.message 作为 partial 说明；run.output.response 已含宿主追加的 CREDENTIAL_PERSIST_FAILED（排在 collector 诊断之后）。C198 实测 envelope（local/c198/branch-envelope.json）诊断顺序为 LOCAL_SOURCE_NOTICE@codex 在前、LOCAL_SOURCE_SCHEMA_INCOMPATIBLE@zcode 在后。Windows 以 runtime.error 机器码给原因，诊断码只在维护页列出，不受影响"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C200-partial-detail-skips-notices fix/C199-history-downward-correction"
+    ],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "apps/macos/.build/out/Products/Debug/RefreshSchedulerHarness \"$PWD\"",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C200 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "partial 状态说明选取",
+      "before": "取 diagnostics 第一条的 message，信息级说明可能盖住真实故障",
+      "after": "取第一条非信息级诊断；全部为信息级时退回第一条",
+      "impact": "状态灯 hover 原因与 ModuleStatus.detail 显示真实故障；只影响 mac partial 分支"
+    },
+    {
+      "scope": "信息级诊断码清单",
+      "before": "只存在于 collector-domain 的 is_informational_diagnostic 内部",
+      "after": "collector-domain 公开 INFORMATIONAL_DIAGNOSTIC_CODES，mac BridgeDiagnostic.informationalCodes 镜像，以共享 fixture tests/fixtures/bridge/informational-diagnostics.json 双端锁定",
+      "impact": "新增信息级码时两侧测试同时失败，防止清单漂移"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "hover 原因在采集侧决定时取 ModuleStatus.detail（partial 时为 collector 诊断首条）",
+      "after": "partial 时的 ModuleStatus.detail 取首条非信息级诊断（信息级清单由共享 fixture 双端锁定），说明不得盖住真实故障"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-13",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：partial 响应诊断为 [信息级说明, 真实故障] → detail 为故障文案；宿主追加 CREDENTIAL_PERSIST_FAILED 时 detail 为写回失败文案；全部为信息级时取第一条；共享 fixture 与 Rust / Swift 两侧清单一致；全量测试 Exit 0",
+        "false_if": "说明仍盖住故障、清单两侧不一致，或存在测试失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c200-verify-local.log）：Rust 586 passed / 0 failed、全部 Swift Harness 通过（Refresh scheduler 118 → 119）、fixture 敏感扫描 0 命中（files=47）、变更总账一致 cards=199。新增 RefreshSchedulerHarness partialDetailSkipsInformationalDiagnostics：mac 信息级清单 = 共享 fixture、fixture 列出的故障码均非信息级；调度链路 partial 响应诊断为 [LOCAL_SOURCE_NOTICE@codex, LOCAL_SOURCE_SCHEMA_INCOMPATIBLE@zcode] → detail 为「本机 zcode 数据库schema 不兼容」；[说明, CREDENTIAL_PERSIST_FAILED] → 写回失败文案；全为说明 → 第一条；无诊断 → nil。collector-domain informational_codes_match_the_shared_fixture：INFORMATIONAL_DIAGNOSTIC_CODES 与 fixture 一致、故障码不在其中。变异检查：恢复 diagnostics.first?.message 后用例失败（got「Codex 会话副本内容冲突…」）",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "真实 collector 输出的诊断顺序（Codex 说明在前、ZCode 故障在后）经 mac 调度链路，模块状态 detail 为 ZCode 故障文案",
+        "false_if": "detail 仍为说明文案",
+        "evidence": "真实 collector 诊断顺序经 mac 调度链路验证：用例中的两条诊断逐字取自 C198 实测 envelope（local/c198/branch-envelope.json：Bruce-collector 对临时 home 的 Codex 副本冲突 + 损坏 zcode.db 的输出），经 PartialSuccessExecutor → RefreshScheduler → onStatusChange，detail 为 ZCode 故障文案（local/c198/c200-scheduler-harness.log）。未在已安装 App 中悬停状态灯实测",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "success / 鉴权 / 错误 / 退避分支与只有故障诊断的 partial 行为不变；Windows 不受影响",
+        "false_if": "其他状态分支或双端口径被破坏",
+        "evidence": "RefreshSchedulerHarness 其余 118 项（success / 鉴权 / 错误退避 / 离线 / 节流 / 只有故障诊断的 partial、credentialPersistFailureDemotesToPartial 等）全部通过；只改 partial 分支的说明选取，onStatusChange 状态值不变。collector 侧 is_informational_diagnostic 改为查表、语义不变（envelope 状态判定用例照常通过）。Windows 不取诊断首条（runtime.error 机器码 + 维护页列出全部码），不受影响",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "1f008de",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

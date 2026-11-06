@@ -489,17 +489,17 @@
       "topic": "TokenUsage",
       "milestone": "M14-用量历史持久化",
       "depends_on": [],
-      "file": "docs/devel/task/T26.json",
+      "file": "docs/archive/0.17.0/task/T26.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T26-usage-history-persistence"
     },
     "T27": {
       "title": "官方网站落地主仓 website/：版本注入构建、同步门禁与 Pages 发布",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T27-official-website",
       "topic": "OfficialWebsite",
       "milestone": "M15-官方网站",
       "depends_on": [],
-      "file": "docs/devel/task/T27.json",
+      "file": "docs/archive/0.17.0/task/T27.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T27-official-website"
     }
   }

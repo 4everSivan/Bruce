@@ -1,0 +1,115 @@
+{
+  "$schema": "https://adflow.org/schemas/change-card.v1.json",
+  "id": "C222",
+  "title": "经典 / 液态玻璃 Agent 卡 14 日柱总量改为悬停显示（双端）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C219-C223-dashboard-polish",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "Agent 用量卡 14 日柱顶部当日总量标注 (HourlyLineCard / daily-chart)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 要求：经典、液态玻璃主题的 Agent 用量卡柱状图只在顶部触碰（悬停）时才显示具体用量。现状 mac dailyChartClassic 每根柱顶常显 7.5pt 总量标注，Windows fluent `.daily-chart .day-total` 也恒显；14 根柱的标注挤在高 68pt 的图表顶部，信息噪声大。Nothing 主题已实现「悬停当日列才显示总量」，经典 / 液态玻璃与 Windows fluent 需对齐同一交互。",
+  "precheck": {
+    "description": "确认经典主题柱顶总量恒显、Windows fluent 未做 hover 隐藏",
+    "command": "zsh -c 'grep -q \"dayTotalLabel(day)\" apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift && grep -q \"^\\.daily-chart \\.day-total\" apps/win/src/styles.css && ! grep -q \"^\\.daily-chart \\.day-total { opacity\" apps/win/src/styles.css'",
+    "expected": "退出码 0（mac 的 annotation 无悬停门控、Windows fluent day-total 恒显，需本卡调整）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：mac dailyChartClassic 每个顶层 segment 都挂 dayTotalLabel(day) 且无 opacity 门控；Windows styles.css 仅 `.theme-nothing .daily-chart .day-total` 为 opacity 0 + hover 显示，fluent 规则恒显；Windows 用例仍断言「14 日柱顶恒显每日总量」。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C222 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C222 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 经典 / 液态玻璃柱顶标注",
+      "before": "dailyChartClassic 中每个日期列的顶层分段挂 `.annotation(position: .top)`，14 个总量恒显",
+      "after": "总量标注默认 opacity 0，鼠标悬停该日期列时淡入显示（0.12s），移出淡出；悬停命中通过 `.chartOverlay` + `proxy.value(atX:)` 精确映射到日期，复用 Nothing 点阵柱的 `hoveredDayDate` 状态；柱高、y 域 1.20 余量、日期轴与图例不变",
+      "impact": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift"
+    },
+    {
+      "scope": "Windows fluent 柱顶标注",
+      "before": "`.daily-chart .day-total` 恒显；仅 `.theme-nothing` 为 opacity 0 + hover 显示",
+      "after": "全主题统一 `.daily-chart .day-total { opacity: 0; transition: opacity .15s }` + `.daily-chart .day:hover .day-total { opacity: 1 }`，删除 Nothing 重复覆写；标注仍占 10px 行高，悬停不引起柱高或布局位移",
+      "impact": "apps/win/src/styles.css、apps/win/tests/frontend.test.mjs"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "设计 03 §21 只规定 y 域余量与标注尺寸，未规定常显 / 悬停语义；Windows 用例断言总量恒显",
+      "after": "设计 03 §21 补充：14 日柱总量只在悬停当日列时显示；Windows 用例改为断言 day-total 节点存在、CSS 默认 opacity 0 且 hover 显示，并锁定柱高公式不变",
+      "impact": "docs/devel/design/03、05；apps/win/tests/frontend.test.mjs"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "14 日堆叠柱顶部当日总量在经典 / 液态玻璃与 Windows fluent 下恒显",
+      "after": "14 日柱当日总量默认隐藏，悬停该日期列（含柱顶）时显示、移出隐藏；Nothing 点阵柱的悬停语义保持不变；标注行高仍预留，柱高与布局不因悬停变化"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-07",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build --build-tests 通过；Windows node --test/check-win-frontend 全绿（含更新后的悬停用例）；verify-local Exit 0",
+        "false_if": "构建/测试失败或既有用例回归",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（末行「Bruce 本地验证全部通过」，日志 local/verify-c219-c223.log）；mac `swift build --package-path apps/macos --build-tests` 通过；Windows `node --test apps/win/tests/frontend.test.mjs` 129/129、`node scripts/check-win-frontend.mjs` 通过。 Windows 用例已更新为 `.daily-chart .day-total` 默认 opacity 0 + `.day:hover` 显示。",
+        "result": true
+      },
+      {
+        "item": "悬停显示",
+        "true_if": "经典 / 液态玻璃 / Windows fluent 默认不显示 14 个柱顶总量；悬停某日列时对应总量出现、移出消失；柱高、日期轴、图例不位移",
+        "false_if": "总量仍恒显、悬停日期错位或悬停时柱体抖动",
+        "evidence": "2026-11-05 mac 经典浅色/深色与 Nothing 浅色实机截图（local/shot-classic-light-agent.png 等）默认无柱顶总量；Windows Chromium render-harness 实测 hover 前 opacity 0、hover 后 1（fluent 与 Nothing 均通过），悬停不改变柱高/日期轴/图例。mac 悬停截图因面板被前台操作频繁收起未取得，逻辑与构建已核对。",
+        "result": true
+      },
+      {
+        "item": "Nothing 回归",
+        "true_if": "Nothing 点阵柱原有的悬停总量语义与位置不变",
+        "false_if": "Nothing 柱状图交互被误改",
+        "evidence": "Nothing 点阵柱原有 hoveredDayDate 语义/位置未改（同一状态变量复用）；verify-local 全量通过，经典柱高公式 calc((100% - 10px) × ratio) 与 y 域 1.20 未变。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "mac 装机版目视确认默认无标注、悬停对应列显示；Windows 以 render-harness hover 代替",
+        "false_if": "效果与描述不符或用户驳回",
+        "evidence": "mac 默认隐藏已截图核对；mac 悬停实机点验与 Windows 真机验收待用户确认，Windows 以 render-harness hover 代替。 2026-11-05 用户确认：「确认」。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "409dac8",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

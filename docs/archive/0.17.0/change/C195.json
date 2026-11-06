@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C195",
+  "title": "为可能携带用量的超长行补充持久化计数与信息级说明（目录深度护栏维持现状）",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C195-scan-limit-diagnostics",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local 本机扫描引擎",
+    "component": "JSONL / dsh 单行上限的截断计数与可见性",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现，2026-11-04 复核修正范围。原卡两项诉求复核后：① 目录深度 >16：真实布局最深约 3 层（Codex sessions/YYYY/MM/DD、Claude projects/<项目>/<会话>/subagents、dsh sessions/<工作区>/<会话>），该护栏只用于防 symlink 环，不是少计来源，不再处理；② 单行 >1 MiB：本机 Claude 有 4 行超限，全部是 `user`（工具结果 / 图片），丢失用量为 0；dsh 最大行 256 KiB，Codex 0 行超限。若按 `truncated_lines > 0` 直接输出说明，Claude 几乎每轮都会出现无意义提示（经现有通道还会被置 error，见 C198）；而且 ScanStats 只在重新解析的轮次计数，命中缓存的轮次为 0，说明会时有时无。真正需要暴露的是「被截断且可能携带用量」的行：保留下来的 1 MiB 前缀命中该适配器的预筛字面量（如 Claude `\"assistant\"`、dsh `\"usage\"`）时才计入。",
+  "precheck": {
+    "description": "开工前确认超长行仍静默跳过（未被前序提交修复）",
+    "command": "grep -rn \"truncated_lines\" core/collector/crates/collector-local/src/jsonl_cache.rs core/collector/crates/collector-local/src/sources/dsh.rs",
+    "expected": "超长行只计 truncated_lines 后跳过，未区分是否可能携带用量，计数不进缓存条目",
+    "is_completed": false,
+    "evidence": "2026-11-04 fix/C193 分支@b862092 预检命中：jsonl_cache.rs:881 与 dsh.rs:413 超长行只累计 truncated_lines 后 continue，不区分内容、不进缓存条目，artifact 无提示。本机 Claude 27 个会话中 4 行超过 1 MiB，均为 user 工具结果 / 图片；dsh 最大行 256 KiB、Codex 0 行超限"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C195-scan-limit-diagnostics fix/C193-usage-field-drift-guard  # 叠在 C193 上：复用 UsageProbe 持久化"
+    ],
+    "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C195 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "超长行可见性",
+      "before": "超长行只累计 truncated_lines，不区分内容，artifact 无提示，计数只在重新解析的轮次出现",
+      "after": "只统计保留前缀命中来源结构化用量字面量的超长行（JSONL 引擎用各适配器预筛字面量，Codex 用 \"token_count\"，dsh 用 \"usage\" / \"assistant/message\"），计数记入 UsageProbe.truncated_usage 随缓存条目持久化（追加段累加，Codex 同会话副本按组取最大），非零时经信息级 LOCAL_SOURCE_NOTICE（C198）说明「N 条疑似用量记录超过 1 MiB 单行上限, 已跳过未计入」",
+      "impact": "真实少计可解释；Claude 图片 / 工具结果类超长行不产生噪声"
+    },
+    {
+      "scope": "目录深度护栏",
+      "before": "原卡计划为深度 >16 补诊断",
+      "after": "维持现状不处理（护栏只防 symlink 环，真实布局不会触及）",
+      "impact": "无"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "超长行静默跳过，只计内部 truncated_lines",
+      "after": "保留前缀命中来源结构化用量字面量的超长行以持久化计数和信息级说明暴露；其余超长行仍静默跳过；目录深度护栏只防 symlink 环，维持现状（design 01 规则 3「超长疑似用量行 (C195)」）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-08",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：超长 assistant / usage 行 → 说明含计数，且命中缓存的轮次仍可见；超长 user 行 → 不输出说明；全量测试 Exit 0",
+        "false_if": "疑似用量行仍静默、无关超长行误报，或存在测试失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c195-verify-local.log）：Rust 574 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。新增 tests_limits（3 项，夹具按来源真实字段顺序手写）：Claude 超长 assistant 行 → 说明「1 条疑似用量记录超过 1 MiB 单行上限, 已跳过未计入」、diagnostic=None，热轮命中（truncated_lines=0）说明仍在；超长 user 工具结果（文本含 \"assistant\"，落盘为转义形式）→ 无说明；dsh 超长 assistant/message 行 → 说明；Codex 超长 token_count 行 → 说明且热轮仍在，超长响应内容行（文本提到 token_count）→ 无说明。变异检查：JSONL 引擎不计数后 Claude 用例失败",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "本机 Claude（4 条超长 user 行）冷、热两轮均不输出说明，用量与修复前一致",
+        "false_if": "真实数据出现误报或数值变化",
+        "evidence": "本机全部真实来源（只读，local/c198/c195-real-all.log）：本分支冷 / 热两轮 diagnostics 为空、无任何说明；Claude 4 条超长 user 行不触发；与 main@3595325 对比各 agent 182 天合计冷 / 热逐项一致（本轮 Claude 1,384,612,135 两版相同）",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "解析结果与缓存命中逻辑不变；依赖 C198，说明不把 agent 置 error",
+        "false_if": "破坏解析或缓存语义，或说明把 agent 置 error",
+        "evidence": "解析结果不变：超长行仍按原口径跳过，只多一次前缀字面量匹配；缓存命中逻辑不变（truncated_usage 为 UsageProbe 可缺省字段，0 不落盘，旧条目照常命中），冷热对拍与全部既有用例通过；说明只经 SourceScan.notice（C198 通道），用例断言 diagnostic=None。目录深度护栏未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "07889e7",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

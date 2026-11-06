@@ -1988,7 +1988,7 @@
       "branch": "fix/C190-codex-rollout-dedupe",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C190.json"
+      "file": "docs/archive/0.17.0/change/C190.json"
     },
     "C191": {
       "title": "Codex 仅含累计计数的事件在计数回退时按重置基线计量（低优先级防御）",
@@ -1997,7 +1997,7 @@
       "branch": "fix/C191-codex-counter-rollback",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C191.json"
+      "file": "docs/archive/0.17.0/change/C191.json"
     },
     "C192": {
       "title": "修复 dsh 单帧解码失败即整会话跳过：改为逐帧隔离，并让帧上限在解码中生效",
@@ -2006,7 +2006,7 @@
       "branch": "fix/C192-dsh-frame-isolation",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C192.json"
+      "file": "docs/archive/0.17.0/change/C192.json"
     },
     "C193": {
       "title": "为本机来源补充 usage 口径漂移哨兵（按来源汇总），并接入 Codex 新增的 cache_write_input_tokens",
@@ -2015,7 +2015,7 @@
       "branch": "fix/C193-usage-field-drift-guard",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C193.json"
+      "file": "docs/archive/0.17.0/change/C193.json"
     },
     "C194": {
       "title": "修复 Grok 以文件 mtime 重打全部历史时间戳，追加后经台账造成跨日重复计数",
@@ -2024,7 +2024,7 @@
       "branch": "fix/C194-grok-timestamp-estimate",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C194.json"
+      "file": "docs/archive/0.17.0/change/C194.json"
     },
     "C195": {
       "title": "为可能携带用量的超长行补充持久化计数与信息级说明（目录深度护栏维持现状）",
@@ -2033,7 +2033,7 @@
       "branch": "fix/C195-scan-limit-diagnostics",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C195.json"
+      "file": "docs/archive/0.17.0/change/C195.json"
     },
     "C196": {
       "title": "修复 JSONL 引擎单文件消失竞态中止整源扫描，并在解析失败时沿用陈旧条目",
@@ -2042,7 +2042,7 @@
       "branch": "fix/C196-jsonl-file-race",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C196.json"
+      "file": "docs/archive/0.17.0/change/C196.json"
     },
     "C197": {
       "title": "修复 Codex rollout 打开失败被缓存为空观测、会话永久记 0 且无诊断",
@@ -2051,7 +2051,7 @@
       "branch": "fix/C197-codex-open-failure-cache",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C197.json"
+      "file": "docs/archive/0.17.0/change/C197.json"
     },
     "C198": {
       "title": "修复来源信息级说明一律升格为 agent error 并误用 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
@@ -2060,7 +2060,7 @@
       "branch": "fix/C198-source-note-severity",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C198.json"
+      "file": "docs/archive/0.17.0/change/C198.json"
     },
     "C199": {
       "title": "为用量历史台账补充按来源口径版本向下修正的路径，修复已落库的多计",
@@ -2069,7 +2069,7 @@
       "branch": "fix/C199-history-downward-correction",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C199.json"
+      "file": "docs/archive/0.17.0/change/C199.json"
     },
     "C200": {
       "title": "修复 macOS 部分失败状态的原因取首条诊断：信息级说明会盖住真实故障",
@@ -2078,7 +2078,7 @@
       "branch": "fix/C200-partial-detail-skips-notices",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C200.json"
+      "file": "docs/archive/0.17.0/change/C200.json"
     },
     "C201": {
       "title": "JSONL 与 dsh 会话文件读取失败时补信息级说明（与 Codex 同口径）",
@@ -2087,7 +2087,7 @@
       "branch": "fix/C201-read-failure-notice",
       "topic": "TokenUsage",
       "version": "0.17.0",
-      "file": "docs/devel/change/C201.json"
+      "file": "docs/archive/0.17.0/change/C201.json"
     },
     "C202": {
       "title": "用量热力图底部改为单行排布：起始日期 · 程度图例 · 截止日期（双端对齐）",
@@ -2096,7 +2096,7 @@
       "branch": "fix/C202-heatmap-footer-row",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C202.json"
+      "file": "docs/archive/0.17.0/change/C202.json"
     },
     "C203": {
       "title": "修复 macOS 版运行中自退：菜单栏图标绘制闭包内 attrString.size() 触发 CoreText 插 nil 崩溃",
@@ -2105,7 +2105,7 @@
       "branch": "fix/C203-menubar-image-crash",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C203.json"
+      "file": "docs/archive/0.17.0/change/C203.json"
     },
     "C204": {
       "title": "OpenCode Go 用量查询切换官方 /zen/go/v1/usage 端点，凭据改为 API Key 配置，退役 server-fn 抓包与 seroval 解析",
@@ -2114,7 +2114,7 @@
       "branch": "fix/C204-opencode-go-usage-api",
       "topic": "SubscriptionQuota",
       "version": "0.17.0",
-      "file": "docs/devel/change/C204.json"
+      "file": "docs/archive/0.17.0/change/C204.json"
     },
     "C205": {
       "title": "OpenCode GO 配置入口对齐 API Key 表单族（DeepSeek 同款）：多账号列表管理与选填 Workspace ID",
@@ -2123,7 +2123,7 @@
       "branch": "fix/C205-opencode-go-apikey-dialog",
       "topic": "SubscriptionQuota",
       "version": "0.17.0",
-      "file": "docs/devel/change/C205.json"
+      "file": "docs/archive/0.17.0/change/C205.json"
     },
     "C206": {
       "title": "订阅额度预警窗口重置后不再报警：去重状态补充窗口重置恢复判定（双端）",
@@ -2132,7 +2132,7 @@
       "branch": "fix/C206-quota-alert-window-reset",
       "topic": "SubscriptionQuota",
       "version": "0.17.0",
-      "file": "docs/devel/change/C206.json"
+      "file": "docs/archive/0.17.0/change/C206.json"
     },
     "C207": {
       "title": "Nothing 主题顶栏 Tab 切换器选中态改用点阵数字同源色（浅黄深绿）",
@@ -2141,7 +2141,7 @@
       "branch": "fix/C207-nothing-tab-accent",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C207.json"
+      "file": "docs/archive/0.17.0/change/C207.json"
     },
     "C208": {
       "title": "移除顶栏 Tab 切换器 Agent 活跃图标绿点角标（双端，悬停数量保留）",
@@ -2150,7 +2150,7 @@
       "branch": "fix/C208-remove-tab-badge",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C208.json"
+      "file": "docs/archive/0.17.0/change/C208.json"
     },
     "C209": {
       "title": "移除「锁屏暂停订阅刷新」「额度预警气泡」通用配置项：锁屏保护与预警气泡转为恒开默认行为（双端）",
@@ -2159,7 +2159,7 @@
       "branch": "fix/C209-retire-lock-bubble-toggles",
       "topic": "PricingEngine",
       "version": "0.17.0",
-      "file": "docs/devel/change/C209.json"
+      "file": "docs/archive/0.17.0/change/C209.json"
     },
     "C210": {
       "title": "移除 Token 用量卡标题行 LIVE 徽标与绿色方点（双端，顶部状态灯保留）",
@@ -2168,7 +2168,7 @@
       "branch": "fix/C210-remove-live-badge",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C210.json"
+      "file": "docs/archive/0.17.0/change/C210.json"
     },
     "C211": {
       "title": "新增 ⌘/Ctrl 1/2/3 固定卡片快捷键并在通用页提供只读说明（双端）",
@@ -2177,7 +2177,7 @@
       "branch": "fix/C211-card-shortcuts",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C211.json"
+      "file": "docs/archive/0.17.0/change/C211.json"
     },
     "C212": {
       "title": "Agent 用量卡默认展开首个有明细 Agent、正文刷新与今日空态（双端）",
@@ -2186,7 +2186,7 @@
       "branch": "fix/C212-agent-card-refresh-empty",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C212.json"
+      "file": "docs/archive/0.17.0/change/C212.json"
     },
     "C213": {
       "title": "Token 用量热力图移除呼吸动效，全主题改为静态渲染（双端）",
@@ -2195,7 +2195,7 @@
       "branch": "fix/C213-C218-dashboard-refinements",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C213.json"
+      "file": "docs/archive/0.17.0/change/C213.json"
     },
     "C214": {
       "title": "顶栏 Tab 切换器去底色、保留 1px 发丝框、选中图标变色（双端）",
@@ -2204,7 +2204,7 @@
       "branch": "fix/C213-C218-dashboard-refinements",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C214.json"
+      "file": "docs/archive/0.17.0/change/C214.json"
     },
     "C215": {
       "title": "订阅 Provider 用户可见名称 OpenCode GO / OpenCode Go 统一改为 OpenCode（双端）",
@@ -2213,7 +2213,7 @@
       "branch": "fix/C213-C218-dashboard-refinements",
       "topic": "SubscriptionQuota",
       "version": "0.17.0",
-      "file": "docs/devel/change/C215.json"
+      "file": "docs/archive/0.17.0/change/C215.json"
     },
     "C216": {
       "title": "Agent 用量展开明细统一为紧凑条形方案 C，内容对齐 Nothing（双端）",
@@ -2222,7 +2222,7 @@
       "branch": "fix/C213-C218-dashboard-refinements",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C216.json"
+      "file": "docs/archive/0.17.0/change/C216.json"
     },
     "C217": {
       "title": "修复 mac Agent 用量卡厂商徽章左侧被裁切（14 日图例与行首，C161 系列色环）",
@@ -2231,7 +2231,7 @@
       "branch": "fix/C213-C218-dashboard-refinements",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C217.json"
+      "file": "docs/archive/0.17.0/change/C217.json"
     },
     "C218": {
       "title": "Agent 用量卡 14 日柱顶部总量标注裁切与图例厂商徽章缩小（双端）",
@@ -2240,7 +2240,7 @@
       "branch": "fix/C213-C218-dashboard-refinements",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C218.json"
+      "file": "docs/archive/0.17.0/change/C218.json"
     },
     "C219": {
       "title": "Token 用量热力图首尾列铺满（完整 7 天块，双端）",
@@ -2249,7 +2249,7 @@
       "branch": "fix/C219-C223-dashboard-polish",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C219.json"
+      "file": "docs/archive/0.17.0/change/C219.json"
     },
     "C220": {
       "title": "经典 / 液态玻璃主题强调色对齐 Nothing 杏色 / 绿色（双端）",
@@ -2258,7 +2258,7 @@
       "branch": "fix/C219-C223-dashboard-polish",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C220.json"
+      "file": "docs/archive/0.17.0/change/C220.json"
     },
     "C221": {
       "title": "Nothing 浅色 Agent 用量卡图表改用杏色阶（macOS）",
@@ -2267,7 +2267,7 @@
       "branch": "fix/C219-C223-dashboard-polish",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C221.json"
+      "file": "docs/archive/0.17.0/change/C221.json"
     },
     "C222": {
       "title": "经典 / 液态玻璃 Agent 卡 14 日柱总量改为悬停显示（双端）",
@@ -2276,7 +2276,7 @@
       "branch": "fix/C219-C223-dashboard-polish",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C222.json"
+      "file": "docs/archive/0.17.0/change/C222.json"
     },
     "C223": {
       "title": "热力图改为连续 7 天块、末格为今天（双端）",
@@ -2285,7 +2285,7 @@
       "branch": "fix/C219-C223-dashboard-polish",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C223.json"
+      "file": "docs/archive/0.17.0/change/C223.json"
     },
     "C224": {
       "title": "单账号订阅段补显「上次成功」时间，旧快照不再伪装成实时（双端）",
@@ -2294,7 +2294,7 @@
       "branch": "fix/C224-C225-subscription-stale-status",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C224.json"
+      "file": "docs/archive/0.17.0/change/C224.json"
     },
     "C225": {
       "title": "纯余额型订阅「订阅状态」槽改用状态灯映射表：中文态名 + 分档点色（双端）",
@@ -2303,7 +2303,7 @@
       "branch": "fix/C224-C225-subscription-stale-status",
       "topic": "MenuBarIndicator",
       "version": "0.17.0",
-      "file": "docs/devel/change/C225.json"
+      "file": "docs/archive/0.17.0/change/C225.json"
     }
   }
 }

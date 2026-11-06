@@ -1,0 +1,115 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C210",
+  "title": "移除 Token 用量卡标题行 LIVE 徽标与绿色方点（双端，顶部状态灯保留）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C210-remove-live-badge",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "Token 用量卡标题行状态槽 (UsageHeroCard / usageCard) 与 Windows LIVE 样式",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "现象：Token 用量卡展开时标题行右侧渲染绿色圆点 + LIVE 文案；用户 2026-11-05 明确要求移除卡片上的 LIVE 标记，并指出只删卡片徽标与绿色方点，顶部 Bruce 左侧四色状态灯保留。视觉上卡内 LIVE 与顶部状态灯重复，且收起态本来就被迷你摘要替换，只在展开态出现的徽标价值低。双端同步移除；`UsageHeroViewModel.isLive` 保留，因为顶部状态灯仍据此决定数据新鲜时的光环。",
+  "precheck": {
+    "description": "确认双端 LIVE 徽标与顶部状态灯实现同时在库（移除前状态）",
+    "command": "zsh -c 'grep -q LiveIndicator apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift && grep -q live-badge apps/win/src/app.js && grep -q topHeaderStatusDot apps/macos/Sources/BruceApp/MenuBarViews.swift && grep -q hud-dot-wrap.live apps/win/src/styles.css'",
+    "expected": "退出码 0（两端卡片 LIVE 徽标与顶部状态灯均在库，需只移除徽标）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对（预检命令等价）：UsageHeroCard.swift 状态槽 if viewModel.isLive → LiveIndicator，私有 LiveIndicator 结构在文件尾部；app.js usageCard 构造 live-badge/live-dot/live-text；styles.css 436-441 与 Nothing 覆写 1784-1792；MenuBarViews topHeaderStatusDot:295/426 与 hud-dot-wrap.live:217 均在库。实现后复跑残留 grep（LiveIndicator|live-badge|live-dot|live-text）零命中，顶部状态灯标记仍命中。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C210 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C210 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac Token 卡标题行",
+      "before": "UsageHeroCard 的 CollapsibleCardHeader 状态槽在 viewModel.isLive 为真时渲染 LiveIndicator（12pt 18% 光环 + 6pt 绿点 + 9.5pt LIVE 文本；Nothing 为 5pt 实心方点 + Space Mono 文本）；LiveIndicator 为文件内私有结构，仅此处使用",
+      "after": "状态槽改为 EmptyView，删除 LiveIndicator 私有结构与全部 related 样式；收起态仍由 collapsedMini 占据状态槽；UsageHeroViewModel.isLive、UsageMapping 的 isLive 计算与 MenuBarViews.topHeaderStatusDot 的 isLive 光环不改",
+      "impact": "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift；apps/macos/Sources/BruceApp/MenuBarViews.swift 与 BruceAppCore 无需改动"
+    },
+    {
+      "scope": "Windows Token 卡与样式",
+      "before": "usageCard 在 usage.isLive 为真时构造 span.live-badge（span.live-dot + span.live-text LIVE）传入 cardHead；styles.css 含 .live-badge / .live-dot / .live-text 及 .theme-nothing .live-dot / .live-text 覆写",
+      "after": "usageCard 直接 cardHead(card, Token 用量, null)，不再生成 LIVE 节点；删除上述 .live-badge/.live-dot/.live-text 与 Nothing 覆写规则；.hud-dot-wrap.live 与顶部状态灯渲染保持不变",
+      "impact": "apps/win/src/app.js、apps/win/src/styles.css"
+    },
+    {
+      "scope": "设计回写与回归",
+      "before": "设计 03 FR-7 边界写明「卡内 LIVE 指示 ... 保持不变」；设计 03 §11 标题行规则以「LIVE / 更新时间」描述展开态状态件；设计 05 对拍表与 Nothing 形态段仍记录卡内 LIVE 指示灯",
+      "after": "设计 03 FR-7 与 §11 改为「卡内 LIVE 徽标已于 C210 双端退役，顶部状态灯仍以 isLive 表达数据新鲜度」；设计 05 对拍表与 Nothing 形态段同步移除卡内 LIVE 描述；补充源码残留检查（两端 .live-badge/LiveIndicator 零命中）与顶部状态灯回归",
+      "impact": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md、docs/devel/design/05-Windows平台适配.md、CHANGELOG.md（收口时）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-7 边界：卡内 LIVE 指示与订阅卡内 section / account note 保持不变，不与顶部灯联动；§11：收起摘要（mini）与展开态状态件（LIVE / 更新时间）常驻同一占位盒并接力淡入；设计 05：卡内 LIVE 指示灯为 5×5px 纯色方块，顶部 Header 状态灯仍为圆点",
+      "after": "C210 起：卡片标题行不再渲染 LIVE 徽标与绿色方点，展开态状态槽为空（订阅卡更新时间等既有状态件不受影响）；顶部四色状态灯保留，并继续以 isLive 表达数据新鲜度光环；§11 的展开态状态件仅保留更新时间等既有项；设计 05 同步移除卡内 LIVE 描述，保留顶部状态灯"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-05",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build（含 tests）退出码 0；Windows node --test / check-win-frontend 全绿；verify-local 全量通过",
+        "false_if": "存在任一构建或测试失败",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（末行「Bruce 本地验证全部通过」）；mac swift build（含 tests）Build complete；Windows `node --test apps/win/tests/frontend.test.mjs` 125/125 pass、`node scripts/check-win-frontend.mjs` 通过。",
+        "result": true
+      },
+      {
+        "item": "LIVE 残留与状态灯回归",
+        "true_if": "双端卡片源码不再生成 LIVE 徽标/绿色方点；顶部状态灯与 isLive 光环逻辑仍在且可读",
+        "false_if": "任一卡片仍渲染 LIVE 节点，或顶部状态灯被误删/失效",
+        "evidence": "mac/Windows 源码 grep：LiveIndicator、live-badge、live-dot、live-text 全部零命中；MenuBarViews.swift topHeaderStatusDot 仍在（295/426），Windows styles.css .hud-dot-wrap.live 仍在（217），isLive 映射与顶部光环逻辑未改。Windows 前端测试新增断言：Token 卡 `.live-badge` / `.live-text` 均为 null，`.card-status` 文本为空。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Token 卡收起态迷你摘要、订阅卡状态件、Tab 切换与面板高度动效均不受影响",
+        "false_if": "收起态状态槽空置导致布局跳动，或订阅卡/面板高度链路异常",
+        "evidence": "verify-local 全量通过；BruceApp 构建完成；CollapsibleCardHeader 结构未改，仅状态槽内容变为 EmptyView；订阅卡更新时间、其余卡片标题行与面板高度链路无改动；Windows check-win-frontend 通过。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "装机版展开 Token 卡时标题行无 LIVE 徽标/绿点，顶部状态灯与收起态迷你摘要正常",
+        "false_if": "实机仍显示徽标、状态灯异常或收起态布局跳动",
+        "evidence": "2026-11-05 16:22 最终 67daa6a 装机版部署后用户确认（原话「确认」）；未记录逐项展开目视结果，故实机项仍记 false。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "3c1b0ae",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "draft",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

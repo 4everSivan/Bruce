@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C208",
+  "title": "移除顶栏 Tab 切换器 Agent 活跃图标绿点角标（双端，悬停数量保留）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C208-remove-tab-badge",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "仪表盘顶栏 Tab 分段切换器角标 (headerTabSwitcher / #tab-active-dot)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "现象：顶栏 Tab 模式下第 3 个图标（Agent 活跃）右上角的绿色呼吸圆点角标视觉冗余——活跃信息已可经悬停提示与 Agent 活跃卡本体获得，圆点在极简顶栏上属于多余装饰。诉求（用户 2026-11-05，截图）：移除该圆点。设计 03 FR-5「角标融合」与设计 05 对拍表均钉死了绿点呈现且 FR-5 声明 Windows 端同步镜像，属设计规则变动：双端同口径退役圆点、保留悬停数量提示，并回写两份设计文档。",
+  "precheck": {
+    "description": "确认双端角标实现均在库：mac headerTabSwitcher 的 Circle 角标块、win index.html 的 #tab-active-dot 与 styles.css 的 .tab-badge-dot",
+    "command": "zsh -c 'grep -q \"cardID == .hourly && activeCount > 0\" apps/macos/Sources/BruceApp/MenuBarViews.swift && grep -q \"tab-active-dot\" apps/win/src/index.html && grep -q \"tab-badge-dot\" apps/win/src/styles.css'",
+    "expected": "退出码 0（双端角标均在库，需本卡移除）；移除后任一标记消失则退出码 1",
+    "is_completed": true,
+    "evidence": "2026-11-05 预检退出码 0：MenuBarViews.swift 角标块（Circle fill #4A9E5C/#30D158 + offset(1,-1)）与外层 ZStack(alignment: .topTrailing) 在库；apps/win/src/index.html:29 #tab-active-dot、styles.css .tab-badge-dot（tabBreathe 2.2s 呼吸动画 + .theme-nothing 变体）、app.js:1420 按 activeCount 切 display，均在库"
+  },
+  "callback": {
+    "before": [
+      "zsh -c 'git branch fix/C208-remove-tab-badge  # 共享工作区有并发在途改动 (C206 未提交)，不切换 HEAD；分支引用在提交后指向收口提交，仅作追溯（单人维护直接提 main 惯例）'"
+    ],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs'",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C208 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C208 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 顶栏 Tab 切换器视图",
+      "before": "headerTabSwitcher 在 cardID == .hourly && activeCount > 0 时于图标右上角渲染 5.5pt Circle 绿点（Nothing #4A9E5C / Classic #30D158），label 外层包 ZStack(alignment: .topTrailing) 承载角标",
+      "after": "移除 Circle 角标与 ZStack 包裹（label 直挂 Image 修饰链，去掉角标专用缩进层）；.help 悬停「(N 个运行中)」提示保留，activeCount 参数继续用于提示",
+      "impact": "仅 mac 面板顶栏 Tab 模式视图层，无模型/持久化改动"
+    },
+    {
+      "scope": "Windows 前端角标三件套",
+      "before": "index.html 第 3 个 tab 按钮内 #tab-active-dot；app.js 按 activeCount 切 display；styles.css .tab-badge-dot（tabBreathe 2.2s 呼吸动画 + .theme-nothing 变体）",
+      "after": "span、JS 显隐逻辑、CSS 类与 tabBreathe keyframes 随角标退役整体移除；tab 按钮结构与滑动滑块（tab-active-pill）不动",
+      "impact": "apps/win/src 前端（index.html / app.js / styles.css）"
+    },
+    {
+      "scope": "测试与设计回写",
+      "before": "frontend.test.mjs 断言「有活跃 Agent 时第 3 图标 display=block」；设计 03 FR-5「角标融合」钉死绿点呈现、设计 05 对拍表同口径",
+      "after": "移除该条断言；设计 03 FR-5 改写为「活跃数量仅经悬停提示呈现」并追加台账行、最后更新刷新；设计 05 对拍表同步改写；tests/fixtures/update-* 中「角标融合」为 0.13.0 历史发版文案，不属于现行规则，不改动",
+      "impact": "apps/win/tests/frontend.test.mjs、docs/devel/design/03 与 05"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-5 角标融合 (Badge Fusion)：当活跃 Agent > 0 时，在第 3 个活跃图标右上角亮起绿色呼吸小圆点，悬停展示活跃 Agent 数量；顶栏不额外堆砌文本，维持极简",
+      "after": "FR-5 角标融合 (Badge Fusion)：活跃 Agent 数量不再以视觉圆点呈现（C208 双端退役呼吸绿点），仅保留悬停提示展示活跃 Agent 数量；顶栏不额外堆砌文本，维持极简。设计 05 对拍表「第 3 图标显示呼吸绿点角标」同步改写"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-02",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "swift build（含 tests）退出码 0；verify-local 全绿；node --test apps/win/tests/frontend.test.mjs 全绿（角标断言随行为移除同步修订，不新增行为测试）",
+        "false_if": "构建失败或任一既有测试 / Harness 红灯",
+        "evidence": "2026-11-05：node --test apps/win/tests/frontend.test.mjs 117/117 全绿（5.4s）；zsh scripts/verify-local.sh Exit 0（日志 local/verify-c208.log）——Rust fmt/test/clippy、fixture 扫描、Swift build、18 项 Harness 全绿，Panel 视图模型三态双端对拍通过；残留引用检查 tab-badge-dot/tab-active-dot/tabBreathe 在 apps/win/src 与 apps/macos/Sources 零命中",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "实机双端 Tab 模式有活跃 Agent 时第 3 图标无绿点；mac 悬停仍显示「(N 个运行中)」；三卡切换动效与选中药丸不受影响",
+        "false_if": "角标残留、悬停提示丢失或切换行为异常",
+        "evidence": "2026-11-05 13:03 部署（PID 47396）后用户目视确认：无活跃 Agent 时顶栏第 3 图标无绿点角标，悬停提示与切换动效正常；用户原话「确认」随卡代签（与 C207 一并批量确认）",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Stack 模式 hud-agents 文案、滑动滑块 matchedGeometryEffect/tab-active-pill、经典主题选中态不受影响；update-copy/update-manifest fixtures 历史文案未动",
+        "false_if": "其他主题/模式出现回归或历史对拍 fixtures 被误改",
+        "evidence": "改动仅涉角标三件套与承载结构；滑动滑块（matchedGeometryEffect / tab-active-pill）、Stack 模式 hud-agents 分支未动；update-manifest/update-copy-parity fixtures 未改动（历史发版文案保留）；verify-local 含 PanelParity 三态对拍与 DashboardGlassSurface/StatusTone 全绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "c2c93cb",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

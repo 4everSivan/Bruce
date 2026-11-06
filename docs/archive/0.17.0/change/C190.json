@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C190",
+  "title": "修复 Codex 跨根同名副本整份择一：分叉副本少计、前缀副本误报冲突",
+  "version": "0.17.0",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C190-codex-rollout-dedupe",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-local Codex 适配器",
+    "component": "Codex 多根 rollout 副本合并与冲突判定",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "T26 审计发现，2026-11-04 复核修正范围：Codex 扫描把多个根（CLI / Orca 会话 / Orca 账号）的 rollout 按 `rollout:{file_name}` 分组，整份只保留 size/mtime 最优的一份（`codex.rs:210-212/246-293`），其余副本整体丢弃。复核实测（Bruce-collector + 临时 home，CLI 根与 Orca 根各放一份同名 rollout）：① 分叉副本（共享前缀 330、CLI 独有 330、Orca 独有 12,100）报 12,430，真值 12,760，少计 330；② 前缀副本（Orca 为 CLI 的旧前缀）用量 660 正确，但因 size 不同被判冲突（`codex.rs:275-277`），Codex 每轮显示 error（经 C198 所述通道）。原卡方案「同名不同内容分别计入」会得 13,090，把共享前缀重复计入，且 T26 台账单调取大，多计将永久落库（见 C199）——不可采用。rollout 文件名含会话 UUID，同名即同一会话，正确做法是按单次响应身份跨副本取并集：Codex 0.164+ 在每个 token_count 旁写一行 `token_usage_record`，带全局唯一 `response_id`（本机 1,405 条，跨文件 0 重复）；更早的 rollout 回退为 (timestamp, last_token_usage) 签名。本机无 Orca 根，真实数据未触发。",
+  "precheck": {
+    "description": "开工前确认 Codex 同名副本仍整份择一（未被前序提交修复）",
+    "command": "grep -n \"rollout:\\|candidate.size != winner.size\\|conflict_session_groups\\|token_usage_record\" core/collector/crates/collector-local/src/sources/codex.rs | head",
+    "expected": "按文件名分组整份择一；size 不同即计 conflict_session_groups；未读取 token_usage_record",
+    "is_completed": false,
+    "evidence": "2026-11-04 fix/C197 分支@2981da4 预检命中：codex.rs:212 按 rollout:{file_name} 分组，:275 candidate.size != winner.size 即计 conflict_session_groups，全文件无 token_usage_record 读取。main 二进制复现（local/c198/c190-behavior.log）：分叉副本 12,430（真值 12,760），前缀副本 660 但 Codex status=error。缺陷存在，需修复"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C190-codex-rollout-dedupe fix/C197-codex-open-failure-cache  # 叠在 C197 上：复用 C198 说明通道与 C197 失败兜底"
+    ],
+    "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C190 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Codex 跨根副本合并",
+      "before": "同名 rollout 整份取 size/mtime 最优，其余副本整体丢弃，分叉部分静默少计",
+      "after": "同一会话的各副本逐份解析（硬链接 / 同 size + 头尾指纹相同的副本仍零解析跳过），观测写入单次响应去重键（token_usage_record 用量与 token_count 一致时取 r:<response_id>，旧格式回退 t:<毫秒时间戳>:<input>:<cache_read>:<output>），组内按键取并集、每键保留总量最大的副本；CODEX_FILE_CACHE_SCHEMA 升 2",
+      "impact": "分叉副本不再少计，共享前缀不重复计入；schema 升 2 令全部旧条目首轮重解析一次（同时修复 C197 前写成的空条目）；release 构建冷扫 / 热扫耗时持平，缓存文件约增大 2/3"
+    },
+    {
+      "scope": "冲突判定与说明",
+      "before": "副本 size 不同即计 conflict_session_groups，并输出「已保守选择单份文件」说明",
+      "after": "前缀副本（所有键均在首份副本中且取值一致）不算冲突；真正分叉时经信息级 LOCAL_SOURCE_NOTICE（C198）说明「Codex 会话副本已分叉, 已按单次响应合并 (会话组: N)」",
+      "impact": "Orca 旧副本不再让 Codex 显示 error；conflict_session_groups 语义收窄为真实分叉"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "Codex 多根扫描按文件名去重、整份择一，size 不同即判冲突",
+      "after": "Codex 多根扫描对同名副本按单次响应身份（response_id，旧格式回退时间戳 + 本次用量）跨副本去重取并集，每键取总量最大；前缀副本不视为冲突，真实分叉经 LOCAL_SOURCE_NOTICE 说明（design 01 规则 3「同名副本按单次响应取并集 (C190)」、§7.1 Codex 层 schema 2）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-05",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归覆盖：前缀副本 = 长副本用量且无冲突说明；分叉副本 = 并集 12,760（不是 12,430 或 13,090）；硬链接副本零重复读；无 token_usage_record 的旧格式回退签名去重；全量测试 Exit 0",
+        "false_if": "任一场景少计或重复计入，或存在测试失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c190-verify-local.log）：Rust 562 passed / 0 failed、fmt 与 clippy -D warnings 通过、fixture 敏感扫描 0 命中、全部 Swift Harness 与 PanelParity 5 项对拍通过。新增回归：codex_copies_merge_by_response_without_double_counting（新格式带 response_id 与旧格式各一遍：前缀副本 = 660 且无冲突 / 无说明；分叉副本 = 12,760、conflict=1、有说明；两份都解析；缓存冷扫与参照实现逐字段一致，热轮两份各自命中 (2,0)、说明不变）；codex_dedupe_key_prefers_matching_response_record（用量一致的记录取 r:resp_a，用量不一致的记录不被认领、回退 t:<ms>:20:0:2）；diverged_rollout_copies_with_distinct_responses_are_unioned（原 conflicting 用例改写：同一时间戳两次不同响应 = 12+23）；硬链接 / 大文件副本仍零解析（codex_hardlink_and_large_copies_dedup_without_full_hash 不变）。变异检查：merge 改为「只取首份」或「每份全计」后新用例均失败（冲突数 / 990 ≠ 660）",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 双根复现两种场景，数值与上述一致；本机真实 ~/.codex 用量与修复前一致",
+        "false_if": "数值与预期不符，或真实数据发生变化",
+        "evidence": "Bruce-collector 真实 BridgeRequest + 临时 home 双根（CLI + Orca codex-runtime-home，复用复核夹具），main@3595325 与本分支对照（local/c198/c190-behavior.log）：前缀副本 main 660 + Codex error / LOCAL_SOURCE_SCHEMA_INCOMPATIBLE → 本分支 660、status=ok、无诊断；分叉副本 main 12,430 + error → 本分支 12,760、status=ok、仅 LOCAL_SOURCE_NOTICE（「Codex 会话副本已分叉, 已按单次响应合并 (会话组: 1)」），冷 / 热两轮一致。本机真实 ~/.codex（只读，local/c198/c190-real-codex.log）：main 与本分支冷 / 热 182 天合计均为 310,234,231，42 个会话 1,405 条观测全部取到 r:<response_id> 键；以 main 写出的 v1 缓存启动本分支 → 失效重建，数值一致",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "单根无副本场景、按文件缓存（C117）冷热对拍不变；任何场景不产生多计（台账单调，多计不可回退）",
+        "false_if": "破坏既有缓存语义或出现多计",
+        "evidence": "单根无副本：组只有一份时走快速路径（不建去重表），观测顺序与 C190 前相同，collector-local 全部既有对拍（冷 / 热 / 跨日 / 改窗口 / 删除回收 / 掉电截断）照常通过。多计排查：去重键不含路径，同一响应在各副本得到同一键，并集每键只取一份；旧格式回退键含本次用量，同一时间戳不同用量按两次响应计。性能（release 构建，本机 42 个会话，5 轮）：冷扫 main 0.154–0.157 s / 本分支 0.156–0.168 s，热扫 0.083 / 0.085 s；记录行按需字段反序列化不建 JSON DOM（debug 构建初版建 DOM 时冷扫 +0.17 s，已改）；缓存文件 153 KB → 256 KB。C198 端到端用例的说明文案随之改为「会话副本已分叉」",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "2eabfd2",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

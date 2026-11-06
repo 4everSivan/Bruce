@@ -5,7 +5,13 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-06
+
 ### Added
+- **官方网站落地主仓 website/：版本注入构建、同步门禁与 Pages 发布 (T27)**：
+  - **站点迁入主仓**：官网从 gitignored 草稿区迁入 `website/`（单页站点 + 面板/系统规格摘录与预览截图脚本，后者不进入构建），源码只写 `{{VERSION}}` / `{{DMG_SIZE}}` / `{{EXE_SIZE}}` 占位，构建时由根 `VERSION` 与 GitHub Release 资产元数据注入，输出 `local/dist/site/`；`--strict` 模式遇到未解析占位符即失败；
+  - **同步门禁**：`check-site-sync.mjs` 接入 `verify-local`，一次断言源码不写死版本号、必备占位符存在、厂商图标与 `docs/assets` 逐字节同源、README 版本徽章与正文版本行等于 `VERSION`；
+  - **Pages 发布**：`.github/workflows/site.yml` 仅在网站路径 / 厂商图标源 / 构建与门禁脚本 / `VERSION` / 工作流自身变化时触发，先跑同步门禁再严格构建，经 Pages artifact 发布，与 App 的 CI/Release 解耦。
 - **新增仪表盘固定卡片快捷键 ⌘/Ctrl 1/2/3 与通用页只读说明 (C211)**：
   - **固定身份映射**：⌘1 / ⌘2 / ⌘3 分别对应 Token 用量 / 订阅 / Agent 用量，与卡片拖拽顺序无关；顶栏 Tab 模式切换页签，纵向级联模式先滚动到目标卡片再切换折叠/展开；仅响应 key down（长按不连发），卡片当前不可用时静默 no-op；裸 1/2/3 正式退役；
   - **通用页只读说明**：mac 与 Windows 均在「全局快捷键」分组卡内、唤出看板行后新增「卡片快捷键」行，右侧仅展示 `⌘1/⌘2/⌘3`（Windows `Ctrl+1/2/3`）键帽，说明固定映射与双模式语义，不提供录制/编辑控件或持久化字段；

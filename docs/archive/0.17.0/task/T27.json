@@ -1,0 +1,112 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T27",
+  "title": "官方网站落地主仓 website/：版本注入构建、同步门禁与 Pages 发布",
+  "version": "0.17.0",
+  "milestone": "M15-官方网站",
+  "status": "completed",
+  "branch": "feat/T27-official-website",
+  "depends_on": [],
+  "target": {
+    "module": "官方网站（website）",
+    "design_doc": "docs/devel/design/13-官方网站.md",
+    "design_topic": "OfficialWebsite"
+  },
+  "goal": "把只存在于 gitignored 草稿区的官网迁入主仓 website/ 并建立版本纪律：站点源码只写占位符，版本号取自根 VERSION、下载资产大小取自 Release 元数据；用一条同步门禁锁住「源码不写死版本、厂商图标与 docs/assets 同源、README 徽章与 VERSION 一致」；发布走只监听网站路径的独立 Pages 工作流，与 App 的 CI/Release 解耦。",
+  "precheck": {
+    "description": "确认官网是否已在主仓落地：站点目录存在且同步门禁可运行即视为已实现，跳过重复搬迁。",
+    "command": "test -f website/index.html && node scripts/check-site-sync.mjs",
+    "expected": "开工前 website/ 不存在、命令返回非 0；站点仅以草稿形式存在于 gitignored 的 local/designs/bruce-official-site/",
+    "is_completed": false,
+    "evidence": "2026-11-05 开工前：git 索引中无 website 路径，草稿 60 个文件 4.8 MB 零版本历史；.gitignore 第 5 行忽略 local/"
+  },
+  "callback": {
+    "before": [
+      "git switch -c feat/T27-official-website  # 2026-11-05 开工前已执行"
+    ],
+    "after": [
+      "node scripts/check-site-sync.mjs  # 四条同步断言：版本占位符 / 图标同源 / README 版本",
+      "node scripts/build-site.mjs --strict  # 注入 VERSION 与资产大小，产物收拢 local/dist/site",
+      "scripts/adflow-verify --card T27  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检用 --card T27 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T27 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T27-1",
+      "title": "站点源码迁入主仓",
+      "capability": "website/ 承载单页站点源码（index.html、css/、js/、assets/），本地草稿区不再作为唯一副本；spec/ 保留面板与系统规格摘录，tools/ 保留预览截图脚本，二者不进入构建",
+      "done": true
+    },
+    {
+      "id": "T27-2",
+      "title": "版本与资产大小的构建注入",
+      "capability": "站点源码以 {{VERSION}} / {{DMG_SIZE}} / {{EXE_SIZE}} 占位；构建脚本从根 VERSION 与 Release 元数据解析并注入，输出 local/dist/site/，占位符残留或 --strict 下大小未解析即失败",
+      "done": true
+    },
+    {
+      "id": "T27-3",
+      "title": "同步门禁与本地验证接入",
+      "capability": "一条门禁断言四件事：源码不写死三段版本号、必备占位符存在、厂商图标与 docs/assets 逐字节一致（zai-mark 白名单）、README 版本徽章与正文版本行等于 VERSION；接入 verify-local.sh",
+      "done": true
+    },
+    {
+      "id": "T27-4",
+      "title": "设计基线与文档素材",
+      "capability": "design/13 记录站点定位、仓库归属决策、构建契约、门禁契约与踩坑；首屏/看板/安装/移动端四张截图压缩入库到文档资源区",
+      "done": true
+    },
+    {
+      "id": "T27-5",
+      "title": "Pages 发布流水线",
+      "capability": "独立工作流只在网站相关路径变化时触发：先跑同步门禁，再严格构建，产物经 Pages artifact 发布；App 的 CI/Release 不受影响",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "local-20261106-01",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "站点可构建且版本正确",
+        "true_if": "build-site.mjs --strict 退出码 0，产物位于 local/dist/site 且无 {{...}} 残留，页面版本号、下载 URL 与文件名均为 0.16.0",
+        "false_if": "构建失败、产物残留占位符，或页面版本与根 VERSION 不一致",
+        "evidence": "2026-11-05 local-20261105-01：node scripts/build-site.mjs --strict → exit 0；output local/dist/site/ (20 files, 294 KB)；sizes dmg 16.9 MB / exe 6.1 MB (github)；injected 25 placeholders across 9 text files。2026-11-06 发版时点复核：同步门禁在 VERSION=0.17.0 下通过，--strict 需 v0.17.0 Release 资产元数据，由发版后的 Pages 工作流按新 Release 重建。",
+        "result": true
+      },
+      {
+        "item": "同步门禁全绿",
+        "true_if": "check-site-sync.mjs 退出码 0，覆盖版本占位符、图标同源与 README 版本四条断言",
+        "false_if": "任一条断言失败或门禁未接入本地验证",
+        "evidence": "2026-11-05：node scripts/check-site-sync.mjs → exit 0，输出 ok: 官网同步检查通过（版本 0.16.0，厂商图标 7 个）；2026-11-06 升版后复核：ok: 官网同步检查通过（版本 0.17.0，厂商图标 10 个）。",
+        "result": true
+      },
+      {
+        "item": "构建产物与原草稿视觉一致",
+        "true_if": "构建后首屏渲染与迁移前草稿逐像素一致，且移动端/安装章节无布局回归",
+        "false_if": "出现版式位移、字体回退或资源 404",
+        "evidence": "2026-11-05：构建产物首屏截图与迁移前 preview/01-hero.png 的 SHA-256 完全相同；另拍安装章节与 390px 移动端，无横向溢出、控制台无报错",
+        "result": true
+      },
+      {
+        "item": "发布流水线路径隔离",
+        "true_if": "site.yml 仅在 website/**、厂商图标源、构建/门禁脚本、VERSION 或工作流自身变化时触发，构建前跑同步门禁且用 --strict",
+        "false_if": "工作流缺失路径过滤、跳过门禁，或与 App 的 CI/Release 共用触发条件",
+        "evidence": "2026-11-06：Pages 已启用（API build_type=workflow，source main/）；Deploy Site 工作流在官网合并提交 24e0dfb 上构建+部署成功（run 42147769532，27s），站点 https://4eversivan.github.io/Bruce/ 已上线；site.yml paths 过滤与同步门禁/--strict 步骤未变。",
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": "24e0dfb"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-06",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
+  }
+}

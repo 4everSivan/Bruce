@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C199",
+  "title": "为用量历史台账补充按来源口径版本向下修正的路径，修复已落库的多计",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C199-history-downward-correction",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector-history 用量历史台账",
+    "component": "台账单调合并语义与来源口径版本",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-11-04 复核 C190–C196 时发现：T26 台账按日 / 按月比较 total，新值小于存量即保留存量（`collector-history/src/lib.rs:247/329`），设计 §7.3「已知限制」已写明「来源数据向下修正不会回退」。该取舍在少计场景下保护了历史，但让任何多计一旦写入就永久保留：实测 Grok 跨日追加（C194 场景）真实 340 token，台账写入 07-26=300、07-27=340，7 日视图显示 640，月行却为 340；C194 修复解析后，用户台账里已落库的重复值仍不会消失。同理，C190 若误用「同名副本分别计入」造成多计，也将永久落库。需要一个受控的向下修正口子：只在来源口径（解析规则）为修复多计而升级时生效，其余时刻维持单调。",
+  "precheck": {
+    "description": "开工前确认台账仍无任何向下替换路径（未被前序提交修复）",
+    "command": "grep -n \"new_total < value\\|saturating_i64(new_total) < stored\\|user_version\" core/collector/crates/collector-history/src/lib.rs | head",
+    "expected": "日与月均按 total 取大，台账无来源口径版本，无任何向下替换路径",
+    "is_completed": false,
+    "evidence": "2026-11-04 fix/C194 分支@e0c3859 预检命中：collector-history/src/lib.rs 日合并 new_total < value 即保留存量、月合并 saturating_i64(new_total) < stored 即保留，SCHEMA_VERSION = 1，agent_state 无口径版本列。main 二进制复现（local/c198/c199-behavior.log）：Grok 07-26 写入 300、07-27 追加 40 → 台账 07-26=300、07-27=340，7 日合计 640、月 340"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C199-history-downward-correction fix/C194-grok-timestamp-estimate  # 叠在 C194 上：Grok 派生口径版本由 C194 的修复引出"
+    ],
+    "after": [
+      "cargo fmt --all --manifest-path core/collector/Cargo.toml -- --check",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C199 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "来源口径版本",
+      "before": "台账不记录写入时的来源解析口径",
+      "after": "agent_state 新增 derivation_version（NOT NULL DEFAULT 1）；台账 user_version 升 2，v1 → v2 迁移只加列、既有 agent 记基线版本 1（升级本身不触发修正）；来源经 collector_local::source_derivation_version 声明版本，只在修复多计的解析规则变更时升版（本批次 grok = 2）",
+      "impact": "台账 schema 升级；迁移与旧库兼容测试覆盖"
+    },
+    {
+      "scope": "向下修正",
+      "before": "新值小于存量一律保留存量",
+      "after": "来源可见（found）且声明版本高于记录版本时为修正轮：扫描窗口内每一天以新值替换（允许向下，扫描没有的日期删除），这些日期的日×模型行与今日临时表随之重写；起始日在窗口内的整月按扫描值替换，跨窗口起点的月份与窗口外日期按单调规则保留；随后记录新版本（取大），之后恢复单调合并。来源不可见的轮次不修正、不推进版本",
+      "impact": "已落库多计可修正；代价（修正轮前已被来源修剪的窗口内日期降到当前可见值；跨窗口起点月份不修正）写入设计 §7.3"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "台账合并单调只增不减，来源数据向下修正不会回退（已知限制）",
+      "after": "台账默认单调；仅在来源派生口径版本升级后的首个来源可见全量扫描轮，对扫描窗口内的日期（及起始日在窗口内的整月）按新值替换，之后恢复单调（design 01 §7.3 合并语义 5）"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261104-12",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "回归：先写入多计值 → 口径升版后首轮全量扫描把覆盖日期改为新值、未覆盖日期保留；口径未变的 agent 与后续轮次保持单调；旧库迁移通过；全量测试 Exit 0",
+        "false_if": "口径未变时出现向下替换，或升版后多计未修正，或迁移破坏既有数据",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（日志 local/c198/c199-verify-local.log）：Rust 585 passed / 0 failed、fmt 与 clippy -D warnings 通过、全部 Swift Harness 与 PanelParity 对拍通过。collector-history 新增 4 项：version_bump_corrects_window_days_downward_once（旧口径 10-20=500（窗口外）/10-30=300/11-03=640 → 升版轮扫描只有 11-03=340：10-30 删除、11-03 → 340、corrected_days=2，10-20 保留，2026-11 整月替换为 340、跨窗口起点的 2026-10 保留 800，日×模型行重写；版本记为 2 后更小的值不再覆盖）；version_bump_waits_for_the_source_to_be_found（found=false 不修正不推进，来源出现后修正）；unchanged_version_never_corrects（新 agent 直接记当前版本，同版本单调）；v1_ledger_migrates_to_baseline_version（手建 v1 库 → 打开后 user_version=2、既有 agent 版本 1、数据与 last_found_at 不变、基线版本不修正、重开不重复迁移）。collector-application grok_inflated_history_is_corrected_once_after_version_bump（按旧实现逐轮写入 640 → 首轮 340、月 340；删除来源后 status=history 仍 340）。变异检查：grok 版本改回 1 → 仍为 640，用例失败",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "临时 home 复现 Grok 跨日追加：C194 修复 + 口径升版后 7 日合计从 640 回到 340，日与月一致",
+        "false_if": "合计仍为 640 或日 / 月不一致",
+        "evidence": "Bruce-collector 真实 BridgeRequest + 临时 home（local/c198/c199-behavior.log）：main 写 07-26（300）与 07-27（07-26=300、07-27=340，7 日合计 640、月 340），再以本分支跑 07-27 → 07-27=340，7 日合计 340、月 340；再跑一轮仍 340；台账 user_version=2、grok derivation_version=2",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "来源消失（status=history）、修剪、部分扫描失败场景历史不丢；台账失败降级语义不变",
+        "false_if": "非升版轮次丢失历史或台账降级行为改变",
+        "evidence": "本机真实数据升级路径（local/c198/c199-behavior.log）：main 先在临时 home 写出 v1 台账，本分支沿用同一台账 → 迁移为 user_version=2、10 个 agent 均为版本 1（本机无 Grok，未见来源不推进版本），diagnostics 为空，非 Claude 各来源合计逐项一致（Claude 因本会话写入随运行先后增长）。来源消失（history_survives_source_removal、删除 Grok 来源后 status=history 仍 340）、台账不可用降级（history_store_unavailable_falls_back_to_scan）、修剪 / 部分失败（merge_without_old_dates_keeps_their_history、smaller_merge_keeps_existing_history）既有用例全部通过；Windows 只经 collector-application 间接依赖台账 crate，无直接调用、无新依赖",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "0b55285",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-04",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

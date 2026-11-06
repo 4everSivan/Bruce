@@ -1,0 +1,128 @@
+{
+  "$schema": "https://adflow.org/schemas/change-card.v1.json",
+  "id": "C216",
+  "title": "Agent 用量展开明细统一为紧凑条形方案 C，内容对齐 Nothing（双端）",
+  "version": "0.17.0",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C213-C218-dashboard-refinements",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "Agent 用量卡展开明细 (HourlyLineCard.detailSection / app.js agentRow detail)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户 2026-11-05 确认所有主题的 Agent 用量卡「详细用量」内容与 Nothing 不一致：Nothing 项目段有排名、工程数、Token、百分比与 6-Tick 进度，经典/液态玻璃只有 100% 堆叠条 + 图例行（无排名/数量/进度）；模型段两主题内容相同但仅换皮。用户选定 demo 方案 C：所有主题统一为紧凑条形——段头 + 「序号 / 名称 / 内联占比条 / 百分比 / Token」，模型与项目同构，不保留 100% 堆叠条，双端同步。",
+  "precheck": {
+    "description": "确认双端仍为堆叠条 + 图例 / Nothing 控制台两套明细",
+    "command": "zsh -c 'grep -q stackedShareBar apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift && grep -q nothingProjectConsole apps/win/src/app.js && grep -q \"share-bar\" apps/win/src/styles.css'",
+    "expected": "退出码 0（旧 distributionGroup/stackedShareBar 与 Nothing PRJ.CONSOLE 仍在，需本卡统一）",
+    "is_completed": true,
+    "evidence": "2026-11-05 建卡时源码核对：mac detailSection 对模型/项目调用 distributionGroup，Nothing 项目额外走 nothingProjectConsoleSection；Windows detailGroup + stackedShareBar + nothingProjectConsole；经典项目段无排名/数量/进度。"
+  },
+  "callback": {
+    "before": [],
+    "after": [
+      "zsh -c 'source scripts/swift-sdk.zsh && Bruce_prepare_swift_sdk && swift build --package-path apps/macos --build-tests'",
+      "zsh -c 'node --test apps/win/tests/frontend.test.mjs && node scripts/check-win-frontend.mjs'",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C216 --to closed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C216 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "mac 明细统一",
+      "before": "模型段 = 模型占比标题 + 100% 堆叠条 + 图例行；项目段经典 = 项目分布 + 堆叠条 + 图例行，Nothing = 项目统计 // PRJ.CONSOLE + [P1]/点阵导引/Tokens/百分比徽章/6-Tick；两段内容与排版不一致",
+      "after": "两段统一为紧凑条形：段头「模型占比」/「项目占比」+ 右侧数量（经典 N 个模型/N 个工程，Nothing N MODELS/N WORKSPACES）；每行 序号(01/02…) + 名称(≈92pt 截断) + 内联占比条(3pt) + 百分比 + Token；不渲染 100% 堆叠条、点阵导引、6-Tick 或 PRJ.CONSOLE；模型与项目之间 1px 分隔线；经典用 SF 字体 + 圆角条 + agent/project 色阶，Nothing 用 Space Mono + 方角条 + 绿阶",
+      "impact": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift（删除 distributionGroup/stackedShareBar/shareLegendRow/nothingProjectConsole*/dotLeaderLine/projectTierColors/NothingPatternView/projectBarShades，新增 compactShareSection/compactRow）"
+    },
+    {
+      "scope": "Windows 明细统一",
+      "before": "detailGroup 渲染 share-bar + share-legend；Nothing 项目段走 nothing-prj-console（PRJ.CONSOLE + 6-Tick）；经典项目段无排名/数量/进度",
+      "after": "新增 compactShareSection：段头 + 数量 + .detail-compact-row（dc-idx / dc-name / dc-bar / dc-pct / dc-tokens）；模型与项目同构，删除 stackedShareBar/detailGroup/nothingProjectConsole 与 .share-bar/.detail-group/.nothing-prj-console 样式；经典与 Nothing 各自皮肤（Nothing 方角 + 绿阶 + Space Mono）",
+      "impact": "apps/win/src/app.js、styles.css、tests/frontend.test.mjs"
+    },
+    {
+      "scope": "数据与聚合边界",
+      "before": "视图模型下发 models/projects 的 name/total/totalText/share，按全量行渲染；明细视觉在视图层做两套分支",
+      "after": "契约不变：仍渲染视图模型给出的全部行（Top3 + 其他），前端不截断；序号取数组顺序，占比条宽 = clamp(share,0,1)，极小非零份额仍显示 <1%；mac/Windows 使用同一数据与文案口径",
+      "impact": "BruceAppCore 无契约变更；apps/macos、apps/win 视图层"
+    },
+    {
+      "scope": "设计回写与测试",
+      "before": "设计 03 无 Agent 明细结构规则；设计 05 记录 Nothing 堆叠条 + PRJ.CONSOLE + 6-Tick；前端测试断言 legend-row/share-bar/prj-console",
+      "after": "设计 03 新增第 19 条「Agent 明细紧凑条形」；设计 05 对拍表同步；mac 删除旧明细分支并保留 Preview；Windows 测试改为断言 two .detail-compact 段、行字段、数量文案、无 share-bar/prj-console",
+      "impact": "docs/devel/design/03、05；CHANGELOG.md（收口时）；tests"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "设计未规定 Agent 明细统一结构；Windows 适配表记录「Agent 展开区渲染 P4 斜点阵堆叠条与 Dot-Leader 控制台（PRJ.CONSOLE + 6-Tick 进度块）」，经典项目段为堆叠条 + 图例",
+      "after": "新增第 19 条：Agent 明细在所有主题统一为紧凑条形（段头 + 数量 + 序号/名称/内联占比条/百分比/Token），模型与项目同构；不渲染 100% 堆叠条、点阵导引、6-Tick 或 PRJ.CONSOLE；经典 SF + 圆角条 + 色阶，Nothing Space Mono + 方角条 + 绿阶；双端同语义、同文案"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261105-06",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "mac swift build 与 Windows node --test/check-win-frontend 全绿；verify-local 通过；Windows 断言覆盖紧凑段、数量、行字段与旧结构退役",
+        "false_if": "存在构建/测试失败，或旧 share-bar/prj-console/legend-row 仍被渲染",
+        "evidence": "2026-11-05：`zsh scripts/verify-local.sh` Exit 0（日志 local/verify-c213-c217.log，末行「Bruce 本地验证全部通过」）；mac swift build --build-tests Build complete；Windows `node --test apps/win/tests/frontend.test.mjs` 127/127 pass、`node scripts/check-win-frontend.mjs` 通过。 Windows 新增 C216 用例断言两段 .detail-compact、数量文案、7 行五字段、<1% 特例、旧 share-bar/prj-console 退役。",
+        "result": true
+      },
+      {
+        "item": "内容对齐",
+        "true_if": "双端所有主题均显示段头数量、序号、名称、内联占比条、百分比与 Token；模型/项目同构；Top3 + 其他全部渲染且 <1% 特例保留",
+        "false_if": "任一行缺字段、数量文案错误、截断行或百分比/ Token 口径不一致",
+        "evidence": "2026-11-05 Windows DOM 实测：模型段 5 行 + 项目段 2 行全部渲染；计数 \"5 个模型\"/\"2 个工程\"；行字段 01/m1/50%/62K；Nothing 主题 1 MODELS/2 WORKSPACES；<1% 保留；无截断。",
+        "result": true
+      },
+      {
+        "item": "视觉与布局",
+        "true_if": "经典/液态玻璃圆角条与 Space 字体、Nothing 方角条与 Space Mono 绿阶；两段间 1px 分隔；无横向溢出、卡高合理",
+        "false_if": "主题皮肤串味、条溢出/塌陷、分隔线缺失或卡高异常",
+        "evidence": "Windows render-harness 440×760 经典/Nothing 深色：detail-compact-row 宽 374pt，无横向溢出（panel 438/438）；经典蓝色/青色圆角条，Nothing 绿色方角条 + Space Mono；mac Swift 构建通过，视图与 Windows 同构。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Agent 行展开/收起、14 日柱、逐小时折线、卡片高度与订阅/Token 卡不受影响",
+        "false_if": "展开动画抖动、图表裁切或既有卡片回归",
+        "evidence": "verify-local 全量通过；Agent 行展开/收起、14 日柱、逐小时折线、卡片高度与订阅/Token 卡 Harness 保持；Windows 127/127。",
+        "result": true
+      },
+      {
+        "item": "实机验收",
+        "true_if": "mac 装机版目视确认本卡效果；Windows 真机不可用，以 render-harness 代替",
+        "false_if": "效果与描述不符、出现裁切/闪烁/回归或用户驳回",
+        "evidence": "2026-11-05 17:47 mac 装机版已部署（PID 60484）待用户确认；Windows 无真机，render-harness + DOM/CSS 用例代替。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "d701837",
+    "tag": "v0.17.0"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.6.0",
+    "ran_at": "2026-11-05",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}
