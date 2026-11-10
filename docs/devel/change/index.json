@@ -31,7 +31,8 @@
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
       "changes": [
-        "C227"
+        "C227",
+        "C230"
       ]
     },
     "AgentAnalytics": {
@@ -99,6 +100,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.17.1",
       "file": "docs/devel/change/C229.json"
+    },
+    "C230": {
+      "title": "collector-application 结构整理：lib.rs 约 2000 行内联测试按主题拆为 tests_*.rs，生产文件降至约 1000 行",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "refactor/C230-application-test-split",
+      "topic": "TokenUsage",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C230.json"
     }
   }
 }
