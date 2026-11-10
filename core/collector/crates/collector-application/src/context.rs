@@ -4,7 +4,6 @@ use collector_local::ScanStats;
 use collector_provider::HttpClient;
 use collector_runtime::{CancellationToken, RuntimeBudgets, RuntimeLimits};
 use serde_json::Value;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -53,8 +52,6 @@ pub(crate) struct RunContext<'a> {
     #[allow(dead_code)]
     pub credential_source: &'a dyn CredentialSource,
     pub metrics: Arc<RuntimeCounters>,
-    #[allow(dead_code)]
-    pub home: PathBuf,
     pub captured_at: String,
     pub external_timeout: Duration,
 }
@@ -79,12 +76,6 @@ impl<'a> RunContext<'a> {
         let deadline = Instant::now()
             .checked_add(Duration::from_secs_f64(request.timeouts.module_seconds))
             .unwrap_or_else(Instant::now);
-        let home = request
-            .context
-            .get("home")
-            .and_then(Value::as_str)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
         Ok(Self {
             request,
             captured_at: window.generated_at(),
@@ -95,7 +86,6 @@ impl<'a> RunContext<'a> {
             http,
             credential_source,
             metrics: Arc::new(RuntimeCounters::default()),
-            home,
             external_timeout: Duration::from_secs_f64(request.timeouts.external_request_seconds),
         })
     }

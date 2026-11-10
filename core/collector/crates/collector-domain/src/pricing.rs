@@ -323,10 +323,6 @@ pub fn builtin_updated_at() -> &'static str {
     &builtin_catalog_file().updated_at
 }
 
-pub fn builtin_schema_version() -> u32 {
-    builtin_catalog_file().schema_version
-}
-
 /// 全部内置价卡行, 顺序即设置页展示顺序 (C108, T19)。
 pub fn catalog() -> &'static [CatalogModel] {
     builtin_catalog()

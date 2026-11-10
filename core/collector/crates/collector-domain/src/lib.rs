@@ -219,11 +219,6 @@ impl CollectionWindow {
             .filter(|index| *index < self.day_list.len())
     }
 
-    pub fn day_of_millis(&self, timestamp_millis: i64) -> Option<String> {
-        self.day_index_of_millis(timestamp_millis)
-            .and_then(|index| self.day_list.get(index).cloned())
-    }
-
     pub fn hour_of_millis(&self, timestamp_millis: i64) -> Option<usize> {
         let value = Utc.timestamp_millis_opt(timestamp_millis).single()?;
         Some(value.with_timezone(&self.timezone).hour() as usize)
@@ -237,14 +232,6 @@ impl CollectionWindow {
         self.now
             .with_timezone(&self.timezone)
             .to_rfc3339_opts(SecondsFormat::Secs, true)
-    }
-
-    pub fn contains_day(&self, day: &str) -> bool {
-        self.day_list
-            .first()
-            .map(|first| day >= first)
-            .unwrap_or(false)
-            && day <= self.today.as_str()
     }
 }
 
@@ -473,14 +460,6 @@ impl UsageContributionBuilder {
             models_by_day: BTreeMap::new(),
             hour_models_today: BTreeMap::new(),
         }
-    }
-
-    pub fn from_contribution(
-        window: CollectionWindow,
-        contribution: &UsageContribution,
-    ) -> Option<Self> {
-        let mut builder = Self::new(window);
-        builder.merge_contribution(contribution).then_some(builder)
     }
 
     pub fn record(&mut self, sample: UsageSample<'_>) -> bool {

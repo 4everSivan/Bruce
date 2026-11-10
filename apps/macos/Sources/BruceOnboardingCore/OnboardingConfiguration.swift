@@ -597,12 +597,9 @@ public enum SubscriptionCredentialAccount {
     public static let clineAPIKey = "cline:api-key"
 }
 
-/// Codex v2 Keychain 键别名 (供既有调用方引用; 旧键只供迁移读取).
+/// Codex 旧 Keychain 键别名 (旧键只供迁移读取; 其余 v2 键直接经 CodexCredentialKeys 引用).
 extension SubscriptionCredentialAccount {
-    public static let codexAccountIndexV2 = CodexCredentialKeys.accountIndexV2
-    public static let codexAccountV2Prefix = CodexCredentialKeys.accountV2Prefix
     public static let codexLegacyAccounts = CodexCredentialKeys.legacyAccounts
-    public static let codexLegacyActiveAccount = CodexCredentialKeys.legacyActiveAccount
 }
 
 // MARK: - CredentialStore

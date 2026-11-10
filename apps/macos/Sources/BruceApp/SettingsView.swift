@@ -718,15 +718,6 @@ struct SettingsView: View {
         coordinator.resolvedTheme.interfaceStyle == .nothing
     }
 
-    var liveQuotaRatios: (outer: Double, inner: Double) {
-        let summary = model.makeMenuBarSummary()
-        let avgVal = summary.averageRemainingQuota ?? summary.minimumRemainingQuota ?? 68.0
-        let minVal = summary.minimumRemainingQuota ?? summary.averageRemainingQuota ?? 68.0
-        let outer = max(0.0, min(100.0, avgVal)) / 100.0
-        let inner = max(0.0, min(100.0, minVal)) / 100.0
-        return (outer, inner)
-    }
-
     func metricValue(_ metric: MenuBarMetric) -> String {
         let summary = model.makeMenuBarSummary()
         let formatter = MenuBarMetricFormatter()

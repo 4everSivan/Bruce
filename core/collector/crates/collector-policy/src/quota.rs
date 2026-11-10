@@ -66,11 +66,6 @@ impl QuotaRunPolicy {
         }
     }
 
-    /// 本地专用 run: 不查询任何 provider。
-    pub fn local_only() -> Self {
-        Self::default()
-    }
-
     pub fn is_skipped(&self, provider: &str) -> bool {
         self.skip_providers.contains(provider)
     }

@@ -455,11 +455,6 @@ public final class ProviderAccountStore: @unchecked Sendable {
         )
     }
 
-    /// 现有账号的全部显示名, 供重名校验与默认序号计算.
-    public func displayNames() throws -> [String] {
-        try loadIndex().accounts.map(\.displayName)
-    }
-
     /// 重命名账号 (T18): 只改显示名, 保留凭据、授权状态与 accountID.
     /// 先写 record 再写 index; 任一步失败上抛, 调用方不得假装成功.
     public func renameAccount(

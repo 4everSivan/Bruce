@@ -2,8 +2,7 @@
 //!
 //! 决策内核位于共享 `collector-policy::alerts`; 本模块只负责:
 //! - 把 artifact 的 `services` 传入共享内核;
-//! - 把共享事件转换为 Windows 前端气泡载荷 (`QuotaAlert`);
-//! - 保留阈值常量供旧调用方/文档引用。
+//! - 把共享事件转换为 Windows 前端气泡载荷 (`QuotaAlert`)。
 //!
 //! 状态机、窗口身份、stale/缺失语义全部在共享 crate 中实现, Windows 不再保留第二份。
 
@@ -14,11 +13,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use collector_policy::alerts::{alert_tier, AlertState, ALERT_STATE_VERSION};
-
-/// 阶梯预警阈值: [50%, 80%, 95%]
-pub const QUOTA_ALERT_THRESHOLDS: [f64; 3] = [50.0, 80.0, 95.0];
-/// 默认 80% 告警阈值 (向后兼容常量)
-pub const QUOTA_ALERT_THRESHOLD: f64 = 80.0;
 
 /// 前端托盘气泡载荷.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
