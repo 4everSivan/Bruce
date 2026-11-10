@@ -1,4 +1,3 @@
-use collector_credential::CredentialSource;
 use collector_domain::{BridgeRequest, CollectionWindow, Diagnostic};
 use collector_local::ScanStats;
 use collector_provider::HttpClient;
@@ -49,8 +48,6 @@ pub(crate) struct RunContext<'a> {
     pub budgets: RuntimeBudgets,
     pub cancellation: CancellationToken,
     pub http: &'a dyn HttpClient,
-    #[allow(dead_code)]
-    pub credential_source: &'a dyn CredentialSource,
     pub metrics: Arc<RuntimeCounters>,
     pub captured_at: String,
     pub external_timeout: Duration,
@@ -61,7 +58,6 @@ impl<'a> RunContext<'a> {
         request: &'a BridgeRequest,
         window: CollectionWindow,
         http: &'a dyn HttpClient,
-        credential_source: &'a dyn CredentialSource,
         limits: RuntimeLimits,
     ) -> Result<Self, Diagnostic> {
         let budgets = limits.budgets().map_err(|_| {
@@ -84,7 +80,6 @@ impl<'a> RunContext<'a> {
             budgets,
             cancellation: CancellationToken::with_deadline(deadline),
             http,
-            credential_source,
             metrics: Arc::new(RuntimeCounters::default()),
             external_timeout: Duration::from_secs_f64(request.timeouts.external_request_seconds),
         })

@@ -14,10 +14,7 @@ mod paths;
 
 use account::{build_account_plan, validate_account_request};
 use collector_aggregate::UsageAccumulator;
-use collector_credential::{
-    validate_credential_challenges, validate_credential_updates, CredentialSource,
-    SystemCredentialSource,
-};
+use collector_credential::{validate_credential_challenges, validate_credential_updates};
 use collector_domain::{
     AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
     ModelPricingOverride, PricingTable, WindowError, AGENT_USAGE_MODULE,
@@ -102,44 +99,21 @@ impl std::fmt::Debug for CollectionFailure {
 
 /// Execute one collection run with production read-only adapters.
 pub fn collect_agent_usage(request: &BridgeRequest) -> Result<CollectionOutput, CollectionFailure> {
-    let http = UreqHttpClient::default();
-    let credentials = SystemCredentialSource::default();
-    collect_agent_usage_with_dependencies(request, &http, &credentials)
+    collect_agent_usage_with_dependencies(request, &UreqHttpClient::default())
 }
 
-/// Execute one collection run with injected HTTP and credential adapters.
-/// This is the fixture seam used by application tests and never performs
-/// external I/O unless the caller supplies an adapter that does so.
+/// Execute one collection run with an injected HTTP adapter.
+/// This is the fixture seam used by application tests and benchmark targets
+/// and never performs external I/O unless the supplied adapter does so.
+///
+/// C229: there is no credential adapter. The collector never reads host
+/// credential files or the Keychain; every credential arrives in
+/// `request.credentials`, injected by the host app.
 pub fn collect_agent_usage_with_dependencies(
     request: &BridgeRequest,
     http: &dyn HttpClient,
-    credentials: &dyn CredentialSource,
 ) -> Result<CollectionOutput, CollectionFailure> {
-    collect_agent_usage_with_dependencies_inner(
-        request,
-        http,
-        credentials,
-        #[cfg(test)]
-        None,
-    )
-}
-
-fn collect_agent_usage_with_dependencies_inner(
-    request: &BridgeRequest,
-    http: &dyn HttpClient,
-    credentials: &dyn CredentialSource,
-    #[cfg(test)] final_probe: Option<&mut dyn FnMut(&collector_runtime::CancellationToken)>,
-) -> Result<CollectionOutput, CollectionFailure> {
-    validate_account_request(request)?;
-    let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
-    let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
-    // C062: 额度仍新鲜/429 冷却时 Swift 只请求本地统计; 此时不启动额度 worker,
-    // 也不输出 denied 占位, 避免把「本轮故意不查额度」误报成 partial.
-    let local_usage_only = request
-        .context
-        .get("localUsageOnly")
-        .and_then(Value::as_bool)
-        == Some(true);
+    let context = prepare_run(request, http)?;
     if request
         .context
         .get("quotaRetryOnly")
@@ -148,10 +122,49 @@ fn collect_agent_usage_with_dependencies_inner(
     {
         return collect_quota_retry_only(&context);
     }
-    let (local_result, quota_result) = std::thread::scope(|scope| {
-        let local = scope.spawn(|| collect_local_usage(&context));
-        let quota = (!local_usage_only && context.capability_allowed("externalQuotas"))
-            .then(|| scope.spawn(|| collect_quota_usage(&context)));
+    let gathered = gather(&context);
+    let assembled = assemble(&context, gathered)?;
+    publish(&context, assembled)
+}
+
+/// Phase 0: validate the request and build the per-run context.
+fn prepare_run<'a>(
+    request: &'a BridgeRequest,
+    http: &'a dyn HttpClient,
+) -> Result<RunContext<'a>, CollectionFailure> {
+    validate_account_request(request)?;
+    let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
+    Ok(RunContext::new(
+        request,
+        window,
+        http,
+        RuntimeLimits::default(),
+    )?)
+}
+
+/// C062: 额度仍新鲜/429 冷却时 Swift 只请求本地统计; 此时不启动额度 worker,
+/// 也不输出 denied 占位, 避免把「本轮故意不查额度」误报成 partial.
+fn local_usage_only(context: &RunContext<'_>) -> bool {
+    context
+        .request
+        .context
+        .get("localUsageOnly")
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+/// Raw results of the concurrent local and quota workers.
+struct Gathered {
+    local: Result<LocalCollection, Diagnostic>,
+    quota: Option<QuotaExecution>,
+}
+
+/// Phase 1: run the local scan and (when allowed) the quota worker concurrently.
+fn gather(context: &RunContext<'_>) -> Gathered {
+    let (local, quota) = std::thread::scope(|scope| {
+        let local = scope.spawn(|| collect_local_usage(context));
+        let quota = (!local_usage_only(context) && context.capability_allowed("externalQuotas"))
+            .then(|| scope.spawn(|| collect_quota_usage(context)));
         // C043: worker panic 不再 expect 崩溃 —— 降级为诊断, 其余通道照常产出,
         // 保证 stdout 恒有可解释的 envelope (取消语义仍由 cancellation 诊断表达)。
         let local = local
@@ -165,142 +178,56 @@ fn collect_agent_usage_with_dependencies_inner(
         });
         (local, quota)
     });
-    // C171: 额度线程已完成, 其轮换令牌在服务端已生效; 此后任何一步失败都随错误带出。
-    let pending_updates = quota_result
-        .as_ref()
-        .map(|quota| quota.credential_updates.clone())
-        .unwrap_or_default();
-    let failed = |diagnostic: Diagnostic| CollectionFailure {
+    Gathered { local, quota }
+}
+
+/// Everything the artifact needs, built but not yet published.
+struct Assembled {
+    agents: Vec<AgentUsage>,
+    services: Vec<Value>,
+    diagnostics: Vec<Diagnostic>,
+    scan_stats: ScanStats,
+    source_metrics: Vec<SourcePerformanceMetric>,
+    /// C171: 额度线程已完成, 其轮换令牌在服务端已生效; 此后任何一步失败都随错误带出。
+    credential_updates: Vec<Value>,
+    credential_challenges: Vec<Value>,
+}
+
+/// A failed run that still hands already-rotated tokens back to the host (C171).
+fn run_failure(diagnostic: Diagnostic, credential_updates: &[Value]) -> CollectionFailure {
+    CollectionFailure {
         diagnostic,
-        credential_updates: pending_updates.clone().into_boxed_slice(),
-    };
-    let local = local_result.map_err(failed)?;
+        credential_updates: credential_updates.to_vec().into_boxed_slice(),
+    }
+}
+
+/// Cancellation fence: a cancelled or timed-out run must not publish an artifact.
+fn cancellation_fence(
+    context: &RunContext<'_>,
+    credential_updates: &[Value],
+) -> Result<(), CollectionFailure> {
     context
         .cancellation
         .check()
-        .map_err(|error| failed(local_source_runtime_diagnostic(error)))?;
+        .map_err(|error| run_failure(local_source_runtime_diagnostic(error), credential_updates))
+}
+
+/// Phase 2: merge worker results into agents, services and diagnostics.
+fn assemble(context: &RunContext<'_>, gathered: Gathered) -> Result<Assembled, CollectionFailure> {
+    let Gathered { local, quota } = gathered;
+    // 本轮未启动额度 worker (仅本地 / 未授权 externalQuotas) 时没有可带出的轮换令牌。
+    let quota = quota.unwrap_or_default();
+    let local = local.map_err(|diagnostic| run_failure(diagnostic, &quota.credential_updates))?;
+    cancellation_fence(context, &quota.credential_updates)?;
     let mut diagnostics = local.diagnostics;
-    let scan_stats = local.scan_stats;
-    let source_metrics = local.source_metrics;
-    let window = context.window.clone();
-    let sessions_allowed = context.capability_allowed("localSessions");
-    let pricing_overrides: HashMap<String, ModelPricingOverride> = request
-        .context
-        .get("pricingOverrides")
-        .or_else(|| request.context.get("pricing_overrides"))
-        .and_then(|val| serde_json::from_value(val.clone()).ok())
-        .unwrap_or_default();
-    let pricing_table = match request.context.get("pricingCatalog") {
-        Some(raw) => {
-            let bytes = serde_json::to_vec(raw).unwrap_or_default();
-            match collector_domain::pricing::CatalogFile::parse_and_validate(&bytes) {
-                Ok(catalog_file) => {
-                    // 防倒退 Anti-Rollback: 若传入价格表早于内置基线版本，回退至内置基线
-                    if catalog_file.is_older_than(collector_domain::pricing::builtin_updated_at()) {
-                        PricingTable::new(pricing_overrides)
-                    } else {
-                        PricingTable::with_catalog(&catalog_file.models, pricing_overrides)
-                    }
-                }
-                Err(_) => PricingTable::new(pricing_overrides),
-            }
-        }
-        None => PricingTable::new(pricing_overrides),
-    };
-    let placeholder_status = if sessions_allowed {
-        "not_found"
-    } else {
-        "unavailable"
-    };
-    let placeholder_note = if sessions_allowed {
-        "未发现会话记录"
-    } else {
-        "未授权 localSessions 能力, 已跳过本机会话扫描"
-    };
-    let agent_specs = [
-        (
-            "kimi-work",
-            "Kimi Work",
-            "额度见下方 Kimi 服务",
-            "未发现会话记录",
-        ),
-        (
-            "kimi-code-cli",
-            "Kimi Code CLI",
-            "额度见下方 Kimi 服务",
-            "未发现会话记录",
-        ),
-        (
-            "claude-code",
-            "Claude Code",
-            "额度见下方 Claude 服务",
-            "未发现会话记录",
-        ),
-        (
-            "codex",
-            "Codex",
-            "额度见下方 Codex 账号 (实时查询)",
-            "未发现会话记录",
-        ),
-        (
-            "grok",
-            "Grok",
-            "按消息内容估算 (不含每轮重发的上下文, 偏低), 非精确 token 计数",
-            "未发现会话记录",
-        ),
-        ("pi", "Pi", "本机会话聚合", "未发现会话记录"),
-        ("zcode", "ZCode", "本机会话聚合", "未发现会话记录"),
-        ("codebuddy", "CodeBuddy", "本机会话聚合", "未发现会话记录"),
-        ("opencode", "OpenCode", "本机会话聚合", "未发现会话记录"),
-        ("dsh", "DSH", "本机会话聚合", "未发现会话记录"),
-    ];
-    let mut agents = Vec::with_capacity(agent_specs.len());
-    for (id, name, note, not_found_note) in agent_specs {
-        let missing_note = if sessions_allowed {
-            not_found_note
-        } else {
-            placeholder_note
-        };
-        if let Some(source) = local.agents.get(id) {
-            agents.push(finalize_local_agent(
-                &window,
-                id,
-                name,
-                source,
-                note,
-                placeholder_status,
-                missing_note,
-                &pricing_table,
-            ));
-        } else {
-            agents.push(placeholder_agent(
-                &window,
-                id,
-                name,
-                placeholder_status,
-                missing_note,
-                &pricing_table,
-            ));
-        }
-    }
-    let (services, credential_updates, credential_challenges) = if local_usage_only {
-        // 本轮只做本地统计: 不输出额度占位, 也不消费/产生额度诊断.
-        (Vec::new(), Vec::new(), Vec::new())
-    } else if context.capability_allowed("externalQuotas") {
-        let quota = quota_result.unwrap_or_default();
-        diagnostics.extend(quota.diagnostics);
-        (
-            quota.services,
-            quota.credential_updates,
-            quota.credential_challenges,
-        )
-    } else {
-        // C124: 未授予 externalQuotas (无订阅凭证 / 未同意授权) 即不涉及云端额度, 不输出
-        // 占位 service。旧版输出的「CC Switch 云端额度」/「Codex 账号额度」占位状态为
-        // partial, 会让纯本机统计的每一轮都带 COLLECTOR_PARTIAL_RESULT 而显示为部分失败。
-        (Vec::new(), Vec::new(), Vec::new())
-    };
-    if services.iter().any(|service| {
+    let pricing_table = resolve_pricing_table(context.request);
+    let agents = build_agents(context, &local.agents, &pricing_table);
+    // C124: 未授予 externalQuotas (无订阅凭证 / 未同意授权) 或本轮只做本地统计时,
+    // 额度 worker 不会启动, quota 为空: 不输出占位 service, 也不消费/产生额度诊断。
+    // 旧版的「CC Switch 云端额度」/「Codex 账号额度」占位状态为 partial, 会让纯本机
+    // 统计的每一轮都带 COLLECTOR_PARTIAL_RESULT 而显示为部分失败。
+    diagnostics.extend(quota.diagnostics);
+    if quota.services.iter().any(|service| {
         matches!(
             service.get("status").and_then(Value::as_str),
             Some("partial") | Some("error")
@@ -314,49 +241,165 @@ fn collect_agent_usage_with_dependencies_inner(
             true,
         ));
     }
-    #[cfg(test)]
-    if let Some(probe) = final_probe {
-        probe(&context.cancellation);
-    }
-    context
-        .cancellation
-        .check()
-        .map_err(|error| failed(local_source_runtime_diagnostic(error)))?;
-    let total_cost = agents
+    Ok(Assembled {
+        agents,
+        services: quota.services,
+        diagnostics,
+        scan_stats: local.scan_stats,
+        source_metrics: local.source_metrics,
+        credential_updates: quota.credential_updates,
+        credential_challenges: quota.credential_challenges,
+    })
+}
+
+/// Phase 3: fence, serialize and fence again before handing the artifact out.
+fn publish(
+    context: &RunContext<'_>,
+    assembled: Assembled,
+) -> Result<CollectionOutput, CollectionFailure> {
+    let updates = &assembled.credential_updates;
+    cancellation_fence(context, updates)?;
+    let total_cost = assembled
+        .agents
         .iter()
         .filter_map(|agent| agent.today_cost_usd)
         .sum::<f64>();
     let artifact = AgentUsageArtifact {
         schema_version: AGENT_USAGE_SCHEMA_VERSION,
         module: AGENT_USAGE_MODULE.to_owned(),
-        generated_at: window.generated_at(),
-        agents,
-        services,
+        generated_at: context.window.generated_at(),
+        agents: assembled.agents,
+        services: assembled.services,
         total_cost_usd: (total_cost > 0.0).then_some(total_cost),
     };
     let artifact = serde_json::to_value(artifact).map_err(|_| {
-        failed(Diagnostic::new(
-            "ARTIFACT_SERIALIZATION_FAILED",
-            "collector",
-            "serialize",
-            "artifact 序列化失败",
-            false,
-        ))
+        run_failure(
+            Diagnostic::new(
+                "ARTIFACT_SERIALIZATION_FAILED",
+                "collector",
+                "serialize",
+                "artifact 序列化失败",
+                false,
+            ),
+            updates,
+        )
     })?;
-    context
-        .cancellation
-        .check()
-        .map_err(|error| failed(local_source_runtime_diagnostic(error)))?;
+    cancellation_fence(context, updates)?;
     Ok(CollectionOutput {
         artifact,
-        diagnostics,
-        generated_at: window.generated_at(),
-        scan_stats,
+        diagnostics: assembled.diagnostics,
+        generated_at: context.window.generated_at(),
+        scan_stats: assembled.scan_stats,
         metrics: context.metrics.snapshot(),
-        source_metrics,
-        credential_updates,
-        credential_challenges,
+        source_metrics: assembled.source_metrics,
+        credential_updates: assembled.credential_updates,
+        credential_challenges: assembled.credential_challenges,
     })
+}
+
+/// 宿主下发的价卡: 合法且不早于内置基线时采用, 否则回退内置基线 (防倒退 Anti-Rollback)。
+fn resolve_pricing_table(request: &BridgeRequest) -> PricingTable {
+    let pricing_overrides: HashMap<String, ModelPricingOverride> = request
+        .context
+        .get("pricingOverrides")
+        .or_else(|| request.context.get("pricing_overrides"))
+        .and_then(|val| serde_json::from_value(val.clone()).ok())
+        .unwrap_or_default();
+    let Some(raw) = request.context.get("pricingCatalog") else {
+        return PricingTable::new(pricing_overrides);
+    };
+    let bytes = serde_json::to_vec(raw).unwrap_or_default();
+    match collector_domain::pricing::CatalogFile::parse_and_validate(&bytes) {
+        Ok(catalog_file)
+            if !catalog_file.is_older_than(collector_domain::pricing::builtin_updated_at()) =>
+        {
+            PricingTable::with_catalog(&catalog_file.models, pricing_overrides)
+        }
+        _ => PricingTable::new(pricing_overrides),
+    }
+}
+
+/// 输出的 agent 行 (固定顺序): id, 展示名, 有数据时的 note, 未发现会话时的 note。
+const AGENT_SPECS: [(&str, &str, &str, &str); 10] = [
+    (
+        "kimi-work",
+        "Kimi Work",
+        "额度见下方 Kimi 服务",
+        "未发现会话记录",
+    ),
+    (
+        "kimi-code-cli",
+        "Kimi Code CLI",
+        "额度见下方 Kimi 服务",
+        "未发现会话记录",
+    ),
+    (
+        "claude-code",
+        "Claude Code",
+        "额度见下方 Claude 服务",
+        "未发现会话记录",
+    ),
+    (
+        "codex",
+        "Codex",
+        "额度见下方 Codex 账号 (实时查询)",
+        "未发现会话记录",
+    ),
+    (
+        "grok",
+        "Grok",
+        "按消息内容估算 (不含每轮重发的上下文, 偏低), 非精确 token 计数",
+        "未发现会话记录",
+    ),
+    ("pi", "Pi", "本机会话聚合", "未发现会话记录"),
+    ("zcode", "ZCode", "本机会话聚合", "未发现会话记录"),
+    ("codebuddy", "CodeBuddy", "本机会话聚合", "未发现会话记录"),
+    ("opencode", "OpenCode", "本机会话聚合", "未发现会话记录"),
+    ("dsh", "DSH", "本机会话聚合", "未发现会话记录"),
+];
+
+/// 每个已知 agent 输出一行: 有本机结果时 finalize, 否则输出占位行。
+fn build_agents(
+    context: &RunContext<'_>,
+    sources: &BTreeMap<String, LocalAgentResult>,
+    pricing_table: &PricingTable,
+) -> Vec<AgentUsage> {
+    let sessions_allowed = context.capability_allowed("localSessions");
+    let placeholder_status = if sessions_allowed {
+        "not_found"
+    } else {
+        "unavailable"
+    };
+    AGENT_SPECS
+        .iter()
+        .map(|&(id, name, note, not_found_note)| {
+            let missing_note = if sessions_allowed {
+                not_found_note
+            } else {
+                "未授权 localSessions 能力, 已跳过本机会话扫描"
+            };
+            match sources.get(id) {
+                Some(source) => finalize_local_agent(
+                    &context.window,
+                    id,
+                    name,
+                    source,
+                    note,
+                    placeholder_status,
+                    missing_note,
+                    pricing_table,
+                ),
+                None => placeholder_agent(
+                    &context.window,
+                    id,
+                    name,
+                    placeholder_status,
+                    missing_note,
+                    pricing_table,
+                ),
+            }
+        })
+        .collect()
 }
 
 struct LocalCollection {
@@ -786,19 +829,6 @@ where
     }
 }
 
-#[cfg(test)]
-fn collect_agent_usage_with_final_probe<F>(
-    request: &BridgeRequest,
-    http: &dyn HttpClient,
-    credentials: &dyn CredentialSource,
-    mut probe: F,
-) -> Result<CollectionOutput, CollectionFailure>
-where
-    F: FnMut(&collector_runtime::CancellationToken),
-{
-    collect_agent_usage_with_dependencies_inner(request, http, credentials, Some(&mut probe))
-}
-
 fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
     match build_account_plan(context.request) {
         Ok(plans) => execute_quota_accounts(context, &plans),
@@ -973,14 +1003,12 @@ mod tests {
         collect_agent_usage, collect_agent_usage_with_dependencies, finalize_local_agent,
         LocalAgentResult, LOCAL_HISTORY_STORE_UNAVAILABLE, LOCAL_SOURCE_NOTICE,
     };
-    use collector_credential::{CredentialReadError, CredentialSource};
     use collector_domain::BridgeRequest;
     use collector_provider::{
         codex_service_id, HttpClient, HttpRequest, HttpResponse, ProviderError,
     };
     use collector_runtime::CancellationToken;
     use serde_json::json;
-    use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// C046: 用量合并失败必须可见 —— agent 降级为 partial 且 note 说明缺失,
@@ -1155,14 +1183,9 @@ mod tests {
                 probes: AtomicUsize::new(0),
             };
             let window = super::CollectionWindow::from_context(&request.context).unwrap();
-            let context = super::RunContext::new(
-                &request,
-                window,
-                &http,
-                &EmptyCredentialSource,
-                super::RuntimeLimits::default(),
-            )
-            .unwrap();
+            let context =
+                super::RunContext::new(&request, window, &http, super::RuntimeLimits::default())
+                    .unwrap();
             let result = super::collect_quota_usage(&context);
             assert_eq!(http.direct.load(Ordering::SeqCst), 0);
             assert_eq!(http.probes.load(Ordering::SeqCst), 1);
@@ -1207,43 +1230,14 @@ mod tests {
             probes: AtomicUsize::new(0),
         };
         let window = super::CollectionWindow::from_context(&request.context).unwrap();
-        let context = super::RunContext::new(
-            &request,
-            window,
-            &http,
-            &EmptyCredentialSource,
-            super::RuntimeLimits::default(),
-        )
-        .unwrap();
+        let context =
+            super::RunContext::new(&request, window, &http, super::RuntimeLimits::default())
+                .unwrap();
         let result = super::collect_quota_usage(&context);
         assert_eq!(http.direct.load(Ordering::SeqCst), 1);
         assert_eq!(http.probes.load(Ordering::SeqCst), 0);
         assert_eq!(http.proxy.load(Ordering::SeqCst), 0);
         assert!(result.services[0].get("egress").is_none());
-    }
-
-    struct EmptyCredentialSource;
-
-    impl CredentialSource for EmptyCredentialSource {
-        fn read_file(&self, _path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError> {
-            Ok(None)
-        }
-
-        fn read_keychain(&self, _service: &str) -> Result<Option<String>, CredentialReadError> {
-            Ok(None)
-        }
-    }
-
-    struct HostCredentialAccessMustNotBeUsed;
-
-    impl CredentialSource for HostCredentialAccessMustNotBeUsed {
-        fn read_file(&self, _path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError> {
-            panic!("collector must not read host credential files without injection")
-        }
-
-        fn read_keychain(&self, _service: &str) -> Result<Option<String>, CredentialReadError> {
-            panic!("collector must not read host Keychain without injection")
-        }
     }
 
     struct StatusFixtureHttp {
@@ -1346,13 +1340,52 @@ mod tests {
         );
     }
 
+    /// C229: 组装完成、发布之前取消 —— 经真实阶段接缝驱动, 生产签名不再携带
+    /// `#[cfg(test)]` 探针参数。
+    fn collect_cancelled_before_publish(
+        request: &BridgeRequest,
+        http: &dyn HttpClient,
+    ) -> Result<super::CollectionOutput, super::CollectionFailure> {
+        let context = super::prepare_run(request, http)?;
+        let assembled = super::assemble(&context, super::gather(&context))?;
+        context.cancellation.cancel();
+        super::publish(&context, assembled)
+    }
+
+    /// C229: 采集端不读宿主凭据。凭据适配器参数移除后, 以源码扫描守住边界:
+    /// 本 crate 生产代码不得引用宿主凭据读取入口 (C131: 只读探测函数仅为测试/兼容面)。
+    #[test]
+    fn application_sources_never_reference_host_credential_readers() {
+        let sources = [
+            ("lib.rs", include_str!("lib.rs")),
+            ("account.rs", include_str!("account.rs")),
+            ("context.rs", include_str!("context.rs")),
+            ("egress.rs", include_str!("egress.rs")),
+            ("execution.rs", include_str!("execution.rs")),
+            ("paths.rs", include_str!("paths.rs")),
+        ];
+        let test_module = ["#[cfg(test)]", "mod tests"].join("\n");
+        for (name, source) in sources {
+            let production = source.split(test_module.as_str()).next().unwrap_or(source);
+            for forbidden in [
+                "CredentialSource",
+                "read_claude_token",
+                "read_grok_token",
+                "read_keychain",
+            ] {
+                assert!(
+                    !production.contains(forbidden),
+                    "{name} production code references host credential reader {forbidden}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn deadline_after_quota_refresh_still_returns_rotated_tokens() {
-        let failure = super::collect_agent_usage_with_final_probe(
+        let failure = collect_cancelled_before_publish(
             &expired_claude_request(&["externalQuotas"]),
             &claude_refresh_then_usage_http(),
-            &EmptyCredentialSource,
-            |cancellation| cancellation.cancel(),
         )
         .unwrap_err();
         assert_eq!(failure.diagnostic.code, "LOCAL_SOURCE_CANCELLED");
@@ -1367,7 +1400,6 @@ mod tests {
         let failure = collect_agent_usage_with_dependencies(
             &expired_claude_request(&["localSessions", "externalQuotas"]),
             &claude_refresh_then_usage_http(),
-            &EmptyCredentialSource,
         )
         .unwrap_err();
         assert_eq!(failure.diagnostic.code, "BRIDGE_INVALID_REQUEST");
@@ -1427,12 +1459,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: b"{}".to_vec(),
         };
-        let output = collect_agent_usage_with_dependencies(
-            &request,
-            &http,
-            &HostCredentialAccessMustNotBeUsed,
-        )
-        .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert_eq!(http.calls.load(Ordering::Acquire), 0, "不得发起额度请求");
         let artifact = output.artifact.as_object().unwrap();
         assert!(
@@ -1455,12 +1482,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: b"{}".to_vec(),
         };
-        let output = collect_agent_usage_with_dependencies(
-            &request,
-            &http,
-            &HostCredentialAccessMustNotBeUsed,
-        )
-        .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert_eq!(
             http.calls.load(Ordering::Acquire),
             0,
@@ -1499,12 +1521,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: br#"{}"#.to_vec(),
         };
-        let output = collect_agent_usage_with_dependencies(
-            &request,
-            &http,
-            &HostCredentialAccessMustNotBeUsed,
-        )
-        .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert_eq!(http.calls.load(Ordering::Acquire), 0);
         assert!(
             output
@@ -1537,7 +1554,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         );
 
         assert_eq!(
@@ -1550,14 +1566,12 @@ mod tests {
 
     #[test]
     fn cancellation_after_last_source_is_fenced_before_artifact_publication() {
-        let result = super::collect_agent_usage_with_final_probe(
+        let result = collect_cancelled_before_publish(
             &request(&[]),
             &FixtureHttp {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
-            |cancellation| cancellation.cancel(),
         );
 
         assert_eq!(
@@ -1590,7 +1604,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         )
         .unwrap();
 
@@ -1745,7 +1758,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         )
         .unwrap();
         let second = collect_agent_usage_with_dependencies(
@@ -1754,7 +1766,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         )
         .unwrap();
 
@@ -1851,7 +1862,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         )
         .unwrap();
         let second = collect_agent_usage_with_dependencies(
@@ -1860,7 +1870,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         )
         .unwrap();
 
@@ -1941,7 +1950,6 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 body: Vec::new(),
             },
-            &EmptyCredentialSource,
         )
         .unwrap();
         let agents = output.artifact["agents"].as_array().unwrap();
@@ -1983,8 +1991,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: br#"{"limits":[{"detail":{"limit":100,"remaining":25,"resetTime":"2026-08-21T09:00:00Z"}}]}"#.to_vec(),
         };
-        let credentials = EmptyCredentialSource;
-        let output = collect_agent_usage_with_dependencies(&request, &http, &credentials).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         let services = output.artifact["services"].as_array().unwrap();
         assert_eq!(services.len(), 1);
         assert_eq!(services[0]["id"], "kimi_coding_acct-a");
@@ -2027,8 +2034,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: br#"{"plan_type":"fixture","rate_limit":{"primary_window":{"limit_window_seconds":18000,"used_percent":42,"reset_at":"2026-08-21T13:00:00Z"}}}"#.to_vec(),
         };
-        let output =
-            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         let services = output.artifact["services"].as_array().unwrap();
         assert_eq!(services.len(), 2);
         assert_eq!(services[0]["id"], codex_service_id("acc-z"));
@@ -2070,8 +2076,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             status: 401,
         };
-        let output =
-            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         let service = &output.artifact["services"][0];
         assert_eq!(service["id"], codex_service_id("acc-1"));
         assert_eq!(service["status"], "error");
@@ -2120,8 +2125,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: br#"{"plan_type":"fixture","rate_limit":{"primary_window":{"limit_window_seconds":18000,"used_percent":42}}}"#.to_vec(),
         };
-        let output =
-            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert!(output.artifact["agents"].as_array().unwrap().is_empty());
         assert_eq!(output.artifact["services"].as_array().unwrap().len(), 1);
         assert_eq!(output.artifact["services"][0]["app"], "codex");
@@ -2159,8 +2163,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: br#"{"limits":[{"detail":{"limit":100,"remaining":60}}]}"#.to_vec(),
         };
-        let output =
-            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert!(output.artifact["agents"].as_array().unwrap().is_empty());
         assert_eq!(output.artifact["services"].as_array().unwrap().len(), 1);
         assert_eq!(output.artifact["services"][0]["app"], "kimi");
@@ -2178,8 +2181,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             body: br#"{}"#.to_vec(),
         };
-        let credentials = EmptyCredentialSource;
-        let output = collect_agent_usage_with_dependencies(&request, &http, &credentials).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert_eq!(http.calls.load(Ordering::Acquire), 0);
         assert_eq!(output.artifact["services"], json!([]));
         assert!(output
@@ -2258,8 +2260,7 @@ mod tests {
         let http = StepFunMockHttp {
             calls: AtomicUsize::new(0),
         };
-        let output =
-            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
         assert_eq!(
             output.credential_updates,
             vec![json!({
@@ -2526,9 +2527,7 @@ mod tests {
         write_claude_history(&home);
         let request = history_request(&home, &history_db);
 
-        let first =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let first = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         let first_agent = claude_agent(&first.artifact);
         assert_eq!(first_agent["status"], "ok");
         let first_total = daily_total(first_agent);
@@ -2540,9 +2539,7 @@ mod tests {
 
         // 清理来源 (卸载/删除会话目录)
         std::fs::remove_dir_all(home.join("claude")).unwrap();
-        let second =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let second = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         let second_agent = claude_agent(&second.artifact);
         assert_eq!(
             second_agent["status"], "history",
@@ -2575,9 +2572,7 @@ mod tests {
         std::fs::create_dir_all(&blocked_path).unwrap();
         let request = history_request(&home, &blocked_path);
 
-        let output =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         assert!(
             output
                 .diagnostics
@@ -2633,9 +2628,7 @@ mod tests {
         std::fs::write(home.join("opencode.db"), b"not a sqlite database").unwrap();
         let request = history_request(&home, &history_db);
 
-        let output =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         let codex = agent(&output.artifact, "codex");
         assert_eq!(
             codex["status"], "ok",
@@ -2669,9 +2662,7 @@ mod tests {
 
         // 只剩说明时 envelope 为 Success。
         std::fs::remove_file(home.join("opencode.db")).unwrap();
-        let output =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         assert!(has_diagnostic(
             &output.diagnostics,
             LOCAL_SOURCE_NOTICE,
@@ -2709,8 +2700,7 @@ mod tests {
         let run = |now: &str| {
             let mut request = history_request(&home, &history_db);
             request.context.insert("now".to_owned(), json!(now));
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap()
+            collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap()
         };
         std::fs::write(&session, line("user", 800) + &line("assistant", 400)).unwrap();
         set_mtime(1_785_038_400); // 2026-07-26 12:00 +08
@@ -2814,10 +2804,7 @@ mod tests {
         request
             .context
             .insert("now".to_owned(), json!("2026-07-27T18:00:00+08:00"));
-        let run = || {
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap()
-        };
+        let run = || collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         let corrected = run();
         let grok = agent(&corrected.artifact, "grok");
         assert_eq!(daily_total(grok), 340, "已落库的重复值被修正: 640 → 340");
@@ -2862,9 +2849,7 @@ mod tests {
             .collect();
         std::fs::write(claude.join("session.jsonl"), lines).unwrap();
         let request = history_request(&home, &history_db);
-        let output =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         let claude = claude_agent(&output.artifact);
         assert_eq!(claude["status"], "ok", "哨兵说明不得把 agent 置 error");
         assert!(
@@ -2940,9 +2925,7 @@ mod tests {
         let history_db = home.join("usage-history.sqlite");
         let request = history_request(&home, &history_db);
 
-        let output =
-            collect_agent_usage_with_dependencies(&request, &empty_http(), &EmptyCredentialSource)
-                .unwrap();
+        let output = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
         let agent = claude_agent(&output.artifact);
         assert_eq!(agent["status"], "not_found");
         assert_eq!(agent["note"], "未发现会话记录");

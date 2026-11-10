@@ -1,17 +1,16 @@
 #![deny(unsafe_code)]
 
 //! Deterministic, non-production fixture transport for the full benchmark
-//! matrix. The real application orchestration is exercised with injected HTTP
-//! and credential sources; no network or host Keychain access is possible.
+//! matrix. The real application orchestration is exercised with injected
+//! HTTP; no network access is possible, and the collector never reads host
+//! credentials (C229).
 
 use collector_application::{collect_agent_usage_with_dependencies, SourcePerformanceMetric};
-use collector_credential::{CredentialReadError, CredentialSource};
 use collector_domain::BridgeRequest;
 use collector_provider::{HttpClient, HttpRequest, HttpResponse, ProviderError};
 use collector_runtime::CancellationToken;
 use serde_json::{json, Value};
 use std::io::{self, Read, Write};
-use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -50,26 +49,6 @@ impl HttpClient for FixtureHttp {
     }
 }
 
-struct FixtureCredentialSource {
-    expired_claude: bool,
-}
-
-impl CredentialSource for FixtureCredentialSource {
-    fn read_file(&self, path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError> {
-        if self.expired_claude && path.ends_with(".claude/.credentials.json") {
-            return Ok(Some(
-                br#"{"claudeAiOauth":{"accessToken":"fixture-expired-token","expiresAt":1}}"#
-                    .to_vec(),
-            ));
-        }
-        Ok(None)
-    }
-
-    fn read_keychain(&self, _service: &str) -> Result<Option<String>, CredentialReadError> {
-        Ok(None)
-    }
-}
-
 fn main() -> io::Result<()> {
     let mut input = Vec::new();
     io::stdin().read_to_end(&mut input)?;
@@ -85,12 +64,9 @@ fn main() -> io::Result<()> {
         delay: Duration::from_millis(delay_ms),
         failure: mode == "failure",
     };
-    let credentials = FixtureCredentialSource {
-        expired_claude: mode == "credential-expired",
-    };
     let started = Instant::now();
     let physical_disk_read_start = collector_bridge::physical_disk_read_bytes();
-    let output = collect_agent_usage_with_dependencies(&request, &http, &credentials)
+    let output = collect_agent_usage_with_dependencies(&request, &http)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.diagnostic.message))?;
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
     let physical_disk_read_bytes = physical_disk_read_start.and_then(|start| {
