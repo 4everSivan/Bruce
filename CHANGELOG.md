@@ -13,6 +13,10 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Fixed
+- **verify-local 禁 Python 门禁误拦本机忽略目录，全套验证无法运行 ([C231](docs/devel/change/C231.json))**：
+  - **门禁**：原 `find` 全盘扫描会被 `.gitignore` 已忽略的本机 AI 工具目录（如 `.agent/skills/**/*.py`）命中，在任何检查前 `exit 1`；改由新增 `scripts/check-no-python-assets.zsh` 以 `git ls-files --cached --others --exclude-standard` 只检查会进入仓库的文件，白名单仍仅 `scripts/adflow_verify.py`，强制跟踪的被忽略文件照常拦截，非 Git 工作树显式失败；正式检查前在临时仓库自检 4 项；`.gitignore` 补 `node_modules/`；
+  - **Harness 接入守护**：verify-local 在 `swift build` 前核对 `Package.swift` 中每个 `*Harness` target 均被运行，漏接即失败；
+  - **AGENTS.md**：Harness 数 18 → 19、Onboarding Core 用例数 165 → 180，禁 Python 规则改为描述新门禁口径。
 - **夏令时在午夜跳变的时区整轮采集 `BRIDGE_INTERNAL_PANIC` ([C227](docs/devel/change/C227.json))**：
   - **现象**：America/Santiago、Asia/Beirut、America/Havana 等夏令时于 00:00 开始的时区，跳变日本地午夜不存在，`CollectionWindow::from_context` 计算该日起点时 `expect` panic，Bridge 以 `BRIDGE_INTERNAL_PANIC` 收尾、不产出 artifact；默认 14 天窗口覆盖跳变日期间（每年两次、各约两周）每轮刷新都复现；
   - **修复**：新增 `local_day_start`，午夜落在空档时自分钟向后探测、取空档结束后的首个合法本地时刻作为当日起点（午夜重叠仍取较早一次，其余时区边界毫秒值不变）；探测失败改返回 `WindowError::MissingDayBoundary` 诊断而非 panic；新增回归用例锁定智利 2026-09-06 与黎巴嫩 2026-03-29 两例。

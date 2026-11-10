@@ -78,7 +78,7 @@
         "item": "自动化测试",
         "true_if": "collector workspace fmt --check / clippy -D warnings / cargo test 全绿（含新增守护用例）；Windows 壳 clippy -D warnings 与 cargo test 全绿；verify-local 全套 Exit 0",
         "false_if": "任一失败",
-        "evidence": "core/collector：fmt 通过、clippy --workspace --all-targets -D warnings Exit 0、cargo test --workspace 302 passed / 0 failed（较 C228 多 1 项守护用例）；apps/win/src-tauri：clippy -D warnings Exit 0、cargo test 251 passed / 0 failed；verify-local 叠加 C230 / C231 后全套结果见 C231 卡记录。",
+        "evidence": "core/collector：fmt 通过、clippy --workspace --all-targets -D warnings Exit 0、cargo test --workspace 302 passed / 0 failed（较 C228 多 1 项守护用例）；apps/win/src-tauri：clippy -D warnings Exit 0、cargo test 251 passed / 0 failed；原始 verify-local.sh 叠加至 C231 全套 Exit 0（local/C231-verify-local.log）。",
         "result": true
       },
       {

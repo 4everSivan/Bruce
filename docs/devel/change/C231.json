@@ -1,0 +1,112 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C231",
+  "title": "verify-local 禁 Python 门禁误拦本机忽略目录（.agent/）致全套验证无法运行：改为只查仓库资产并自检；AGENTS.md 计数漂移修正与 Harness 接入守护",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "chore/C231-verify-gate-agents-facts",
+  "is_hotfix": false,
+  "target": {
+    "module": "scripts + AGENTS.md + .gitignore",
+    "component": "scripts/check-no-python-assets.zsh（新增）/ scripts/verify-local.sh 禁 Python 门禁与 Harness 接入守护 / AGENTS.md 项目自定义规则 §3、§6",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "一、门禁误拦：scripts/verify-local.sh 的禁 Python 门禁用 find 扫描整个工作目录，只 prune 了 .git / .build / dist / local / _adflow_backup / target / node_modules。仓库 .gitignore 已忽略的本机 AI 工具目录（.agent/ .agents/ .claude/ .codex/ .kimi/ .mimosa/）不在 prune 列表中；本机 .agent/skills/ad-flow/tools/test_adflow_verify.py（ad-flow 技能自带、gitignored、从不入库）命中后脚本在执行任何 Rust / Swift / Harness 检查之前 exit 1。AGENTS.md 规定的「标准本地全量验证」在装有 ad-flow 技能的开发机上因此根本跑不起来——C228 只能以多 prune 一行的本地副本验证。门禁的本意是「仓库内」禁止 Python 资产，被忽略的本机文件不属于仓库。二、AGENTS.md 计数漂移：§3 写「全部 18 项 Harness」「Onboarding Core 165 项」，实际 Package.swift 有 19 个 *Harness target（verify-local 全部运行），BruceOnboardingCoreHarness 输出 180 项；§6 仍描述 find 门禁。手写计数没有任何校验，新增 Harness 时既可能忘记更新文档，也可能忘记接入 verify-local。",
+  "precheck": {
+    "description": "在含 gitignored .agent/**/*.py 的本机工作树上运行原始 verify-local，复现门禁误拦；核对 AGENTS.md 计数与实际",
+    "command": "zsh scripts/verify-local.sh; grep -oE 'name: \"[A-Za-z]+Harness\"' apps/macos/Package.swift | wc -l; grep -n '18 项\\|165 项' AGENTS.md",
+    "expected": "修复前：verify-local 在任何检查前输出「检测到已移除的 Python 资产: ./.agent/skills/ad-flow/tools/test_adflow_verify.py」并 exit 1；Package.swift 19 个 Harness，AGENTS.md 写 18 / 165。修复后：verify-local Exit 0，AGENTS.md 与实际一致",
+    "is_completed": false,
+    "evidence": "2026-11-09 于 chore/C228-dead-code-cleanup：zsh scripts/verify-local.sh → 「检测到已移除的 Python 资产: ./.agent/skills/ad-flow/tools/test_adflow_verify.py」VERIFY_LOCAL_EXIT=1（main 同样失败）；git check-ignore 显示该文件由 .gitignore:41 `.agent/` 忽略、git ls-files .agent 为 0；Package.swift 19 个 *Harness target，BruceOnboardingCoreHarness 输出「tests passed: 180」，AGENTS.md:197 / :200 写 18 / 165 → 缺陷成立。"
+  },
+  "callback": {
+    "before": [
+      "git checkout chore/C231-verify-gate-agents-facts"
+    ],
+    "after": [
+      "zsh -n scripts/verify-local.sh && zsh -n scripts/check-no-python-assets.zsh",
+      "zsh scripts/check-no-python-assets.zsh",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C231 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "门禁规则：仓库内禁 Python 资产的检查范围",
+      "before": "verify-local 内联 find：扫描工作目录全部文件，按固定 prune 列表跳过若干目录；被忽略但未列入 prune 的本机目录（.agent/ 等）一旦含 .py 即误拦",
+      "after": "新增 scripts/check-no-python-assets.zsh，verify-local 改为调用它：以 git ls-files --cached --others --exclude-standard 列出会进入仓库的文件（已跟踪 + 未跟踪且未被忽略），匹配 *.py / *.pyc / pyproject.toml，白名单仅 scripts/adflow_verify.py；非 Git 工作树时失败（exit 2）而非静默放行；正式检查前先在系统临时目录的一次性仓库里自检 4 项（被忽略目录与白名单放行、未忽略 .py 拦截、pyproject.toml 拦截、git add -f 强制跟踪的被忽略 .py 拦截），临时仓库退出时删除",
+      "impact": "被忽略的本机工具目录不再阻断验证；已跟踪或可被提交的 Python 文件照常拦截（覆盖面不缩小：旧 prune 掉的 dist / local / target / .build / _adflow_backup 均为 gitignored）；CI（actions/checkout 为 Git 工作树）行为不变"
+    },
+    {
+      "scope": ".gitignore",
+      "before": "未忽略 node_modules/（旧 find 门禁以 prune 跳过）",
+      "after": "新增 node_modules/：仓库无 package.json，本机临时安装的工具依赖（如官网响应式检查的 playwright）不入库",
+      "impact": "保持旧门禁对 node_modules 的跳过语义，并防止其被误提交"
+    },
+    {
+      "scope": "验证流程：Harness 接入守护（verify-local）",
+      "before": "verify-local 逐行手写运行各 Harness，Package.swift 新增 Harness 时无人校验是否接入",
+      "after": "swift build 之前解析 Package.swift 中全部 name: \"*Harness\"，逐个确认 verify-local 自身含对应运行行，缺任一即 exit 1；解析结果为空也失败",
+      "impact": "AGENTS.md「全部 Harness」的承诺由脚本保证；当前 19 个全部接入"
+    },
+    {
+      "scope": "AGENTS.md 项目自定义规则 §3 / §6",
+      "before": "§3：「全部 18 项 Harness 测试」「Onboarding Core … 测试（165 项）」；§6：「由 scripts/verify-local.sh 的 find 门禁强制拦截」",
+      "after": "§3：「全部 Harness 测试（Package.swift 中每个 *Harness target，当前 19 个；脚本校验无遗漏）」「（当前 180 项）」，并在命令表新增 check-no-python-assets.zsh 一行；§6：门禁改由 check-no-python-assets.zsh 执行，写明 git ls-files 口径、被忽略目录不再误拦、强制跟踪文件照常拦截与自检",
+      "impact": "规范描述与实现一致；ad-flow 治理基线（AGENTS.md 顶部版本标记、docs/index.json.adflow_version、scripts/adflow_verify.py）未改动"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261109-05",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "原始 zsh scripts/verify-local.sh 在含 .agent/**/*.py 的本机工作树上 Exit 0（叠加 C227–C230）；check-no-python-assets.zsh 自检 4 项通过",
+        "false_if": "verify-local 任一步失败，或门禁自检未通过",
+        "evidence": "2026-11-09 于 chore/C231-verify-gate-agents-facts（叠加 C227–C230），本机 .agent/skills/ad-flow/tools/test_adflow_verify.py 仍在：原始 zsh scripts/verify-local.sh Exit 0，输出「Python 资产门禁通过 (自检 4 项…)」「Harness 接入完整: 19 个 target」，26 个步骤、19 项 Harness（BruceOnboardingCore 180 项）与全部 node 门禁通过，日志 local/C231-verify-local.log。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "门禁：本仓库干净时通过；新增未忽略的 tests/zz_gate_probe.py 时 exit 1 并指出该路径；对非 Git 目录 exit 2。Harness 守护：真实 Package.swift 通过（19 个）；追加未接入的 GhostHarness 时 exit 1 并指出该 target",
+        "false_if": "任一场景结果不符",
+        "evidence": "2026-11-09：check-no-python-assets.zsh 干净 → 「Python 资产门禁通过 (自检 4 项…)」GATE_EXIT=0；放入 tests/zz_gate_probe.py → 「检测到已移除的 Python 资产: tests/zz_gate_probe.py」GATE_WITH_PROBE_EXIT=1（探针已删除）；对 /tmp → 「不是 Git 工作树」GATE_NON_REPO_EXIT=2。Harness 守护片段：真实包 → 「Harness 接入完整: 19 个 target」REAL_EXIT=0；临时副本追加 GhostHarness → 「Harness target 未接入 verify-local: GhostHarness」GHOST_EXIT=1。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "CI verify 作业所依赖的工具与 check-ci-tool-deps.mjs 契约不受影响；被旧 prune 跳过的目录在新口径下仍不被检查（均为 gitignored）",
+        "false_if": "CI 新增未安装依赖，或出现新的误拦 / 漏拦",
+        "evidence": "新脚本只用 git / grep / head / mktemp（runner 预装），不用 rg，check-ci-tool-deps.mjs 契约不涉及；git ls-files --cached --others --exclude-standard 在本仓库只列出白名单 scripts/adflow_verify.py 一个 Python 文件；dist / local / target / .build / _adflow_backup / node_modules 均由 .gitignore 覆盖。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

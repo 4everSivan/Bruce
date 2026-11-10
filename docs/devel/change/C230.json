@@ -65,7 +65,7 @@
         "item": "自动化测试",
         "true_if": "fmt --check、clippy --workspace --all-targets -D warnings、cargo test --workspace 全绿，collector-application 用例数与拆分前相同",
         "false_if": "任一失败或用例数变化",
-        "evidence": "cargo fmt 通过；clippy -D warnings Exit 0；cargo test --workspace 302 passed / 0 failed；collector-application 45 passed（拆分前 45）；verify-local 全套结果见 C231 卡记录。",
+        "evidence": "cargo fmt 通过；clippy -D warnings Exit 0；cargo test --workspace 302 passed / 0 failed；collector-application 45 passed（拆分前 45）；原始 verify-local.sh 叠加至 C231 全套 Exit 0（local/C231-verify-local.log）。",
         "result": true
       },
       {
