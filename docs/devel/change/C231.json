@@ -4,7 +4,7 @@
   "title": "verify-local 禁 Python 门禁误拦本机忽略目录（.agent/）致全套验证无法运行：改为只查仓库资产并自检；AGENTS.md 计数漂移修正与 Harness 接入守护",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "chore/C231-verify-gate-agents-facts",
   "is_hotfix": false,
   "target": {
@@ -68,10 +68,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261109-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，我确认验收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -100,13 +100,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "1ab8d11",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-10",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认，我确认验收",
+    "signed_rejection_count": 0
   }
 }

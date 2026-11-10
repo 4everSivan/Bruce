@@ -4,7 +4,7 @@
   "title": "采集主流程去死注入与测试钩子：移除从未读取的 CredentialSource，主函数拆为 gather / assemble / publish 阶段",
   "version": "0.17.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "refactor/C229-collector-run-seams",
   "is_hotfix": false,
   "target": {
@@ -69,10 +69,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261109-03",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，我确认验收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -101,13 +101,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "b53ce0f",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-10",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认，我确认验收",
+    "signed_rejection_count": 0
   }
 }

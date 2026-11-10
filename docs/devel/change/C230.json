@@ -4,7 +4,7 @@
   "title": "collector-application 结构整理：lib.rs 约 2000 行内联测试按主题拆为 tests_*.rs，生产文件降至约 1000 行",
   "version": "0.17.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "refactor/C230-application-test-split",
   "is_hotfix": false,
   "target": {
@@ -56,10 +56,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261109-04",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，我确认验收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -88,13 +88,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "ac28038",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-10",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认，我确认验收",
+    "signed_rejection_count": 0
   }
 }

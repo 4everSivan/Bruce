@@ -4,7 +4,7 @@
   "title": "夏令时在午夜跳变的时区（智利 / 黎巴嫩 / 古巴等）整轮采集 BRIDGE_INTERNAL_PANIC：本地日起点改取空档后首个合法时刻",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C227-window-dst-gap",
   "is_hotfix": false,
   "target": {
@@ -50,10 +50,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261109-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，我确认验收",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -82,13 +82,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "7d4f9be",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-10",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认，我确认验收",
+    "signed_rejection_count": 0
   }
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-09",
+  "updated_at": "2026-11-10",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -78,7 +78,7 @@
     "C227": {
       "title": "夏令时在午夜跳变的时区（智利 / 黎巴嫩 / 古巴等）整轮采集 BRIDGE_INTERNAL_PANIC：本地日起点改取空档后首个合法时刻",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C227-window-dst-gap",
       "topic": "TokenUsage",
       "version": "0.17.1",
@@ -87,7 +87,7 @@
     "C228": {
       "title": "全仓死代码清理：移除 collector / mac / Windows 三端 20 处零引用声明与 BruceApp 启动期冗余兜底",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "chore/C228-dead-code-cleanup",
       "topic": "SystemOverview",
       "version": "0.17.1",
@@ -96,7 +96,7 @@
     "C229": {
       "title": "采集主流程去死注入与测试钩子：移除从未读取的 CredentialSource，主函数拆为 gather / assemble / publish 阶段",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "refactor/C229-collector-run-seams",
       "topic": "SubscriptionQuota",
       "version": "0.17.1",
@@ -105,7 +105,7 @@
     "C230": {
       "title": "collector-application 结构整理：lib.rs 约 2000 行内联测试按主题拆为 tests_*.rs，生产文件降至约 1000 行",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "refactor/C230-application-test-split",
       "topic": "TokenUsage",
       "version": "0.17.1",
@@ -114,7 +114,7 @@
     "C231": {
       "title": "verify-local 禁 Python 门禁误拦本机忽略目录（.agent/）致全套验证无法运行：改为只查仓库资产并自检；AGENTS.md 计数漂移修正与 Harness 接入守护",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "chore/C231-verify-gate-agents-facts",
       "topic": "SystemOverview",
       "version": "0.17.1",
