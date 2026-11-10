@@ -8,7 +8,6 @@ version = "0.1.0"
 dependencies = [
  "collector-application",
  "collector-bridge",
- "collector-credential",
  "collector-domain",
  "collector-provider",
  "collector-runtime",

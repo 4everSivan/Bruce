@@ -69,19 +69,6 @@ struct LocalCredentialProbe: Sendable {
         ) == .valid
     }
 
-    /// 解析 ~/.claude/.credentials.json 是否为有效未过期 Claude OAuth.
-    /// 未显式允许 Claude 来源时不触碰该文件.
-    func claudeCredentialsFileValid(now: Date = Date()) -> Bool {
-        let url = homeURL.appendingPathComponent(".claude/.credentials.json")
-        guard let data = try? Data(contentsOf: url),
-              let json = String(data: data, encoding: .utf8) else {
-            return false
-        }
-        return SubscriptionCredentialEvaluator.claudeStatus(
-            of: json, now: now
-        ) == .valid
-    }
-
     /// C059: 本机 Claude 登录态探测 (automatic 读取序: Keychain 静默 → 凭证文件).
     /// 返回 nil = 未读到可用形态 (无登录态 / 内容损坏); refreshPending 与 expired
     /// 均计为「检测到登录态」(与 cc-switch 一致: 过期也照常试一把查询)。

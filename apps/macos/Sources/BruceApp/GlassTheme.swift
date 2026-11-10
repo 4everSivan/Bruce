@@ -48,36 +48,6 @@ extension EnvironmentValues {
         get { self[BruceResolvedThemeKey.self] }
         set { self[BruceResolvedThemeKey.self] = newValue }
     }
-
-    /// 兼容旧调用点: 等价于 resolvedTheme.glassStyle.
-    var BruceGlassStyle: GlassStylePreference {
-        get { BruceResolvedTheme.glassStyle }
-        set {
-            let current = BruceResolvedTheme
-            BruceResolvedTheme = ResolvedTheme(
-                interfaceStyle: current.interfaceStyle,
-                glassStyle: newValue,
-                usesLiquidGlassEffects: current.interfaceStyle == .liquidGlass
-                    && current.usesLiquidGlassEffects
-                    && newValue.usesGlassMaterial
-            )
-        }
-    }
-}
-
-// MARK: - 设置页 / 面板玻璃样式
-
-extension View {
-    /// 按钮样式: 液态玻璃模式下用系统 .glass; 经典或低系统用默认.
-    @ViewBuilder
-    func glassButtonStyle() -> some View {
-        modifier(GlassButtonStyleModifier())
-    }
-
-    /// Form 分组行背景; classic / 哑光退化为材质填充.
-    func glassFormRowBackground() -> some View {
-        modifier(GlassFormRowBackgroundModifier())
-    }
 }
 
 // MARK: - Dashboard surface tokens
@@ -234,51 +204,6 @@ private func dashboardGlassFallback(
     }
 }
 
-private struct GlassButtonStyleModifier: ViewModifier {
-    @Environment(\.BruceResolvedTheme) private var theme
-
-    func body(content: Content) -> some View {
-        let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
-        if plan.usesInteractiveGlass {
-            if #available(macOS 26, *) {
-                content.buttonStyle(.glass)
-            } else {
-                content
-            }
-        } else {
-            content
-        }
-    }
-}
-
-private struct GlassFormRowBackgroundModifier: ViewModifier {
-    @Environment(\.BruceResolvedTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
-
-    @ViewBuilder
-    private var rowBackground: some View {
-        let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
-        if plan.backend == .nativeLiquidGlass {
-            if #available(macOS 26, *) {
-                Color.clear.glassEffect(theme.glassStyle.liquidGlassAPI, in: .rect(cornerRadius: 10))
-            } else {
-                classicRowFill
-            }
-        } else {
-            classicRowFill
-        }
-    }
-
-    private var classicRowFill: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(.regularMaterial)
-    }
-
-    func body(content: Content) -> some View {
-        content.listRowBackground(rowBackground)
-    }
-}
-
 // MARK: - GlassStyle -> 系统 Glass (仅 26+)
 
 extension GlassStylePreference {
@@ -292,7 +217,4 @@ extension GlassStylePreference {
             return .clear
         }
     }
-
-    /// 兼容旧属性名.
-    var usesGlass: Bool { usesGlassMaterial }
 }

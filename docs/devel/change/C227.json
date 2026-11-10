@@ -1,0 +1,94 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C227",
+  "title": "夏令时在午夜跳变的时区（智利 / 黎巴嫩 / 古巴等）整轮采集 BRIDGE_INTERNAL_PANIC：本地日起点改取空档后首个合法时刻",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C227-window-dst-gap",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-domain",
+    "component": "CollectionWindow::from_context / local_day_start / WindowError",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "CollectionWindow::from_context 为窗口内每个本地日期计算起点时取 `date.and_hms(0,0,0)` 经 `from_local_datetime(..).earliest().or_else(latest())` 转为瞬时，再 `expect(\"timezone has a day boundary\")`。夏令时在 00:00 开始的时区（America/Santiago 2026-09-06、Asia/Beirut 2026-03-29、America/Havana 等）该日午夜不存在，`from_local_datetime` 返回 `LocalResult::None`，earliest 与 latest 均为 None，直接 panic；Bridge 的 panic 兜底（C043）把整轮采集收成 `BRIDGE_INTERNAL_PANIC`、不产出 artifact。宿主以系统时区（mac `TimeZone.current.identifier`，Windows 同口径）下发 `timezone`，默认 14 天窗口覆盖跳变日的两周内每轮刷新都复现，相关地区用户在每年两次跳变后各约两周完全看不到用量数据，且诊断文案无法指向原因。本机以 2026-11-09 main (6519372) 的 debug collector 复现：Santiago / Beirut 请求 `status=error`、诊断仅 `BRIDGE_INTERNAL_PANIC`；Asia/Shanghai 同请求 success。",
+  "precheck": {
+    "description": "以空 home 目录向 collector 下发 timezone=America/Santiago、now=2026-09-10T12:00:00-03:00、days=14 的 agent-usage 请求，复现缺陷现象",
+    "command": "mkdir -p /tmp/bruce-empty-home && printf '{\"schemaVersion\":1,\"runId\":\"12345678-1234-4234-9234-123456789abc\",\"module\":\"agent-usage\",\"timeouts\":{\"externalRequestSeconds\":10,\"moduleSeconds\":90},\"context\":{\"home\":\"/tmp/bruce-empty-home\",\"capabilities\":[\"localSessions\"],\"timezone\":\"America/Santiago\",\"now\":\"2026-09-10T12:00:00-03:00\",\"days\":14},\"credentials\":{}}' | core/collector/target/debug/Bruce-collector",
+    "expected": "修复前：status=error 且 diagnostics 仅含 BRIDGE_INTERNAL_PANIC；修复后：status=success、diagnostics 为空",
+    "is_completed": false,
+    "evidence": "2026-11-09 于 main 6519372 的 debug 二进制：America/Santiago 与 Asia/Beirut（now=2026-04-01T12:00:00+03:00）均 status=error、diag=[BRIDGE_INTERNAL_PANIC]；Asia/Shanghai 同请求 status=success → 缺陷成立，未被前序提交修复。"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C227-window-dst-gap"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "scripts/adflow-verify --card C227 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "业务规则：本地自然日起点的定义（collector-domain CollectionWindow）",
+      "before": "日起点 = 本地午夜；午夜不存在（夏令时空档）时 earliest/latest 均为 None → expect panic，整轮采集以 BRIDGE_INTERNAL_PANIC 失败",
+      "after": "新增 local_day_start(timezone, date)：本地午夜存在取午夜（重叠取较早一次，行为不变）；午夜落在夏令时空档时自分钟向后探测，取空档结束后的首个合法本地时刻作为当日起点；24 小时内仍找不到（理论不可达）返回新增 WindowError::MissingDayBoundary，经 window_diagnostic 变为 BRIDGE_INVALID_REQUEST 诊断而非 panic",
+      "impact": "智利、黎巴嫩、古巴、巴拉圭等夏令时在午夜跳变的时区在跳变日前后两周恢复正常采集；其余时区日边界毫秒值逐一不变（Asia/Shanghai 等既有窗口用例全绿）；WindowError 新增变体仅经 Display 消费，无穷尽匹配调用方"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261109-01",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace 全绿且新增回归用例 window_survives_dst_gap_at_local_midnight（Santiago 2026-09-06 / Beirut 2026-03-29）通过；clippy -D warnings Exit 0",
+        "false_if": "任一测试失败，或回归用例在修复前不失败",
+        "evidence": "cargo test -p collector-domain → 26 passed（含新增用例）；cargo clippy --workspace --all-targets -- -D warnings Exit 0；cargo test --workspace 301 passed / 0 failed；叠加 C228 后 verify-local 全套 Exit 0（local/C228-verify-local.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "重建 debug collector 后 precheck 同请求 America/Santiago、Asia/Beirut、America/Havana（now=2026-11-05T12:00:00-05:00）均 status=success 且 diagnostics 为空",
+        "false_if": "任一时区仍出现 BRIDGE_INTERNAL_PANIC 或新增诊断",
+        "evidence": "2026-11-09 fix/C227-window-dst-gap 重建后：America/Santiago、Asia/Beirut、America/Havana 三者 status=success、diag=[]。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "非空档时区（Asia/Shanghai）同请求结果与修复前一致；既有窗口边界用例 window_uses_requested_timezone_for_day_and_hour_boundaries 等全部通过；无穷尽匹配 WindowError 的调用方因新增变体编译失败",
+        "false_if": "任一时区边界值变化、既有用例失败或 workspace 编译失败",
+        "evidence": "Asia/Shanghai 修复前后均 status=success、diag=[]；collector-domain 既有 25 项用例全绿；workspace clippy 全量编译通过（window_diagnostic 经 Display 消费新变体）。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

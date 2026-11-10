@@ -1,12 +1,14 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-06",
+  "updated_at": "2026-11-09",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
       "changes": [
-        "C226"
+        "C226",
+        "C228",
+        "C231"
       ]
     },
     "MenuBarIndicator": {
@@ -23,11 +25,16 @@
     },
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
-      "changes": []
+      "changes": [
+        "C229"
+      ]
     },
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
-      "changes": []
+      "changes": [
+        "C227",
+        "C230"
+      ]
     },
     "AgentAnalytics": {
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
@@ -67,6 +74,51 @@
       "topic": "SystemOverview",
       "version": "0.17.1",
       "file": "docs/devel/change/C226.json"
+    },
+    "C227": {
+      "title": "夏令时在午夜跳变的时区（智利 / 黎巴嫩 / 古巴等）整轮采集 BRIDGE_INTERNAL_PANIC：本地日起点改取空档后首个合法时刻",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C227-window-dst-gap",
+      "topic": "TokenUsage",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C227.json"
+    },
+    "C228": {
+      "title": "全仓死代码清理：移除 collector / mac / Windows 三端 20 处零引用声明与 BruceApp 启动期冗余兜底",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "chore/C228-dead-code-cleanup",
+      "topic": "SystemOverview",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C228.json"
+    },
+    "C229": {
+      "title": "采集主流程去死注入与测试钩子：移除从未读取的 CredentialSource，主函数拆为 gather / assemble / publish 阶段",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "refactor/C229-collector-run-seams",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C229.json"
+    },
+    "C230": {
+      "title": "collector-application 结构整理：lib.rs 约 2000 行内联测试按主题拆为 tests_*.rs，生产文件降至约 1000 行",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "refactor/C230-application-test-split",
+      "topic": "TokenUsage",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C230.json"
+    },
+    "C231": {
+      "title": "verify-local 禁 Python 门禁误拦本机忽略目录（.agent/）致全套验证无法运行：改为只查仓库资产并自检；AGENTS.md 计数漂移修正与 Harness 接入守护",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "chore/C231-verify-gate-agents-facts",
+      "topic": "SystemOverview",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C231.json"
     }
   }
 }

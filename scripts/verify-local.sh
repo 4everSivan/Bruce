@@ -18,24 +18,9 @@ source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
 Bruce_prepare_swift_sdk
 Bruce_prepare_cargo_home
 
-# 例外: ad-flow 治理校验器 scripts/adflow_verify.py —— ad-flow v1.5.0 规范要求逐字安装,
-# 且 --mode init 校验其版本与 docs/index.json 的 adflow_version 一致, 属治理工具链而非
-# Python 构建/工具资产。仅放行这一个受管路径, 其余任何 Python 资产仍一律禁止
-# (见 AGENTS.md「项目自定义规则」第 6 条)。
-BRUCE_LEGACY_SOURCE=$(find . \
-  -path './.git' -prune -o \
-  -path '*/.build' -prune -o \
-  -path './dist' -prune -o \
-  -path './local' -prune -o \
-  -path './_adflow_backup' -prune -o \
-  -path '*/target' -prune -o \
-  -path '*/node_modules' -prune -o \
-  -path './scripts/adflow_verify.py' -prune -o \
-  \( -name '*.py' -o -name '*.pyc' -o -name 'pyproject.toml' \) -print -quit)
-if [[ -n "$BRUCE_LEGACY_SOURCE" ]]; then
-  echo "检测到已移除的 Python 资产: $BRUCE_LEGACY_SOURCE" >&2
-  exit 1
-fi
+# 仓库内禁 Python 资产 (AGENTS.md「项目自定义规则」第 6 条): 只检查已跟踪与未被忽略的
+# 文件, 唯一例外是 ad-flow 治理校验器 scripts/adflow_verify.py (C231)。
+zsh "$BRUCE_SCRIPT_DIR/check-no-python-assets.zsh" "$BRUCE_REPO_ROOT"
 
 zsh -n "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh"
 zsh -n "$BRUCE_SCRIPT_DIR/build-test-app.sh"
@@ -51,6 +36,22 @@ fi
 
 echo "构建共享策略静态库 (T16, local/build/policy-ffi)"
 Bruce_build_policy_ffi "$BRUCE_REPO_ROOT"
+
+# 每个 *Harness target 都必须由本脚本运行 (C231): 新增 Harness 却漏接时直接失败,
+# 让 AGENTS.md「全部 Harness」的承诺不随手写计数漂移。
+BRUCE_SELF_PATH=${0:A}
+BRUCE_HARNESS_TARGETS=(${(f)"$(grep -oE 'name: "[A-Za-z]+Harness"' "$BRUCE_SWIFT_PACKAGE/Package.swift" | sed -E 's/^name: "(.*)"$/\1/')"})
+if (( ${#BRUCE_HARNESS_TARGETS} == 0 )); then
+  echo "未从 Package.swift 解析到任何 Harness target" >&2
+  exit 1
+fi
+for BRUCE_HARNESS_TARGET in $BRUCE_HARNESS_TARGETS; do
+  if ! grep -qF "\"\$BRUCE_SWIFT_BIN_DIR/$BRUCE_HARNESS_TARGET\"" "$BRUCE_SELF_PATH"; then
+    echo "Harness target 未接入 verify-local: $BRUCE_HARNESS_TARGET" >&2
+    exit 1
+  fi
+done
+echo "Harness 接入完整: ${#BRUCE_HARNESS_TARGETS} 个 target 均由本脚本运行"
 
 echo "构建 Swift 应用与全部 Harness"
 swift build --package-path "$BRUCE_SWIFT_PACKAGE" --build-tests

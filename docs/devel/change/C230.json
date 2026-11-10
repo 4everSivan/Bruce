@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C230",
+  "title": "collector-application 结构整理：lib.rs 约 2000 行内联测试按主题拆为 tests_*.rs，生产文件降至约 1000 行",
+  "version": "0.17.1",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "refactor/C230-application-test-split",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-application",
+    "component": "src/lib.rs 内联 mod tests → tests_run / tests_quota / tests_local / tests_history / tests_support",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-11-09 全仓复审（C228 未覆盖项）：collector-application/src/lib.rs 共 2936 行，生产代码约 1000 行，其后是约 2000 行、33 个用例、22 个夹具交织的单一内联 mod tests。同 workspace 的 collector-local（sources/tests_cache.rs 等 8 个）与 collector-provider（tests_parsers.rs 等）已按主题拆为 #[cfg(test)] mod tests_*; 独立文件，唯独应用编排层仍内联。后果：阅读主流程须翻过两倍于生产代码的测试；任何生产改动的 diff 与 review 上下文都被测试淹没；夹具（FixtureHttp / SequenceHttp / 台账 helper 等）散布在用例之间，难以判断哪些是共享夹具。C229 已把主流程拆为阶段函数，本卡完成同一文件的另一半整理。",
+  "precheck": {
+    "description": "确认测试仍内联于 lib.rs 且同 workspace 已有 tests_*.rs 约定",
+    "command": "wc -l core/collector/crates/collector-application/src/lib.rs && grep -c '#\\[test\\]' core/collector/crates/collector-application/src/lib.rs && grep -rn 'mod tests_' core/collector/crates/collector-local/src/sources.rs | head -3",
+    "expected": "修复前：lib.rs 约 2900 行、33 个 #[test]，collector-local 已有 mod tests_*; 声明；修复后：lib.rs 约 1000 行、0 个 #[test]",
+    "is_completed": false,
+    "evidence": "2026-11-09 于 refactor/C229-collector-run-seams（9636a9a）：lib.rs 2936 行，第 1000 行起为内联 mod tests，33 个 #[test]；collector-local/src/sources.rs 声明 tests_cache / tests_drift / tests_dsh / tests_grok / tests_limits 等 → 需整理。"
+  },
+  "callback": {
+    "before": [
+      "git checkout refactor/C230-application-test-split"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "scripts/adflow-verify --card C230 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "测试组织（纯移动）",
+      "before": "lib.rs 内联 #[cfg(test)] mod tests：33 个用例 + 22 个夹具，单文件约 2000 行",
+      "after": "以脚本按条目整体搬移（用例体不改）：tests_run.rs（阶段接缝、取消栅栏、能力门控、宿主凭据边界，10 个用例）、tests_quota.rs（出口校验、账号编排、retryOnly、凭据轮换，8 个）、tests_local.rs（agent 行合并、缓存热路径、价卡选择、来源说明，11 个）、tests_history.rs（T26 台账，4 个）；只被一个文件使用的夹具随该文件，跨文件共用的 request / FixtureHttp / empty_http / agent / 台账 helper 收进 tests_support.rs 并改为 pub(crate)；未用导入经 cargo fix 移除，rustfmt 重新折行",
+      "impact": "lib.rs 2936 → 1008 行，全部为生产代码；collector-application 用例数 45 前后一致，workspace 302 passed 前后一致；生产代码除新增 5 行 #[cfg(test)] mod 声明外逐行不变（diff 已核对）"
+    },
+    {
+      "scope": "回归守护修正",
+      "before": "C229 的 application_sources_never_reference_host_credential_readers 以首个 `#[cfg(test)]\\nmod tests` 为截断点；拆分后 lib.rs 顶部的 `#[cfg(test)]\\nmod tests_history;` 会先命中，生产段只剩前 13 行，守护静默失效",
+      "after": "截断点改为内联块 `#[cfg(test)]\\nmod tests {`，并断言被扫描片段含代码（contains(\"fn \")）",
+      "impact": "变异检验：在 lib.rs 末尾追加 `// read_keychain` 时用例失败，恢复后通过"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261109-04",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "fmt --check、clippy --workspace --all-targets -D warnings、cargo test --workspace 全绿，collector-application 用例数与拆分前相同",
+        "false_if": "任一失败或用例数变化",
+        "evidence": "cargo fmt 通过；clippy -D warnings Exit 0；cargo test --workspace 302 passed / 0 failed；collector-application 45 passed（拆分前 45）；原始 verify-local.sh 叠加至 C231 全套 Exit 0（local/C231-verify-local.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "33 个用例名在新文件中各出现一次；生产代码 diff 仅为 mod 声明；守护用例变异检验生效",
+        "false_if": "有用例丢失 / 重复、生产代码被改动，或守护用例无法拦截变异",
+        "evidence": "脚本核对：拆分前 33 个 #[test] 在新文件中全部找到；diff HEAD 生产段与新 lib.rs：仅新增 5 组 #[cfg(test)] mod tests_*; 与末尾一个空行；lib.rs 末尾注入 read_keychain → 守护用例 FAILED，恢复后通过。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Bridge / Bruce-collector / Windows 壳编译与测试不受影响（本卡只动 cfg(test) 代码）",
+        "false_if": "任一下游编译失败",
+        "evidence": "workspace clippy 覆盖 bridge 与 Bruce-collector 全部 target；Windows 壳不依赖测试模块。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

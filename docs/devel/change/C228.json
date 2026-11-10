@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C228",
+  "title": "全仓死代码清理：移除 collector / mac / Windows 三端 20 处零引用声明与 BruceApp 启动期冗余兜底",
+  "version": "0.17.1",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "chore/C228-dead-code-cleanup",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/macos + apps/win/src-tauri",
+    "component": "collector-domain / collector-policy / collector-application RunContext；BruceApp GlassTheme / LocalCredentialProbe / SettingsView / PanelCardContainer / UsageHeroCard / BruceApp.swift；BruceOnboardingCore OnboardingConfiguration / ProviderAccountStore；Windows alerts.rs",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "2026-11-09 全仓代码复审（clippy / swift build 全部零告警后，再以全仓符号交叉引用统计：声明名在全部 .rs / .swift / .js 源码与测试中只出现一次即为零引用）发现 20 处只剩定义、无任何调用方的声明，其中多处注释自称「兼容旧调用点」「向后兼容」「供既有调用方引用」，但旧调用方早已不存在；collector-policy 的 ALERT_THRESHOLDS 常量自称档位阈值真源，而 alert_tier 实际硬编码 95/80/50，常量与实现已可以静默分叉；collector-application RunContext 以 #[allow(dead_code)] 压住的 home 字段与 collect_local_usage 内部重新从 request.context 解析的 home 重复；BruceApp.swift 启动期 ArtifactStore 兜底链第三段 try! 与第二段 try? 是同一调用（同参数、同目录），第二段失败后第三段必然再失败——它不是兜底而是一条伪装的崩溃路径。零引用代码不构成行为，但会误导后续改动者沿用「别名」或依赖「常量真源」，并增加 Swift 全量编译与审阅成本，故一次性清除，并把启动兜底改为显式、带原因的终止。",
+  "precheck": {
+    "description": "确认各待删声明仍为零引用（全仓源码与测试中出现次数 == 1），不存在新调用方",
+    "command": "for n in ALERT_THRESHOLDS builtin_schema_version contains_day day_of_millis from_contribution local_only QUOTA_ALERT_THRESHOLDS QUOTA_ALERT_THRESHOLD; do printf '%s ' $n; grep -row --include='*.rs' -- \"$n\" core apps/win | grep -v /target/ | wc -l; done; for n in BruceGlassStyle glassButtonStyle glassFormRowBackground usesGlass claudeCredentialsFileValid codexAccountIndexV2 codexAccountV2Prefix codexLegacyActiveAccount displayNames liveQuotaRatios nothingSecondaryColor nothingBorderColor NothingDragHandle nothingDisplay; do printf '%s ' $n; grep -row --include='*.swift' -- \"$n\" apps/macos | wc -l; done",
+    "expected": "修复前每个名字计数为 1（仅定义处）；修复后计数为 0",
+    "is_completed": false,
+    "evidence": "2026-11-09 于 main 6519372：上述 22 个名字（Rust 8 个含 2 个 Windows 常量，Swift 14 个）全部计数为 1，仅剩定义处；Rust 侧另以 clippy --workspace --all-targets 与 Windows 壳 clippy（desktop 特性）确认无其他告警可借助编译器发现（它们是 pub / public 或 private-but-unused-property，编译器不报）。"
+  },
+  "callback": {
+    "before": [
+      "git checkout chore/C228-dead-code-cleanup"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C228 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Rust collector 公开 API（零引用）",
+      "before": "collector-policy::alerts::ALERT_THRESHOLDS、QuotaRunPolicy::local_only、collector-domain CollectionWindow::day_of_millis / contains_day、UsageContributionBuilder::from_contribution、pricing::builtin_schema_version 均为 pub 但全仓（含 Windows 壳与全部测试）无调用方；RunContext.home 以 #[allow(dead_code)] 保留且与 collect_local_usage 内部解析重复",
+      "after": "上述 6 个 pub 项删除；RunContext 移除 home 字段及其解析与 PathBuf 导入（home 继续由 collect_local_usage 从 request.context 解析并在缺失时给出 BRIDGE_INVALID_REQUEST）；credential_source 字段保留并沿用 #[allow(dead_code)]（删除需连带改 collect_agent_usage_with_dependencies 签名与 Bridge / Windows / 约 25 处测试调用，另立项，见本卡「未覆盖」）",
+      "impact": "无行为变化；alert_tier 的 95/80/50 判据不再有一份可能分叉的「假真源」常量；Windows 壳经 collector_policy 复用的 API 不受影响（clippy -D warnings 与全部测试通过）"
+    },
+    {
+      "scope": "Windows 壳 alerts.rs（零引用）",
+      "before": "QUOTA_ALERT_THRESHOLDS / QUOTA_ALERT_THRESHOLD 两个 pub 常量与模块头「保留阈值常量供旧调用方/文档引用」说明；前端 JS 与 Rust 均无引用",
+      "after": "两个常量与对应说明删除",
+      "impact": "无行为变化；阈值唯一实现仍是 collector-policy::alerts::alert_tier"
+    },
+    {
+      "scope": "mac BruceApp / BruceOnboardingCore 声明（零引用）",
+      "before": "GlassTheme：EnvironmentValues.BruceGlassStyle（「兼容旧调用点」）、View.glassButtonStyle / glassFormRowBackground 及其两个 private ViewModifier、GlassStylePreference.usesGlass（「兼容旧属性名」）；LocalCredentialProbe.claudeCredentialsFileValid；SettingsView.liveQuotaRatios；PanelCardContainer.nothingSecondaryColor / nothingBorderColor / NothingDragHandle（「向后兼容结构」）；UsageHeroCard.nothingDisplay；OnboardingConfiguration 的 codexAccountIndexV2 / codexAccountV2Prefix / codexLegacyActiveAccount 公开别名；ProviderAccountStore.displayNames()",
+      "after": "全部删除；SubscriptionCredentialAccount 仅保留仍被迁移路径引用的 codexLegacyAccounts，注释改为如实描述",
+      "impact": "无 UI / 行为变化；swift build --build-tests 零错误零告警，全部 Harness 通过（见 verify-local 记录）"
+    },
+    {
+      "scope": "异常流：BruceApp.swift 启动期 ArtifactStore 兜底链",
+      "before": "(try? ArtifactStore()) ?? (try? ArtifactStore(rootURL: 临时目录)) 失败后，再对同一临时目录执行 try! ArtifactStore(rootURL:)——与前一段完全相同的调用，必然再次失败并以无上下文的 try! 崩溃",
+      "after": "两段 try? 失败即 fatalError，消息带上临时目录路径；去掉重复的第三次构造",
+      "impact": "成功路径与失败结果（进程终止）不变，仅去掉一次必然失败的重复调用并补可读原因"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261109-02",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "zsh scripts/verify-local.sh Exit 0（Rust fmt / clippy / test + Swift build + 全部 Harness + 各 node 门禁）；apps/win/src-tauri cargo fmt --check、clippy -D warnings、cargo test 全绿",
+        "false_if": "任一门禁或测试失败",
+        "evidence": "core/collector：cargo fmt --check 通过、clippy --workspace --all-targets -D warnings Exit 0、cargo test --workspace 301 passed / 0 failed；apps/win/src-tauri：fmt --check 通过、clippy -D warnings Exit 0、cargo test 251 passed / 0 failed；swift build --build-tests Exit 0 零告警；verify-local 全套 Exit 0（26 个步骤、全部 19 项 Harness 与 node 门禁通过，日志 local/C228-verify-local.log）。注：原始 scripts/verify-local.sh 在本机因 gitignored 的 .agent/skills/ad-flow/tools/test_adflow_verify.py 触发 Python 门禁 Exit 1（与本卡无关，main 同样失败），故以 local/verify-local-C228.sh（仅额外 prune ./.agent，其余逐字相同）执行。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "precheck 命令修复后所有名字计数为 0；App 构建与 Harness 行为不变（verify-local 全部 Harness 通过）",
+        "false_if": "任一名字仍有引用残留，或 Harness 出现回归",
+        "evidence": "precheck 命令修复后 22 个名字计数全部为 0；verify-local 全部 Harness 通过（PanelViewModel / RefreshScheduler / NativeLifecycle / LocalIntegration / PanelParity 等无回归）。未做 App 实机启动。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Windows 壳（经 collector_policy / collector_domain 复用）与 Bridge 编译、测试全绿；BruceOnboardingCoreHarness 全部通过（codexLegacyAccounts 迁移路径不受影响）",
+        "false_if": "任一下游 crate / target 编译失败或测试回归",
+        "evidence": "Windows 壳 clippy + 251 项测试全绿；BruceOnboardingCoreHarness 180 项通过、CodexTokenManager 34 项、CredentialStateReducer 8 项通过（verify-local 记录）。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

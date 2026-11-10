@@ -20,8 +20,6 @@ use serde_json::Value;
 pub const ALERT_STATE_VERSION: u8 = 1;
 /// 告警只处理 5 小时窗口; 可告警集合后续扩展时只改这里.
 pub const ALERTABLE_WINDOW_KEYS: [&str; 1] = ["five_hour"];
-/// 档位阈值 (与 C159/C206 一致): >50 / >80 / >=95.
-pub const ALERT_THRESHOLDS: [f64; 3] = [50.0, 80.0, 95.0];
 /// 回落判据: 较上次 fresh 观测下降超过 20 个百分点.
 const RESET_DROP_PERCENT: f64 = 20.0;
 /// 换窗振幅门限下限 (秒): 避免秒级抖动被误判为新窗口.

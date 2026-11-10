@@ -13,6 +13,13 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Fixed
+- **verify-local 禁 Python 门禁误拦本机忽略目录，全套验证无法运行 ([C231](docs/devel/change/C231.json))**：
+  - **门禁**：原 `find` 全盘扫描会被 `.gitignore` 已忽略的本机 AI 工具目录（如 `.agent/skills/**/*.py`）命中，在任何检查前 `exit 1`；改由新增 `scripts/check-no-python-assets.zsh` 以 `git ls-files --cached --others --exclude-standard` 只检查会进入仓库的文件，白名单仍仅 `scripts/adflow_verify.py`，强制跟踪的被忽略文件照常拦截，非 Git 工作树显式失败；正式检查前在临时仓库自检 4 项；`.gitignore` 补 `node_modules/`；
+  - **Harness 接入守护**：verify-local 在 `swift build` 前核对 `Package.swift` 中每个 `*Harness` target 均被运行，漏接即失败；
+  - **AGENTS.md**：Harness 数 18 → 19、Onboarding Core 用例数 165 → 180，禁 Python 规则改为描述新门禁口径。
+- **夏令时在午夜跳变的时区整轮采集 `BRIDGE_INTERNAL_PANIC` ([C227](docs/devel/change/C227.json))**：
+  - **现象**：America/Santiago、Asia/Beirut、America/Havana 等夏令时于 00:00 开始的时区，跳变日本地午夜不存在，`CollectionWindow::from_context` 计算该日起点时 `expect` panic，Bridge 以 `BRIDGE_INTERNAL_PANIC` 收尾、不产出 artifact；默认 14 天窗口覆盖跳变日期间（每年两次、各约两周）每轮刷新都复现；
+  - **修复**：新增 `local_day_start`，午夜落在空档时自分钟向后探测、取空档结束后的首个合法本地时刻作为当日起点（午夜重叠仍取较早一次，其余时区边界毫秒值不变）；探测失败改返回 `WindowError::MissingDayBoundary` 诊断而非 panic；新增回归用例锁定智利 2026-09-06 与黎巴嫩 2026-03-29 两例。
 - **订阅额度预警窗口未重置却重复弹气泡：窗口身份、观测、状态与投递四层重构 (T28–T31)**：
   - **窗口语义身份**：collector 为 `services[].windows[]` 输出 `windowKey`（`five_hour` / `weekly` / `monthly` / `weekly_scoped:*` / `credits` / `topup_credits` / `extra_usage` / `generic`）与 `windowMode`（`block` / `rolling` / `unknown`）；`label` 退化为纯展示字段，去重键改为 `serviceID|windowKey`；
   - **共享决策内核**：预警观测归一、换窗判定与 50/80/95 档位状态机收敛至 `collector-policy::alerts`，经 `alertDecide` 操作供 mac（C ABI 进程内）与 Windows（进程内）共同调用；`resetsAt` 秒级抖动/回退不再被误判为换窗，stale/缺失轮次只更新 `lastSeenAt`、不再清空档位记忆；
@@ -21,6 +28,15 @@
   - **退役旧路径**：mac `QuotaAlertEvaluator` / `QuotaAlertDeliveryState` 与 Windows `AlertDeliveryState` 本地状态机删除；双端共用 `tests/fixtures/quota-alert-state-parity/cases.json` 对拍。
 
 ### Changed
+- **collector-application 内联测试按主题拆分 ([C230](docs/devel/change/C230.json))**：`lib.rs` 约 2000 行内联测试拆为 `tests_run` / `tests_quota` / `tests_local` / `tests_history`，共享夹具收进 `tests_support`，与同 workspace 其他 crate 的 `tests_*.rs` 约定一致；`lib.rs` 由 2936 行降至约 1000 行纯生产代码，33 个用例逐个保留、断言不变。
+- **采集主流程去死注入与测试钩子 ([C229](docs/devel/change/C229.json))**：
+  - **死凭据注入**：`collect_agent_usage_with_dependencies` 去掉从未被读取的 `CredentialSource` 参数与 `RunContext` 字段，凭据唯一来源为宿主注入的 `request.credentials`；`matrix-fixture` 的 `credential-expired` 基准模式因此从未生效，一并删除；新增源码扫描用例守住「生产代码不引用宿主凭据读取入口」，规则写入 design/02；
+  - **分阶段**：230 行主函数拆为 `prepare_run` / `gather` / `assemble` / `publish`，另抽出 `resolve_pricing_table` 与 `build_agents`；生产签名中的 `#[cfg(test)] final_probe` 参数移除，取消用例改经真实阶段接缝在发布前取消；行为不变。
+- **全仓死代码清理：三端 20 处零引用声明与启动期冗余兜底 ([C228](docs/devel/change/C228.json))**：
+  - **collector**：删除无调用方的 `ALERT_THRESHOLDS`（与 `alert_tier` 硬编码判据可静默分叉的「假真源」）、`QuotaRunPolicy::local_only`、`CollectionWindow::day_of_millis / contains_day`、`UsageContributionBuilder::from_contribution`、`pricing::builtin_schema_version`，以及 `RunContext` 中与 `collect_local_usage` 重复解析的 `home` 字段；
+  - **Windows 壳**：删除 `QUOTA_ALERT_THRESHOLDS / QUOTA_ALERT_THRESHOLD` 两个零引用常量，阈值唯一实现保持在共享 `collector-policy`；
+  - **mac**：删除自称「兼容旧调用点 / 向后兼容」但已无调用方的 `BruceGlassStyle`、`glassButtonStyle / glassFormRowBackground` 及其修饰器、`usesGlass`、`NothingDragHandle`、三个 Codex v2 键别名，以及 `claudeCredentialsFileValid`、`displayNames()`、`liveQuotaRatios` 与三个未使用的 Nothing 颜色 token；
+  - **启动兜底**：`BruceApp` 的 `ArtifactStore` 兜底链去掉与前一段同参数、必然再失败的第三次 `try!`，改为带目录路径的显式终止；行为与 UI 均不变。
 - **现行总账瘦身：归档登记迁入归档批次总账，现行总账只留活跃卡 (C226)**：
   - **分层总账**：随 ad-flow 1.7.0 规范，`docs/devel/change/index.json` 与 `docs/devel/task/index.json` 中 212 / 19 条归档登记连同主题归属原样迁入 13 个 `docs/archive/<version>/index.json`（`adflow-archive-batch-v1`），现行变更总账 86,801 B / 2,319 行 → 6,500 B / 185 行；卡片文件零改动，历史查询改用 `scripts/adflow-verify --topic <主题>`；
   - **门禁不降级**：`scripts/check-change-ledger.mjs` 同时校验批次总账的主题归属、孤儿编号、路径存在与跨总账重号，`verify-local` 继续覆盖全部归档登记。

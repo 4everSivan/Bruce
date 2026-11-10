@@ -715,10 +715,6 @@ struct UsageHeroCard: View {
 
     // MARK: Nothing 颜色 token (dashboard-nothing-prototype.html 定稿, 两模式一致)
 
-    private static let nothingDisplay = Color.adaptive(
-        light: Color(hex: "#000000"),
-        dark: Color(hex: "#FFFFFF")
-    )
     private static let nothingPrimary = Color.adaptive(
         light: Color(hex: "#1A1A1A"),
         dark: Color(hex: "#E8E8E8")

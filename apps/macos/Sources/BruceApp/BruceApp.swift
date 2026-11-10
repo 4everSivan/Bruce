@@ -38,15 +38,14 @@ struct BruceApp: App {
             runner = UnavailableCollectorAdapter()
         }
         self.runner = runner
-        let store = (try? ArtifactStore())
-            ?? (try? ArtifactStore(
-                rootURL: FileManager.default.temporaryDirectory
-                    .appendingPathComponent("Bruce-fallback")
-            ))
-        let resolvedStore = store ?? (try! ArtifactStore(
-            rootURL: FileManager.default.temporaryDirectory
-                .appendingPathComponent("Bruce-fallback")
-        ))
+        // 默认存储不可用时退到临时目录; 临时目录也建不出来说明文件系统已不可用,
+        // 与此前 try! 同样终止, 但带可读原因 (C228: 原第三次 try! 与第二次是同一调用, 必然再失败)。
+        let fallbackRootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-fallback")
+        guard let resolvedStore = (try? ArtifactStore())
+            ?? (try? ArtifactStore(rootURL: fallbackRootURL)) else {
+            fatalError("ArtifactStore 默认目录与临时目录 \(fallbackRootURL.path) 均不可用")
+        }
         // 配置与凭证存储在 Scheduler 输入提供器和 Coordinator 之间共享同一实例
         let keychainAccessController = KeychainAccessController(
             policy: KeychainAccessPolicy(

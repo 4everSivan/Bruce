@@ -3,17 +3,15 @@
 //! Deterministic, non-production account-scale benchmark transport.
 //!
 //! This target is intentionally separate from `Bruce-collector`: it injects a
-//! fixture HTTP client and an empty credential source so benchmark runs never
-//! contact Provider services or read the host Keychain.
+//! fixture HTTP client so benchmark runs never contact Provider services. The
+//! collector never reads host credentials (C229), so no credential stub is needed.
 
 use collector_application::collect_agent_usage_with_dependencies;
-use collector_credential::{CredentialReadError, CredentialSource};
 use collector_domain::BridgeRequest;
 use collector_provider::{HttpClient, HttpRequest, HttpResponse, ProviderError};
 use collector_runtime::CancellationToken;
 use serde_json::{json, Value};
 use std::io::{self, Read, Write};
-use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -39,18 +37,6 @@ impl HttpClient for FixtureHttp {
     }
 }
 
-struct EmptyCredentialSource;
-
-impl CredentialSource for EmptyCredentialSource {
-    fn read_file(&self, _path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError> {
-        Ok(None)
-    }
-
-    fn read_keychain(&self, _service: &str) -> Result<Option<String>, CredentialReadError> {
-        Ok(None)
-    }
-}
-
 fn main() -> io::Result<()> {
     let mut input = Vec::new();
     io::stdin().read_to_end(&mut input)?;
@@ -64,9 +50,8 @@ fn main() -> io::Result<()> {
         calls: AtomicUsize::new(0),
         delay: Duration::from_millis(delay_ms),
     };
-    let credentials = EmptyCredentialSource;
     let physical_disk_read_start = collector_bridge::physical_disk_read_bytes();
-    let output = collect_agent_usage_with_dependencies(&request, &http, &credentials)
+    let output = collect_agent_usage_with_dependencies(&request, &http)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.diagnostic.message))?;
     let physical_disk_read_bytes = physical_disk_read_start.and_then(|start| {
         collector_bridge::physical_disk_read_bytes().map(|end| end.saturating_sub(start))

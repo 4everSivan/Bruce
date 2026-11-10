@@ -326,14 +326,6 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     private var nothingTitleColor: Color {
         Color.adaptive(light: Color(hex: "#666666"), dark: Color(hex: "#999999"))
     }
-
-    private var nothingSecondaryColor: Color {
-        Color.adaptive(light: Color(hex: "#666666"), dark: Color(hex: "#8A8A8A"))
-    }
-
-    private var nothingBorderColor: Color {
-        Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030"))
-    }
 }
 
 /// 全风格卡片拖拽手柄: 仅在卡片缩小/折叠状态下渲染, 且物理独立于折叠展开 Button 之外.
@@ -381,13 +373,6 @@ struct DashboardDragHandle: View {
                 .fill(hovering ? Color.primary : Color.secondary.opacity(0.45))
                 .frame(width: 2.2, height: 2.2)
         }
-    }
-}
-
-/// Nothing 风格拖拽手柄向后兼容结构
-struct NothingDragHandle: View {
-    var body: some View {
-        DashboardDragHandle(isNothing: true)
     }
 }
 

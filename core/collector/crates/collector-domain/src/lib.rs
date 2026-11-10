@@ -122,6 +122,12 @@ pub enum WindowError {
     InvalidTimezone(String),
     InvalidNow(String),
     InvalidDays,
+    /// 该时区在给定本地日期的午夜之后 24 小时内找不到任何合法本地时刻 (理论上不可达,
+    /// 保留为显式错误而非 panic, 让 Bridge 以诊断而不是 BRIDGE_INTERNAL_PANIC 收尾)。
+    MissingDayBoundary {
+        timezone: String,
+        date: String,
+    },
 }
 
 impl fmt::Display for WindowError {
@@ -130,11 +136,26 @@ impl fmt::Display for WindowError {
             Self::InvalidTimezone(value) => write!(f, "invalid timezone: {value}"),
             Self::InvalidNow(value) => write!(f, "invalid now: {value}"),
             Self::InvalidDays => write!(f, "days must be between 1 and 366"),
+            Self::MissingDayBoundary { timezone, date } => {
+                write!(f, "no local day boundary for {date} in {timezone}")
+            }
         }
     }
 }
 
 impl std::error::Error for WindowError {}
+
+/// 本地自然日起点 (C227)。多数时区取本地午夜; 若午夜落在夏令时跳变空档 (如
+/// America/Santiago、Asia/Beirut、America/Havana 在 00:00 直接跳到 01:00), 午夜本身
+/// 不存在, `from_local_datetime` 返回 `None`, 此时取空档结束后的首个合法本地时刻;
+/// 午夜重叠 (回拨) 取较早一次, 与此前行为一致。按分钟向后探测, 上限 24 小时。
+fn local_day_start(timezone: Tz, date: chrono::NaiveDate) -> Option<DateTime<Tz>> {
+    let midnight = date.and_hms_opt(0, 0, 0)?;
+    (0..24 * 60).find_map(|minutes| {
+        let candidate = midnight.checked_add_signed(chrono::Duration::minutes(minutes))?;
+        timezone.from_local_datetime(&candidate).earliest()
+    })
+}
 
 impl CollectionWindow {
     pub fn from_context(context: &Map<String, Value>) -> Result<Self, WindowError> {
@@ -171,12 +192,11 @@ impl CollectionWindow {
             let date = oldest_date
                 .checked_add_signed(chrono::Duration::days(index as i64))
                 .expect("date range is bounded");
-            let local_midnight = date.and_hms_opt(0, 0, 0).expect("midnight is valid");
-            let boundary = timezone
-                .from_local_datetime(&local_midnight)
-                .earliest()
-                .or_else(|| timezone.from_local_datetime(&local_midnight).latest())
-                .expect("timezone has a day boundary")
+            let boundary = local_day_start(timezone, date)
+                .ok_or_else(|| WindowError::MissingDayBoundary {
+                    timezone: timezone_name.clone(),
+                    date: date.format("%Y-%m-%d").to_string(),
+                })?
                 .timestamp_millis();
             day_start_millis.push(boundary);
         }
@@ -199,11 +219,6 @@ impl CollectionWindow {
             .filter(|index| *index < self.day_list.len())
     }
 
-    pub fn day_of_millis(&self, timestamp_millis: i64) -> Option<String> {
-        self.day_index_of_millis(timestamp_millis)
-            .and_then(|index| self.day_list.get(index).cloned())
-    }
-
     pub fn hour_of_millis(&self, timestamp_millis: i64) -> Option<usize> {
         let value = Utc.timestamp_millis_opt(timestamp_millis).single()?;
         Some(value.with_timezone(&self.timezone).hour() as usize)
@@ -217,14 +232,6 @@ impl CollectionWindow {
         self.now
             .with_timezone(&self.timezone)
             .to_rfc3339_opts(SecondsFormat::Secs, true)
-    }
-
-    pub fn contains_day(&self, day: &str) -> bool {
-        self.day_list
-            .first()
-            .map(|first| day >= first)
-            .unwrap_or(false)
-            && day <= self.today.as_str()
     }
 }
 
@@ -453,14 +460,6 @@ impl UsageContributionBuilder {
             models_by_day: BTreeMap::new(),
             hour_models_today: BTreeMap::new(),
         }
-    }
-
-    pub fn from_contribution(
-        window: CollectionWindow,
-        contribution: &UsageContribution,
-    ) -> Option<Self> {
-        let mut builder = Self::new(window);
-        builder.merge_contribution(contribution).then_some(builder)
     }
 
     pub fn record(&mut self, sample: UsageSample<'_>) -> bool {
@@ -858,6 +857,61 @@ mod tests {
         assert_eq!(window.today, "2026-07-28");
         assert_eq!(window.day_list, ["2026-07-27", "2026-07-28"]);
         assert_eq!(window.hour_of_millis(1_785_198_600_000), Some(8));
+    }
+
+    /// C227: 夏令时在午夜跳变的时区 (智利 2026-09-06、黎巴嫩 2026-03-29 的 00:00 直接跳到
+    /// 01:00) 本地午夜不存在, 此前 `expect("timezone has a day boundary")` 让整轮采集
+    /// 以 BRIDGE_INTERNAL_PANIC 收尾且窗口覆盖该日的两周内持续复现。现取空档结束后的
+    /// 首个合法时刻作为当日起点, 边界单调递增, 跳变前后的样本仍落在正确的本地日期。
+    #[test]
+    fn window_survives_dst_gap_at_local_midnight() {
+        for (timezone, now, gap_day, gap_end_utc_millis) in [
+            // 2026-09-06 00:00 -04 不存在 → 01:00 -03 = 04:00Z
+            (
+                "America/Santiago",
+                "2026-09-10T12:00:00-03:00",
+                "2026-09-06",
+                1_788_667_200_000_i64,
+            ),
+            // 2026-03-29 00:00 +02 不存在 → 01:00 +03 = 2026-03-28T22:00Z
+            (
+                "Asia/Beirut",
+                "2026-04-01T12:00:00+03:00",
+                "2026-03-29",
+                1_774_735_200_000_i64,
+            ),
+        ] {
+            let context: Map<String, Value> = serde_json::from_value(json!({
+                "now": now,
+                "timezone": timezone,
+                "days": 14
+            }))
+            .unwrap();
+            let window = CollectionWindow::from_context(&context)
+                .unwrap_or_else(|error| panic!("{timezone}: {error}"));
+            assert!(
+                window
+                    .day_start_millis
+                    .windows(2)
+                    .all(|pair| pair[0] < pair[1]),
+                "{timezone}: day boundaries must be strictly increasing"
+            );
+            let gap_index = window
+                .day_list
+                .iter()
+                .position(|day| day == gap_day)
+                .unwrap_or_else(|| panic!("{timezone}: window must cover {gap_day}"));
+            assert_eq!(
+                window.day_index_of_millis(gap_end_utc_millis),
+                Some(gap_index),
+                "{timezone}: first valid instant after the gap starts {gap_day}"
+            );
+            assert_eq!(
+                window.day_index_of_millis(gap_end_utc_millis - 1),
+                Some(gap_index - 1),
+                "{timezone}: the instant before the gap still belongs to the previous day"
+            );
+        }
     }
 
     /// C200: 信息级诊断码清单与共享 fixture 一致 (mac 侧以同一 fixture 校验), 代表性故障码不在其中。
