@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-06",
+  "updated_at": "2026-11-09",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -27,7 +27,9 @@
     },
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
-      "changes": []
+      "changes": [
+        "C227"
+      ]
     },
     "AgentAnalytics": {
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
@@ -67,6 +69,15 @@
       "topic": "SystemOverview",
       "version": "0.17.1",
       "file": "docs/devel/change/C226.json"
+    },
+    "C227": {
+      "title": "夏令时在午夜跳变的时区（智利 / 黎巴嫩 / 古巴等）整轮采集 BRIDGE_INTERNAL_PANIC：本地日起点改取空档后首个合法时刻",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C227-window-dst-gap",
+      "topic": "TokenUsage",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C227.json"
     }
   }
 }

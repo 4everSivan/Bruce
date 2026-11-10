@@ -13,6 +13,9 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Fixed
+- **夏令时在午夜跳变的时区整轮采集 `BRIDGE_INTERNAL_PANIC` ([C227](docs/devel/change/C227.json))**：
+  - **现象**：America/Santiago、Asia/Beirut、America/Havana 等夏令时于 00:00 开始的时区，跳变日本地午夜不存在，`CollectionWindow::from_context` 计算该日起点时 `expect` panic，Bridge 以 `BRIDGE_INTERNAL_PANIC` 收尾、不产出 artifact；默认 14 天窗口覆盖跳变日期间（每年两次、各约两周）每轮刷新都复现；
+  - **修复**：新增 `local_day_start`，午夜落在空档时自分钟向后探测、取空档结束后的首个合法本地时刻作为当日起点（午夜重叠仍取较早一次，其余时区边界毫秒值不变）；探测失败改返回 `WindowError::MissingDayBoundary` 诊断而非 panic；新增回归用例锁定智利 2026-09-06 与黎巴嫩 2026-03-29 两例。
 - **订阅额度预警窗口未重置却重复弹气泡：窗口身份、观测、状态与投递四层重构 (T28–T31)**：
   - **窗口语义身份**：collector 为 `services[].windows[]` 输出 `windowKey`（`five_hour` / `weekly` / `monthly` / `weekly_scoped:*` / `credits` / `topup_credits` / `extra_usage` / `generic`）与 `windowMode`（`block` / `rolling` / `unknown`）；`label` 退化为纯展示字段，去重键改为 `serviceID|windowKey`；
   - **共享决策内核**：预警观测归一、换窗判定与 50/80/95 档位状态机收敛至 `collector-policy::alerts`，经 `alertDecide` 操作供 mac（C ABI 进程内）与 Windows（进程内）共同调用；`resetsAt` 秒级抖动/回退不再被误判为换窗，stale/缺失轮次只更新 `lastSeenAt`、不再清空档位记忆；
