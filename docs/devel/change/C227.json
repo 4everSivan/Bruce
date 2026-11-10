@@ -59,8 +59,8 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace 全绿且新增回归用例 window_survives_dst_gap_at_local_midnight（Santiago 2026-09-06 / Beirut 2026-03-29）通过；clippy -D warnings Exit 0",
         "false_if": "任一测试失败，或回归用例在修复前不失败",
-        "evidence": "cargo test -p collector-domain → 26 passed（含新增用例）；cargo clippy --workspace --all-targets -- -D warnings Exit 0；cargo test --workspace 全量结果见收口前 verify-rust 记录。",
-        "result": null
+        "evidence": "cargo test -p collector-domain → 26 passed（含新增用例）；cargo clippy --workspace --all-targets -- -D warnings Exit 0；cargo test --workspace 301 passed / 0 failed；叠加 C228 后 verify-local 全套 Exit 0（local/C228-verify-local.log）。",
+        "result": true
       },
       {
         "item": "行为实测",

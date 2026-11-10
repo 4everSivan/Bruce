@@ -24,6 +24,11 @@
   - **退役旧路径**：mac `QuotaAlertEvaluator` / `QuotaAlertDeliveryState` 与 Windows `AlertDeliveryState` 本地状态机删除；双端共用 `tests/fixtures/quota-alert-state-parity/cases.json` 对拍。
 
 ### Changed
+- **全仓死代码清理：三端 20 处零引用声明与启动期冗余兜底 ([C228](docs/devel/change/C228.json))**：
+  - **collector**：删除无调用方的 `ALERT_THRESHOLDS`（与 `alert_tier` 硬编码判据可静默分叉的「假真源」）、`QuotaRunPolicy::local_only`、`CollectionWindow::day_of_millis / contains_day`、`UsageContributionBuilder::from_contribution`、`pricing::builtin_schema_version`，以及 `RunContext` 中与 `collect_local_usage` 重复解析的 `home` 字段；
+  - **Windows 壳**：删除 `QUOTA_ALERT_THRESHOLDS / QUOTA_ALERT_THRESHOLD` 两个零引用常量，阈值唯一实现保持在共享 `collector-policy`；
+  - **mac**：删除自称「兼容旧调用点 / 向后兼容」但已无调用方的 `BruceGlassStyle`、`glassButtonStyle / glassFormRowBackground` 及其修饰器、`usesGlass`、`NothingDragHandle`、三个 Codex v2 键别名，以及 `claudeCredentialsFileValid`、`displayNames()`、`liveQuotaRatios` 与三个未使用的 Nothing 颜色 token；
+  - **启动兜底**：`BruceApp` 的 `ArtifactStore` 兜底链去掉与前一段同参数、必然再失败的第三次 `try!`，改为带目录路径的显式终止；行为与 UI 均不变。
 - **现行总账瘦身：归档登记迁入归档批次总账，现行总账只留活跃卡 (C226)**：
   - **分层总账**：随 ad-flow 1.7.0 规范，`docs/devel/change/index.json` 与 `docs/devel/task/index.json` 中 212 / 19 条归档登记连同主题归属原样迁入 13 个 `docs/archive/<version>/index.json`（`adflow-archive-batch-v1`），现行变更总账 86,801 B / 2,319 行 → 6,500 B / 185 行；卡片文件零改动，历史查询改用 `scripts/adflow-verify --topic <主题>`；
   - **门禁不降级**：`scripts/check-change-ledger.mjs` 同时校验批次总账的主题归属、孤儿编号、路径存在与跨总账重号，`verify-local` 继续覆盖全部归档登记。
