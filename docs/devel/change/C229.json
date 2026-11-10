@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C229",
+  "title": "采集主流程去死注入与测试钩子：移除从未读取的 CredentialSource，主函数拆为 gather / assemble / publish 阶段",
+  "version": "0.17.1",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "refactor/C229-collector-run-seams",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-application + core/collector/bin/Bruce-collector",
+    "component": "collect_agent_usage_with_dependencies / RunContext / prepare_run · gather · assemble · publish / matrix-fixture · account-scale-fixture",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "2026-11-09 全仓复审（C228 未覆盖项）发现两处结构问题。一、死凭据注入：collect_agent_usage_with_dependencies 接收 &dyn CredentialSource 并存进 RunContext.credential_source，但该字段以 #[allow(dead_code)] 压住告警、全 crate 从未读取——凭据唯一来源是宿主注入的 request.credentials（design/02 C131：Rust 侧不读外部文件）。参数让每个调用方都要构造一个假凭据源（应用测试约 25 处、两个基准 fixture 二进制），且误导读者以为采集端可能读宿主凭据；matrix-fixture 的 BRUCE_BENCHMARK_PROVIDER_MODE=credential-expired 模式据此注入过期 Claude 凭据文件，但因该字段从未被读，这一基准模式从来不起作用，其记录的结果与默认模式无差别。二、生产签名里的测试钩子：collect_agent_usage_with_dependencies_inner 带 #[cfg(test)] final_probe 参数并在主流程中段 #[cfg(test)] 调用，230 行主函数把线程编排、结果合并、价卡选择、agent 行构造、取消栅栏与序列化揉在一起，测试只能靠条件编译参数插入取消点。",
+  "precheck": {
+    "description": "确认 credential_source 字段从未被读取、final_probe 仍在生产签名中",
+    "command": "grep -rn 'credential_source\\|final_probe' core/collector/crates/collector-application/src --include='*.rs' | grep -v '^.*//'",
+    "expected": "修复前：credential_source 仅出现在 context.rs 的声明 / 构造参数 / 赋值三处（无任何 .credential_source 读取）；final_probe 出现在 lib.rs 生产函数签名与 #[cfg(test)] 调用处。修复后：两者均无输出",
+    "is_completed": false,
+    "evidence": "2026-11-09 于 chore/C228-dead-code-cleanup（38b2366）：credential_source 仅 context.rs:54/67/96（声明带 #[allow(dead_code)]、参数、赋值），全 crate 无读取；final_probe 位于 lib.rs:131 签名与 :317 #[cfg(test)] 调用；matrix-fixture 的 FixtureCredentialSource 仅经该死字段传入 → 缺陷成立。"
+  },
+  "callback": {
+    "before": [
+      "git checkout refactor/C229-collector-run-seams"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "scripts/adflow-verify --card C229 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "接口契约：collector-application 注入接缝",
+      "before": "collect_agent_usage_with_dependencies(request, http, credentials: &dyn CredentialSource)；RunContext::new 同样接收并保存 credential_source（#[allow(dead_code)]）；collect_agent_usage 构造 SystemCredentialSource 传入",
+      "after": "collect_agent_usage_with_dependencies(request, http)；RunContext 无凭据字段；collect_agent_usage 只构造 UreqHttpClient。collector-credential 的 CredentialSource trait 与 read_claude_token / read_grok_token / SystemCredentialSource 原样保留（C131 定位：测试与兼容面）",
+      "impact": "唯一生产调用方 collector-bridge 只用 collect_agent_usage，签名不变；Windows 壳不直接调用；Bruce-collector 二进制 crate 不再依赖 collector-credential（Cargo.lock 少一条依赖边）"
+    },
+    {
+      "scope": "业务规则 / 异常流：主流程分阶段与取消栅栏",
+      "before": "单个 230 行 collect_agent_usage_with_dependencies_inner：校验 → 线程编排 → 合并 → 价卡 → agent 行 → services → #[cfg(test)] 探针 → 取消检查 → 序列化 → 取消检查",
+      "after": "prepare_run（校验 + RunContext）→ gather（本机 / 额度两线程，worker panic 降级为诊断）→ assemble（本机失败或取消即带轮换令牌失败；resolve_pricing_table + build_agents（AGENT_SPECS 常量）；额度 services / 诊断 / COLLECTOR_PARTIAL_RESULT）→ publish（取消栅栏 → 序列化 → 取消栅栏）。run_failure / cancellation_fence 统一 C171「失败也带出已轮换令牌」。测试 helper collect_cancelled_before_publish 依次调用各阶段并在 publish 前取消，替代 #[cfg(test)] final_probe",
+      "impact": "行为逐项不变：local_usage_only / 未授权 externalQuotas 时额度 worker 不启动、quota 为空，与旧三分支输出一致；失败时带出的令牌与旧 pending_updates 恒等（仅额度 worker 运行时非空）"
+    },
+    {
+      "scope": "基准 fixture 二进制",
+      "before": "account-scale-fixture 构造 EmptyCredentialSource；matrix-fixture 构造 FixtureCredentialSource 并按 BRUCE_BENCHMARK_PROVIDER_MODE=credential-expired 注入过期凭据文件（从未被读取）",
+      "after": "两者删除凭据桩；matrix-fixture 删除 credential-expired 分支（设该值时与默认模式行为相同，此前事实上也是如此），模块文档改为如实描述",
+      "impact": "tests/benchmarks/rust-collector-matrix.json 中历史 credential-expired 记录保留不动（历史数据）；当前无脚本调用 matrix-fixture"
+    },
+    {
+      "scope": "回归守护",
+      "before": "测试以 HostCredentialAccessMustNotBeUsed（读即 panic 的凭据源）证明采集端不读宿主凭据",
+      "after": "参数消失后该边界变为结构性；新增 application_sources_never_reference_host_credential_readers：include_str! 本 crate 6 个源文件，生产段不得出现 CredentialSource / read_claude_token / read_grok_token / read_keychain。原三个用例保留行为断言（不发请求、无 service、CREDENTIAL_MISSING ≥ 2）",
+      "impact": "后续若重新引入宿主凭据读取，用例直接失败"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "C131：collector-credential 只读探测函数为测试与兼容面，生产路径不调用；未约定 collector-application 入口是否接收凭据适配器",
+      "after": "新增规则「采集端无凭据适配器（C229）」：入口只注入 HTTP 适配器，凭据唯一来源为 request.credentials；由源码扫描用例守住生产代码不引用宿主凭据读取入口"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261109-03",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace fmt --check / clippy -D warnings / cargo test 全绿（含新增守护用例）；Windows 壳 clippy -D warnings 与 cargo test 全绿；verify-local 全套 Exit 0",
+        "false_if": "任一失败",
+        "evidence": "core/collector：fmt 通过、clippy --workspace --all-targets -D warnings Exit 0、cargo test --workspace 302 passed / 0 failed（较 C228 多 1 项守护用例）；apps/win/src-tauri：clippy -D warnings Exit 0、cargo test 251 passed / 0 failed；verify-local 叠加 C230 / C231 后全套结果见 C231 卡记录。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "变异检验：生产段注入 read_claude_token 时守护用例失败；去掉 publish 的两道取消栅栏时 cancellation_after_last_source_is_fenced_before_artifact_publication 与 deadline_after_quota_refresh_still_returns_rotated_tokens 失败；恢复后全绿",
+        "false_if": "任一变异未被用例拦截",
+        "evidence": "2026-11-09：在 collect_agent_usage 文档注释注入 read_claude_token → application_sources_never_reference_host_credential_readers FAILED；同时去掉 publish 两道 cancellation_fence → 两个取消用例均 FAILED（只去第一道时第二道仍拦截，与旧实现同构）；恢复后 collector-application 45 passed。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "collector-bridge 与 Bruce-collector 进程测试、Windows 壳、mac LocalIntegration / CollectorRunner / PanelParity Harness 无回归",
+        "false_if": "任一下游编译失败或回归",
+        "evidence": "workspace 全量测试含 bridge_process 进程测试通过；Windows 壳 251 项通过；mac Harness 见 verify-local 记录。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

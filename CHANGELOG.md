@@ -24,6 +24,9 @@
   - **退役旧路径**：mac `QuotaAlertEvaluator` / `QuotaAlertDeliveryState` 与 Windows `AlertDeliveryState` 本地状态机删除；双端共用 `tests/fixtures/quota-alert-state-parity/cases.json` 对拍。
 
 ### Changed
+- **采集主流程去死注入与测试钩子 ([C229](docs/devel/change/C229.json))**：
+  - **死凭据注入**：`collect_agent_usage_with_dependencies` 去掉从未被读取的 `CredentialSource` 参数与 `RunContext` 字段，凭据唯一来源为宿主注入的 `request.credentials`；`matrix-fixture` 的 `credential-expired` 基准模式因此从未生效，一并删除；新增源码扫描用例守住「生产代码不引用宿主凭据读取入口」，规则写入 design/02；
+  - **分阶段**：230 行主函数拆为 `prepare_run` / `gather` / `assemble` / `publish`，另抽出 `resolve_pricing_table` 与 `build_agents`；生产签名中的 `#[cfg(test)] final_probe` 参数移除，取消用例改经真实阶段接缝在发布前取消；行为不变。
 - **全仓死代码清理：三端 20 处零引用声明与启动期冗余兜底 ([C228](docs/devel/change/C228.json))**：
   - **collector**：删除无调用方的 `ALERT_THRESHOLDS`（与 `alert_tier` 硬编码判据可静默分叉的「假真源」）、`QuotaRunPolicy::local_only`、`CollectionWindow::day_of_millis / contains_day`、`UsageContributionBuilder::from_contribution`、`pricing::builtin_schema_version`，以及 `RunContext` 中与 `collect_local_usage` 重复解析的 `home` 字段；
   - **Windows 壳**：删除 `QUOTA_ALERT_THRESHOLDS / QUOTA_ALERT_THRESHOLD` 两个零引用常量，阈值唯一实现保持在共享 `collector-policy`；

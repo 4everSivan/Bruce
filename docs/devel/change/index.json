@@ -24,7 +24,9 @@
     },
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
-      "changes": []
+      "changes": [
+        "C229"
+      ]
     },
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
@@ -88,6 +90,15 @@
       "topic": "SystemOverview",
       "version": "0.17.1",
       "file": "docs/devel/change/C228.json"
+    },
+    "C229": {
+      "title": "采集主流程去死注入与测试钩子：移除从未读取的 CredentialSource，主函数拆为 gather / assemble / publish 阶段",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "refactor/C229-collector-run-seams",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C229.json"
     }
   }
 }
