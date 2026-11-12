@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C232",
+  "title": "纵向布局 ⌘1/2/3 展开收缩动画对齐鼠标点击：快捷键先无动画定位，再播放唯一一次收放动画",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C232-stack-shortcut-align-toggle",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceApp + apps/macos/Tests/Harnesses/NativeLifecycleHarness",
+    "component": "MenuBarViews.shortcutScrollTarget 回调 / BruceAppCore.PanelModels 快捷键动效计划 / NativeLifecycleHarness",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "2026-11-10 用户真机反馈：纵向级联布局下，用 ⌘ 快捷键展开卡片后再用快捷键收缩会出现抖动；同一张卡片用鼠标点击收放则平滑。代码对比（main 9854641）：鼠标路径仅在 CollapsibleCardHeader 的 Button action 里包一条 withAnimation 调 model.toggleCardCollapsed（PanelCardContainer.swift:247），不碰 ScrollView；快捷键路径经 NSPanel.performKeyEquivalent → controller.requestCardShortcut → AppModel.requestCardShortcut → MenuBarViews.onChange(requestedCardShortcut) → consumeCardShortcut + performCardShortcut → @State shortcutScrollTarget → 第二个 onChange，最终在 MenuBarViews.swift:191-200 把 scrollProxy.scrollTo 与 model.toggleCardCollapsed 各包一条 0.30s withAnimation。于是快捷键路径比鼠标多一条并行的滚动动画：滚动目标/可用滚动范围随卡片高度逐帧变化，与卡片高度动画、窗口高度动画（30ms 合并 + NSAnimationContext）三方同时移动，表现为抖动；鼠标路径只有「卡片高度 + 窗口高度」两条同源时间线。另外 ⌘ 目标卡可能不在视口内，必须先定位；⌘ 映射按卡片身份固定（⌘1 Token / ⌘2 订阅 / ⌘3 Agent），与视觉顺序无关。",
+  "precheck": {
+    "description": "确认快捷键收放路径存在并行的滚动动画，鼠标路径只有单条收放动画",
+    "command": "sed -n '191,201p' apps/macos/Sources/BruceApp/MenuBarViews.swift; sed -n '247,252p' apps/macos/Sources/BruceApp/Views/PanelCardContainer.swift",
+    "expected": "修复前：快捷键回调中 scrollTo 与 toggleCardCollapsed 各包一条 withAnimation；鼠标 Button 只有一条 withAnimation。修复后：scrollTo 不入动画，toggle 只包一条 withAnimation；motionSuppressed 时直接落值。",
+    "is_completed": false,
+    "evidence": "2026-11-10 于 main 9854641 复核：MenuBarViews.swift:191 onChange(shortcutScrollTarget) 内 193-195 与 196-198 为两条独立 withAnimation（scrollTo + toggleCardCollapsed）；PanelCardContainer.swift:247-251 的 Button 仅一条 withAnimation 包 onToggle。用户真机复现：⌘ 展开后再 ⌘ 收缩抖动，鼠标点击同一卡片收放平滑。"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C232-stack-shortcut-align-toggle"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "swift run --package-path apps/macos NativeLifecycleHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C232 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "快捷键收放动画编排 (MenuBarViews.swift)",
+      "before": "onChange(shortcutScrollTarget) 中 scrollProxy.scrollTo 与 model.toggleCardCollapsed 各包一条 0.30s withAnimation，滚动与收放同时动画，并与窗口高度动画三方争抢时间线",
+      "after": "先无动画 scrollTo 定位，再用唯一一条 DashboardMotionTiming.contentResizeCurve 的 withAnimation 切换折叠；motionSuppressed 时连收放动画也直接落值。收放部分与鼠标点击路径同源（同一 model 方法、同一曲线、单条事务）",
+      "impact": "快捷键收放只剩「卡片高度 + 窗口高度」两条动画；目标在视口外时表现为一次瞬时定位后平滑收放，不再有滚动与高度互相追尾"
+    },
+    {
+      "scope": "动效编排的纯策略与回归 (BruceAppCore.PanelModels + NativeLifecycleHarness)",
+      "before": "快捷键动效只在视图回调里以两条 withAnimation 的手写结构存在，无纯策略、无断言",
+      "after": "新增 DashboardStackShortcutMotionPolicy：普通动效返回 instantScrollAnimatedToggle，motionSuppressed 返回 instantScrollInstantToggle；视图按计划执行。NativeLifecycleHarness 新增断言锁定两种映射",
+      "impact": "回归可测：未来若有人把滚动重新包进动画，必须改动策略并同步断言"
+    },
+    {
+      "scope": "设计文档 FR-5 C211 快捷键契约",
+      "before": "纵向级联模式先 scrollTo 到该卡再切换折叠/展开",
+      "after": "纵向级联模式先无动画定位到该卡，再播放唯一一次 0.30s 高度动画切换折叠/展开；禁止滚动与收放同时动画",
+      "impact": "规则与实现一致；Tab 模式不受影响"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-5 C211：纵向级联模式先 scrollTo 到该卡再切换折叠/展开（视图内 scrollTo 与 toggle 各包一条 withAnimation）。",
+      "after": "FR-5 C211：纵向级联模式先无动画定位到该卡，再播放唯一一次 0.30s 高度动画切换折叠/展开；禁止滚动与收放同时动画；动效编排由 DashboardStackShortcutMotionPolicy 唯一给出。"
+    }
+  },
+  "verification": {
+    "result": false,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "swift build --package-path apps/macos --build-tests 零告警；NativeLifecycleHarness 新增快捷键动效计划断言通过；zsh scripts/verify-local.sh Exit 0（含全部 Harness）",
+        "false_if": "任一步失败或 Harness 回归",
+        "evidence": "2026-11-10 于 fix/C232-stack-shortcut-align-toggle：swift build --package-path apps/macos --build-tests Exit 0（仅 CLT 27 ld 搜索路径 warning，非本次引入）；NativeLifecycleHarness 输出 Native lifecycle tests passed: 20（新增 C232 两条动效计划断言）；zsh scripts/verify-local.sh Exit 0，末行「Bruce 本地验证全部通过」，日志 local/C232-verify-local.log。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "安装版纵向布局：同一张卡片用 ⌘ 快捷键展开后再用 ⌘ 收缩，与鼠标点击收放观感一致，不再出现滚动与高度并行的抖动；目标卡在视口外时先瞬时定位再平滑收放；减弱动态效果下定位与收放均无动画",
+        "false_if": "快捷键收放仍抖动、出现滚动与高度追尾，或减弱动效仍播放动画",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Tab 布局快捷键仍只切页签；⌘ 映射保持 ⌘1 Token / ⌘2 订阅 / ⌘3 Agent；面板隐藏时无新增持续动画；鼠标点击收放不受影响",
+        "false_if": "Tab 切页签异常、快捷键映射变化、鼠标点击行为回归或隐藏态出现动画",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

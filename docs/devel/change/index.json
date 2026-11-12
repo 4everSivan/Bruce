@@ -13,7 +13,9 @@
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
-      "changes": []
+      "changes": [
+        "C232"
+      ]
     },
     "PricingEngine": {
       "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
@@ -119,6 +121,15 @@
       "topic": "SystemOverview",
       "version": "0.17.1",
       "file": "docs/devel/change/C231.json"
+    },
+    "C232": {
+      "title": "纵向布局 ⌘1/2/3 展开收缩动画对齐鼠标点击：快捷键先无动画定位，再播放唯一一次收放动画",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C232-stack-shortcut-align-toggle",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C232.json"
     }
   }
 }

@@ -13,6 +13,11 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Fixed
+- **纵向布局快捷键展开收缩动画对齐鼠标点击 ([C232](docs/devel/change/C232.json))**：
+  - **现象**：同一张卡片用 ⌘1/2/3 展开后再用快捷键收缩会出现抖动，鼠标点击卡片标题收放则平滑；
+  - **根因**：鼠标路径只在标题 Button action 里包一条 `withAnimation` 调 `toggleCardCollapsed`；快捷键路径在 `MenuBarViews.onChange(shortcutScrollTarget)` 里把 `scrollTo` 与 `toggleCardCollapsed` **各包一条** 0.30s `withAnimation`，滚动目标/可用滚动范围随卡片高度逐帧变化，与卡片高度、窗口高度三方同时动画；
+  - **修复**：快捷键先**无动画** `scrollTo` 定位，再用唯一一条 `DashboardMotionTiming.contentResizeCurve` 动画切换折叠；减弱动态效果时连收放动画也直接落值。新增 `DashboardStackShortcutMotionPolicy` 作为唯一编排点，`NativeLifecycleHarness` 断言两种映射；
+  - **边界**：目标卡在视口外时表现为“瞬时定位 + 平滑收放”；Tab 布局、⌘ 映射、鼠标点击行为均不变。
 - **verify-local 禁 Python 门禁误拦本机忽略目录，全套验证无法运行 ([C231](docs/devel/change/C231.json))**：
   - **门禁**：原 `find` 全盘扫描会被 `.gitignore` 已忽略的本机 AI 工具目录（如 `.agent/skills/**/*.py`）命中，在任何检查前 `exit 1`；改由新增 `scripts/check-no-python-assets.zsh` 以 `git ls-files --cached --others --exclude-standard` 只检查会进入仓库的文件，白名单仍仅 `scripts/adflow_verify.py`，强制跟踪的被忽略文件照常拦截，非 Git 工作树显式失败；正式检查前在临时仓库自检 4 项；`.gitignore` 补 `node_modules/`；
   - **Harness 接入守护**：verify-local 在 `swift build` 前核对 `Package.swift` 中每个 `*Harness` target 均被运行，漏接即失败；
