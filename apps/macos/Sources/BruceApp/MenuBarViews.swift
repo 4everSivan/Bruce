@@ -186,14 +186,20 @@ struct MenuBarDashboardView: View {
                         .allowsHitTesting(false)
                     }
                 }
-                // C211: 同一动画事务先滚动定位, 再切换高度; 避免窗口高度动画
-                // 与滚动目标争抢, 保证"先滚动再收放"的可见顺序.
+                // C232: 与鼠标点击收放对齐 —— 先无动画定位, 再播放唯一一次
+                // 高度动画. 滚动若也参与动画, 滚动目标会随卡片高度逐帧变化,
+                // 与窗口高度动画互相追尾 (快捷键收放抖动).
                 .onChange(of: shortcutScrollTarget) { _, target in
                     guard let target else { return }
-                    withAnimation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve) {
-                        scrollProxy.scrollTo(target, anchor: .top)
-                    }
-                    withAnimation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve) {
+                    scrollProxy.scrollTo(target, anchor: .top)
+                    switch DashboardStackShortcutMotionPolicy.motion(
+                        motionSuppressed: motionSuppressed
+                    ) {
+                    case .instantScrollAnimatedToggle:
+                        withAnimation(DashboardMotionTiming.contentResizeCurve) {
+                            model.toggleCardCollapsed(target)
+                        }
+                    case .instantScrollInstantToggle:
                         model.toggleCardCollapsed(target)
                     }
                     shortcutScrollTarget = nil

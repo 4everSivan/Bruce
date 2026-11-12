@@ -81,9 +81,10 @@ struct NativeLifecycleHarness {
         try panelSizingKeepsTopAnchoredWithinScreen()
         try dashboardSettingsRouteOrdersCloseBeforeOpen()
         try swapHeightNeverClampsUnmeasuredContent()
+        try stackShortcutMotionNeverAnimatesScroll()
         try welcomeOnboardingPresentationMatchesParityFixture()
         try launchAtLoginServiceMockAndStateTransitions()
-        print("Native lifecycle tests passed: 19")
+        print("Native lifecycle tests passed: 20")
     }
 
     /// C187: 仪表盘/气泡跳转设置中心的顺序固定为 关闭面板 → 写入深链 → 打开设置，
@@ -164,6 +165,21 @@ struct NativeLifecycleHarness {
         try expect(
             DashboardSwapHeight.collapsed == 0,
             "the collapsed target is an explicit zero, not the unmeasured fallback"
+        )
+    }
+
+    /// C232: 纵向布局快捷键固定为「无动画定位 + 单次高度动画」; 减弱动效时全部落值.
+    /// 滚动与收放同时动画会让滚动目标随卡片高度逐帧移动, 与窗口高度互相追尾.
+    private static func stackShortcutMotionNeverAnimatesScroll() throws {
+        try expect(
+            DashboardStackShortcutMotionPolicy.motion(motionSuppressed: false)
+                == .instantScrollAnimatedToggle,
+            "normal motion: locate instantly, then animate the toggle exactly once"
+        )
+        try expect(
+            DashboardStackShortcutMotionPolicy.motion(motionSuppressed: true)
+                == .instantScrollInstantToggle,
+            "reduced motion: shortcut must animate neither scroll nor toggle"
         )
     }
 

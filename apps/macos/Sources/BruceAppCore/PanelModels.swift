@@ -972,6 +972,25 @@ package enum DashboardShortcutPolicy {
     }
 }
 
+/// C232: 纵向布局快捷键收放的动画编排.
+///
+/// 鼠标点击卡片标题只在 Button action 里包一条 withAnimation 调 toggle;
+/// 快捷键若同时动画滚动与收放, 滚动目标/可用滚动范围会随卡片高度逐帧变化,
+/// 与窗口高度动画三方争抢同一时间线. 纵向布局固定为「先无动画定位,
+/// 再播放唯一一次高度动画」; 减弱动态效果时连高度动画也直接落值.
+package enum DashboardStackShortcutMotion: Equatable, Sendable {
+    /// 定位不做动画, 收放播放唯一一次 0.30s 高度动画.
+    case instantScrollAnimatedToggle
+    /// 定位与收放都不做动画 (motionSuppressed).
+    case instantScrollInstantToggle
+}
+
+package enum DashboardStackShortcutMotionPolicy {
+    package static func motion(motionSuppressed: Bool) -> DashboardStackShortcutMotion {
+        motionSuppressed ? .instantScrollInstantToggle : .instantScrollAnimatedToggle
+    }
+}
+
 // MARK: - 面板容器
 
 package struct PanelViewModel: Equatable, Sendable {
