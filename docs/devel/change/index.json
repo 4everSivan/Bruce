@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-12",
+  "updated_at": "2026-11-13",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -127,7 +127,7 @@
     "C232": {
       "title": "纵向布局 ⌘1/2/3 展开收缩动画对齐鼠标点击：快捷键先无动画定位，再播放唯一一次收放动画",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C232-stack-shortcut-align-toggle",
       "topic": "MenuBarIndicator",
       "version": "0.17.1",
@@ -136,7 +136,7 @@
     "C233": {
       "title": "看板只保留基础动效：移除标题横移、摘要接力淡入、额度条与数字更新动效、柱体生长、Hero 呼吸与状态灯脉冲（双端）",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C233-dashboard-motion-trim",
       "topic": "MenuBarIndicator",
       "version": "0.17.1",
@@ -145,7 +145,7 @@
     "C234": {
       "title": "纵向布局快捷键收放在面板贴屏、内容可滚动时仍抖动：定位改为标题行最小滚动，标题行可见时不滚动",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C234-stack-shortcut-header-visible-scroll",
       "topic": "MenuBarIndicator",
       "version": "0.17.1",

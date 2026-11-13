@@ -4,7 +4,7 @@
   "title": "看板只保留基础动效：移除标题横移、摘要接力淡入、额度条与数字更新动效、柱体生长、Hero 呼吸与状态灯脉冲（双端）",
   "version": "0.17.1",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C233-dashboard-motion-trim",
   "is_hotfix": false,
   "target": {
@@ -68,10 +68,10 @@
     }
   },
   "verification": {
-    "result": false,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261113-02",
+    "user_quote": "签收所有卡片",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -84,29 +84,33 @@
         "item": "行为实测",
         "true_if": "安装版：点击卡片标题收起 / 展开时标题不横移、收起态手柄出现在卡片左边距内且可拖拽排序；刷新后额度条、百分比、余额数字直接变为新值，无滑动、扫光、数字滚动；Nothing 主题 Hero 数字不呼吸；刷新中状态灯不脉冲；14 日柱打开即为完整柱高；面板开合、卡片收放、Tab 切换滑动与刷新图标旋转保持原样；原先卡顿的场景不再卡顿",
         "false_if": "标题仍移动、手柄压住标题或被裁切、无法拖拽，退役动效仍出现，或保留的基础动效消失",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-13 用户于安装版 /Applications/Bruce.app（main 01154fd，PID 68617）验收标题收放不横移、手柄在左边距可拖拽、刷新数值直接落终值、Hero 不呼吸、状态灯不脉冲、14 日柱完整后签收全部卡片，原话「签收所有卡片」。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "数值、文案、阈值色与分段点亮数不变；卡片高度与窗口高度过渡不受影响；减弱动态效果下行为不变；Windows 看板渲染与拖拽排序正常、标题位置两态一致",
         "false_if": "数值或颜色显示错误、收放高度动画回归，或 Windows 渲染 / 拖拽异常",
-        "evidence": "",
-        "result": null
+        "evidence": "同上安装版验收：数值/文案/阈值色未见异常，卡片与窗口高度过渡正常，面板开合/卡片收放/Tab 滑动/刷新旋转保持；用户签收覆盖。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "0ec1256",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-13",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片",
+    "signed_rejection_count": 0
   }
 }

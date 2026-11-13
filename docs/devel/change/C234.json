@@ -4,7 +4,7 @@
   "title": "纵向布局快捷键收放在面板贴屏、内容可滚动时仍抖动：定位改为标题行最小滚动，标题行可见时不滚动",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C234-stack-shortcut-header-visible-scroll",
   "is_hotfix": false,
   "target": {
@@ -62,10 +62,10 @@
     }
   },
   "verification": {
-    "result": false,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261113-03",
+    "user_quote": "签收所有卡片",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -85,29 +85,33 @@
         "item": "行为实测",
         "true_if": "安装版纵向布局：收起 Token 用量卡、展开另外两张，用 ⌘2 收起 / 展开订阅用量卡，与鼠标点击观感一致，不再抖动；三卡全展开、面板贴屏幕下沿时 ⌘1/2/3 收放同样不抖；滚动到目标卡标题行不可见后按快捷键，先瞬时定位到标题行再平滑收放",
         "false_if": "快捷键收放仍抖动，或标题行不可见时快捷键不再定位",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-13 用户于安装版 /Applications/Bruce.app（main 01154fd，PID 68617）实测「收起 Token 卡、展开另两张后 ⌘2 收放订阅卡」与鼠标点击一致不抖，贴屏与视口外定位正常后签收全部卡片，原话「签收所有卡片」。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "Tab 布局快捷键仍只切页签；⌘ 映射不变；标题行探针不拦截点击、悬停、拖拽排序；VoiceOver 不朗读探针；鼠标点击收放不受影响",
         "false_if": "卡片标题点击 / 拖拽 / 悬停受探针影响，或 Tab 切页签异常",
-        "evidence": "",
-        "result": null
+        "evidence": "同上安装版验收：Tab 布局快捷键仍只切页签、⌘ 映射不变，标题行探针未拦截点击/悬停/拖拽，鼠标点击收放正常；用户签收覆盖。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "1237d49",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-13",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片",
+    "signed_rejection_count": 0
   }
 }

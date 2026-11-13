@@ -4,7 +4,7 @@
   "title": "纵向布局 ⌘1/2/3 展开收缩动画对齐鼠标点击：快捷键先无动画定位，再播放唯一一次收放动画",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C232-stack-shortcut-align-toggle",
   "is_hotfix": false,
   "target": {
@@ -62,10 +62,10 @@
     }
   },
   "verification": {
-    "result": false,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261113-01",
+    "user_quote": "签收所有卡片",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -78,29 +78,33 @@
         "item": "行为实测",
         "true_if": "安装版纵向布局：同一张卡片用 ⌘ 快捷键展开后再用 ⌘ 收缩，与鼠标点击收放观感一致，不再出现滚动与高度并行的抖动；目标卡在视口外时先瞬时定位再平滑收放；减弱动态效果下定位与收放均无动画",
         "false_if": "快捷键收放仍抖动、出现滚动与高度追尾，或减弱动效仍播放动画",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-13 用户于安装版 /Applications/Bruce.app（main 01154fd，PID 68617）实测纵向布局 ⌘1/2/3 收放并与鼠标点击对比后签收全部卡片，原话「签收所有卡片」。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "Tab 布局快捷键仍只切页签；⌘ 映射保持 ⌘1 Token / ⌘2 订阅 / ⌘3 Agent；面板隐藏时无新增持续动画；鼠标点击收放不受影响",
         "false_if": "Tab 切页签异常、快捷键映射变化、鼠标点击行为回归或隐藏态出现动画",
-        "evidence": "",
-        "result": null
+        "evidence": "同上安装版验收：鼠标点击收放、Tab ⌘ 切页签、卡片拖拽排序未见异常；用户签收覆盖。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "5e6b9f4",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-13",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片",
+    "signed_rejection_count": 0
   }
 }
