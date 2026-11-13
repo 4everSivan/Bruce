@@ -543,11 +543,11 @@ html[data-motion="off"] #panel.curtain-exit {
 .heatmap .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .heatmap .cell { aspect-ratio: 1 / 1; border-radius: 2px; background: rgba(255,255,255,.07); }
 .heatmap .cell.empty { background: rgba(255,255,255,.07); }
-.heatmap .cell.l1, .heat-legend .sw.l1, .mini-week i.l1 { background: rgba(74,158,92,.2); }
-.heatmap .cell.l2, .heat-legend .sw.l2, .mini-week i.l2 { background: rgba(74,158,92,.4); }
-.heatmap .cell.l3, .heat-legend .sw.l3, .mini-week i.l3 { background: rgba(74,158,92,.6); }
-.heatmap .cell.l4, .heat-legend .sw.l4, .mini-week i.l4 { background: rgba(74,158,92,.8); }
-.heatmap .cell.l5, .heat-legend .sw.l5, .mini-week i.l5 { background: #4A9E5C; }
+.heatmap .cell.l1, .heat-legend .sw.l1 { background: rgba(74,158,92,.2); }
+.heatmap .cell.l2, .heat-legend .sw.l2 { background: rgba(74,158,92,.4); }
+.heatmap .cell.l3, .heat-legend .sw.l3 { background: rgba(74,158,92,.6); }
+.heatmap .cell.l4, .heat-legend .sw.l4 { background: rgba(74,158,92,.8); }
+.heatmap .cell.l5, .heat-legend .sw.l5 { background: #4A9E5C; }
 /* C202 热力图底部单行: 起始日期 | 程度图例 | 截止日期 (图例始终居中于网格) */
 .heat-footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; font-size: 9px; color: var(--faint); margin-top: 5px; }
 .heat-footer .heat-start { justify-self: start; }
@@ -556,16 +556,51 @@ html[data-motion="off"] #panel.curtain-exit {
 .heat-legend { display: flex; justify-content: center; align-items: center; gap: 3px; font-size: 9px; color: var(--faint); }
 .heat-legend .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; background: rgba(255,255,255,.07); }
 
-/* 收起态迷你摘要 (mac collapsedMini): 17pt 总量 + 近 7 天迷你热力条 (高 10, 间距 3) */
-.collapsed-summary .usage-mini { gap: 15px; }
+/* 收起态方案 A4 摘要 (mac collapsedMini · C235): 17pt 总量 + 右侧双行 (命中率 | 成本 + 较昨日 · 省费 · 本月) */
+.collapsed-summary .usage-mini { gap: 8px; }
 .collapsed-summary .mini-num {
   flex: none;
   font-size: 17px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums;
   background: linear-gradient(135deg, var(--hero-grad-start, #2A6B3C) 30%, var(--hero-grad-end, #8CCB98) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.mini-week { display: flex; gap: 3px; flex: 1; min-width: 0; }
-.mini-week i { flex: 1; height: 10px; border-radius: 2px; background: rgba(255,255,255,.07); }
+.usage-mini-right {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+.usage-mini-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.usage-mini-hit { display: inline-flex; align-items: baseline; gap: 3px; }
+.usage-mini-lbl { font-size: 9px; color: var(--subdued); }
+.usage-mini-val { font-size: 11.5px; font-weight: 700; color: var(--ink); }
+.usage-mini-val.cost { color: var(--panel-accent); font-weight: 600; }
+.usage-mini-val.muted { color: rgba(255,255,255,.35); font-weight: 500; }
+.usage-mini-sep { width: 1px; height: 10px; background: var(--hairline); flex: none; }
+.usage-mini-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 9px;
+  line-height: 1.15;
+  color: var(--subdued);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.usage-mini-seg { display: inline-flex; align-items: baseline; gap: 2px; }
+.usage-mini-seg b { font-weight: 400; color: inherit; }
+.usage-mini-seg b.hi { font-weight: 600; color: var(--panel-accent); }
+.usage-mini-seg b.down { font-weight: 600; color: #F2B149; }
+.usage-mini-dot { color: rgba(255,255,255,.35); flex: none; }
 
 /* ---------- 订阅用量卡 (mac SubscriptionCard) ---------- */
 .updated { font-size: 10.5px; color: var(--secondary); white-space: nowrap; }
@@ -1917,21 +1952,21 @@ details summary {
 .theme-nothing .model-row .track, .theme-nothing .model-row .track > div { border-radius: 0; }
 
 /* 热力图: 全方角; level 0 / 窗口外空槽 surface-raised, 1-5 为 accent 绿 20/40/60/80/100% 透明度阶.
-   C213 起全主题静态: 填充格、图例色样与收起态迷你周格均不挂呼吸/相位动画.
+   C213 起全主题静态: 填充格与图例色样均不挂呼吸/相位动画.
    C219: empty 与 level 0 同为空槽, 首尾周列铺满. */
-.theme-nothing .heatmap .cell, .theme-nothing .heat-legend .sw, .theme-nothing .mini-week i { border-radius: 0; background: #1A1A1A; }
-.theme-nothing .heatmap .cell.l1, .theme-nothing .heat-legend .sw.l1, .theme-nothing .mini-week i.l1 { background: rgba(74,158,92,.2); }
-.theme-nothing .heatmap .cell.l2, .theme-nothing .heat-legend .sw.l2, .theme-nothing .mini-week i.l2 { background: rgba(74,158,92,.4); }
-.theme-nothing .heatmap .cell.l3, .theme-nothing .heat-legend .sw.l3, .theme-nothing .mini-week i.l3 { background: rgba(74,158,92,.6); }
-.theme-nothing .heatmap .cell.l4, .theme-nothing .heat-legend .sw.l4, .theme-nothing .mini-week i.l4 { background: rgba(74,158,92,.8); }
-.theme-nothing .heatmap .cell.l5, .theme-nothing .heat-legend .sw.l5, .theme-nothing .mini-week i.l5 { background: #4A9E5C; }
+.theme-nothing .heatmap .cell, .theme-nothing .heat-legend .sw { border-radius: 0; background: #1A1A1A; }
+.theme-nothing .heatmap .cell.l1, .theme-nothing .heat-legend .sw.l1 { background: rgba(74,158,92,.2); }
+.theme-nothing .heatmap .cell.l2, .theme-nothing .heat-legend .sw.l2 { background: rgba(74,158,92,.4); }
+.theme-nothing .heatmap .cell.l3, .theme-nothing .heat-legend .sw.l3 { background: rgba(74,158,92,.6); }
+.theme-nothing .heatmap .cell.l4, .theme-nothing .heat-legend .sw.l4 { background: rgba(74,158,92,.8); }
+.theme-nothing .heatmap .cell.l5, .theme-nothing .heat-legend .sw.l5 { background: #4A9E5C; }
 .theme-nothing .heat-footer, .theme-nothing .heat-legend,
 .theme-nothing .daily-axis {
   font: 400 9px/normal "Space Mono", var(--mono-font);
   color: #666666;
 }
 
-/* 收起态数字: Doto 17 粗体纯色 accent, 不用渐变 */
+/* 收起态方案 A4 摘要 (C235): Doto 17 粗体纯色 accent, 不用渐变; 右侧主次行 Space Mono */
 .theme-nothing .collapsed-summary .mini-num {
   font-family: "Doto", "Space Mono", monospace;
   line-height: normal;
@@ -1939,6 +1974,20 @@ details summary {
   background: none;
   color: #4A9E5C;
 }
+.theme-nothing .usage-mini-top,
+.theme-nothing .usage-mini-sub {
+  font-family: "Space Mono", var(--mono-font);
+  line-height: normal;
+}
+.theme-nothing .usage-mini-lbl { color: var(--secondary); }
+.theme-nothing .usage-mini-val { color: var(--ink); }
+.theme-nothing .usage-mini-val.cost { color: var(--ink); font-weight: 700; }
+.theme-nothing .usage-mini-val.muted,
+.theme-nothing .usage-mini-dot { color: var(--faint); font-weight: 400; }
+.theme-nothing .usage-mini-sep { background: var(--border-visible); }
+.theme-nothing .usage-mini-sub { color: var(--secondary); }
+.theme-nothing .usage-mini-seg b.hi { color: var(--hero-accent); }
+.theme-nothing .usage-mini-seg b.down { color: #E0A854; }
 
 /* ---------- 订阅用量卡 ---------- */
 .theme-nothing .updated { font: 400 9px/normal "Space Mono", var(--mono-font); color: #666666; }

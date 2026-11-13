@@ -28,9 +28,9 @@ pub fn token_count(value: i64) -> String {
     )
 }
 
-/// 成本文案: 输入 USD, 按 cnyPerUsd 换算为人民币, 至少两位小数, 最多三位
-/// (如 "≈ ¥2.70")。裁剪循环与 Swift `costText` 逐字符对齐。
-pub fn cost_text(usd: f64) -> String {
+/// 人民币金额文案: 输入 USD, 按 cnyPerUsd 换算为人民币, 至少两位小数, 最多三位
+/// (如 "¥2.70")。裁剪循环与 Swift `cnyText` 逐字符对齐。
+pub fn cny_text(usd: f64) -> String {
     let cny = usd * CNY_PER_USD;
     let mut text = format!("{cny:.3}");
     while text.ends_with('0')
@@ -41,7 +41,12 @@ pub fn cost_text(usd: f64) -> String {
     {
         text.pop();
     }
-    format!("≈ ¥{text}")
+    format!("¥{text}")
+}
+
+/// 成本文案: 输入 USD, 按 cnyPerUsd 换算为人民币并加 "≈ " 前缀 (如 "≈ ¥2.70")。
+pub fn cost_text(usd: f64) -> String {
+    format!("≈ {}", cny_text(usd))
 }
 
 /// 余额文案, 左右排版右侧大数字 (mockup "¥ 38.21")。

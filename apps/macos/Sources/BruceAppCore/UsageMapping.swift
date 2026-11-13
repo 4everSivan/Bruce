@@ -82,6 +82,13 @@ extension PanelViewModelMapper {
             : "—"
 
         let monthly = makeUsageMonthly(artifact)
+        let collapsedSummary = makeCollapsedSummary(
+            artifact,
+            todayTotal: totals.total,
+            cacheHitRateText: cacheHitRateText,
+            monthTotalText: monthly.months.last?.totalText,
+            now: now
+        )
         return UsageHeroViewModel(
             totalTokens: totals.total,
             costText: artifact.totalCostUsd.map(PanelFormat.costText),
@@ -97,7 +104,90 @@ extension PanelViewModelMapper {
             heatmap: makeUsageHeatmap(artifact, now: now),
             monthly: monthly.months,
             halfYear: monthly.summary,
-            models: makeUsageModels(artifact)
+            models: makeUsageModels(artifact),
+            collapsedSummary: collapsedSummary
+        )
+    }
+
+    /// 构造 yyyy-MM-dd 本地日历键格式化器, 复用 mapper 注入的 calendar 时区.
+    private func dayKeyFormatter() -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        return formatter
+    }
+
+    /// 收起态方案 A4 摘要 (C235): 缓存命中率 + 较昨日环比 + 今日缓存省费 + 当月累计.
+    private func makeCollapsedSummary(
+        _ artifact: AgentUsageArtifact,
+        todayTotal: Int,
+        cacheHitRateText: String,
+        monthTotalText: String?,
+        now: Date
+    ) -> UsageCollapsedSummary {
+        let formatter = dayKeyFormatter()
+        let todayStart = calendar.startOfDay(for: now)
+        let todayKey = formatter.string(from: todayStart)
+        let yesterdayKey = calendar.date(byAdding: .day, value: -1, to: todayStart)
+            .map { formatter.string(from: $0) }
+
+        var yesterdayTotal = 0
+        if let yesterdayKey {
+            for agent in artifact.agents {
+                for day in agent.daily where day.date == yesterdayKey {
+                    yesterdayTotal += day.total
+                }
+            }
+        }
+
+        let dayDeltaText: String?
+        let dayDeltaNegative: Bool
+        if todayTotal > 0, yesterdayTotal > 0 {
+            let diff = todayTotal - yesterdayTotal
+            let pct = Int(((Double(diff) / Double(yesterdayTotal)) * 100.0).rounded(.toNearestOrAwayFromZero))
+            if pct > 999 {
+                dayDeltaText = "↑999%+"
+                dayDeltaNegative = false
+            } else if pct > 0 {
+                dayDeltaText = "↑\(pct)%"
+                dayDeltaNegative = false
+            } else if pct < 0 {
+                dayDeltaText = "↓\(-pct)%"
+                dayDeltaNegative = true
+            } else {
+                dayDeltaText = "持平"
+                dayDeltaNegative = false
+            }
+        } else {
+            dayDeltaText = nil
+            dayDeltaNegative = false
+        }
+
+        var savingsUsd = 0.0
+        var hasSavingsEntry = false
+        for agent in artifact.agents {
+            for detail in agent.dailyModels ?? [] where detail.date == todayKey {
+                if let saving = detail.cacheSavingsUsd {
+                    hasSavingsEntry = true
+                    savingsUsd += saving
+                }
+            }
+        }
+        let cacheSavingsText: String?
+        if hasSavingsEntry, savingsUsd > 0 {
+            let formatted = PanelFormat.cnyText(savingsUsd)
+            cacheSavingsText = formatted != "¥0.00" ? formatted : nil
+        } else {
+            cacheSavingsText = nil
+        }
+
+        return UsageCollapsedSummary(
+            cacheHitRateText: cacheHitRateText,
+            dayDeltaText: dayDeltaText,
+            dayDeltaNegative: dayDeltaNegative,
+            cacheSavingsText: cacheSavingsText,
+            monthTotalText: monthTotalText
         )
     }
 
@@ -224,10 +314,7 @@ extension PanelViewModelMapper {
         }
         let dates = totalsByDate.keys.sorted()
         let gridCalendar = calendar
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = gridCalendar.timeZone
+        let formatter = dayKeyFormatter()
         guard let first = dates.first,
               let firstDataDate = formatter.date(from: first) else {
             return []

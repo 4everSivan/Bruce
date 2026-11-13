@@ -165,7 +165,13 @@ private func encodeUsage(_ usage: UsageHeroViewModel) -> J {
         } ?? .nul),
         ("models", usage.models.map(encodeModels) ?? .nul),
         ("usageTier", .s(usage.usageTier.rawValue)),
-        ("collapsedWeekLevels", .a(usage.collapsedWeekLevels.map(J.i))),
+        ("collapsedSummary", .o([
+            ("cacheHitRateText", .s(usage.collapsedSummary.cacheHitRateText)),
+            ("dayDeltaText", usage.collapsedSummary.dayDeltaText.map(J.s) ?? .nul),
+            ("dayDeltaNegative", .b(usage.collapsedSummary.dayDeltaNegative)),
+            ("cacheSavingsText", usage.collapsedSummary.cacheSavingsText.map(J.s) ?? .nul),
+            ("monthTotalText", usage.collapsedSummary.monthTotalText.map(J.s) ?? .nul),
+        ])),
     ])
 }
 

@@ -60,9 +60,13 @@
         "valueText" : "—"
       }
     ],
-    "collapsedWeekLevels" : [
-
-    ],
+    "collapsedSummary" : {
+      "cacheHitRateText" : "—",
+      "cacheSavingsText" : null,
+      "dayDeltaNegative" : false,
+      "dayDeltaText" : null,
+      "monthTotalText" : null
+    },
     "costText" : null,
     "days" : [
 

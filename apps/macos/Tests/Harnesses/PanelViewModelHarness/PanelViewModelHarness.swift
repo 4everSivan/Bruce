@@ -75,7 +75,8 @@ private func makeAgent(
     todayCostUsd: Double? = nil,
     models: [String: Int]? = nil,
     modelMonths: [String: [String: Int]]? = nil,
-    projects: [AgentProjectUsage]? = nil
+    projects: [AgentProjectUsage]? = nil,
+    dailyModels: [AgentModelDetail]? = nil
 ) -> AgentUsageItem {
     let totals = dailyTotals ?? Array(repeating: 0, count: 14)
     let daily = dailyEntries ?? zip(dayList, totals).map { date, total in
@@ -92,7 +93,8 @@ private func makeAgent(
         todayCostUsd: todayCostUsd,
         models: models,
         modelMonths: modelMonths,
-        projects: projects
+        projects: projects,
+        dailyModels: dailyModels
     )
 }
 
@@ -307,8 +309,10 @@ struct PanelViewModelHarness {
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         try appVersionReadsBundleAndFallsBack()
-        try collapsedWeekLevelsTakesLast7Days()
-        try collapsedWeekLevelsHandlesShortWindowAndZeroDays()
+        try collapsedSummaryComputesDayDeltaAndCap()
+        try collapsedSummarySumsTodayDailyModelSavingsOnly()
+        try collapsedSummaryCarriesMonthTotalAndMissingFallback()
+        try collapsedSummaryMatchesWorkbenchTodaySavings()
         try collapsedPeakWindowPicksTightestWindow()
         try collapsedPeakWindowSpansAccountsAndSkipsBalanceOnly()
         try hourlyCollapsedPointsSumWithPeakText()
@@ -323,7 +327,7 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatePolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 69")
+        print("PanelViewModel tests passed: 71")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -2245,41 +2249,126 @@ struct PanelViewModelHarness {
 
     // MARK: - 卡片收起态
 
-    /// 收起态近 7 天热力档位: 14 天数据取末 7 天, 档位与热力图绝对阈值同源.
-    private static func collapsedWeekLevelsTakesLast7Days() throws {
-        let totals = [0, 50_000_000, 150_000_000, 250_000_000, 350_000_000,
-                      450_000_000, 10_000_000, 20_000_000, 120_000_000,
-                      220_000_000, 320_000_000, 420_000_000, 80_000_000, 500_000_000]
-        let artifact = makeAgentUsageArtifact(
-            agents: [makeAgent(
-                id: "kimi-code-cli", name: "Kimi Code",
-                today: makeBucket(input: 1), dailyTotals: totals
-            )],
-            services: []
-        )
-        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
-        let levels = try unwrap(panel.usage?.collapsedWeekLevels)
-        try expect(
-            levels == [20_000_000, 120_000_000, 220_000_000, 320_000_000, 420_000_000, 80_000_000, 500_000_000]
-                .map { UsageTier.forTotal($0).heatmapLevel },
-            "应取末 7 天并按绝对阈值分档"
-        )
+    /// 收起态方案 A4 较昨日环比: 含正负百分比、持平、↑999%+ 封顶与昨日缺数据省略.
+    private static func collapsedSummaryComputesDayDeltaAndCap() throws {
+        func summaryFor(today: Int, yesterday: Int) -> UsageCollapsedSummary {
+            var totals = Array(repeating: 0, count: 14)
+            totals[12] = yesterday
+            totals[13] = today
+            let artifact = makeAgentUsageArtifact(
+                agents: [makeAgent(
+                    id: "kimi-code-cli", name: "Kimi Code",
+                    today: makeBucket(input: today),
+                    dailyTotals: totals
+                )],
+                services: []
+            )
+            return makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses).usage!.collapsedSummary
+        }
+
+        let up = summaryFor(today: 184, yesterday: 127)
+        try expect(up.dayDeltaText == "↑45%" && !up.dayDeltaNegative, "正增长输出 ↑45%")
+
+        let down = summaryFor(today: 64, yesterday: 100)
+        try expect(down.dayDeltaText == "↓36%" && down.dayDeltaNegative, "下降输出 ↓36% 且标记 negative")
+
+        let flat = summaryFor(today: 500, yesterday: 500)
+        try expect(flat.dayDeltaText == "持平" && !flat.dayDeltaNegative, "持平不标 negative")
+
+        let capped = summaryFor(today: 2_500, yesterday: 100)
+        try expect(capped.dayDeltaText == "↑999%+" && !capped.dayDeltaNegative, "超出 999% 上封顶")
+
+        let missingYesterday = summaryFor(today: 500, yesterday: 0)
+        try expect(missingYesterday.dayDeltaText == nil && !missingYesterday.dayDeltaNegative, "昨日为 0 不算环比")
+
+        let missingToday = summaryFor(today: 0, yesterday: 500)
+        try expect(missingToday.dayDeltaText == nil && !missingToday.dayDeltaNegative, "今日为 0 不算环比")
     }
 
-    /// 不足 7 天时只返回实际天数; 零量日档位为 0.
-    private static func collapsedWeekLevelsHandlesShortWindowAndZeroDays() throws {
+    /// 缓存省费仅合计今日 dailyModels 中的 cacheSavingsUsd; 跨日 / 零值 / 次分极小值均不输出.
+    private static func collapsedSummarySumsTodayDailyModelSavingsOnly() throws {
+        let todayKey = dayList[13]
+        let yesterdayKey = dayList[12]
         let artifact = makeAgentUsageArtifact(
+            agents: [
+                makeAgent(
+                    id: "claude-code", name: "Claude Code",
+                    today: makeBucket(input: 100, cacheRead: 100),
+                    dailyModels: [
+                        AgentModelDetail(
+                            date: todayKey, month: nil, hour: nil, model: "claude-sonnet",
+                            input: 100, output: 0, cacheRead: 100, cacheCreation: 0,
+                            total: 200, costUsd: 1.0, cacheSavingsUsd: 0.25
+                        ),
+                        AgentModelDetail(
+                            date: yesterdayKey, month: nil, hour: nil, model: "claude-sonnet",
+                            input: 100, output: 0, cacheRead: 100, cacheCreation: 0,
+                            total: 200, costUsd: 2.0, cacheSavingsUsd: 5.0
+                        ),
+                    ]
+                ),
+                makeAgent(
+                    id: "codex", name: "Codex",
+                    today: makeBucket(input: 50),
+                    dailyModels: [
+                        AgentModelDetail(
+                            date: todayKey, month: nil, hour: nil, model: "gpt-5",
+                            input: 50, output: 0, cacheRead: 0, cacheCreation: 0,
+                            total: 50, costUsd: 0.5, cacheSavingsUsd: 0.75
+                        ),
+                    ]
+                ),
+            ],
+            services: []
+        )
+        let summary = try unwrap(
+            makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses).usage?.collapsedSummary
+        )
+        // 今日合计 $1.00 = ¥7.20 (昨日 $5.00 不得计入).
+        try expect(summary.cacheSavingsText == "¥7.20", "今日省费应为 ¥7.20, 实得 \(summary.cacheSavingsText ?? "nil")")
+
+        // 极小正数格式化为 ¥0.00 时不应显示伪零.
+        let tiny = makeAgentUsageArtifact(
             agents: [makeAgent(
-                id: "kimi-code-cli", name: "Kimi Code",
-                today: makeBucket(input: 1),
-                dailyTotals: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50_000_000, 150_000_000]
+                id: "claude-code", name: "Claude Code",
+                today: makeBucket(input: 10),
+                dailyModels: [
+                    AgentModelDetail(
+                        date: todayKey, month: nil, hour: nil, model: "claude-sonnet",
+                        input: 10, output: 0, cacheRead: 0, cacheCreation: 0,
+                        total: 10, costUsd: nil, cacheSavingsUsd: 0.00001
+                    ),
+                ]
             )],
             services: []
         )
-        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
-        let levels = try unwrap(panel.usage?.collapsedWeekLevels)
-        try expect(levels.count == 7, "14 天窗口应恒取末 7 天")
-        try expect(levels == [0, 0, 0, 0, 0, 1, 2], "零量日落 0, 50M/150M 分档 1/2")
+        let tinySummary = try unwrap(
+            makeMapper().make(agentUsage: tiny, moduleStatuses: readyStatuses).usage?.collapsedSummary
+        )
+        try expect(tinySummary.cacheSavingsText == nil, "极小金额 ¥0.00 不应展示")
+    }
+
+    /// 命中率占位 "—" 与月累计缺省时自然置空.
+    private static func collapsedSummaryCarriesMonthTotalAndMissingFallback() throws {
+        let artifact = makeAgentUsageArtifact(agents: [], services: [])
+        let usage = try unwrap(
+            makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses).usage
+        )
+        try expect(usage.costText == nil, "无成本应为 nil")
+        try expect(usage.collapsedSummary.cacheHitRateText == "—", "无命中率分母应回退 —")
+        try expect(usage.collapsedSummary.dayDeltaText == nil, "无数据环比为空")
+        try expect(usage.collapsedSummary.cacheSavingsText == nil, "无省费为空")
+        try expect(usage.collapsedSummary.monthTotalText == nil, "无月度为空")
+    }
+
+    /// 工作台真实 dailyModels fixture: 验证持平环比与跨 Agent 今日省费求和.
+    private static func collapsedSummaryMatchesWorkbenchTodaySavings() throws {
+        let usage = try unwrap(
+            makeMapper().make(agentUsage: makeWorkbenchArtifact(), moduleStatuses: readyStatuses).usage
+        )
+        try expect(usage.collapsedSummary.dayDeltaText == "持平", "工作台今日昨日相等应为 持平")
+        try expect(usage.collapsedSummary.cacheSavingsText == "¥9.00", "工作台今日省费 $1.25 = ¥9.00")
+        try expect(usage.collapsedSummary.monthTotalText == "11K", "本月累计应为 11K")
     }
 
     /// 订阅卡收起态: 单账号多窗口取 usedPercent 最大的窗口.

@@ -188,14 +188,19 @@ package enum PanelFormat {
     /// 美元转人民币汇率; 暂为固定常量, 后续可做成配置项.
     package static let cnyPerUsd: Double = 7.2
 
-    /// 成本文案: 输入 USD, 按 cnyPerUsd 换算为人民币, 至少两位小数, 最多三位 (如 "≈ ¥2.70").
-    package static func costText(_ usd: Double) -> String {
+    /// 人民币金额文案: 输入 USD, 按 cnyPerUsd 换算为人民币, 至少两位小数, 最多三位 (如 "¥2.70").
+    package static func cnyText(_ usd: Double) -> String {
         let cny = usd * cnyPerUsd
         var text = String(format: "%.3f", cny)
         while text.hasSuffix("0"), text.components(separatedBy: ".").last.map({ $0.count > 2 }) ?? false {
             text.removeLast()
         }
-        return "≈ ¥" + text
+        return "¥" + text
+    }
+
+    /// 成本文案: 输入 USD, 按 cnyPerUsd 换算为人民币并加 "≈ " 前缀 (如 "≈ ¥2.70").
+    package static func costText(_ usd: Double) -> String {
+        "≈ " + cnyText(usd)
     }
 
     /// 余额文案, 左右排版右侧大数字 (mockup "¥ 38.21").
@@ -415,8 +420,7 @@ package enum UsageTier: String, Equatable, Sendable {
         }
     }
 
-    /// 热力图档位 (1-5), 与 UsageHeatmapCell.level 分档阈值一致;
-    /// 收起态近 7 天迷你热力图复用同一档位语义.
+    /// 热力图档位 (1-5), 与 UsageHeatmapCell.level 分档阈值一致.
     package var heatmapLevel: Int {
         switch self {
         case .sage: 1
@@ -534,10 +538,39 @@ package struct UsageModelUsageSection: Equatable, Sendable {
     }
 }
 
+/// Token 用量卡收起态方案 A4 右侧摘要:
+/// 主行显示「缓存命中率 | 今日成本」, 次行显示「较昨日 · 省费 · 本月」(缺失项省略).
+package struct UsageCollapsedSummary: Equatable, Sendable {
+    /// 缓存命中率文案 ("XX%" 或 "—").
+    package let cacheHitRateText: String
+    /// 较昨日用量变化 ("↑N%" / "↑999%+" / "↓N%" / "持平"); 缺数据时为 nil.
+    package let dayDeltaText: String?
+    /// 较昨日是否下降 (仅 "↓N%" 为 true, 驱动暖琥珀预警色).
+    package let dayDeltaNegative: Bool
+    /// 今日缓存省费人民币文案 ("¥XX.XX"); 无正值节省时为 nil.
+    package let cacheSavingsText: String?
+    /// 当月累计 Token 文案 (取 monthly 末位 totalText); 无月度数据时为 nil.
+    package let monthTotalText: String?
+
+    package init(
+        cacheHitRateText: String = "—",
+        dayDeltaText: String? = nil,
+        dayDeltaNegative: Bool = false,
+        cacheSavingsText: String? = nil,
+        monthTotalText: String? = nil
+    ) {
+        self.cacheHitRateText = cacheHitRateText
+        self.dayDeltaText = dayDeltaText
+        self.dayDeltaNegative = dayDeltaNegative
+        self.cacheSavingsText = cacheSavingsText
+        self.monthTotalText = monthTotalText
+    }
+}
+
 package struct UsageHeroViewModel: Equatable, Sendable {
     package let totalTokens: Int
     package let totalTokensText: String
-    /// 总成本文案, 定价缺失时为 nil (UI 隐藏成本位).
+    /// 总成本文案, 定价缺失时为 nil (UI 显示暗淡占位 "—").
     package let costText: String?
     /// 输入 / 输出 / 缓存读取 / 缓存命中率 四格.
     package let breakdown: [UsageBreakdownItem]
@@ -554,18 +587,11 @@ package struct UsageHeroViewModel: Equatable, Sendable {
     package let halfYear: UsageHalfYearSummary?
     /// 模型用量区块 (三档窗口 + 日历月联动); 旧版 artifact 无模型月度数据为 nil (区块隐藏).
     package let models: UsageModelUsageSection?
-    /// 总量档位 (由 totalTokens 推导), 驱动 hero 渐变与背景 tint.
+    /// 收起态方案 A4 右侧摘要 (C235).
+    package let collapsedSummary: UsageCollapsedSummary
+    /// 总量档位 (由 totalTokens 推导), 驱动语义分档.
     package var usageTier: UsageTier {
         UsageTier.forTotal(totalTokens)
-    }
-
-    /// 收起态近 7 天迷你热力图档位: 取 14 日柱状图数据末 7 天,
-    /// 逐日按热力图同一绝对阈值分档 (0 无量, 1-5 sage..forest);
-    /// 数据不足 7 天时只返回实际天数 (UI 格子数跟随).
-    package var collapsedWeekLevels: [Int] {
-        days.suffix(7).map { day in
-            day.total < 1 ? 0 : UsageTier.forTotal(day.total).heatmapLevel
-        }
     }
 
     package init(
@@ -578,7 +604,8 @@ package struct UsageHeroViewModel: Equatable, Sendable {
         heatmap: [UsageHeatmapWeek] = [],
         monthly: [UsageMonthlyTotal] = [],
         halfYear: UsageHalfYearSummary? = nil,
-        models: UsageModelUsageSection? = nil
+        models: UsageModelUsageSection? = nil,
+        collapsedSummary: UsageCollapsedSummary = UsageCollapsedSummary()
     ) {
         self.totalTokens = totalTokens
         self.totalTokensText = PanelFormat.tokenCount(totalTokens)
@@ -591,6 +618,7 @@ package struct UsageHeroViewModel: Equatable, Sendable {
         self.monthly = monthly
         self.halfYear = halfYear
         self.models = models
+        self.collapsedSummary = collapsedSummary
     }
 }
 

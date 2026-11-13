@@ -113,10 +113,16 @@ struct UsageHeroCard: View {
 
     // MARK: 收起态迷你摘要
 
-    /// 收起态: 小号总量数字 (沿用 hero accent 渐变 / Nothing Doto 点阵纯色)
-    /// + 近 7 天迷你热力图 (accent 档位与展开态热力图同源), flex 铺满.
+    /// 收起态 (C235 方案 A4): 左侧 17pt 今日总量 (沿用 hero accent 渐变 / Nothing Doto 纯色);
+    /// 右侧双行: 主行「命中率 | 今日成本」(缺值显示 disabled 态 "—"),
+    /// 次行「较昨日 · 省费 · 本月」(缺失子项省略, 全空时整行不渲染).
     private var collapsedMini: some View {
-        HStack(spacing: 15) {
+        let summary = viewModel.collapsedSummary
+        let hasHit = summary.cacheHitRateText != "—"
+        let hasCost = viewModel.costText != nil
+        let subItems = Self.collapsedSubItems(summary)
+
+        return HStack(alignment: .center, spacing: 8) {
             Text(viewModel.totalTokensText)
                 .font(isNothing
                     ? NothingFont.display(17, weight: .bold)
@@ -127,27 +133,110 @@ struct UsageHeroCard: View {
                     ? AnyShapeStyle(Self.accent)
                     : AnyShapeStyle(Self.heroGradient))
                 .fixedSize()
-            HStack(spacing: 3) {
-                ForEach(
-                    Array(viewModel.collapsedWeekLevels.enumerated()),
-                    id: \.offset
-                ) { _, level in
-                    RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
-                        .fill(miniHeatColor(level))
-                        .frame(height: 10)
-                        .frame(maxWidth: .infinity)
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("命中")
+                            .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                            .foregroundStyle(isNothing ? Self.nothingSecondary : Self.subdued)
+                        Text(summary.cacheHitRateText)
+                            .font(isNothing
+                                ? NothingFont.mono(11.5, weight: .bold)
+                                : .system(size: 11.5, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(hasHit
+                                ? (isNothing ? Self.nothingPrimary : Self.ink)
+                                : (isNothing ? Self.nothingDisabled : Self.mutedPlaceholder))
+                    }
+                    Rectangle()
+                        .fill(isNothing ? Self.nothingBorderVisible : Self.hairline)
+                        .frame(width: 1, height: 10)
+                    Text(viewModel.costText ?? "—")
+                        .font(isNothing
+                            ? NothingFont.mono(11.5, weight: .bold)
+                            : .system(size: 11.5, weight: hasCost ? .semibold : .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(hasCost
+                            ? (isNothing ? Self.nothingPrimary : Self.accent)
+                            : (isNothing ? Self.nothingDisabled : Self.mutedPlaceholder))
+                }
+                .lineLimit(1)
+                if !subItems.isEmpty {
+                    collapsedSubLine(subItems)
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// 迷你热力格配色: 与 HeatmapGridView.baseColor 同一语义
-    /// (level 0 淡槽, 1-5 主题 accent 透明度阶; 浅色杏 / 深色绿).
-    private func miniHeatColor(_ level: Int) -> Color {
-        guard level > 0 else {
-            return isNothing ? Self.nothingSurfaceRaised : Self.emptySlot
+    private enum CollapsedSubTone {
+        case positive
+        case negative
+        case neutral
+    }
+
+    private struct CollapsedSubItem {
+        let prefix: String
+        let value: String
+        let tone: CollapsedSubTone
+    }
+
+    private static func collapsedSubItems(_ summary: UsageCollapsedSummary) -> [CollapsedSubItem] {
+        var items: [CollapsedSubItem] = []
+        if let delta = summary.dayDeltaText {
+            let tone: CollapsedSubTone = if summary.dayDeltaNegative {
+                .negative
+            } else if delta == "持平" {
+                .neutral
+            } else {
+                .positive
+            }
+            items.append(CollapsedSubItem(prefix: "较昨日", value: delta, tone: tone))
         }
-        return Self.accent.opacity(Self.heatmapOpacity(level))
+        if let savings = summary.cacheSavingsText {
+            items.append(CollapsedSubItem(prefix: "省", value: savings, tone: .positive))
+        }
+        if let month = summary.monthTotalText {
+            items.append(CollapsedSubItem(prefix: "本月", value: month, tone: .neutral))
+        }
+        return items
+    }
+
+    @ViewBuilder
+    private func collapsedSubLine(_ items: [CollapsedSubItem]) -> some View {
+        let secondaryColor = isNothing ? Self.nothingSecondary : Self.subdued
+        let monoFont = isNothing ? NothingFont.mono(9) : Font.system(size: 9)
+        let boldMonoFont = isNothing ? NothingFont.mono(9, weight: .semibold) : Font.system(size: 9, weight: .semibold)
+        let dotColor = isNothing ? Self.nothingDisabled : Self.mutedPlaceholder
+
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
+                    Text("·")
+                        .foregroundStyle(dotColor)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(item.prefix)
+                        .foregroundStyle(secondaryColor)
+                    Text(item.value)
+                        .font(item.tone == .neutral ? monoFont : boldMonoFont)
+                        .foregroundStyle(collapsedSubColor(item.tone, secondary: secondaryColor))
+                }
+            }
+        }
+        .font(monoFont)
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+    }
+
+    private func collapsedSubColor(_ tone: CollapsedSubTone, secondary: Color) -> Color {
+        switch tone {
+        case .positive: Self.accent
+        case .negative: isNothing ? Self.nothingNegativeDelta : Self.negativeDelta
+        case .neutral: secondary
+        }
     }
 
     // MARK: Hero 行
@@ -658,6 +747,11 @@ struct UsageHeroCard: View {
     private static let ink = Color.primary
     private static let subdued = Color.primary.opacity(0.5)
     private static let faint = Color.primary.opacity(0.55)
+    private static let mutedPlaceholder = Color.primary.opacity(0.35)
+    private static let negativeDelta = Color.adaptive(
+        light: Color(hex: "#C2533B"),
+        dark: Color(hex: "#F2B149")
+    )
     private static let hairline = Color.adaptive(
         light: Color.black.opacity(0.07),
         dark: Color.white.opacity(0.12)
@@ -676,6 +770,10 @@ struct UsageHeroCard: View {
     private static let nothingDisabled = Color.adaptive(
         light: Color(hex: "#999999"),
         dark: Color(hex: "#666666")
+    )
+    private static let nothingNegativeDelta = Color.adaptive(
+        light: Color(hex: "#C2533B"),
+        dark: Color(hex: "#E0A854")
     )
     private static let nothingBorder = Color.adaptive(
         light: Color(hex: "#E8E8E8"),

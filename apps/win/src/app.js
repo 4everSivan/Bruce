@@ -303,12 +303,54 @@ function usageCard(usage) {
   background.setAttribute("aria-hidden", "true");
   card.append(background);
   cardHead(card, "Token 用量", null);
-  // 收起态: 17pt 总量 + 近 7 天迷你热力条 (level 0-5, 与展开态热力图同源配色)
+  // 收起态 (C235 方案 A4): 17pt 总量 + 右侧双行摘要 (命中率 | 成本 + 较昨日 · 省费 · 本月)
   makeCollapsible(card, () => {
+    const summary = usage.collapsedSummary || {};
+    const hitText = summary.cacheHitRateText || "—";
+    const hasHit = hitText !== "—";
+    const hasCost = Boolean(usage.costText);
     const mini = el("span", "usage-mini");
-    const week = el("span", "mini-week");
-    for (const level of usage.collapsedWeekLevels) week.append(el("i", level > 0 ? `l${Math.min(level, 5)}` : null));
-    mini.append(el("b", "mini-num", usage.totalTokensText), week);
+    const right = el("span", "usage-mini-right");
+
+    const top = el("span", "usage-mini-top");
+    const hitItem = el("span", "usage-mini-hit");
+    hitItem.append(
+      el("span", "usage-mini-lbl", "命中"),
+      el("b", hasHit ? "usage-mini-val" : "usage-mini-val muted", hitText)
+    );
+    const costEl = el("b", hasCost ? "usage-mini-val cost" : "usage-mini-val muted", usage.costText || "—");
+    top.append(hitItem, el("i", "usage-mini-sep"), costEl);
+    right.append(top);
+
+    const subSegments = [];
+    if (summary.dayDeltaText) {
+      const cls = summary.dayDeltaNegative
+        ? "down"
+        : (summary.dayDeltaText === "持平" ? null : "hi");
+      const seg = el("span", "usage-mini-seg");
+      seg.append("较昨日", el("b", cls, summary.dayDeltaText));
+      subSegments.push(seg);
+    }
+    if (summary.cacheSavingsText) {
+      const seg = el("span", "usage-mini-seg");
+      seg.append("省", el("b", "hi", summary.cacheSavingsText));
+      subSegments.push(seg);
+    }
+    if (summary.monthTotalText) {
+      const seg = el("span", "usage-mini-seg");
+      seg.append("本月", el("b", null, summary.monthTotalText));
+      subSegments.push(seg);
+    }
+    if (subSegments.length > 0) {
+      const sub = el("span", "usage-mini-sub");
+      subSegments.forEach((seg, index) => {
+        if (index > 0) sub.append(el("span", "usage-mini-dot", "·"));
+        sub.append(seg);
+      });
+      right.append(sub);
+    }
+
+    mini.append(el("b", "mini-num", usage.totalTokensText), right);
     return mini;
   });
 

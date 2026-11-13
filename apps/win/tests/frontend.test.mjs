@@ -3224,3 +3224,76 @@ test("upgraded existing user skips welcome wizard on startup and can reopen from
   await settle();
   assert.equal(overlay.classList.contains("hidden"), false, "编程式调起向导后展示向导遮罩");
 });
+
+test("usage card collapsed summary renders A4 rows, fallbacks and retires mini-week (C235)", async () => {
+  // 1. 默认 valid golden fixture: 主行「命中 21% | ≈ ¥2.702」, 次行「较昨日 ↑45% · 本月 311K」
+  const app = await boot();
+  const card = app.node("stack").querySelector('[data-card="usage"]');
+  const mini = card.querySelector(".usage-mini");
+  assert.ok(mini, "存在收起态 .usage-mini");
+  assert.equal(mini.querySelector(".mini-week"), null, "已退役 .mini-week 7 日迷你热力条");
+  assert.equal(mini.querySelector(".mini-num").textContent, "184K");
+  assert.equal(mini.querySelector(".usage-mini-lbl").textContent, "命中");
+  assert.equal(mini.querySelector(".usage-mini-val").textContent, "21%");
+  assert.ok(mini.querySelector(".usage-mini-sep"), "命中率与成本间有发丝分隔线");
+  assert.equal(mini.querySelector(".usage-mini-val.cost").textContent, "≈ ¥2.702");
+  const sub = mini.querySelector(".usage-mini-sub");
+  assert.ok(sub, "存在次行 .usage-mini-sub");
+  assert.equal(sub.querySelector("b.hi").textContent, "↑45%");
+  assert.equal(sub.querySelectorAll(".usage-mini-dot").length, 1);
+  assert.match(sub.textContent, /较昨日↑45%·本月311K/);
+
+  // 2. 负向环比 + 今日省费 + 本月累计全齐
+  const fullPanel = structuredClone(fixture);
+  fullPanel.usage.collapsedSummary = {
+    cacheHitRateText: "68%",
+    dayDeltaText: "↓36%",
+    dayDeltaNegative: true,
+    cacheSavingsText: "¥12.40",
+    monthTotalText: "1.24B",
+  };
+  const fullApp = await boot({ panel: fullPanel });
+  const fullSub = fullApp.node("stack").querySelector('[data-card="usage"] .usage-mini-sub');
+  assert.equal(fullSub.querySelector("b.down").textContent, "↓36%");
+  assert.equal(fullSub.querySelector("b.hi").textContent, "¥12.40");
+  assert.equal(fullSub.querySelectorAll(".usage-mini-dot").length, 2);
+
+  // 3. 持平不带 .hi/.down 高亮色
+  const flatPanel = structuredClone(fixture);
+  flatPanel.usage.collapsedSummary = {
+    cacheHitRateText: "50%",
+    dayDeltaText: "持平",
+    dayDeltaNegative: false,
+    cacheSavingsText: null,
+    monthTotalText: null,
+  };
+  const flatApp = await boot({ panel: flatPanel });
+  const flatSub = flatApp.node("stack").querySelector('[data-card="usage"] .usage-mini-sub');
+  assert.equal(flatSub.querySelector("b.hi"), null);
+  assert.equal(flatSub.querySelector("b.down"), null);
+  assert.match(flatSub.textContent, /较昨日持平/);
+
+  // 4. 空数据兜底: 命中率/成本显示暗淡 "—", 次行整行不渲染
+  const emptyPanel = structuredClone(fixture);
+  emptyPanel.usage.costText = null;
+  emptyPanel.usage.collapsedSummary = {
+    cacheHitRateText: "—",
+    dayDeltaText: null,
+    dayDeltaNegative: false,
+    cacheSavingsText: null,
+    monthTotalText: null,
+  };
+  const emptyApp = await boot({ panel: emptyPanel });
+  const emptyMini = emptyApp.node("stack").querySelector('[data-card="usage"] .usage-mini');
+  const mutedVals = emptyMini.querySelectorAll(".usage-mini-val.muted");
+  assert.equal(mutedVals.length, 2, "命中率与成本均为空时显示两处 muted 占位符");
+  assert.deepEqual([...mutedVals].map((node) => node.textContent), ["—", "—"]);
+  assert.equal(emptyMini.querySelector(".usage-mini-sub"), null, "三项全空时不渲染次行");
+
+  // 5. CSS 守卫: .mini-week 已退役, 方案 A4 样式与 .mini-num 不变式完好
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.mini-week/, "styles.css 不再保留 .mini-week 规则");
+  for (const cls of [".usage-mini-right", ".usage-mini-top", ".usage-mini-sub", ".theme-nothing .usage-mini-seg b.down"]) {
+    assert.ok(css.includes(cls), `styles.css 缺少样式 ${cls}`);
+  }
+});

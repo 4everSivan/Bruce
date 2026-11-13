@@ -248,12 +248,24 @@ impl UsageTier {
     }
 }
 
+/// Token 用量卡收起态方案 A4 右侧摘要 (C235):
+/// 主行显示「缓存命中率 | 今日成本」, 次行显示「较昨日 · 省费 · 本月」(缺失项省略)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageCollapsedSummary {
+    pub cache_hit_rate_text: String,
+    pub day_delta_text: Option<String>,
+    pub day_delta_negative: bool,
+    pub cache_savings_text: Option<String>,
+    pub month_total_text: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageHeroViewModel {
     pub total_tokens: i64,
     pub total_tokens_text: String,
-    /// 总成本文案, 定价缺失时为 null (UI 隐藏成本位)。
+    /// 总成本文案, 定价缺失时为 null (UI 显示暗淡占位 "—")。
     pub cost_text: Option<String>,
     /// 输入 / 输出 / 缓存读取 / 缓存命中率 四格。
     pub breakdown: Vec<UsageBreakdownItem>,
@@ -267,8 +279,8 @@ pub struct UsageHeroViewModel {
     pub half_year: Option<UsageHalfYearSummary>,
     pub models: Option<UsageModelUsageSection>,
     pub usage_tier: String,
-    /// 收起态近 7 天迷你热力图档位 (末 7 天, 不足 7 天按实际天数)。
-    pub collapsed_week_levels: Vec<i64>,
+    /// 收起态方案 A4 右侧摘要 (C235)。
+    pub collapsed_summary: UsageCollapsedSummary,
 }
 
 // MARK: - 逐小时卡

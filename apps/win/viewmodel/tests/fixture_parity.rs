@@ -53,7 +53,17 @@ fn usage_hero_matches_mac_semantics_on_valid_fixture() {
     assert_eq!(usage.cost_text.as_deref(), Some("≈ ¥2.702"));
     assert!(usage.is_live);
     assert_eq!(usage.usage_tier, "sage");
-    assert_eq!(usage.collapsed_week_levels, vec![1, 1]);
+    assert_eq!(usage.collapsed_summary.cache_hit_rate_text, "21%");
+    assert_eq!(
+        usage.collapsed_summary.day_delta_text.as_deref(),
+        Some("↑45%")
+    );
+    assert!(!usage.collapsed_summary.day_delta_negative);
+    assert_eq!(usage.collapsed_summary.cache_savings_text, None);
+    assert_eq!(
+        usage.collapsed_summary.month_total_text.as_deref(),
+        Some("311K")
+    );
 
     // 四格 breakdown (数值 + 文案)。
     let texts: Vec<&str> = usage
@@ -245,11 +255,90 @@ fn serialized_view_model_uses_camel_case_contract() {
         "isLive",
         "halfYear",
         "usageTier",
-        "collapsedWeekLevels",
+        "collapsedSummary",
     ] {
         assert!(usage.get(key).is_some(), "缺少契约字段 {key}");
+    }
+    let summary = &usage["collapsedSummary"];
+    for key in [
+        "cacheHitRateText",
+        "dayDeltaText",
+        "dayDeltaNegative",
+        "cacheSavingsText",
+        "monthTotalText",
+    ] {
+        assert!(
+            summary.get(key).is_some(),
+            "collapsedSummary 缺少字段 {key}"
+        );
     }
     let diagnostic = &value["diagnostics"][0];
     assert_eq!(diagnostic["kind"], "agentIssue");
     assert_eq!(diagnostic["agentId"], "claude-code");
+}
+
+#[test]
+fn collapsed_summary_handles_delta_cap_savings_and_missing_fallbacks() {
+    let base = load_valid_artifact();
+    let mapper = PanelViewModelMapper::default();
+
+    // 1. 下降 / 持平 / >999% 封顶 + 今日 dailyModels 省费累加 (昨日不计入)
+    let mut down = base.clone();
+    down.agents.truncate(1);
+    down.agents[0].today.total = 64;
+    down.agents[0].daily = vec![collector_domain::DailyUsage {
+        date: "2026-07-27".to_owned(),
+        input: 100,
+        output: 0,
+        cache_read: 0,
+        cache_creation: 0,
+        total: 100,
+    }];
+    down.agents[0].daily_models = vec![
+        collector_domain::DailyModelUsage {
+            date: "2026-07-28".to_owned(),
+            model: "claude-sonnet".to_owned(),
+            tokens: collector_domain::TokenBucket::default(),
+            cost_usd: None,
+            cache_savings_usd: Some(0.5),
+        },
+        collector_domain::DailyModelUsage {
+            date: "2026-07-27".to_owned(),
+            model: "claude-sonnet".to_owned(),
+            tokens: collector_domain::TokenBucket::default(),
+            cost_usd: None,
+            cache_savings_usd: Some(9.0),
+        },
+    ];
+    let down_summary = mapper
+        .make(Some(&down), fixed_now())
+        .usage
+        .unwrap()
+        .collapsed_summary;
+    assert_eq!(down_summary.day_delta_text.as_deref(), Some("↓36%"));
+    assert!(down_summary.day_delta_negative);
+    assert_eq!(down_summary.cache_savings_text.as_deref(), Some("¥3.60"));
+
+    // 2. 持平 & 超 999% 封顶 & 极小省费归零不展示
+    let mut capped = down.clone();
+    capped.agents[0].today.total = 2_500;
+    capped.agents[0].daily_models[0].cache_savings_usd = Some(0.00001);
+    let capped_summary = mapper
+        .make(Some(&capped), fixed_now())
+        .usage
+        .unwrap()
+        .collapsed_summary;
+    assert_eq!(capped_summary.day_delta_text.as_deref(), Some("↑999%+"));
+    assert!(!capped_summary.day_delta_negative);
+    assert_eq!(capped_summary.cache_savings_text, None);
+
+    let mut flat = down;
+    flat.agents[0].today.total = 100;
+    let flat_summary = mapper
+        .make(Some(&flat), fixed_now())
+        .usage
+        .unwrap()
+        .collapsed_summary;
+    assert_eq!(flat_summary.day_delta_text.as_deref(), Some("持平"));
+    assert!(!flat_summary.day_delta_negative);
 }

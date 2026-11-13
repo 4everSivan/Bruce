@@ -279,10 +279,13 @@
         "valueText" : "21%"
       }
     ],
-    "collapsedWeekLevels" : [
-      1,
-      1
-    ],
+    "collapsedSummary" : {
+      "cacheHitRateText" : "21%",
+      "cacheSavingsText" : null,
+      "dayDeltaNegative" : false,
+      "dayDeltaText" : "↑45%",
+      "monthTotalText" : "311K"
+    },
     "costText" : "≈ ¥2.702",
     "days" : [
       {

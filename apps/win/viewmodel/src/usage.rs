@@ -8,12 +8,12 @@ use chrono::{DateTime, Duration, NaiveDate};
 use collector_domain::AgentUsageArtifact;
 
 use crate::color::PanelAgentColor;
-use crate::format::{cost_text, token_count};
+use crate::format::{cny_text, cost_text, token_count};
 use crate::models::{
     DistributionBar, HourlyAgentRow, HourlyLineViewModel, PanelDiagnostic, PanelViewModel,
-    UsageBreakdownItem, UsageChartDay, UsageChartSegment, UsageHalfYearSummary, UsageHeatmapCell,
-    UsageHeatmapWeek, UsageHeroViewModel, UsageLegendItem, UsageModelPeriod, UsageModelRow,
-    UsageModelUsageSection, UsageMonthlyTotal, UsageTier,
+    UsageBreakdownItem, UsageChartDay, UsageChartSegment, UsageCollapsedSummary,
+    UsageHalfYearSummary, UsageHeatmapCell, UsageHeatmapWeek, UsageHeroViewModel, UsageLegendItem,
+    UsageModelPeriod, UsageModelRow, UsageModelUsageSection, UsageMonthlyTotal, UsageTier,
 };
 
 /// 模型名 -> 颜色的稳定调色板 (跨周期一致; 按名称排序取色, 超出后循环)。
@@ -165,21 +165,15 @@ impl PanelViewModelMapper {
             "—".to_owned()
         };
 
+        let today = now.date_naive();
         let (monthly, half_year) = self.make_usage_monthly(artifact);
-        // 收起态近 7 天: 14 日柱状数据末 7 天, 与热力图同一绝对阈值分档。
-        let collapsed_week_levels: Vec<i64> = days
-            .iter()
-            .rev()
-            .take(7)
-            .rev()
-            .map(|day| {
-                if day.total < 1 {
-                    0
-                } else {
-                    UsageTier::for_total(day.total).heatmap_level()
-                }
-            })
-            .collect();
+        let collapsed_summary = make_collapsed_summary(
+            artifact,
+            totals.4,
+            &cache_hit_rate_text,
+            monthly.last().map(|item| item.total_text.as_str()),
+            today,
+        );
         UsageHeroViewModel {
             total_tokens: totals.4,
             total_tokens_text: token_count(totals.4),
@@ -193,12 +187,12 @@ impl PanelViewModelMapper {
             days,
             legend,
             is_live,
-            heatmap: make_usage_heatmap(artifact, now.date_naive()),
+            heatmap: make_usage_heatmap(artifact, today),
             monthly,
             half_year,
             models: make_usage_models(artifact),
             usage_tier: UsageTier::for_total(totals.4).name().to_owned(),
-            collapsed_week_levels,
+            collapsed_summary,
         }
     }
 
@@ -569,6 +563,67 @@ fn normalized_note(note: &str) -> Option<String> {
 
 fn parse_iso_date(value: &str) -> Option<DateTime<chrono::FixedOffset>> {
     DateTime::parse_from_rfc3339(value).ok()
+}
+
+/// 收起态方案 A4 摘要 (C235): 缓存命中率 + 较昨日环比 + 今日缓存省费 + 当月累计。
+fn make_collapsed_summary(
+    artifact: &AgentUsageArtifact,
+    today_total: i64,
+    cache_hit_rate_text: &str,
+    month_total_text: Option<&str>,
+    today: NaiveDate,
+) -> UsageCollapsedSummary {
+    let today_key = today.format("%Y-%m-%d").to_string();
+    let yesterday_key = (today - Duration::days(1)).format("%Y-%m-%d").to_string();
+
+    let yesterday_total: i64 = artifact
+        .agents
+        .iter()
+        .flat_map(|agent| agent.daily.iter())
+        .filter(|day| day.date == yesterday_key)
+        .map(|day| day.total as i64)
+        .sum();
+
+    let (day_delta_text, day_delta_negative) = if today_total > 0 && yesterday_total > 0 {
+        let diff = today_total - yesterday_total;
+        let pct = ((diff as f64 / yesterday_total as f64) * 100.0).round() as i64;
+        if pct > 999 {
+            (Some("↑999%+".to_owned()), false)
+        } else if pct > 0 {
+            (Some(format!("↑{pct}%")), false)
+        } else if pct < 0 {
+            (Some(format!("↓{}%", -pct)), true)
+        } else {
+            (Some("持平".to_owned()), false)
+        }
+    } else {
+        (None, false)
+    };
+
+    let mut savings_usd = 0.0_f64;
+    let mut has_savings_entry = false;
+    for agent in &artifact.agents {
+        for detail in agent.daily_models.iter().filter(|d| d.date == today_key) {
+            if let Some(saving) = detail.cache_savings_usd {
+                has_savings_entry = true;
+                savings_usd += saving;
+            }
+        }
+    }
+    let cache_savings_text = if has_savings_entry && savings_usd > 0.0 {
+        let formatted = cny_text(savings_usd);
+        (formatted != "¥0.00").then_some(formatted)
+    } else {
+        None
+    };
+
+    UsageCollapsedSummary {
+        cache_hit_rate_text: cache_hit_rate_text.to_owned(),
+        day_delta_text,
+        day_delta_negative,
+        cache_savings_text,
+        month_total_text: month_total_text.map(str::to_owned),
+    }
 }
 
 /// "2026-07" -> "7月" (去掉年份与前导零, 跨年月份自然区分)。
