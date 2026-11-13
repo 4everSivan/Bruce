@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C234",
+  "title": "纵向布局快捷键收放在面板贴屏、内容可滚动时仍抖动：定位改为标题行最小滚动，标题行可见时不滚动",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C234-stack-shortcut-header-visible-scroll",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceApp + apps/macos/Tests/Harnesses/NativeLifecycleHarness",
+    "component": "MenuBarViews.shortcutScrollTarget 回调与 cardStack 标题行探针 / BruceAppCore.PanelModels DashboardStackShortcutScrollAnchor / NativeLifecycleHarness",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "2026-11-12 用户真机反馈（C232 之后仍存在）：收起 Token 用量卡、展开另外两张，再用快捷键收起订阅用量卡会抖动；同一张卡片用鼠标点击收起完全不抖。两条路径在 C232 之后唯一的差别是快捷键在收放前多一次 scrollProxy.scrollTo(target, anchor: .top)。复现 harness（local/perf/shortcut-jitter/main.swift，按 MenuBarDashboardView 的「顶栏 + ScrollViewReader/ScrollView 卡片栈 + 底栏、窗口高度 30ms 合并 + NSAnimationContext」结构搭建，逐帧记录滚动偏移）结论：内容未超出面板时该 scrollTo 是空操作，两条路径逐帧一致；面板被屏幕可用高度夹取、内容可滚动时，scrollTo 把订阅卡顶到视口上缘（瞬时滚走，偏移 0 → 21pt / 64pt，取决于溢出量），随后卡片收起、内容变短，偏移在同一段动画里被逐帧夹回 0 —— 整个卡片栈先上跳再滑回，即抖动；鼠标路径偏移全程为 0。标题行本来就在视口内，这次定位没有任何必要。",
+  "precheck": {
+    "description": "确认快捷键定位仍把整张卡片顶到视口上缘（改动前第一项 1，改动后 0）",
+    "command": "grep -c 'scrollTo(target, anchor: .top)' apps/macos/Sources/BruceApp/MenuBarViews.swift; grep -c 'DashboardStackShortcutScrollAnchor.headerID' apps/macos/Sources/BruceApp/MenuBarViews.swift",
+    "expected": "修复前：第一项 1、第二项 0。修复后：第一项 0、第二项 2（标题行探针 + 定位调用）。",
+    "is_completed": false,
+    "evidence": "2026-11-12 于 main 642701b：MenuBarViews.swift:167 为 scrollProxy.scrollTo(target, anchor: .top)，命中 1 / 0。复现 harness（HFIX=none）在窗口高度封顶 760 / 600 时：click 收起滚动偏移范围 0.0…0.0；key 收起 0.0…21.0 与 0.0…64.0（先跳后被夹回）；未封顶时两条路径均为 0.0…0.0。"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C234-stack-shortcut-header-visible-scroll"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "swift run --package-path apps/macos NativeLifecycleHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C234 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "快捷键定位目标 (MenuBarViews.swift)",
+      "before": "onChange(shortcutScrollTarget) 先 scrollProxy.scrollTo(target, anchor: .top) 把整张卡片顶到视口上缘，再播放收放动画；内容可滚动时即使标题行可见也会瞬时滚走，随后被收起动画夹回",
+      "after": "cardStack 每张卡片顶部叠一个不参与布局与命中的标题行探针（高 44pt，id 为 DashboardStackShortcutScrollAnchor.headerID）；快捷键改为 scrollProxy.scrollTo(headerID) 不带锚点，即最小滚动：标题行已在视口内时不滚动，仅在视口外时把标题行带回视口；收放动画不变",
+      "impact": "标题行可见时快捷键收放与鼠标点击逐帧一致（滚动偏移不变）；标题行在视口外时仍是「瞬时定位 + 平滑收放」，但只滚到标题行刚好可见为止"
+    },
+    {
+      "scope": "定位锚的纯定义与回归 (BruceAppCore.PanelModels + NativeLifecycleHarness)",
+      "before": "定位目标直接写在视图回调里，无断言",
+      "after": "新增 DashboardStackShortcutScrollAnchor（headerProbeHeight、headerID(for:)）；NativeLifecycleHarness 新增 stackShortcutLocatesHeaderWithMinimalScroll：三卡锚点互不相同且不与卡片 id 冲突，并以源码守卫锁定「定位调用不带锚点、每张卡片挂探针、不得出现 scrollTo(target, anchor:」",
+      "impact": "回归可测：把整卡顶缘定位改回来会被 Harness 拦下"
+    },
+    {
+      "scope": "设计文档 FR-5 C211 快捷键契约",
+      "before": "纵向级联模式先无动画定位到该卡，再播放唯一一次 0.30s 高度动画",
+      "after": "补充 C234：定位只认卡片标题行且为最小滚动，标题行已在视口内时不滚动，禁止把整张卡片顶到视口上缘",
+      "impact": "规则与实现一致；Tab 模式不受影响"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-5 C211（C232）：纵向级联模式先无动画定位到该卡，再播放唯一一次 0.30s 高度动画切换折叠/展开。",
+      "after": "FR-5 C211（C234）：定位只认卡片标题行且为最小滚动——标题行已在视口内时不滚动，与鼠标点击逐帧一致；仅标题行在视口外时才带回视口；禁止把整张卡片顶到视口上缘。"
+    }
+  },
+  "verification": {
+    "result": false,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "swift build --package-path apps/macos --build-tests 通过；NativeLifecycleHarness 新增标题行最小滚动断言通过；zsh scripts/verify-local.sh Exit 0（含全部 Harness）",
+        "false_if": "任一步失败或 Harness 回归",
+        "evidence": "2026-11-12 于 fix/C234-stack-shortcut-header-visible-scroll（未提交工作树）：swift build --package-path apps/macos --build-tests（SDKROOT=MacOSX26.5.sdk）Build complete，仅 CLT ld 搜索路径 warning（非本次引入）；NativeLifecycleHarness 输出 Native lifecycle tests passed: 23（新增 C234 标题行最小滚动断言）；zsh scripts/verify-local.sh Exit 0，末行「Bruce 本地验证全部通过」，日志 local/C234-verify-local.log。",
+        "result": true
+      },
+      {
+        "item": "复现对照",
+        "true_if": "复现 harness 在内容可滚动（窗口高度封顶）时：快捷键收起与展开的滚动偏移全程不变，与鼠标路径一致；标题行在视口外时只滚到标题行可见",
+        "false_if": "标题行可见时快捷键路径仍产生滚动偏移变化",
+        "evidence": "2026-11-12 local/perf/shortcut-jitter（SDKROOT=MacOSX26.5.sdk swiftc -O；HFIX=marker 即本卡方案）：封顶 760 / 600、Token 卡收起，key 收起与 key 展开滚动偏移范围均为 0.0…0.0（修复前 0.0…21.0 / 0.0…64.0）；封顶 500、三卡展开：预滚到 500 后 ⌘ 订阅卡，偏移落到 364（订阅卡标题行贴视口上缘）后收起；偏移 0 时 ⌘ Agent 卡（标题行在视口下方），偏移落到 331（标题行贴视口下缘）。harness 为结构等价的最小复现，不是 Bruce.app 本体。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "安装版纵向布局：收起 Token 用量卡、展开另外两张，用 ⌘2 收起 / 展开订阅用量卡，与鼠标点击观感一致，不再抖动；三卡全展开、面板贴屏幕下沿时 ⌘1/2/3 收放同样不抖；滚动到目标卡标题行不可见后按快捷键，先瞬时定位到标题行再平滑收放",
+        "false_if": "快捷键收放仍抖动，或标题行不可见时快捷键不再定位",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Tab 布局快捷键仍只切页签；⌘ 映射不变；标题行探针不拦截点击、悬停、拖拽排序；VoiceOver 不朗读探针；鼠标点击收放不受影响",
+        "false_if": "卡片标题点击 / 拖拽 / 悬停受探针影响，或 Tab 切页签异常",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

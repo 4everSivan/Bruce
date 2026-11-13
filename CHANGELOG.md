@@ -21,6 +21,11 @@
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
 ### Fixed
+- **纵向布局快捷键收放在面板贴屏时仍抖动 ([C234](docs/devel/change/C234.json))**：
+  - **现象**：收起 Token 用量卡、展开另外两张后，用 ⌘2 收起订阅用量卡会抖一下，鼠标点击同一张卡片不抖（C232 之后仍存在）；
+  - **根因**：快捷键在收放前用 `scrollTo(card, anchor: .top)` 把整张卡片顶到视口上缘。内容未超出面板时这是空操作；面板被屏幕高度夹取、内容可滚动时，即使标题行本来可见也会瞬时滚走一段，随后卡片收起、内容变短，滚动偏移在同一段动画里被逐帧夹回——卡片栈先上跳再滑回；
+  - **修复**：定位目标改为卡片标题行探针，以不带锚点的 `scrollTo` 做最小滚动：标题行已在视口内时不滚动，与鼠标点击逐帧一致；仅标题行在视口外时才带回视口。新增 `DashboardStackShortcutScrollAnchor`，`NativeLifecycleHarness` 以源码守卫锁定；
+  - **边界**：收放动画、⌘ 映射、Tab 布局不变；Windows 端 `scrollIntoView({ block: "start" })` 未改动。
 - **纵向布局快捷键展开收缩动画对齐鼠标点击 ([C232](docs/devel/change/C232.json))**：
   - **现象**：同一张卡片用 ⌘1/2/3 展开后再用快捷键收缩会出现抖动，鼠标点击卡片标题收放则平滑；
   - **根因**：鼠标路径只在标题 Button action 里包一条 `withAnimation` 调 `toggleCardCollapsed`；快捷键路径在 `MenuBarViews.onChange(shortcutScrollTarget)` 里把 `scrollTo` 与 `toggleCardCollapsed` **各包一条** 0.30s `withAnimation`，滚动目标/可用滚动范围随卡片高度逐帧变化，与卡片高度、窗口高度三方同时动画；

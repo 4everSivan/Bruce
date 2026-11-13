@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-10",
+  "updated_at": "2026-11-12",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -15,7 +15,8 @@
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
       "changes": [
         "C232",
-        "C233"
+        "C233",
+        "C234"
       ]
     },
     "PricingEngine": {
@@ -140,6 +141,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.1",
       "file": "docs/devel/change/C233.json"
+    },
+    "C234": {
+      "title": "纵向布局快捷键收放在面板贴屏、内容可滚动时仍抖动：定位改为标题行最小滚动，标题行可见时不滚动",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C234-stack-shortcut-header-visible-scroll",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C234.json"
     }
   }
 }
