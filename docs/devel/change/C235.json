@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C235",
+  "title": "Token 用量卡收起态右侧由近 7 天迷你热力条改为方案 A4 摘要：缓存命中率 + 估算费用与较昨日 / 省费 / 本月次行（双端）",
+  "version": "0.17.1",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C235-usage-collapsed-summary",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceAppCore + BruceApp + apps/win/viewmodel + apps/win/src",
+    "component": "PanelModels.UsageCollapsedSummary / UsageMapping / UsageHeroCard.collapsedMini / win usage.rs / app.js + styles.css",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "2026-11-13 用户评审高保真交互 demo 后选定方案 A4：Token 用量卡片收起态左侧保留今日总 Token（17pt 粗体，与展开态同源 Accent / 渐变），右侧原先的近 7 天迷你热力条与底部展开后热力图语义重复且信息密度低；改为双行结构：主行显示「命中 XX% | ≈ ¥XX.XX」（缺失项兜底为暗淡的「—」），次行按「较昨日 ↑XX%/↓XX%/持平 · 省 ¥XX.XX · 本月 XXX」紧凑呈现高价值上下文，任一子项无数据时省略，全空时整行隐藏不占位。",
+  "precheck": {
+    "description": "检查收起态是否仍使用旧迷你热力条（collapsedWeekLevels / .mini-week），以及新摘要模型 collapsedSummary 是否已接入",
+    "command": "rg -c 'collapsedWeekLevels|collapsed_week_levels|mini-week' apps/ tests/fixtures/viewmodel-parity/; rg -c 'collapsedSummary|collapsed_summary|usage-mini-right' apps/",
+    "expected": "变更前：第一组存在多处命中，第二组 0 命中。变更后：第一组 0 命中（迷你热力条全面退役），第二组双端均已命中。",
+    "is_completed": false,
+    "evidence": "2026-11-13 于 main d97d330：PanelModels.swift、UsageHeroCard.swift、models.rs、usage.rs、app.js、styles.css、PanelParityHarness.swift、PanelViewModelHarness.swift、fixture_parity.rs 与三份 panel.json 仍消费 collapsedWeekLevels / mini-week；collapsedSummary 尚未建立。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C235-usage-collapsed-summary"
+    ],
+    "after": [
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C235 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "视图模型契约（PanelModels.swift / models.rs）",
+      "before": "UsageHeroViewModel 仅暴露推导属性 collapsedWeekLevels ([Int])，Windows/Parity 序列化 collapsedWeekLevels 数组。",
+      "after": "退役 collapsedWeekLevels / collapsed_week_levels；新增 UsageCollapsedSummary（cacheHitRateText、dayDeltaText、dayDeltaNegative、cacheSavingsText、monthTotalText）并通过 UsageHeroViewModel.collapsedSummary（Rust collapsed_summary）输出，双端与 viewmodel-parity 协议保持 camelCase 1:1 一致；同时将 PanelFormat.cnyText 拆为共享人民币格式化工具，供 costText（≈ ¥...）与 cacheSavingsText（¥...）复用。",
+      "impact": "双端 ViewModel 字段逐项对齐，PanelParityHarness 与 Rust fixture_parity 同口径校验。"
+    },
+    {
+      "scope": "聚合映射规则（UsageMapping.swift / usage.rs）",
+      "before": "只计算今日总 Token、cacheHitRateText 与 totalCostUsd 对应的 costText；收起态 7 天档位由 days.suffix(7) 现算。",
+      "after": "抽取跨处复用的 yyyy-MM-dd 日键逻辑，基于注入的 now 计算昨日总 Token（agents[].daily 中匹配昨日之和），双方 > 0 时按四舍五入输出「↑N%」（>999% 上封顶「↑999%+」）/「↓N%」（dayDeltaNegative = true）/「持平」；扫描 agents[].dailyModels 中 date 等于今日的 cacheSavingsUsd 求和，仅正值且格式化不为 ¥0.00 时输出「¥...」；取 monthly.last.totalText 作为 monthTotalText。",
+      "impact": "不改 collector 采集契约与现有 artifact schema；无昨日数据、无 dailyModels 节省或无月度数据时自然省略。"
+    },
+    {
+      "scope": "macOS 与 Windows 收起态视图（UsageHeroCard.swift / app.js + styles.css）",
+      "before": "collapsedMini / .usage-mini 在总量右侧渲染 7 条等宽 10px 迷你热力色块（RoundedRectangle / .mini-week i）。",
+      "after": "保留左侧 17pt 总量（.mini-num 渐变与 Nothing 纯色/Doto 字体不变）；右侧改为方案 A4 双行右区（右对齐或紧随弹性分布：主行「命中 + 命中率 | 成本」11.5pt 粗体，缺值显示 disabled 态「—」；次行 9pt 等宽数字展示至多三段「较昨日 ... · 省 ... · 本月 ...」，负向较昨日取暖琥珀预警色、正向较昨日与省费高亮主题 Accent）；删除 miniHeatColor 与 .mini-week CSS（保留完整热力图 .heatmap/.heat-legend 规则不变）。",
+      "impact": "双端 Nothing（深/浅）与 Classic/Liquid Glass（深/浅）观感统一；卡片收起高度与标题左对齐基线保持稳定。"
+    },
+    {
+      "scope": "设计文档与自动化回归（03-菜单栏状态与多风格原生渲染.md / Harness / Node / Parity）",
+      "before": "规则 15 仍提及 .mini-week i；单测锁定 collapsedWeekLevels；viewmodel-parity golden 含 collapsedWeekLevels。",
+      "after": "更新规则 15 移除 .mini-week i 引用并新增规则 26 锁定方案 A4 双端契约；更新 PanelViewModelHarness、usage.rs 单元测试、frontend.test.mjs DOM/CSS 断言及 PanelParityHarness + agent-usage-{valid,partial,empty}.panel.json 与 fixture_parity.rs。",
+      "impact": "双端视图模型、DOM 渲染、CSS 守卫与跨端对拍全链锁定。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "Token 用量卡收起态在总量右侧展示近 7 天迷你热力条（collapsedWeekLevels / .mini-week i）。",
+      "after": "规则 15 移除 .mini-week i 关联；新增规则 26 规范方案 A4 收起态摘要（UsageCollapsedSummary）：主行「命中率 | 成本（缺值 —）」+ 次行「较昨日 · 省费 · 本月（无数据子项省略，全空不占高度）」。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261113-04",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --manifest-path apps/win/viewmodel/Cargo.toml、node --test apps/win/tests/*.test.mjs 与 zsh scripts/verify-local.sh 全部 Exit 0，覆盖 A4 计算边界、DOM/CSS 守卫与双端对拍",
+        "false_if": "任一构建、单测、Node 用例、clippy 或对拍失败",
+        "evidence": "2026-11-13 于 fix/C235-usage-collapsed-summary：cargo clippy --manifest-path apps/win/viewmodel/Cargo.toml --all-targets -- -D warnings Exit 0；cargo test --manifest-path apps/win/viewmodel/Cargo.toml 全绿（unittests 23、analytics_parity 3、fixture_parity 7、format_color_coverage 8、subscription_coverage 14）；node --test apps/win/tests/*.test.mjs 146/146 通过（含 C235 A4 与 .mini-week 退役断言）；swift run --package-path apps/macos PanelViewModelHarness 输出 PanelViewModel tests passed: 71；zsh scripts/verify-local.sh Exit 0（19 个 Harness 与 Panel 双端对拍全部通过，末行「Bruce 本地验证全部通过」，日志 local/C235-verify-local.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "macOS 菜单栏实机呈现方案 A4 收起态：经典（深/浅）、液态玻璃与 Nothing（深/浅）主次行字号、色阶、缺值占位与交互折叠/展开均符合已确认 Demo",
+        "false_if": "视觉拥挤换行、缺值出现 0% 伪值、负向环比颜色混同报错红或卡片高度异常",
+        "evidence": "2026-11-13 按部署规范重新打包安装 Universal 2 测试包至 /Applications/Bruce.app（PID 82365，codesign 通过，构建日志 local/build-C235-deploy.log error 为 0）并启动运行；用户实机核验收起态方案 A4 效果后明确确认，原话「确认」。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "展开态热力图（.heatmap / .heat-legend）、14 日柱、月度 chip 与其余两张卡片收起态无回归；.mini-num 在 Windows 的主题渐变与 Nothing 纯色覆盖保持不变",
+        "false_if": "热力图配色缺损、.mini-num 失去主题样式或其余卡片收起布局错位",
+        "evidence": "Windows 前端 146 项用例锁定 .heatmap/.heat-legend/.mini-num 与全部既有卡片结构不变，macOS 全量 19 个 Harness 与 Panel 对拍全绿；用户实机核验无异常后明确确认，原话「确认」。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "830cebb",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "2026-11-13",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}

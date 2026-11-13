@@ -13,6 +13,10 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Changed
+- **Token 用量卡收起态改用方案 A4 摘要（双端）([C235](docs/devel/change/C235.json))**：
+  - **收起态右侧重排**：移除近 7 天迷你热力条（`collapsedWeekLevels` / `.mini-week`），保留左侧 17pt 今日总 Token；右侧主行显示「命中 XX% | ≈ ¥XX.XX」（缺值展示暗淡 `—`），次行以 `·` 分隔展示「较昨日 ↑N%/↓N%/持平 · 省 ¥XX.XX · 本月 XXX」，无数据子项自动省略，全空时整行隐藏；
+  - **数据与视图契约**：新增 `UsageCollapsedSummary`（Rust `usage::make_collapsed_summary` 与 Swift `PanelViewModelMapper.makeCollapsedSummary` 1:1 对齐），`dailyModels` 仅累加今日缓存省费，`PanelFormat.cnyText` 拆为 `costText` 与省费文案共享格式器；
+  - **验证与对拍**：更新 design/03 规则 15 / 新增规则 26、`PanelViewModelHarness`、`PanelParityHarness`（刷新三份 `agent-usage-*.panel.json`）、Rust `fixture_parity` 与 Windows 前端 DOM/CSS 用例。
 - **看板只保留基础动效（双端）([C233](docs/devel/change/C233.json))**：
   - **背景**：看板动效过于复杂、部分场景卡顿；保留面板开合、卡片收放高度、Tab 定向滑动与刷新旋转，移除装饰性动效；
   - **标题不再移动**：收起态拖拽手柄移入卡片左边距，不再占标题行宽度，标题在收起 / 展开两态同一位置；收起摘要与状态件直接换位，不再接力淡入；
