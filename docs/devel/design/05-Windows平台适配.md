@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-11-06 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-11-12 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -283,6 +283,7 @@ Windows Tauri 后端 (Rust)
 | C221 | 界面对齐 | Nothing 浅色 Agent 卡图表改杏色（macOS） | Windows 恒深色，不涉及；深色绿阶与 Windows NOTHING_RAMP 保持 |
 | C222 | 界面对齐 | 14 日柱总量改为悬停显示（双端） | `.daily-chart .day-total` 全主题默认 opacity 0 + `.day:hover` 显示；标注行高保留，柱高公式不变 |
 | C223 | 缺陷修复 | 热力图改为连续 7 天块、末格为今天（双端） | `make_usage_heatmap(artifact, today)` 以今天为最后一格向前每 7 天切块；首块可早于数据首日补 level 0，无 nil/未来格，网格恒为完整矩形；仅统计近 182 天 |
+| C233 | 界面对齐 | 看板只保留基础动效（双端） | 规则 34 改写：删除 `motion.js` 渲染后补间层与数字列标记，数值直接落终值；删除 `hudDotPulse` 与 `nothing-hero-breathe`；`.card-head .drag-handle` 改为绝对定位落在卡片左边距内，标题收放前后位置不变 |
 | T28–T32 | 架构重构 | 额度预警判定改由共享 `collector-policy::alerts` 承担，状态落 `%APPDATA%`，双端 fixture 对拍 | 规则 35 补共享判定 / 持久化 / 单出口；§6.2 映射表把 `alerts.rs` 改为薄适配层 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
@@ -412,16 +413,13 @@ Windows Tauri 后端 (Rust)
     - Tab 模式当前在 active card 为 nil 时回退到别的卡；空态卡接入后订阅页签必须显示空态，不得显示 Token 用量卡。
     - CTA 必须打开设置并落到「订阅额度」分类，不得只落在通用页。实现不改 `open_settings` 签名：面板先把 `bruce_settings_pane` 写入同源 `localStorage` 再调用 `open_settings`；设置窗口在首次加载、`focus`、`visibilitychange`（转可见）时读取并立即删除该键，经 `switchCategory`（自带分类白名单）切换；`open_settings` 失败时面板撤回该键，避免下次正常打开设置被旧请求劫持。
     - A 判定排除临时屏蔽 provider（`jev`）；C 判定要求存在「已启用 ∧ 验证通过」的 provider 且已拿到 artifact。provider 配置 / 验证状态变化必须触发重渲并重新判定。
-34. **仪表盘更新动效必须用渲染后补间，不得冒充 CSS transition**（C158，design/03 规则 13 同契）：
-    - **根因差异**：mac SwiftUI 视图身份保留，`.animation(value:)` 能直接消费旧/新值；Windows 每次 `dashboard-updated` 都 `stack.replaceChildren()` 全量重建，新节点出生即终值，CSS `transition` 没有旧值可过渡。**禁止**用「给节点加 transition 类」假装实现更新动画。
-    - **渲染后补间**：`render(panel)` 前保留 `previousPanel`，渲染完成后调用 `animatePanelMotion(previousPanel, panel, { animate })`，按稳定 key 对比新旧值。key 只由 `motion.js` 的 `BruceMotion.keys` 生成，`app.js` 渲染时调用同一组函数打标，不得自行拼字符串：`meter(section, account, label)` → `section|account|label`（单账号 account 为空）、`collapsed(section)` → `section|#collapsed`、`mini(section)` → `section|#mini`（`|#` 前缀保证不与任何窗口 label 撞键）、`percent(rowKey)` → `rowKey||pct`、`balance(section)` → `section||bal`、`chip(section)` → `section||chip`。
-    - **量条**：`fill.animate([{ width: oldPct + "%" }, { width: newPct + "%" }], { duration: 850, easing: SPRING, fill: "none" })`；**不得把内联 width 写回旧值**，渲染值始终是新宽度，动画结束自然落回，`geometry-parity.test.mjs` 不受影响。`SPRING` 用临界阻尼采样串（WebView2 113+ 的 `linear()`），不支持时回退 `cubic-bezier(.4,0,.2,1)`；用 `CSS.supports` 检测，不按 UA 猜版本。
-    - **Nothing 分段**：由纯函数 `segmentPlan(from, to)` 列出颜色有变化的段，逐段 `animate` 背景色（0.14s，自新旧交界处向外 6ms 错峰）；错峰段必须 `fill: "backwards"`，否则 delay 期间先显示 DOM 终值、再跳回旧色、再补间。不做放大；不得整条一起硬切。
-    - **余额数字**：`.slot-value` / `.bal-chip b` 渲染为「静态字符 + 每位数字列」。静止态列内只有数字本身，行盒与改动前逐像素一致；滚动期列内放一个隐藏的在流占位（新数字）撑住宽度与文字基线，进出两位绝对定位并由 `overflow: clip` 裁切。**不得**用 `overflow: hidden`（会把 inline-block 基线改为底边）或固定列高（会撑高行盒）——C158 首版即因此让每个窗口行变高 2px、订阅卡变高约 10px。更新时按旧/新 `amountText` 逐位对比，0.6s 临界阻尼弹簧上下滑动；位数 / 千分位骨架变化退化为整体换行。`--` 占位不滚动、首渲不滚动。
-    - **百分比数字**：复用同一数字列滚动，key 为 `keys.percent(<行 key>)`，与量条同一 0.85s 弹簧事务；骨架变化同样退化为整体换行。
-    - **门控**：`motionSuppressed()`、`document.hidden`、`html[data-motion="off"]` 为逻辑与；首渲、隐藏后补渲、Tab 切换（`render(currentPanel)` 值未变）不播动画。Tauri `hide_dashboard` 若不触发 `document.hidden`，必须在 show / hide 事件维护 visible 标志，禁止窗口不可见时跑动画帧。
-    - **测试**：`typeof Element.prototype.animate === "function"` 特性检测，Node DOM 桩内自动 inert；key 映射（渲染器打标的 key 必须全部被补间层识别）、金额 token 化、方向与 `segmentPlan` 纯函数进 `apps/win/tests/frontend.test.mjs`；动画与几何用 `apps/win/tests/render-harness/` 在真实内核核对（非 CI 门禁）：同一面板与改动前逐像素对拍、滚动中途几何不变、错峰段 delay 期显示起点色。余额方向优先由 viewmodel `amount` 提供；在补上该字段前，前端允许从 `amountText` 解析数值，但不得把解析结果回写契约。
-
+34. **看板只保留基础动效，数值更新直接落终值**（C233，取代 C158 渲染后补间；design/03 规则 13 同契）：
+    - **补间层退役**：删除 `motion.js`（WAAPI 量条补间、Nothing 分段错峰、余额 / 百分比数字列滚动）及其在 `index.html` 的加载、`app.js` 中的 `animatePanelMotion` 调用与 `data-motion-key` / `data-percent-key` / `data-balance-key` 打标。`render(panel)` 全量重建后数值即终值，不保留 `previousPanel`。
+    - **数字为纯文本**：`.slot-value`、`.bal-chip b`、`.win-row .wp` 直接写文本，不再拆成 `.motion-number` / `.motion-digit` 数字列；相关样式删除。
+    - **循环动画退役**：`.hud-dot-wrap.refreshing` 不再挂 `hudDotPulse`，刷新态只保留静态外圈光晕；Nothing `.hero-num` 不再挂 `nothing-hero-breathe`，静态纯色无光晕。
+    - **标题不动**：`.card-head` 为定位基准，`.card-head .drag-handle` 绝对定位在卡片左边距（14px）内（总宽 13.4px），收起态显示时不挤占标题，标题收放前后 x 位置不变。
+    - **保留的基础动效**：卷轴开合（`winCurtainEnter` / `winCurtainExit`）、Tab 定向滑动（`cardSlideRight` / `cardSlideLeft`）、刷新图标旋转（`foot-spin`）、chevron 与悬停类短过渡。`html[data-motion="off"]` 全量闸门不变。
+    - **测试**：`apps/win/tests/frontend.test.mjs` 断言 `motion.js` 不存在且未被加载、`styles.css` 不含已退役关键帧与数字列样式、基础关键帧仍在、手柄规则落在左边距内不压标题、渲染结果不含补间 key。
 35. **订阅额度预警托盘锚定气泡与 Toast 替代规范 (C159，对齐 mac 规则 14 与 design/02 规则 15)**：
     - **非激活无焦点微卡浮层**：在 Windows 端彻底废弃 `tauri-plugin-notification` 系统 Toast 弹窗通知通道。采用轻量级独立 WebviewWindow 或微缩面板（`focusable: false`，`skip_taskbar: true`，`always_on_top: true`，无边框透明背景），展示与 mac 方案 A 一致的 280pt 紧凑胶囊微卡（左侧 24pt 品牌瓷砖徽章，中段服务名、窗口名、百分比与 5pt 进度条，次行右侧 R3-A `HH:MM:SS` 电子表读秒，右侧关闭 `✕`）。
     - **几何贴靠四边模型**：气泡弹出位置严格依据 `runtime_core/geometry.rs` 任务栏四边模型与托盘坐标（`tray_bounds`）定位：
@@ -550,7 +548,7 @@ Windows Tauri 后端 (Rust)
 | P4 | 打包发布线 | T04 | 安装/升级冒烟 + SHA256 |
 | P5 | 托盘动态配额环与 420px 亚克力微缩预览卡 (方案 1) | T12 | 托盘动态绘图 + 420px 预览卡 UI + 悬停唤醒/失焦隐藏与对拍 |
 | P6 | 订阅卡空态与 Tab 回退（Windows 同构） | C157 | A/C 两态空态卡 + 订阅页签不回退 + CTA 深链订阅额度；Node 测试与真实内核渲染核对 |
-| P7 | 额度条与余额数字更新动效（渲染后补间） | C158 | 量条 / Nothing 分段 / 余额数字与 mac 同语义；隐藏与减弱动态落值；geometry parity 不变 |
+| P7 | 额度条与余额数字更新动效（渲染后补间；C233 起退役，数值直接落终值） | C158 / C233 | 量条 / Nothing 分段 / 余额数字与 mac 同语义；隐藏与减弱动态落值；geometry parity 不变 |
 
 ### 7.2 风险与预案
 

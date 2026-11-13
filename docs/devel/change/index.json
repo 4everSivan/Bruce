@@ -14,7 +14,8 @@
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
       "changes": [
-        "C232"
+        "C232",
+        "C233"
       ]
     },
     "PricingEngine": {
@@ -130,6 +131,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.17.1",
       "file": "docs/devel/change/C232.json"
+    },
+    "C233": {
+      "title": "看板只保留基础动效：移除标题横移、摘要接力淡入、额度条与数字更新动效、柱体生长、Hero 呼吸与状态灯脉冲（双端）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C233-dashboard-motion-trim",
+      "topic": "MenuBarIndicator",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C233.json"
     }
   }
 }

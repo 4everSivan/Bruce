@@ -1,0 +1,112 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C233",
+  "title": "看板只保留基础动效：移除标题横移、摘要接力淡入、额度条与数字更新动效、柱体生长、Hero 呼吸与状态灯脉冲（双端）",
+  "version": "0.17.1",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "fix/C233-dashboard-motion-trim",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceApp + apps/macos/Sources/BruceAppCore + apps/win/src + 双端测试",
+    "component": "CollapsibleCardHeader / MeterBar / WindowRowView / BalanceChip / UsageHeroCard / HourlyLineCard / 顶部状态灯 / Windows motion.js 与 styles.css",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "2026-11-12 用户反馈：看板动效过于复杂、部分场景卡顿，要求只保留基础动效、去掉花哨动效，并点名「卡片标题的弹跳」。排查（main 1f40784）：唯一会移动卡片标题的是 mac CollapsibleCardHeader 的拖拽手柄槽 —— 收起时槽宽 0→26pt 随收放事务插值，把标题横向推走、展开时再推回，读作标题在弹；同一标题行还有收起摘要/状态件的延时接力淡入。其余装饰性动效叠在刷新与收放上同时运行：额度条 0.85s 弹簧 + 右缘高光 + 扫光 + 首次入场生长、百分比与余额 numericText 滚动、档位色交叉淡入、14 日柱逐列生长、Nothing Hero 数字无限呼吸、顶部状态灯刷新脉冲；Windows 侧对应 motion.js 渲染后补间、hudDotPulse 与 nothing-hero-breathe。范围经用户在会话内选择确认：「Decorative only (Recommended)」（保留面板开合、卡片收放高度、Tab 定向滑动、刷新旋转）与「Title never moves (Recommended)」（手柄移入卡片左边距，标题两态同位）。",
+  "precheck": {
+    "description": "确认装饰性动效仍存在于看板视图（改动前应有命中，改动后应为 0）",
+    "command": "grep -rnE 'MeterMotionPolicy|contentTransition\\(\\.numericText|sheenPhase|grownColumns|heroBreathing|PulsingStatusDot|miniSwapAnimation' apps/macos/Sources/BruceApp/Views apps/macos/Sources/BruceApp/MenuBarViews.swift | grep -v QuotaAlertBubbleView | wc -l; ls apps/win/src/motion.js; grep -cE 'hudDotPulse|nothing-hero-breathe' apps/win/src/styles.css",
+    "expected": "改动前：mac 命中数 > 0、apps/win/src/motion.js 存在、styles.css 命中 > 0。改动后：mac 命中 0、motion.js 不存在、styles.css 命中 0。",
+    "is_completed": false,
+    "evidence": "2026-11-12 于 main 1f40784 复核：SubscriptionCard.swift 内 MeterMotionPolicy 6 处、numericText 4 处、sheenPhase / animateEntrance 多处；PanelCardContainer.swift 的 handleSlot 以 `.frame(width: isCollapsed ? 26 : 0)` 随收放事务插值并含 miniSwapAnimation / statusSwapAnimation；UsageHeroCard.swift 含 heroBreathing repeatForever；HourlyLineCard.swift 含 grownColumns 逐列生长；MenuBarViews.swift 含 PulsingStatusDot；apps/win/src/motion.js 存在（334 行），styles.css 含 hudDotPulse 与 nothing-hero-breathe。"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C233-dashboard-motion-trim"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C233 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "卡片标题行 (mac PanelCardContainer.swift / Windows styles.css)",
+      "before": "拖拽手柄占标题行布局：mac 槽宽随折叠态 0↔26pt 插值，标题每次收放横向滑动；Windows 收起时手柄 inline-flex 入流，标题瞬间右移。mac 收起摘要与状态件以 0.07s / 0.12s+0.06s 延时接力淡入",
+      "after": "手柄不占标题行布局：mac 以 overlay 落在卡片左边距 15pt 内并随收放事务淡入，Windows 绝对定位在左边距 14px 内；标题两态同位。收起摘要与状态件直接换位，不做淡入淡出。新增 DashboardCardHeaderLayout 给出边距与手柄宽度口径",
+      "impact": "收放时标题不再移动；收起态手柄更靠近卡片左缘，标题与迷你摘要整体左移约 26pt 回到展开态同一位置"
+    },
+    {
+      "scope": "额度条与数字更新动效 (mac SubscriptionCard.swift / MeterMotionPolicy.swift，Windows motion.js / app.js)",
+      "before": "量条 0.85s 弹簧、右缘高光、扫光、首次入场 0.45s 生长、档位色交叉淡入、Nothing 分段逐帧点亮与前沿段提亮；百分比与余额 numericText 滚动；Windows 以 motion.js 渲染后 WAAPI 补间复现",
+      "after": "数值刷新后直接落终值。mac 删除 MeterMotionPolicy.swift 与全部挂载点，MeterBar / NothingSegmentedMeter 改为无状态静态绘制；Windows 删除 motion.js、补间 key 打标与数字列标记，数字为纯文本",
+      "impact": "刷新时不再有量条滑动、扫光与数字滚动；数值与展示文案不变"
+    },
+    {
+      "scope": "循环与入场装饰动画 (mac UsageHeroCard / HourlyLineCard / MenuBarViews，Windows styles.css)",
+      "before": "Nothing Hero 数字 1.3s 无限呼吸；14 日柱逐列 30ms 错峰 0.5s 生长；顶部状态灯刷新中 0.9s 无限脉冲",
+      "after": "Hero 数字静态纯色渲染；14 日柱直接以真实值呈现；状态灯实时 / 刷新中只显示静态外圈光晕。DashboardPanelAnimationPolicy.allowsHero / allowsHourlyGrowth 删除；Windows 删除 nothing-hero-breathe 与 hudDotPulse",
+      "impact": "看板内循环动画只剩底栏刷新图标；面板常驻时不再有持续重绘的装饰动画"
+    },
+    {
+      "scope": "测试 (NativeLifecycleHarness / PanelViewModelHarness / apps/win/tests/frontend.test.mjs)",
+      "before": "PanelViewModelHarness 断言 MeterMotionPolicy 曲线与门控；NativeLifecycleHarness 断言 allowsHero / allowsHourlyGrowth；Windows 三条 C158 补间纯函数与 key 映射测试",
+      "after": "删除已退役策略的断言；NativeLifecycleHarness 新增手柄不超过卡片左边距断言与看板视图源码守卫（退役标识符不回流、循环动画仅一处）；Windows 新增 C233 测试（motion.js 不存在不加载、退役关键帧与数字列样式不存在、基础关键帧保留、手柄落在左边距内、渲染结果无补间 key）",
+      "impact": "退役动效回流会被测试拦下"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 11：拖拽手柄常驻、占位宽度随折叠态插值，收起摘要与状态件必须接力淡入。规则 13（C158）：额度条 / 百分比 / 余额数字更新动效由 MeterMotionPolicy 统一裁决。FR-7：状态灯刷新中呼吸脉冲。design/05 规则 34：Windows 以渲染后 WAAPI 补间复现更新动效。",
+      "after": "规则 11：标题全周期不动，手柄落在卡片左边距内不占标题行布局，收起摘要与状态件直接换位。规则 13 改写为「看板只保留基础动效」白名单，数值直接落终值，MeterMotionPolicy、Hero 呼吸、柱体生长、状态灯脉冲退役。FR-7：刷新态为静态外圈光晕。design/05 规则 34 同步改写，motion.js 删除。"
+    }
+  },
+  "verification": {
+    "result": false,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "swift build --package-path apps/macos --build-tests 通过；NativeLifecycleHarness 与 PanelViewModelHarness 通过（含 C233 新增断言）；node --test apps/win/tests/*.test.mjs 全部通过；zsh scripts/verify-local.sh Exit 0",
+        "false_if": "任一步失败或 Harness 回归",
+        "evidence": "2026-11-12 于 fix/C233-dashboard-motion-trim（未提交工作树）：swift build --package-path apps/macos --build-tests（SDKROOT=MacOSX26.5.sdk）Build complete，无编译告警；zsh scripts/verify-local.sh Exit 0，末行「Bruce 本地验证全部通过」，日志 local/C233-verify-local.log（含 Windows 前端 frontend.test.mjs 129 passed / 0 failed）；其后仅改 NativeLifecycleHarness 的通过计数文案，单独重跑输出 Native lifecycle tests passed: 22（含 C233 新增手柄边距与源码守卫两条断言）；node --test apps/win/tests/*.test.mjs 145 passed / 0 failed。2026-11-13 提交前复核：zsh scripts/verify-local.sh 再次 Exit 0，末行「Bruce 本地验证全部通过」，日志 local/C233-verify-local-r2.log。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "安装版：点击卡片标题收起 / 展开时标题不横移、收起态手柄出现在卡片左边距内且可拖拽排序；刷新后额度条、百分比、余额数字直接变为新值，无滑动、扫光、数字滚动；Nothing 主题 Hero 数字不呼吸；刷新中状态灯不脉冲；14 日柱打开即为完整柱高；面板开合、卡片收放、Tab 切换滑动与刷新图标旋转保持原样；原先卡顿的场景不再卡顿",
+        "false_if": "标题仍移动、手柄压住标题或被裁切、无法拖拽，退役动效仍出现，或保留的基础动效消失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "数值、文案、阈值色与分段点亮数不变；卡片高度与窗口高度过渡不受影响；减弱动态效果下行为不变；Windows 看板渲染与拖拽排序正常、标题位置两态一致",
+        "false_if": "数值或颜色显示错误、收放高度动画回归，或 Windows 渲染 / 拖拽异常",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
