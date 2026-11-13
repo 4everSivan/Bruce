@@ -82,11 +82,12 @@ struct NativeLifecycleHarness {
         try dashboardSettingsRouteOrdersCloseBeforeOpen()
         try swapHeightNeverClampsUnmeasuredContent()
         try stackShortcutMotionNeverAnimatesScroll()
+        try stackShortcutLocatesHeaderWithMinimalScroll()
         try cardHeaderHandleStaysInsideCardGutter()
         try decorativeDashboardMotionStaysRemoved()
         try welcomeOnboardingPresentationMatchesParityFixture()
         try launchAtLoginServiceMockAndStateTransitions()
-        print("Native lifecycle tests passed: 22")
+        print("Native lifecycle tests passed: 23")
     }
 
     /// C187: 仪表盘/气泡跳转设置中心的顺序固定为 关闭面板 → 写入深链 → 打开设置，
@@ -182,6 +183,52 @@ struct NativeLifecycleHarness {
             DashboardStackShortcutMotionPolicy.motion(motionSuppressed: true)
                 == .instantScrollInstantToggle,
             "reduced motion: shortcut must animate neither scroll nor toggle"
+        )
+    }
+
+    /// C234: 快捷键定位只认标题行探针且不带锚点 (最小滚动); 标题行可见时不得滚动.
+    /// 把整张卡片顶到视口上缘的定位会在内容可滚动时先滚走、再随收起被夹回.
+    private static func stackShortcutLocatesHeaderWithMinimalScroll() throws {
+        let headerIDs = DashboardCardID.allCases.map {
+            DashboardStackShortcutScrollAnchor.headerID(for: $0)
+        }
+        try expect(
+            Set(headerIDs).count == DashboardCardID.allCases.count,
+            "each card needs its own header scroll anchor: \(headerIDs)"
+        )
+        for cardID in DashboardCardID.allCases {
+            try expect(
+                DashboardStackShortcutScrollAnchor.headerID(for: cardID) != cardID.rawValue,
+                "header anchor must not collide with the card id: \(cardID.rawValue)"
+            )
+        }
+        try expect(
+            DashboardStackShortcutScrollAnchor.headerProbeHeight > 0,
+            "header probe needs a positive height to be a scroll target"
+        )
+
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // NativeLifecycleHarness.swift -> NativeLifecycleHarness/
+                .deletingLastPathComponent() // -> Harnesses/
+                .deletingLastPathComponent() // -> Tests/
+                .deletingLastPathComponent() // -> macos/
+                .appendingPathComponent("Sources/BruceApp/MenuBarViews.swift"),
+            encoding: .utf8
+        )
+        try expect(
+            source.contains(
+                "scrollProxy.scrollTo(DashboardStackShortcutScrollAnchor.headerID(for: target))"
+            ),
+            "stack shortcut must locate the header anchor without an explicit anchor"
+        )
+        try expect(
+            source.contains(".id(DashboardStackShortcutScrollAnchor.headerID(for: cardID))"),
+            "every stacked card must carry its header scroll anchor"
+        )
+        try expect(
+            !source.contains("scrollTo(target, anchor:"),
+            "stack shortcut must not pin the whole card to a viewport edge"
         )
     }
 

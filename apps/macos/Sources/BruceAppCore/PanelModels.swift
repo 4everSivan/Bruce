@@ -1021,6 +1021,24 @@ package enum DashboardCardHeaderLayout {
     }
 }
 
+/// C234: 纵向布局快捷键的定位锚 —— 只认卡片标题行, 且只做最小滚动.
+///
+/// 快捷键收放前的定位若把整张卡片顶到视口上缘 (`scrollTo(card, anchor: .top)`),
+/// 面板贴屏幕下沿、内容可滚动时, 即使标题行本来就在视口内也会先瞬时滚走一段,
+/// 随后卡片收起、内容变短, 滚动偏移又被逐帧夹回 —— 读起来就是抖一下; 鼠标点击
+/// 从不滚动. 这里把定位目标改成盖在卡片顶部的标题行探针: 以不带锚点的
+/// `scrollTo(id)` 做最小滚动, 标题行已可见时一像素不动 (与鼠标路径逐帧一致),
+/// 只有标题行在视口外时才把它带回来.
+package enum DashboardStackShortcutScrollAnchor {
+    /// 标题行探针高度 (pt): 卡片上内边距 13 + 标题行 + 下内边距 13, 约等于收起态整卡高度.
+    package static let headerProbeHeight: Double = 44
+
+    /// 标题行探针的滚动标识; 与卡片自身的 `.id(cardID)` 区分开.
+    package static func headerID(for cardID: DashboardCardID) -> String {
+        "dashboard-card-header-\(cardID.rawValue)"
+    }
+}
+
 // MARK: - 面板容器
 
 package struct PanelViewModel: Equatable, Sendable {

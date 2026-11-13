@@ -101,7 +101,7 @@ struct MenuBarDashboardView: View {
     @State private var slideDirection: Edge = .trailing
     /// Tab 模式当前卡片的自然高度 (C148); 容器高度只跟它走一个数值, 切换时单程插值.
     @State private var tabCardHeight: CGFloat = 0
-    /// C211: 纵向级联快捷键请求; 先滚到卡片, 再切换折叠态.
+    /// C211: 纵向级联快捷键请求; 标题行不在视口内时先定位 (C234), 再切换折叠态.
     @State private var shortcutScrollTarget: DashboardCardID?
 
     var body: some View {
@@ -162,9 +162,12 @@ struct MenuBarDashboardView: View {
                 // C232: 与鼠标点击收放对齐 —— 先无动画定位, 再播放唯一一次
                 // 高度动画. 滚动若也参与动画, 滚动目标会随卡片高度逐帧变化,
                 // 与窗口高度动画互相追尾 (快捷键收放抖动).
+                // C234: 定位只认标题行且不带锚点 (最小滚动): 标题行已在视口内时
+                // 不滚动, 与鼠标路径逐帧一致; 顶到上缘的定位会在内容可滚动时
+                // 先滚走、再随卡片收起被夹回 (抖动).
                 .onChange(of: shortcutScrollTarget) { _, target in
                     guard let target else { return }
-                    scrollProxy.scrollTo(target, anchor: .top)
+                    scrollProxy.scrollTo(DashboardStackShortcutScrollAnchor.headerID(for: target))
                     switch DashboardStackShortcutMotionPolicy.motion(
                         motionSuppressed: motionSuppressed
                     ) {
@@ -223,7 +226,7 @@ struct MenuBarDashboardView: View {
         }
     }
 
-    /// C211: Tab 模式切页签; 纵向级联写入滚动目标, 由 ScrollViewReader 先滚动再收放.
+    /// C211: Tab 模式切页签; 纵向级联写入滚动目标, 由 ScrollViewReader 先按需定位再收放.
     private func performCardShortcut(_ cardID: DashboardCardID, panel: PanelViewModel) {
         let action = DashboardShortcutPolicy.action(
             cardID: cardID,
@@ -648,6 +651,14 @@ struct MenuBarDashboardView: View {
             ForEach(model.cardOrder) { cardID in
                 renderCard(cardID, panel: panel)
                     .id(cardID)
+                    // C234: 快捷键定位用的标题行探针; 不参与布局与命中.
+                    .overlay(alignment: .top) {
+                        Color.clear
+                            .frame(height: DashboardStackShortcutScrollAnchor.headerProbeHeight)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                            .id(DashboardStackShortcutScrollAnchor.headerID(for: cardID))
+                    }
                     .onDrop(
                         of: [.text],
                         delegate: DashboardCardDropDelegate(
