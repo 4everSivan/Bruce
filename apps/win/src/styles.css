@@ -217,20 +217,12 @@ html[data-motion="off"] #panel.curtain-exit {
 .hud-dot-wrap.tone-neutral,
 .hud-dot-wrap.tone-idle { --dot-color: #8A8A8A; }
 .hud-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dot-color); position: relative; }
-/* 实时态与刷新态外圈光晕 (mac: 12pt 圆, 按当前 tone 主色 25%) */
+/* 实时态与刷新态外圈光晕 (mac: 12pt 圆, 按当前 tone 主色 25%); C233: 静态, 刷新中不再呼吸脉冲 */
 .hud-dot-wrap.live::before,
 .hud-dot-wrap.refreshing::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
   background: var(--dot-color);
   opacity: .25;
-}
-@keyframes hudDotPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .40; }
-}
-/* C141: 呼吸脉冲仅在动效开启 (<html data-motion="on">) 时挂载. */
-html[data-motion="on"] .hud-dot-wrap.refreshing {
-  animation: hudDotPulse 0.9s ease-in-out infinite;
 }
 .hud-brand {
   font: 700 11.5px/1.2 var(--mono-font);
@@ -360,9 +352,11 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .sub-empty-mini { font-size: 10.5px; color: var(--secondary); }
 
 /* 可收起卡片标题行 (mac CollapsibleCardHeader):
-   [拖拽手柄 (仅收起态)] [定宽 92 标题] [状态件 (Spacer 推到行尾) | 收起态迷你摘要] [chevron]
-   chevron 常态隐藏, 悬停标题行淡入, 展开时旋转 90°。 */
+   [定宽 92 标题] [状态件 (Spacer 推到行尾) | 收起态迷你摘要] [chevron]
+   chevron 常态隐藏, 悬停标题行淡入, 展开时旋转 90°。
+   C233: 拖拽手柄不占标题行布局, 收起态落在卡片左边距内, 标题收放前后位置不变。 */
 .card-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 15px;
@@ -398,16 +392,19 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .card.collapsed > .card-head .collapsed-summary { display: flex; }
 .collapsed-summary > span { display: flex; align-items: center; flex: 1; min-width: 0; }
 
-/* 拖拽手柄 (mac DashboardDragHandle): 2×3 点阵, 仅收起态渲染; 与标题间距 10 */
+/* 拖拽手柄 (mac DashboardDragHandle): 2×3 点阵, 仅收起态渲染;
+   C233: 绝对定位在卡片左边距 (14px) 内居中, 总宽 13.4px, 不挤占标题 */
 .card-head .drag-handle {
   display: none;
-  flex: none;
+  position: absolute;
+  left: -13.7px;
+  top: 50%;
+  transform: translateY(-50%);
   flex-wrap: wrap;
   box-sizing: content-box;
   width: 7.4px;
   gap: 2.5px 3px;
   padding: 4px 3px;
-  margin-right: -5px;
   border-radius: 2px;
   cursor: grab;
 }
@@ -677,17 +674,6 @@ html[data-motion="on"] .hud-dot-wrap.refreshing {
 .slot-dot.warn { background: #D4A843; }
 .slot-dot.error { background: #D71921; }
 .slot-dot.neutral { background: #666666; }
-
-/* C158: 数字列滚动 (mac .numericText 的 Web 等价实现). 静止态列内只有数字本身,
-   行盒与改动前逐像素一致; 滚动期由隐藏占位 (.motion-hold) 撑住宽度与基线,
-   进出两位绝对定位并由 overflow: clip 裁切. 不得用 overflow: hidden 或固定高度:
-   前者把 inline-block 基线改为底边, 后者撑高行盒, 都会让整行变高 2px 以上. */
-.motion-number { display: inline-block; white-space: nowrap; }
-.motion-lit { white-space: pre; }
-.motion-digit { position: relative; display: inline-block; overflow: clip; }
-.motion-digit > .motion-hold { visibility: hidden; }
-.motion-digit > .motion-out,
-.motion-digit > .motion-in { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
 
 /* 收起态迷你摘要 (mac collapsedMini): 每家 [徽章 + 5pt 迷你量条], 组间距 10 */
 .collapsed-summary .sub-mini { gap: 10px; }
@@ -1827,7 +1813,6 @@ details summary {
   line-height: normal;
   color: #999999;
 }
-.theme-nothing .card-head .drag-handle { margin-right: 0; }
 .theme-nothing .drag-handle i { width: 2px; height: 2px; border-radius: 0; }
 .theme-nothing .drag-handle:hover { background: #222222; }
 
@@ -1841,8 +1826,8 @@ details summary {
   mask-image: linear-gradient(to bottom, #000 42%, transparent 88%);
 }
 
-/* Hero: Doto 52 粗体纯色 accent (字体自身即点阵, 不再叠加遮罩), 小数点为 4×4 实心方块,
-   呼吸微光晕 (mac: 1.3s 往复, 不透明度 .86→1, 缩放 1→1.015, 光晕 3→15) */
+/* Hero: Doto 52 粗体纯色 accent (字体自身即点阵, 不再叠加遮罩), 小数点为 4×4 实心方块;
+   C233: 静态渲染, 不再呼吸 */
 .theme-nothing .hero-num {
   font-family: "Doto", "Space Mono", monospace;
   font-size: 52px;
@@ -1853,13 +1838,6 @@ details summary {
   align-items: baseline;
   background: none;
   color: #4A9E5C;
-  transform-origin: left center;
-  text-shadow: 0 0 3px #4A9E5C;
-  animation: nothing-hero-breathe 1.3s ease-in-out infinite alternate;
-}
-@keyframes nothing-hero-breathe {
-  from { opacity: .86; transform: scale(1); text-shadow: 0 0 3px #4A9E5C; }
-  to { opacity: 1; transform: scale(1.015); text-shadow: 0 0 15px #4A9E5C; }
 }
 .theme-nothing .hero-num .dot-square {
   display: inline-block;
@@ -2099,7 +2077,6 @@ details summary {
 .theme-nothing .foot-btn svg { width: 13px; height: 13px; }
 
 /* C141: 动效关闭时的 Nothing 静态降级, 与全局闸门同源. */
-html[data-motion="off"] .theme-nothing .hero-num { animation: none; opacity: 1; text-shadow: none; }
 html[data-motion="off"] .foot-btn.spinning svg { animation: none; }
 
 /* ==========================================================================

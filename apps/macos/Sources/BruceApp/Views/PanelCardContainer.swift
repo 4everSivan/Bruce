@@ -36,7 +36,7 @@ struct PanelCardContainer<Content: View>: View {
 
     var body: some View {
         content
-            .padding(.horizontal, 15)
+            .padding(.horizontal, DashboardCardHeaderLayout.cardHorizontalPadding)
             .padding(.vertical, 13)
             .background { cardBackground }
             .overlay {
@@ -214,8 +214,9 @@ extension View {
 /// 卡片可收起标题行 (定稿: card-collapse-demo.html 方案 C 变体 2).
 /// 版式: 左标题 (定宽 92, 三卡图形区左缘齐平) + 中间内容区 + 右 chevron;
 /// 收起态内容区渲染迷你可视化 (mini), 展开态渲染卡片状态件 (status, 如 LIVE/更新时间).
-/// chevron 常态隐藏, 悬停标题行淡入 (0.15s), 展开时旋转 90°;
-/// 整行点击切换, 高度过渡 0.25s. 标题全周期唯一, 收起/展开不跳动.
+/// chevron 常态隐藏, 悬停标题行淡入 (0.15s), 展开时旋转 90°; 整行点击切换.
+/// C233: 标题全周期固定在同一位置 —— 拖拽手柄不占标题行布局, 收起态在卡片左边距内淡入;
+/// 收起摘要与展开态状态件直接换位, 不做淡入淡出.
 struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     let title: String
     let isCollapsed: Bool
@@ -239,75 +240,53 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // 专职拖拽手柄: 物理独立于展开 Button 之外, 避免拖拽手势被按钮点击捕获.
-            // C148: 常驻但占位宽度随折叠态插值 (展开时 0 宽), 折叠瞬间标题不会横向瞬移.
-            handleSlot
-
-            Button {
-                withAnimation(motionSuppressed ? nil : .easeInOut(duration: DashboardMotionTiming.contentResize)) {
-                    onToggle()
-                }
-            } label: {
-                HStack(spacing: isNothing ? 8 : 15) {
-                    Text(title)
-                        .font(isNothing
-                            ? NothingFont.ui(11.5, weight: .semibold)
-                            : .system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
-                        .frame(width: resolvedTitleWidth, alignment: .leading)
-                    // C148: 收起摘要与展开态状态件常驻同一个占位盒, 但不同时交叉淡入 ——
-                    // 两者都贴右缘, 同时半透明会让「最后更新 …」压在最后一条量条上, 读作糊成一团.
-                    // 改为接力: 先让退场的一方快速淡出, 再让入场的一方淡入.
-                    ZStack(alignment: .trailing) {
-                        mini
-                            .frame(maxWidth: .infinity)
-                            .opacity(isCollapsed ? 1 : 0)
-                            .allowsHitTesting(false)
-                            .animation(miniSwapAnimation, value: isCollapsed)
-                        status
-                            .opacity(isCollapsed ? 0 : 1)
-                            .animation(statusSwapAnimation, value: isCollapsed)
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                        .opacity(hovering ? 1 : 0)
-                        .animation(
-                            motionSuppressed ? nil : .easeInOut(duration: 0.15),
-                            value: hovering
-                        )
-                }
-                .contentShape(Rectangle())
+        Button {
+            withAnimation(motionSuppressed ? nil : DashboardMotionTiming.contentResizeCurve) {
+                onToggle()
             }
-            .buttonStyle(.plain)
-            .onHover { hovering = $0 }
-            .accessibilityLabel(title)
-            .accessibilityHint(isCollapsed ? "展开卡片" : "收起卡片")
-            .accessibilityValue(isCollapsed ? "已收起" : "已展开")
+        } label: {
+            HStack(spacing: isNothing ? 8 : 15) {
+                Text(title)
+                    .font(isNothing
+                        ? NothingFont.ui(11.5, weight: .semibold)
+                        : .system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
+                    .frame(width: resolvedTitleWidth, alignment: .leading)
+                // 收起摘要与展开态状态件常驻同一个占位盒, 两者都贴右缘;
+                // C233: 直接换位, 不随收放事务淡入淡出 (半透明叠在一起读作糊成一团).
+                ZStack(alignment: .trailing) {
+                    mini
+                        .frame(maxWidth: .infinity)
+                        .opacity(isCollapsed ? 1 : 0)
+                        .allowsHitTesting(false)
+                    status
+                        .opacity(isCollapsed ? 0 : 1)
+                }
+                .animation(nil, value: isCollapsed)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .opacity(hovering ? 1 : 0)
+                    .animation(
+                        motionSuppressed ? nil : .easeInOut(duration: 0.15),
+                        value: hovering
+                    )
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(title)
+        .accessibilityHint(isCollapsed ? "展开卡片" : "收起卡片")
+        .accessibilityValue(isCollapsed ? "已收起" : "已展开")
+        // 专职拖拽手柄: 物理独立于展开 Button 之外, 避免拖拽手势被按钮点击捕获.
+        .overlay(alignment: .leading) { gutterHandle }
     }
 
-    /// 收起摘要的接力淡入: 折叠时先等状态件退出再淡入, 展开时立刻让位.
-    private var miniSwapAnimation: Animation? {
-        guard !motionSuppressed else { return nil }
-        return isCollapsed
-            ? .easeOut(duration: 0.12).delay(0.06)
-            : .easeOut(duration: 0.07)
-    }
-
-    /// 展开态状态件 (LIVE / 更新时间) 的接力淡入: 折叠时立刻退出, 展开时等摘要退出后再淡入.
-    private var statusSwapAnimation: Animation? {
-        guard !motionSuppressed else { return nil }
-        return isCollapsed
-            ? .easeOut(duration: 0.07)
-            : .easeOut(duration: 0.12).delay(0.06)
-    }
-
-    /// 拖拽手柄占位 (C148): 展开态宽度为 0, 折叠态让出「手柄 + 间距」.
-    /// 宽度随折叠态插值, 标题不会在手柄出现的瞬间横向跳一下.
-    private var handleSlot: some View {
+    /// 拖拽手柄 (C233): 落在卡片左边距内, 不参与标题行布局, 标题因此不随收放横移.
+    /// 仅收起态可见可交互, 显隐跟随收放的同一条事务.
+    private var gutterHandle: some View {
         Group {
             if let cardID {
                 DashboardDragHandle(isNothing: isNothing)
@@ -316,10 +295,10 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                 DashboardDragHandle(isNothing: isNothing)
             }
         }
-        .frame(width: isCollapsed ? (isNothing ? 24 : 26) : 0, alignment: .leading)
+        .frame(width: DashboardCardHeaderLayout.cardHorizontalPadding)
+        .offset(x: -DashboardCardHeaderLayout.cardHorizontalPadding)
         .opacity(isCollapsed ? 1 : 0)
         .allowsHitTesting(isCollapsed)
-        .clipped()
     }
 
     /// Nothing 标题色: secondary (dark #999999 / light #666666), 与定稿 token 一致.
@@ -337,17 +316,17 @@ struct DashboardDragHandle: View {
 
     var body: some View {
         VStack(spacing: 2.5) {
-            HStack(spacing: 3) {
+            HStack(spacing: DashboardCardHeaderLayout.handleDotSpacing) {
                 dot; dot
             }
-            HStack(spacing: 3) {
+            HStack(spacing: DashboardCardHeaderLayout.handleDotSpacing) {
                 dot; dot
             }
-            HStack(spacing: 3) {
+            HStack(spacing: DashboardCardHeaderLayout.handleDotSpacing) {
                 dot; dot
             }
         }
-        .padding(.horizontal, 3)
+        .padding(.horizontal, DashboardCardHeaderLayout.handleHorizontalPadding)
         .padding(.vertical, 4)
         .background(
             hovering
@@ -367,11 +346,17 @@ struct DashboardDragHandle: View {
         if isNothing {
             Rectangle()
                 .fill(hovering ? Color.primary : Color.secondary.opacity(0.4))
-                .frame(width: 2, height: 2)
+                .frame(
+                    width: DashboardCardHeaderLayout.handleDotSize(isNothing: true),
+                    height: DashboardCardHeaderLayout.handleDotSize(isNothing: true)
+                )
         } else {
             Circle()
                 .fill(hovering ? Color.primary : Color.secondary.opacity(0.45))
-                .frame(width: 2.2, height: 2.2)
+                .frame(
+                    width: DashboardCardHeaderLayout.handleDotSize(isNothing: false),
+                    height: DashboardCardHeaderLayout.handleDotSize(isNothing: false)
+                )
         }
     }
 }

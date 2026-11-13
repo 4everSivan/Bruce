@@ -11,9 +11,6 @@ import SwiftUI
 /// 所有视觉差异包在 theme.interfaceStyle == .nothing 分支内, 其余主题走原路径.
 struct UsageHeroCard: View {
     let viewModel: UsageHeroViewModel
-    /// 面板窗口当前是否可见: orderOut 不销毁视图树, 装饰呼吸动画必须按此
-    /// 门控, 否则隐藏期间仍逐帧 layout + CA commit (实测主进程 ~40% CPU).
-    var panelVisible: Bool = true
     /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你摘要.
     var isCollapsed: Bool = false
     var onToggleCollapse: () -> Void = {}
@@ -21,7 +18,6 @@ struct UsageHeroCard: View {
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.motionSuppressed) private var motionSuppressed
-    @State private var heroBreathing = false
     /// 模型用量: 展开态与周期选择 (窗口档位 或 点击按月卡指定自然月).
     @State private var modelsExpanded = false
     @State private var modelSelection: ModelUsageSelection = .tier(0)
@@ -35,12 +31,10 @@ struct UsageHeroCard: View {
 
     init(
         viewModel: UsageHeroViewModel,
-        panelVisible: Bool = true,
         isCollapsed: Bool = false,
         onToggleCollapse: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
-        self.panelVisible = panelVisible
         self.isCollapsed = isCollapsed
         self.onToggleCollapse = onToggleCollapse
     }
@@ -181,14 +175,8 @@ struct UsageHeroCard: View {
     @ViewBuilder
     private var heroNumber: some View {
         if isNothing {
-            if DashboardPanelAnimationPolicy.allowsHero(
-                panelVisible: panelVisible,
-                motionSuppressed: motionSuppressed
-            ) {
-                animatedNothingHeroNumber
-            } else {
-                staticNothingHeroNumber
-            }
+            // C233: Hero 数字静态渲染, 不再呼吸 (透明度 / 缩放 / 光晕循环).
+            nothingHeroContent
         } else {
             Text(viewModel.totalTokensText)
                 .font(.system(size: 40, weight: .bold))
@@ -216,44 +204,6 @@ struct UsageHeroCard: View {
         .tracking(-1.04)
         .monospacedDigit()
         .foregroundStyle(Self.accent)
-    }
-
-    /// The hidden/reduced-motion branch contains no repeatForever animation.
-    private var staticNothingHeroNumber: some View {
-        nothingHeroContent
-            .opacity(motionSuppressed ? 1 : 0.86)
-            .scaleEffect(1)
-            .shadow(color: Self.accent, radius: motionSuppressed ? 0 : 3)
-    }
-
-    private var animatedNothingHeroNumber: some View {
-        nothingHeroContent
-            .opacity(heroBreathing ? 1 : 0.86)
-            .scaleEffect(heroBreathing ? 1.015 : 1)
-            .shadow(color: Self.accent, radius: heroBreathing ? 15 : 3)
-            .onAppear {
-                restartHeroBreathing()
-            }
-    }
-
-    /// Hero 数字呼吸 (仅面板可见且未启用 Reduce Motion 时挂载).
-    private func restartHeroBreathing() {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { heroBreathing = false }
-        startHeroBreathing()
-    }
-
-    private func startHeroBreathing() {
-        // C145: 即使挂载点已由 allowsHero 门控, 起播处仍再判一次,
-        // 保证应用内动效开关是唯一真源.
-        guard !motionSuppressed else {
-            heroBreathing = false
-            return
-        }
-        withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
-            heroBreathing = true
-        }
     }
 
     // MARK: 分隔线

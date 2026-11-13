@@ -60,33 +60,6 @@ private struct SpinningRefreshIcon: View {
     }
 }
 
-/// 顶部四色状态灯刷新呼吸脉冲 (C100): 仅在刷新中且面板可见时挂载,
-/// 面板隐藏或刷新结束即卸载, 严守 C044 隐藏态零持续动画门控.
-private struct PulsingStatusDot: View {
-    let dotColor: Color
-    @Environment(\.motionSuppressed) private var motionSuppressed
-    @State private var breathing = false
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(dotColor.opacity(breathing ? 0.35 : 0.12))
-                .frame(width: 12, height: 12)
-            Circle()
-                .fill(dotColor.opacity(breathing ? 1.0 : 0.42))
-                .frame(width: 6, height: 6)
-        }
-        .frame(width: 12, height: 12)
-        .onAppear {
-            // C145: 抑制动效时保持静态高亮, 不挂无限循环.
-            guard !motionSuppressed else { return }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                breathing = true
-            }
-        }
-    }
-}
-
 /// 菜单栏原生液态玻璃面板: 纵向卡片 (按 PanelViewModel 非 nil 渲染) + 底栏.
 /// 卡片栈包 ScrollView: 内容超出屏幕可用高度时封顶出滚动条, 不足时高度自适应;
 /// 底栏在滚动区外固定; 卡片全空时展示未配置引导.
@@ -433,33 +406,22 @@ struct MenuBarDashboardView: View {
     }
 
     /// 顶部四色状态灯 (C100): 绿 (ok) / 黄 (warn) / 红 (error) / 中性灰 (neutral),
-    /// 刷新中且面板可见时呼吸脉冲, 触碰显示状态原因 (.help + .accessibilityLabel).
+    /// 实时或刷新中带静态外圈光晕 (C233: 不再呼吸脉冲), 触碰显示状态原因 (.help + .accessibilityLabel).
     @ViewBuilder
     private func topHeaderStatusDot(status: DashboardStatusResolution, isLive: Bool) -> some View {
         let dotColor = statusDotColor(for: status.tone)
-        let shouldPulse = status.isRefreshing
-            && DashboardPanelAnimationPolicy.allowsHero(
-                panelVisible: model.dashboardPanelVisible,
-                motionSuppressed: motionSuppressed
-            )
 
-        Group {
-            if shouldPulse {
-                PulsingStatusDot(dotColor: dotColor)
-            } else {
-                ZStack {
-                    if isLive || status.isRefreshing {
-                        Circle()
-                            .fill(dotColor.opacity(0.25))
-                            .frame(width: 12, height: 12)
-                    }
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 6, height: 6)
-                }
-                .frame(width: 12, height: 12)
+        ZStack {
+            if isLive || status.isRefreshing {
+                Circle()
+                    .fill(dotColor.opacity(0.25))
+                    .frame(width: 12, height: 12)
             }
+            Circle()
+                .fill(dotColor)
+                .frame(width: 6, height: 6)
         }
+        .frame(width: 12, height: 12)
         .contentShape(Rectangle())
         .help(status.reason)
         .accessibilityElement(children: .ignore)
@@ -556,7 +518,6 @@ struct MenuBarDashboardView: View {
                 PanelCardContainer {
                     UsageHeroCard(
                         viewModel: usage,
-                        panelVisible: model.dashboardPanelVisible,
                         isCollapsed: false,
                         onToggleCollapse: {}
                     )
@@ -614,7 +575,6 @@ struct MenuBarDashboardView: View {
             PanelCardContainer {
                 UsageHeroCard(
                     viewModel: usage,
-                    panelVisible: model.dashboardPanelVisible,
                     isCollapsed: false,
                     onToggleCollapse: {}
                 )
@@ -714,7 +674,6 @@ struct MenuBarDashboardView: View {
                 PanelCardContainer {
                     UsageHeroCard(
                         viewModel: usage,
-                        panelVisible: model.dashboardPanelVisible,
                         isCollapsed: model.isCardCollapsed(.usage),
                         onToggleCollapse: { model.toggleCardCollapsed(.usage) }
                     )

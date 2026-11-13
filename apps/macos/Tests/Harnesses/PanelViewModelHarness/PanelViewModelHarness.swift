@@ -321,7 +321,6 @@ struct PanelViewModelHarness {
         try workbenchLegacyArtifactShowsDashesContracts()
         try billionTokenFormattingContracts()
         try subscriptionEmptyStatePolicyContracts()
-        try meterMotionPolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
         print("PanelViewModel tests passed: 69")
@@ -2676,67 +2675,6 @@ struct PanelViewModelHarness {
             )
         }
         #endif
-    }
-
-    /// C158: 更新动效的时长 / 曲线 / 门控单一来源; 弹簧零过冲, 隐藏或减弱时一律不播.
-    private static func meterMotionPolicyContracts() throws {
-        let expected: [(MeterMotionKind, MeterMotionCurve)] = [
-            (.fill, .spring(duration: 0.85, bounce: 0)),
-            (.percent, .spring(duration: 0.85, bounce: 0)),
-            (.balance, .spring(duration: 0.6, bounce: 0)),
-            (.levelCrossfade, .easeOut(duration: 0.34)),
-            (.thresholdColor, .easeOut(duration: 0.25)),
-            (.highlight, .easeOut(duration: 0.2)),
-            (.sheen, .timingCurve(c0x: 0.33, c0y: 0, c1x: 0.2, c1y: 1, duration: 0.85)),
-        ]
-        try expect(expected.count == MeterMotionKind.allCases.count, "每种动效都必须有断言")
-        for (kind, curve) in expected {
-            let visible = MeterMotionPolicy.curve(for: kind, panelVisible: true, motionSuppressed: false)
-            try expect(visible == curve, "\(kind) 曲线错误: \(String(describing: visible))")
-            if case let .spring(_, bounce) = curve {
-                try expect(bounce == 0, "\(kind) 弹簧必须零过冲")
-            }
-            for (panelVisible, motionSuppressed) in [(false, false), (true, true), (false, true)] {
-                try expect(
-                    MeterMotionPolicy.curve(
-                        for: kind,
-                        panelVisible: panelVisible,
-                        motionSuppressed: motionSuppressed
-                    ) == nil,
-                    "\(kind) 在隐藏或减弱动态时必须直接落值"
-                )
-            }
-        }
-        // 百分比与量条同一事务; 高光保持覆盖整段量条动画.
-        try expect(
-            MeterMotionPolicy.curve(for: .percent, panelVisible: true, motionSuppressed: false)
-                == MeterMotionPolicy.curve(for: .fill, panelVisible: true, motionSuppressed: false),
-            "百分比必须与量条同曲线"
-        )
-        try expect(
-            MeterMotionPolicy.highlightHoldSeconds >= MeterMotionCurve.spring(duration: 0.85, bounce: 0).duration,
-            "高光必须覆盖整段量条动画"
-        )
-
-        let playCases: [(Double, Double, Bool, Bool, Bool, String)] = [
-            (0.40, 0.42, true, false, true, "可见增长应播放"),
-            (0.42, 0.40, true, false, true, "可见下降应播放"),
-            (0.40, 0.4004, true, false, false, "同值抖动不空转"),
-            (0.40, 0.42, false, false, false, "面板隐藏不播放"),
-            (0.40, 0.42, true, true, false, "减弱动态不播放"),
-            (0.40, .nan, true, false, false, "非有限值不播放"),
-        ]
-        for (old, new, panelVisible, motionSuppressed, shouldPlay, message) in playCases {
-            try expect(
-                MeterMotionPolicy.shouldPlayUpdate(
-                    from: old,
-                    to: new,
-                    panelVisible: panelVisible,
-                    motionSuppressed: motionSuppressed
-                ) == shouldPlay,
-                message
-            )
-        }
     }
 
     /// C158: BalanceRow.amount 与 amountText 同源; 滚动方向取 amount, 展示仍以 amountText 为准.

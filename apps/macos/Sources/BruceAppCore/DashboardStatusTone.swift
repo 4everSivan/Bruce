@@ -22,7 +22,7 @@ package enum DashboardStatusTone: String, Codable, Equatable, Sendable, Comparab
     }
 }
 
-/// 顶部状态灯单一判定结果: 灯色 + 是否处于刷新呼吸脉冲 + 悬停原因文案.
+/// 顶部状态灯单一判定结果: 灯色 + 是否处于刷新中 + 悬停原因文案.
 package struct DashboardStatusResolution: Equatable, Sendable {
     package let tone: DashboardStatusTone
     package let isRefreshing: Bool

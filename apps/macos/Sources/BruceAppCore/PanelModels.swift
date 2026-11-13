@@ -991,6 +991,36 @@ package enum DashboardStackShortcutMotionPolicy {
     }
 }
 
+// MARK: - 卡片标题行几何 (C233)
+
+/// 卡片左边距与拖拽手柄的几何口径 (C233).
+///
+/// 拖拽手柄只在收起态出现. 它若占标题行的布局宽度, 标题就得在每次收放时横移让位;
+/// 因此手柄固定落在卡片左边距内, 标题全周期停在同一位置. 手柄宽度必须不超过左边距.
+package enum DashboardCardHeaderLayout {
+    /// 卡片内容左右边距 (pt), 同时是手柄可用的槽宽.
+    package static let cardHorizontalPadding: Double = 15
+    /// 手柄点阵列间距 (pt).
+    package static let handleDotSpacing: Double = 3
+    /// 手柄悬停底左右内边距 (pt).
+    package static let handleHorizontalPadding: Double = 3
+
+    /// 手柄单点边长: Nothing 方点 2pt, 其余主题圆点 2.2pt.
+    package static func handleDotSize(isNothing: Bool) -> Double {
+        isNothing ? 2 : 2.2
+    }
+
+    /// 手柄整体宽度: 两列点 + 列间距 + 左右内边距.
+    package static func handleWidth(isNothing: Bool) -> Double {
+        handleDotSize(isNothing: isNothing) * 2 + handleDotSpacing + handleHorizontalPadding * 2
+    }
+
+    /// 手柄是否完整落在卡片左边距内 (不压标题, 不出卡片).
+    package static func handleFitsGutter(isNothing: Bool) -> Bool {
+        handleWidth(isNothing: isNothing) <= cardHorizontalPadding
+    }
+}
+
 // MARK: - 面板容器
 
 package struct PanelViewModel: Equatable, Sendable {

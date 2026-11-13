@@ -82,9 +82,11 @@ struct NativeLifecycleHarness {
         try dashboardSettingsRouteOrdersCloseBeforeOpen()
         try swapHeightNeverClampsUnmeasuredContent()
         try stackShortcutMotionNeverAnimatesScroll()
+        try cardHeaderHandleStaysInsideCardGutter()
+        try decorativeDashboardMotionStaysRemoved()
         try welcomeOnboardingPresentationMatchesParityFixture()
         try launchAtLoginServiceMockAndStateTransitions()
-        print("Native lifecycle tests passed: 20")
+        print("Native lifecycle tests passed: 22")
     }
 
     /// C187: 仪表盘/气泡跳转设置中心的顺序固定为 关闭面板 → 写入深链 → 打开设置，
@@ -375,16 +377,71 @@ struct NativeLifecycleHarness {
         )
     }
 
+    /// C233: 拖拽手柄必须完整落在卡片左边距内 —— 手柄一旦宽过边距就得挤占标题行,
+    /// 标题又会在每次收放时横移.
+    private static func cardHeaderHandleStaysInsideCardGutter() throws {
+        for isNothing in [false, true] {
+            try expect(
+                DashboardCardHeaderLayout.handleWidth(isNothing: isNothing) > 0,
+                "drag handle must have a positive width (isNothing: \(isNothing))"
+            )
+            try expect(
+                DashboardCardHeaderLayout.handleFitsGutter(isNothing: isNothing),
+                "drag handle must fit inside the card gutter (isNothing: \(isNothing))"
+            )
+        }
+    }
+
+    /// C233: 已移除的装饰性动效不得回流到看板视图 (量条扫光 / 高光 / 入场生长、
+    /// 数字滚动、柱体生长、Hero 呼吸、状态灯脉冲、标题行接力淡入).
+    private static func decorativeDashboardMotionStaysRemoved() throws {
+        let appSources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // NativeLifecycleHarness.swift -> NativeLifecycleHarness/
+            .deletingLastPathComponent() // -> Harnesses/
+            .deletingLastPathComponent() // -> Tests/
+            .deletingLastPathComponent() // -> macos/
+            .appendingPathComponent("Sources/BruceApp")
+        let viewsDirectory = appSources.appendingPathComponent("Views")
+        var files = try FileManager.default
+            .contentsOfDirectory(at: viewsDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" && $0.lastPathComponent != "QuotaAlertBubbleView.swift" }
+        files.append(appSources.appendingPathComponent("MenuBarViews.swift"))
+        try expect(files.count > 4, "dashboard view sources must be found: \(files.count)")
+
+        let banned = [
+            "MeterMotionPolicy",
+            "contentTransition(.numericText",
+            "sheenPhase",
+            "animateEntrance",
+            "grownColumns",
+            "heroBreathing",
+            "PulsingStatusDot",
+            "miniSwapAnimation",
+            "statusSwapAnimation",
+        ]
+        for file in files {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            for token in banned {
+                try expect(
+                    !source.contains(token),
+                    "\(file.lastPathComponent) reintroduces removed decorative motion: \(token)"
+                )
+            }
+        }
+        // 看板里唯一允许的循环动画是底栏刷新图标.
+        let loops = try files.reduce(into: [String: Int]()) { counts, file in
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let count = source.components(separatedBy: ".repeatForever(").count - 1
+            if count > 0 { counts[file.lastPathComponent] = count }
+        }
+        try expect(
+            loops == ["MenuBarViews.swift": 1],
+            "only the footer refresh spinner may loop: \(loops)"
+        )
+    }
+
     private static func hiddenPanelDisablesAllDecorativeAnimations() throws {
-        try expect(
-            !DashboardPanelAnimationPolicy.allowsHero(panelVisible: false, motionSuppressed: false),
-            "a hidden panel must not mount hero animation"
-        )
-        try expect(
-            DashboardPanelAnimationPolicy.allowsHero(panelVisible: true, motionSuppressed: false),
-            "a visible panel may mount hero animation"
-        )
-        // C044 / TD-012: 三处遗留门控 —— 定向刷新进度指示 / 小时卡生长 / 滚动条压制
+        // C044 / TD-012: 定向刷新进度指示 / 滚动条压制 (Hero 呼吸与小时卡生长已随 C233 移除)
         try expect(
             !DashboardPanelAnimationPolicy.allowsRefreshProgress(panelVisible: false),
             "a hidden panel must not mount the provider refresh ProgressView"
@@ -392,27 +449,6 @@ struct NativeLifecycleHarness {
         try expect(
             DashboardPanelAnimationPolicy.allowsRefreshProgress(panelVisible: true),
             "a visible panel may mount the provider refresh ProgressView"
-        )
-        try expect(
-            !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
-                panelVisible: false,
-                motionSuppressed: false
-            ),
-            "a hidden panel must not run hourly column growth animation"
-        )
-        try expect(
-            !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
-                panelVisible: true,
-                motionSuppressed: true
-            ),
-            "reduce-motion must keep hourly growth off even when visible"
-        )
-        try expect(
-            DashboardPanelAnimationPolicy.allowsHourlyGrowth(
-                panelVisible: true,
-                motionSuppressed: false
-            ),
-            "a visible panel may run hourly column growth animation"
         )
         try expect(
             !DashboardPanelAnimationPolicy.allowsScrollIndicatorSuppression(

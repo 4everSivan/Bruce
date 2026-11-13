@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { analytics, boot, defaults, fixture, memoryStorage, settle } from "./dom.mjs";
 
 test("valid collector view model renders cards and keyboard-accessible collapse", async () => {
@@ -2758,87 +2758,51 @@ test("a failed open_settings withdraws the pending pane so the next normal open 
   assert.equal(storage.getItem("bruce_settings_pane"), null);
 });
 
-// ---------- C158: 渲染后补间的纯逻辑 ----------
+// ---------- C233: 看板只保留基础动效 ----------
 
-test("motion helpers tokenize amounts, detect skeleton changes, and expose stable keys (C158)", async () => {
+test("dashboard drops decorative update motion and keeps the title still (C233)", async () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+  const script = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+
+  // 渲染后补间层整体退役: 量条 / 分段 / 数字滚动直接落终值。
+  assert.equal(existsSync(new URL("../src/motion.js", import.meta.url)), false, "motion.js 已删除");
+  assert.doesNotMatch(page, /motion\.js/, "index.html 不再加载 motion.js");
+  assert.doesNotMatch(script, /BruceMotion|animatePanelMotion|\.animate\(/, "app.js 不再调用补间层或 WAAPI");
+  assert.doesNotMatch(css, /\.motion-(number|digit|lit|hold|in|out)/, "数字列滚动样式已移除");
+
+  // Hero 呼吸与状态灯脉冲退役; 刷新中仍保留静态外圈光晕。
+  assert.doesNotMatch(css, /nothing-hero-breathe|hudDotPulse/, "呼吸 / 脉冲关键帧已移除");
+  assert.match(css, /\.hud-dot-wrap\.refreshing::before\s*\{/, "刷新态静态光晕保留");
+
+  // 基础动效保留: 卷轴开合、Tab 定向滑动、刷新图标旋转。
+  for (const name of ["winCurtainEnter", "winCurtainExit", "cardSlideRight", "cardSlideLeft", "foot-spin"]) {
+    assert.ok(css.includes(`@keyframes ${name}`), `基础动效 ${name} 必须保留`);
+  }
+
+  // 拖拽手柄脱离标题行布局, 落在卡片左边距内: 标题收放前后位置不变。
+  const handleRule = css.match(/\.card-head \.drag-handle\s*\{([^}]*)\}/);
+  assert.ok(handleRule, "缺少 .card-head .drag-handle 规则");
+  assert.match(handleRule[1], /position:\s*absolute/);
+  assert.doesNotMatch(handleRule[1], /margin-right/);
+  const left = Number(handleRule[1].match(/left:\s*(-?[\d.]+)px/)[1]);
+  const width = Number(handleRule[1].match(/width:\s*([\d.]+)px/)[1]);
+  const padding = Number(handleRule[1].match(/padding:\s*[\d.]+px\s+([\d.]+)px/)[1]);
+  const gutter = Number(css.match(/\n\.card \{[^}]*padding:\s*[\d.]+px\s+([\d.]+)px/)[1]);
+  assert.ok(left < 0 && -left <= gutter, `手柄左缘不得出卡片: left ${left}, 边距 ${gutter}`);
+  assert.ok(left + width + padding * 2 <= 0, `手柄右缘不得压标题: ${left + width + padding * 2}`);
+  assert.match(css, /\.card-head \{\s*position:\s*relative/, "手柄以标题行为定位基准");
+
+  // 渲染结果: 不再打补间 key, 数值为纯文本。
   const app = await boot();
-  const motion = app.window.BruceMotion;
-  assert.ok(motion, "motion.js 必须在 app.js 之前加载");
-  const { tokenize, sameSkeleton, numericAmount, meterValues, balanceValues, percentValues } = motion.internals;
-
-  const tokens = tokenize("¥ 1,234.56");
-  assert.equal(tokens.filter((token) => token.digit).length, 6, "只把数字放进可滚动列");
-  assert.equal(tokens[0].value, "¥", "货币符号保持静态");
-
-  assert.equal(
-    sameSkeleton(tokenize("128.45"), tokenize("126.08")),
-    true,
-    "同位数同分隔符应逐位滚动",
-  );
-  assert.equal(
-    sameSkeleton(tokenize("999.99"), tokenize("1,000.12")),
-    false,
-    "位数/千分位变化应退化为整体换行",
-  );
-  assert.equal(numericAmount("¥ 1,234.56"), 1234.56, "方向解析忽略符号与千分位");
-
-  const meters = meterValues(fixture);
-  assert.ok(meters.size > 0, "旧面板必须能取出量条值");
-  const balances = balanceValues(fixture);
-  assert.ok([...balances.keys()].every((key) => key.endsWith("||bal") || key.endsWith("||chip")));
-  const percents = percentValues(fixture);
-  assert.ok(percents.size > 0, "旧面板必须能取出百分比文本");
-  assert.ok([...percents.keys()].every((key) => key.endsWith("||pct")));
-
-  assert.ok(
-    app.node("stack").querySelector(".win-row[data-motion-key]"),
-    "窗口行必须带稳定 motion key",
-  );
-  assert.ok(
-    app.node("stack").querySelector("[data-percent-key]"),
-    "百分比文本必须带稳定 percent key",
-  );
-});
-
-test("segment plan holds the start color during the stagger delay and only lists changed segments (C158)", async () => {
-  const app = await boot();
-  const { segmentPlan } = app.window.BruceMotion.internals;
-
-  const grow = segmentPlan(10, 40); // 2 → 10 段, 同为 normal
-  assert.deepEqual(Array.from(grow, step => step.index), [2, 3, 4, 5, 6, 7, 8, 9]);
-  assert.ok(grow.every(step => step.from === "empty" && step.to === "normal"));
-  assert.deepEqual(Array.from(grow, step => step.delay), [0, 6, 12, 18, 24, 30, 36, 42], "自交界处向外 6ms 错峰");
-  assert.ok(grow.every(step => step.fill === "backwards"), "delay 期间必须保持起点色, 不得先闪终值");
-  assert.ok(grow.every(step => step.duration === 140), "单段 0.14s (design/05 规则 34)");
-
-  const levelUp = segmentPlan(40, 60); // 10 → 14 段, normal → warning
-  assert.equal(levelUp.length, 14, "已亮段换档位色 + 新亮段");
-  assert.ok(levelUp.filter(step => step.index < 10).every(step => step.from === "normal" && step.to === "warning"));
-  assert.ok(levelUp.filter(step => step.index >= 10).every(step => step.from === "empty" && step.to === "warning"));
-  assert.ok(levelUp.every(step => step.fill === "backwards"));
-
-  const shrink = segmentPlan(60, 40);
-  assert.ok(shrink.filter(step => step.index >= 10).every(step => step.to === "empty"));
-  assert.equal(segmentPlan(41, 41).length, 0, "同值不空转");
-});
-
-test("renderer stamps exactly the motion keys the tween layer computes (C158)", async () => {
-  const app = await boot();
-  const { keys, internals } = app.window.BruceMotion;
   const stack = app.node("stack");
-  const meters = internals.meterValues(fixture);
-  const percents = internals.percentValues(fixture);
-  const balances = internals.balanceValues(fixture);
-  const stamped = attribute => [...stack.querySelectorAll(`[${attribute}]`)].map(node => node.getAttribute(attribute));
-
-  assert.ok(stamped("data-motion-key").length > 0);
-  for (const key of stamped("data-motion-key")) assert.ok(meters.has(key), `渲染器 key 补间层未知: ${key}`);
-  for (const key of stamped("data-percent-key")) assert.ok(percents.has(key), `百分比 key 补间层未知: ${key}`);
-  for (const key of stamped("data-balance-key")) assert.ok(balances.has(key), `余额 key 补间层未知: ${key}`);
-
-  // 收起行 / 迷你条的保留 key 不会与任何窗口 label 撞键。
-  assert.notEqual(keys.mini("kimi"), keys.meter("kimi", "", "mini"));
-  assert.notEqual(keys.collapsed("kimi"), keys.meter("kimi", "", "collapsed"));
+  for (const attribute of ["data-motion-key", "data-percent-key", "data-balance-key"]) {
+    assert.equal(stack.querySelector(`[${attribute}]`), null, `不再打 ${attribute}`);
+  }
+  assert.equal(stack.querySelector(".motion-number"), null);
+  const percent = stack.querySelector(".win-row .wp");
+  assert.ok(percent, "窗口行百分比存在");
+  assert.match(percent.textContent, /^\d+%$/, "百分比为纯文本终值");
 });
 
 // ---------- C159: 订阅额度预警气泡微卡 ----------

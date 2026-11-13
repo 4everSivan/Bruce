@@ -26,9 +26,7 @@ struct HourlyLineCard: View {
     var isRefreshing: Bool = false
     /// 14 日柱当前悬停的日期列 (经典 / 液态玻璃柱顶总量与 Nothing 点阵柱共用).
     @State private var hoveredDayDate: String?
-    /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
-    @State private var grownColumns: Set<String> = []
-    /// 面板可见性 (C044): 隐藏时生长动画直接落定终值, 不播动画.
+    /// 面板可见性 (C044): 隐藏时不挂载刷新进度环.
     var panelVisible: Bool = true
     @Environment(\.motionSuppressed) private var motionSuppressed
     /// 展开态正文的自然高度 (C148); 折叠时容器按显式高度动画收到 0.
@@ -277,7 +275,7 @@ struct HourlyLineCard: View {
                     ForEach(day.segments, id: \.agentID) { segment in
                         BarMark(
                             x: .value("日期", day.date),
-                            y: .value("Tokens", grownColumns.contains(day.date) ? segment.value : 0)
+                            y: .value("Tokens", segment.value)
                         )
                         .foregroundStyle(Color(hex: segment.color.hex))
                         .cornerRadius(1.5)
@@ -291,7 +289,7 @@ struct HourlyLineCard: View {
                 }
             }
         }
-        // 固定 Y 域, 生长动画期间已出现的列不会因新列出现而重新缩放.
+        // 固定 Y 域, 各列按同一比例尺呈现.
         // C218: 顶部留 20% 余量给最高柱的 .annotation(.top) 总量标注, 避免被
         // chart frame 裁掉上半截; 最高柱约 83% 高.
         .chartYScale(domain: 0...(Double(maxDayTotal) * 1.20))
@@ -323,13 +321,6 @@ struct HourlyLineCard: View {
                         }
                     }
             }
-        }
-        // 面板 hosting view 常驻 (orderOut 不销毁视图层级), 日期轴每天右移一列;
-        // 裸 .task 只在首次出现跑一次, 新日期永远进不了 grownColumns,
-        // 柱体会停在 0 而标注照常显示 ("有数字无柱状"). 按 日期轴 为 id,
-        // 轴变化时重跑: 已生长列的 insert 是 no-op, 只有新列补播生长.
-        .task(id: dailyDays.map(\.date)) {
-            await growColumns()
         }
     }
 
@@ -446,28 +437,6 @@ struct HourlyLineCard: View {
             // C222: 默认隐藏, 悬停该日期列才显示; 标注仍参与布局, 显隐不改变柱高.
             .opacity(hoveredDayDate == day.date ? 1 : 0)
             .animation(motionSuppressed ? nil : .easeOut(duration: 0.12), value: hoveredDayDate)
-    }
-
-    /// 逐列延迟 0.03 秒把列值从 0 推到真实值, 形成自下而上的生长动画;
-    /// Reduce Motion 或面板隐藏 (C044) 时直接全部就位. 幂等: 已生长的列直接跳过
-    /// (含 sleep), 因此日期轴变化触发重跑时只补播缺失列, 旧列不会重播动画.
-    private func growColumns() async {
-        if !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
-            panelVisible: panelVisible,
-            motionSuppressed: motionSuppressed
-        ) {
-            grownColumns = Set(dailyDays.map(\.date))
-            return
-        }
-        for day in dailyDays where !grownColumns.contains(day.date) {
-            try? await Task.sleep(for: .milliseconds(30))
-            guard !Task.isCancelled else {
-                return
-            }
-            withAnimation(motionSuppressed ? nil : .easeOut(duration: 0.5)) {
-                _ = grownColumns.insert(day.date)
-            }
-        }
     }
 
     /// 日期轴: 左 14 天前, 中 7 天前, 右今天.
