@@ -44,8 +44,8 @@
     ".marquee-group",
     ".record-heat",
     ".record-copy",
-    ".egress-grid",
-    ".analysis-grid",
+    ".eg-band",
+    ".wb-stage",
     ".colophon__download",
     ".colophon__top",
   ];

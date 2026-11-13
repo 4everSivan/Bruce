@@ -280,91 +280,77 @@
       <div class="section__head">
         <p class="section__eyebrow section__eyebrow--night"><span class="dot" aria-hidden="true"></span><span class="idx">04</span><span class="name">网络出口保护</span></p>
         <div class="section__title">
-          <h2 class="night__statement" id="egress-title">查额度之前，<b class="hl">先看出口</b></h2>
-          <p class="label label--night section__kicker">云端额度查询，是它唯一向外发的请求</p>
+          <h2 class="h2" id="egress-title">先核验出口国家，<b class="hl">再查订阅余额。</b></h2>
         </div>
       </div>
 
-      <div class="egress-grid">
-        <div class="egress-copy">
-          <p class="egress-lede">服务商对访问来源的风控越来越严。代理掉线、节点漂移、TUN 断线后回退直连——任何一次「不小心用国内 IP 查额」，都可能让账号进风控名单。</p>
-          <p class="body-copy">Bruce 把这一步放到查额之前：先经你为本机代理准备的专用端口，请求 Cloudflare Trace 拿到出口 IP 与国家码；确认与预设国家一致，才发出查额请求。</p>
-          <p class="body-copy">判定为国内出口、国家不符，或者探测超时——一律拦截，不发请求。</p>
-          <ul class="egress-rules">
-            <li><span>只作用于</span>云端订阅额度查询</li>
-            <li><span>不代理</span>任何 Agent 对话流量</li>
-            <li><span>不修改</span>你的代理配置</li>
-          </ul>
+      <!-- 01 · 运行时拦截 -->
+      <div class="eg-band" id="egress-effect">
+        <div class="eg-band__grid eg-band__grid--effect">
+          <div class="eg-copy">
+            <div>
+              <span class="eg-kicker">01 / 运行时拦截</span>
+              <h3 class="eg-h3">节点不对，<em>就停在快照上。</em></h3>
+              <p class="eg-prose">
+                代理漂移或误走直连时，受保护的订阅会在查询前被即时拦截，原有额度快照与配色原样保留。
+              </p>
+            </div>
+
+            <ul class="eg-notes">
+              <li>
+                <span class="eg-notes__idx">01</span>
+                <div><strong>保留上次有效快照</strong>仅中止本轮查额请求，不清空已有百分比进度、重置时间与阈值配色。</div>
+              </li>
+              <li>
+                <span class="eg-notes__idx">02</span>
+                <div><strong>卡片内嵌单行告警</strong>在受影响服务商标题下提示出口异常，可直接点「去设置」或「重测」就地恢复。</div>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <div class="eg-spec" id="eg-specimen" role="group" aria-label="ChatGPT 与 Claude 订阅卡片叠放出口保护交互样张"></div>
+          </div>
         </div>
-
-        <figure class="egress-flow">
-          <div class="egress-flow__head">
-            <span>查额前的三道闸</span>
-            <span>样例 · 预期 JP</span>
-          </div>
-          <ol class="egress-steps">
-            <li>
-              <span class="egress-step__n">01</span>
-              <div>
-                <h3>专用端口</h3>
-                <p>每个国家组绑定一个本机回环端口，例如 <code>18081</code>，在代理里指向固定节点。</p>
-              </div>
-            </li>
-            <li>
-              <span class="egress-step__n">02</span>
-              <div>
-                <h3>探测出口</h3>
-                <p>经该端口请求 Trace 端点，读回脱敏 IP 与两位国家码；2.5–3 秒超时。</p>
-              </div>
-            </li>
-            <li>
-              <span class="egress-step__n">03</span>
-              <div>
-                <h3>放行或拦截</h3>
-                <p>国家一致才发查额请求；国内出口、国家不符、探测失败，一律拦下。</p>
-              </div>
-            </li>
-          </ol>
-
-          <div class="egress-outcomes">
-            <div class="egress-out egress-out--ok">
-              <span class="egress-out__badge">🇯🇵</span>
-              <div>
-                <b>放行</b>
-                <p>订阅卡标题行出现低对比国旗微标，正常更新额度。</p>
-              </div>
-            </div>
-            <div class="egress-out egress-out--block">
-              <span class="egress-out__badge">⚠️</span>
-              <div>
-                <b>出口 IP 泄漏</b>
-                <p>单行问题卡：已拦截查额以保护账号，保留合格历史快照。</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="egress-cards">
-            <div>
-              <span>阻断 ≠ 失效</span>
-              <p>不判凭证失效、不删凭据、不误报重新登录。</p>
-            </div>
-            <div>
-              <span>只保留快照</span>
-              <p>额度显示为「已保护」，重置时间列显示「已拦截」。</p>
-            </div>
-            <div>
-              <span>未分组零干扰</span>
-              <p>没有加入国家组的服务，界面没有任何出口标识。</p>
-            </div>
-          </div>
-
-          <figcaption class="egress-note">前提：你需要在代理里为该端口绑定固定节点；探测只能证明探测那一刻的出口，Bruce 不宣称绝对安全。样例数据。</figcaption>
-        </figure>
       </div>
 
-      <div class="night__foot">
-        <span>不代理 · 不改配置 · 不判失效</span>
-        <span>移出国家组不会删除凭据</span>
+      <!-- 02 · 检测方法 -->
+      <div class="eg-band eg-band--divided" id="egress-config">
+        <div class="eg-band__grid eg-band__grid--config">
+          <div>
+            <div id="eg-settings" role="group" aria-label="Bruce 设置出口IP检查交互样张"></div>
+          </div>
+
+          <div class="eg-copy">
+            <div>
+              <span class="eg-kicker">02 / 检测方法</span>
+              <h3 class="eg-h3">经专用端口探 Trace，<br /><em>国家一致才放行。</em></h3>
+              <p class="eg-prose">
+                仅在请求订阅额度前核验出口国家，不代理对话流量、不改写代理配置；未入组服务保持原样放行。
+              </p>
+            </div>
+
+            <ul class="eg-notes">
+              <li>
+                <span class="eg-notes__idx">01</span>
+                <div><strong>Cloudflare Trace 端口探测</strong>查额前强制经该组绑定端口（如 <code>127.0.0.1:18081</code>）请求 <code>cdn-cgi/trace</code>，严校证书、禁重定向且超时 <code>2.5–3s</code>，解析 <code>loc</code> 国家码与脱敏 IP，绝不回退直连。</div>
+              </li>
+              <li>
+                <span class="eg-notes__idx">02</span>
+                <div><strong>两级判定与同轮合并</strong>先做 <code>CN</code> 出口快速熔断，再精确比对目标国家码；超时、未知或错区一律拦截并保留快照。同端口下多个订阅同轮次仅探测 <code>1</code> 次。</div>
+              </li>
+              <li>
+                <span class="eg-notes__idx">03</span>
+                <div><strong>静态节点 Listener 前提</strong>探测仅验证当前连接出口；动态选路与按域分流端口无法保证查额同路，需在代理客户端为该端口锁定固定国家节点。</div>
+              </li>
+            </ul>
+
+            <div class="eg-sync-note" id="eg-sync-note" hidden>
+              <span>✓ <b>JP 通道已匹配</b>（203.104.***.***），上方拦截已解除。</span>
+              <a href="#egress-effect" class="eg-link-up">↑ 查看效果</a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -374,70 +360,15 @@
        ============================================================ -->
   <section class="section" id="analysis" aria-labelledby="analysis-title">
     <div class="shell">
-      <div class="section__head">
+      <div class="section__head wb-head">
         <p class="section__eyebrow"><span class="dot" aria-hidden="true"></span><span class="idx">05</span><span class="name">用量分析</span></p>
         <div class="section__title">
           <h2 class="h2" id="analysis-title">总量之外，<b class="hl">还能往下翻</b></h2>
         </div>
+        <p class="wb-intro">以下完整还原了 Bruce「设置 › 模型用量」工作台——从五档时间跨度、交互式时序趋势到跨渠道规范模型归并、Agent 工程下钻、Prompt Cache 四象限与 24 小时交互密度，全部基于本机只读探针实时核算。</p>
       </div>
 
-      <div class="analysis-grid">
-        <div class="analysis-copy">
-          <h3 class="h3">四个数字，<br />五档跨度。</h3>
-          <p class="body-copy">今日、近 7 天、近 30 天、本月、全部历史——同一份本机会话，换一个窗口就是另一种问题：今天谁在烧钱，这个月哪个模型最费。</p>
-          <ul class="analysis-points">
-            <li><span class="k">总 Token</span><span class="v">586.6M</span></li>
-            <li><span class="k">费用</span><span class="v">¥334.15</span></li>
-            <li><span class="k">缓存收益</span><span class="v">¥1,284.60</span></li>
-            <li><span class="k">活跃 Agent</span><span class="v">4</span></li>
-          </ul>
-          <p class="panel-hint">所有会话仅在本机解析，绝不上报远程服务器。样例数据。</p>
-        </div>
-
-        <div class="analysis-figure">
-          <div class="analysis-figure__head">
-            <div class="analysis-seg" role="group" aria-label="时间跨度（样例）">
-              <span>今日</span><span>近 7 天</span><span class="is-on">近 30 天</span><span>本月</span><span>全部历史</span>
-            </div>
-            <span class="analysis-figure__meta">近 30 天 · 峰值 586.6M（11 月 4 日）</span>
-          </div>
-
-          <svg class="analysis-chart" viewBox="0 0 720 184" preserveAspectRatio="none" role="img"
-               aria-label="近 30 天 token 用量趋势（样例）">
-            <polygon class="area" points="12,170 12.0,106.7 36.0,99.9 60.0,108.2 84.0,85.2 108.0,71.1 132.0,96.2 156.0,118.7 180.0,111.4 204.0,88.3 228.0,68.4 252.0,54.3 276.0,79.4 300.0,102.5 324.0,93.6 348.0,74.7 372.0,56.4 396.0,37.0 420.0,66.3 444.0,91.0 468.0,82.1 492.0,63.7 516.0,46.5 540.0,73.7 564.0,95.7 588.0,85.7 612.0,59.0 636.0,29.7 660.0,41.7 684.0,67.4 708.0,14.0 708,170" />
-            <polyline class="line" points="12.0,106.7 36.0,99.9 60.0,108.2 84.0,85.2 108.0,71.1 132.0,96.2 156.0,118.7 180.0,111.4 204.0,88.3 228.0,68.4 252.0,54.3 276.0,79.4 300.0,102.5 324.0,93.6 348.0,74.7 372.0,56.4 396.0,37.0 420.0,66.3 444.0,91.0 468.0,82.1 492.0,63.7 516.0,46.5 540.0,73.7 564.0,95.7 588.0,85.7 612.0,59.0 636.0,29.7 660.0,41.7 684.0,67.4 708.0,14.0" />
-          </svg>
-          <div class="analysis-chart__axis"><span>10/6</span><span>10/13</span><span>10/20</span><span>10/27</span><span>11/4</span></div>
-
-          <div class="analysis-rows">
-            <div class="analysis-row">
-              <span class="k">Kimi K3</span>
-              <span class="bar"><i style="width:36%"></i></span>
-              <span class="v">35.5%</span>
-            </div>
-            <div class="analysis-row">
-              <span class="k">DeepSeek V4.1</span>
-              <span class="bar"><i style="width:26%"></i></span>
-              <span class="v">26.1%</span>
-            </div>
-            <div class="analysis-row">
-              <span class="k">GPT-6.1</span>
-              <span class="bar"><i style="width:22%"></i></span>
-              <span class="v">21.6%</span>
-            </div>
-            <div class="analysis-row">
-              <span class="k">Claude Fable 5.1</span>
-              <span class="bar"><i style="width:7%"></i></span>
-              <span class="v">7.0%</span>
-            </div>
-          </div>
-
-          <div class="analysis-figure__foot">
-            <span>模型分布 · 跨渠道归并</span>
-            <span>导出 CSV / JSON</span>
-          </div>
-        </div>
-      </div>
+      <div class="wb-stage" id="analysis-workbench" role="region" aria-label="Bruce 设置 模型用量工作台交互还原"></div>
     </div>
   </section>
 
@@ -529,6 +460,8 @@
 
 <script src="js/data.js"></script>
 <script src="js/panel.js"></script>
+<script src="js/egress.js"></script>
+<script src="js/analysis.js"></script>
 <script src="js/site.js"></script>
 <script src="js/preview-fallback.js"></script>
 </body>
