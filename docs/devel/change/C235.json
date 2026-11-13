@@ -4,7 +4,7 @@
   "title": "Token 用量卡收起态右侧由近 7 天迷你热力条改为方案 A4 摘要：缓存命中率 + 估算费用与较昨日 / 省费 / 本月次行（双端）",
   "version": "0.17.1",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C235-usage-collapsed-summary",
   "is_hotfix": false,
   "target": {
@@ -108,8 +108,8 @@
     "version": "1.7.0",
     "ran_at": "2026-11-13",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "确认",
     "signed_rejection_count": 0
   }
