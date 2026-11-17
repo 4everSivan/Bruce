@@ -218,7 +218,7 @@
     "C241": {
       "title": "「专用代理需要认证」被当作瞬态失败自动退避重试：探测层认定重试无意义，策略层与调度器却仍按 90/180/300 秒重查",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C241-egress-proxy-auth-not-transient",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
