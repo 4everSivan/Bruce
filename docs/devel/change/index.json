@@ -191,7 +191,7 @@
     "C238": {
       "title": "瞬态出口探测退避耗尽后未回到正常刷新节奏：plan 对无 egressRetryAt 的瞬态失败每轮都判 due",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C238-egress-retry-exhausted-cadence",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
