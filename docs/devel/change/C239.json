@@ -4,7 +4,7 @@
   "title": "出口探测把真实超时误报为「专用代理不可达」：ureq 读超时（ErrorKind::Io）被归入 EGRESS_PROXY_UNREACHABLE，EGRESS_PROBE_TIMEOUT 几乎不可达",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C239-egress-timeout-classification",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "cargo test --manifest-path core/collector/Cargo.toml -p collector-provider stalled_proxy_read_timeout_is_not_proxy_unreachable",
     "expected": "修复前该用例失败（返回 EGRESS_PROXY_UNREACHABLE）；若通过则记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 fix/C239-egress-timeout-classification（基于 main e3f7a68）：先加 tests_proxy 回环用例运行（预检命令同名用例），stalled_proxy_read_timeout_is_not_proxy_unreachable 失败：left \"EGRESS_PROXY_UNREACHABLE\" / right \"PROVIDER_TRANSPORT_ERROR\"（耗时约 1.5 秒，即客户端 1 秒超时后归类错误），407 / 502 两例修复前即通过；缺陷确认存在，is_completed=false。"
   },
   "callback": {
     "before": [
@@ -38,13 +38,13 @@
     {
       "scope": "传输层超时识别",
       "before": "send_with 在 classify_proxy_errors=true 时只看 ureq::ErrorKind，Io 与 ConnectionFailed 不区分底层原因。",
-      "after": "分类前沿 std::error::Error::source 链查找 io::Error：kind 为 TimedOut 或 WouldBlock 时不归入代理不可达，保留 PROVIDER_TRANSPORT_ERROR（由 egress.rs::classify_transport 的缺省分支映射为 ProbeError::Timeout → EGRESS_PROBE_TIMEOUT）；连接被拒绝、DNS、CONNECT 非 2xx、TLS 握手失败等仍为 EGRESS_PROXY_UNREACHABLE，407/401 仍为 EGRESS_PROXY_AUTH。超时判定封装为一个私有函数并配单测。",
+      "after": "分类前沿 std::error::Error::source 链查找 io::Error：kind 为 TimedOut 或 WouldBlock 时不归入代理不可达，保留 PROVIDER_TRANSPORT_ERROR（由 egress.rs::classify_transport 的缺省分支映射为 ProbeError::Timeout → EGRESS_PROBE_TIMEOUT）；连接被拒绝、DNS、CONNECT 非 2xx、TLS 握手失败等仍为 EGRESS_PROXY_UNREACHABLE，407/401 仍为 EGRESS_PROXY_AUTH。超时判定封装为一个私有函数并配单测。（执行 2026-11-16）实现为 collector-provider/src/lib.rs 私有函数 is_transport_timeout，在 ProxyUnauthorized 之后、代理不可达各类之前判定；消息为「Provider 网络请求超时」。核对 ureq 2.12.1 源码：连接超时为 ConnectionFailed + io TimedOut、读写超时与整体时限为 Io + TimedOut / WouldBlock（stream.rs 将 WouldBlock 规范化为 TimedOut 的路径与套接字直读路径均覆盖），CONNECT 407 → ProxyUnauthorized、其余非 200 → ProxyConnect。egress.rs::classify_transport 缺省分支已将 PROVIDER_TRANSPORT_ERROR 映射为 ProbeError::Timeout，未改动。",
       "impact": "collector-provider/src/lib.rs：send_with；collector-application/src/egress.rs::classify_transport 无需改动（核对映射）。"
     },
     {
       "scope": "放行后额度请求的错误码",
       "before": "ProxyHttpClient 转发额度请求时同样启用分类：出口已 allowed 的 service 在额度接口超时后带 EGRESS_PROXY_UNREACHABLE 诊断。",
-      "after": "超时不再被归为代理错误后，额度接口超时回到 PROVIDER_TRANSPORT_ERROR；连接级错误（代理中途退出）仍保留代理分类。核对 finalize_outcome / failureKind 与 mac、Windows 展示层不依赖这些代码区分行为，并在 evidence 记录核对结果。",
+      "after": "超时不再被归为代理错误后，额度接口超时回到 PROVIDER_TRANSPORT_ERROR；连接级错误（代理中途退出）仍保留代理分类。核对 finalize_outcome / failureKind 与 mac、Windows 展示层不依赖这些代码区分行为，并在 evidence 记录核对结果。（执行核对 2026-11-16）execution.rs 仅在出口探测失败时经 egress_error 写入 egress.reason；放行后额度请求的错误码只进入 diagnostics，egress 状态保持 allowed，failureKind 由 provider finalize 按可重试网络错误给出 network；mac 出口徽标（ArtifactModels / EgressAlertEvaluator）只读 egress.reason，Windows 无出口保护。新增 tests_quota allowed_quota_request_timeout_keeps_transport_error_code：探测给 JP 放行、额度请求经真实 UreqHttpClient 走不应答回环端口（externalRequestSeconds=1），断言 diagnostics 含 PROVIDER_TRANSPORT_ERROR 且无 EGRESS_*、egress allowed、failureKind network；撤掉 lib.rs 修复时实测失败（diagnostics 为 [\"EGRESS_PROXY_UNREACHABLE\"]）。",
       "impact": "collector-application/src/execution.rs（仅核对）；tests_quota.rs 增「放行后额度请求超时 → PROVIDER_TRANSPORT_ERROR」用例。"
     },
     {
@@ -64,8 +64,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261116-04",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -73,29 +73,29 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的不应答 / 407 / 502 / 双超时用例全部通过，且在修复前「不应答」用例失败",
         "false_if": "任一测试失败，或用例依赖外网",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 fix/C239-egress-timeout-classification：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 632 通过 / 0 失败；19 个 Harness 全绿，Onboarding 180，RefreshScheduler 打印 129 为 main 上写死的旧标签；日志 local/C239-verify-local.log）。新增用例：tests_proxy stalled_proxy_read_timeout_is_not_proxy_unreachable（修复前失败）、proxy_connect_407_is_classified_as_proxy_auth、proxy_connect_502_is_classified_as_proxy_unreachable、timeout_detection_walks_the_source_chain（TimedOut / WouldBlock 为超时，ConnectionRefused / ConnectionReset / InvalidData 不是）；egress transport_timeouts_on_both_beacons_are_probe_timeout（主备两次 PROVIDER_TRANSPORT_ERROR → ProbeError::Timeout 且依次请求主、备信标）；tests_quota allowed_quota_request_timeout_keeps_transport_error_code（修复前失败）。全部回环监听器 / 夹具，无外网。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "Release collector 经一个接受连接但不转发的本机端口探测，artifact 的 egress.reason 为 EGRESS_PROBE_TIMEOUT、看板徽标为「探测失败」；指向未监听端口仍为 EGRESS_PROXY_UNREACHABLE；另经真实专用代理单独请求备用信标 https://1.1.1.1/cdn-cgi/trace 一次，确认证书校验通过并能解析 loc（C236 仅以 mock 覆盖该路径）",
         "false_if": "超时仍显示代理不可达，或备用信标在真实网络下无法完成握手/解析",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 本机：① local/egress-drill/fake-proxy.mjs 在 59996 接受连接、读请求后不应答，本分支 Release Bruce-collector 经该端口探测：diagnostics EGRESS_PROBE_TIMEOUT，service egress.reason=EGRESS_PROBE_TIMEOUT 并阻断，单轮耗时 10.69 秒（主 3 秒 + 退避 0.4 秒 + 备 5 秒 + 进程开销），日志 c239-stall.log；看板「探测失败」徽标映射由 RefreshSchedulerHarness egressRetryHintAndBadges 覆盖（未在已安装 App 上查看）。② 指向未监听端口 59999 仍为 EGRESS_PROXY_UNREACHABLE（c239-unreachable.log）。③ 经本机专用代理 127.0.0.1:7897 用与探测同一传输（UreqHttpClient::send_via_loopback_proxy，rustls 严格校验证书；local/egress-drill/src/bin/beacon.rs）单独请求备用信标 https://1.1.1.1/cdn-cgi/trace 一次：status 200、loc=US、707 ms，证书校验与解析通过。注：lsof（非 sudo）看不到 7897 的监听进程，但连接成功。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "直连查额（classify_proxy_errors=false）错误码不变；主信标超时仍触发备用信标重试；瞬态集合与退避（C237/C238）不受影响；EgressRouteTester 设置页文案不变",
         "false_if": "直连路径错误码变化，或超时不再触发备用信标重试",
-        "evidence": "",
-        "result": null
+        "evidence": "直连查额：send() 走 classify_proxy_errors=false，错误码一律 PROVIDER_TRANSPORT_ERROR，本卡只改专用代理分支；主信标超时触发备用信标：transport_timeouts_on_both_beacons_are_probe_timeout 断言主、备依次请求，retries_with_fallback_beacon_after_transient_failure 仍通过；瞬态集合与退避：本分支未改 collector-policy，EGRESS_PROBE_TIMEOUT 本就在瞬态集合内（与 C237/C238 无代码重叠）；EgressRouteTester 设置页文案未改动（本分支无 apps/macos 改动）。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },

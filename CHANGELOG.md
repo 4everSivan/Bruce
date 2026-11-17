@@ -25,6 +25,10 @@
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
 ### Fixed
+- **出口探测把真实超时误报为「专用代理不可达」 ([C239](docs/devel/change/C239.json))**：
+  - **现象**：ureq 把读超时包成 `ErrorKind::Io`，C236 的分类把它与连接失败一并归为 `EGRESS_PROXY_UNREACHABLE`；代理正常、信标偶发超时（C236 立项场景）时看板显示「代理不可达」，把排查引向错误方向，`EGRESS_PROBE_TIMEOUT` 几乎不可达；出口放行后的额度接口超时也被记成「专用代理连接失败」；
+  - **修复**：专用代理传输分类前沿错误 `source` 链查找 `io::Error`，`TimedOut` / `WouldBlock` 保留 `PROVIDER_TRANSPORT_ERROR`（探测层主备两次都超时即 `EGRESS_PROBE_TIMEOUT`，放行后的额度超时不再带 `EGRESS_*` 代码）；连接被拒、DNS、CONNECT 非 2xx、TLS 失败仍为代理不可达，407 仍为代理需认证；直连查额错误码不变；
+  - **验证**：回环监听器覆盖「接受后不应答 / 407 / 502」与放行后额度超时，修复前「不应答」两例实测为 `EGRESS_PROXY_UNREACHABLE`；Release collector 经不应答端口实测 `EGRESS_PROBE_TIMEOUT`、未监听端口仍为 `EGRESS_PROXY_UNREACHABLE`；经本机专用代理单独请求备用信标 `1.1.1.1` 一次：200、`loc=US`、证书校验通过。
 - **出口探测瞬态失败自愈与错误分类 ([C236](docs/devel/change/C236.json))**：
   - **现象**：出口探测每次新建连接且只有一次机会、硬超时 3 秒，本机 Release collector 实测 10 次出现 1 次 3.06 秒超时即判失败；失败又被写入 `quotaAttemptedAt`，使该 provider 在默认 30 分钟刷新间隔内被跳过并持续展示阻断；代理不可达、需认证、信标非 200 与真超时统一显示「探测失败」；
   - **探测重试**：主信标 3 秒失败后，退避 400ms 改用 `1.1.1.1` 备用信标再试一次（最长 5 秒），两次都失败才阻断；同轮同端口仍共享一次最终结论，国家决策（CN/不匹配）不在探测层重试；
