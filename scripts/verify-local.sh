@@ -128,6 +128,31 @@ node "$BRUCE_REPO_ROOT/scripts/check-change-ledger.mjs"
 echo "校验官网源码与仓库事实源同步 (T27)"
 node "$BRUCE_REPO_ROOT/scripts/check-site-sync.mjs"
 
+# 顶层 tests/unit 契约测试 (C242): 按文件通配传给 node --test (传目录在当前 Node 版本下
+# 会被当作单个失败用例); 先自检 tests/unit 下没有未被通配命中的测试文件, 防止命名漂移后
+# 静默漏跑。tests/benchmark 为手动基准, 不进门禁。
+echo "运行顶层 Node 契约单元测试 (tests/unit, C242)"
+BRUCE_UNIT_TESTS=("$BRUCE_REPO_ROOT"/tests/unit/*.test.mjs(N))
+if (( ${#BRUCE_UNIT_TESTS} == 0 )); then
+  echo "tests/unit 下未找到 *.test.mjs" >&2
+  exit 1
+fi
+BRUCE_UNIT_MISSED=()
+for BRUCE_UNIT_FILE in "$BRUCE_REPO_ROOT"/tests/unit/**/*(N.); do
+  case ${BRUCE_UNIT_FILE:t} in
+    *test*|*spec*)
+      if (( ! ${BRUCE_UNIT_TESTS[(Ie)$BRUCE_UNIT_FILE]} )); then
+        BRUCE_UNIT_MISSED+=("${BRUCE_UNIT_FILE#$BRUCE_REPO_ROOT/}")
+      fi
+      ;;
+  esac
+done
+if (( ${#BRUCE_UNIT_MISSED} > 0 )); then
+  echo "tests/unit 存在未被 *.test.mjs 通配命中的测试文件 (会被静默漏跑): ${BRUCE_UNIT_MISSED[*]}" >&2
+  exit 1
+fi
+node --test "${BRUCE_UNIT_TESTS[@]}"
+
 echo "运行 Panel 视图模型双端对拍 Harness"
 "$BRUCE_SWIFT_BIN_DIR/PanelParityHarness" "$BRUCE_REPO_ROOT"
 
