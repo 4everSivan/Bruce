@@ -194,7 +194,7 @@ scripts/adflow-verify --card <卡号> --receipt
 
 | 命令 | 用途 |
 |---|---|
-| `zsh scripts/verify-local.sh` | **标准本地全量验证**：Rust fmt / test / clippy + JSON fixture 语法与敏感扫描 + Swift build + 全部 Harness 测试（`apps/macos/Package.swift` 中每个 `*Harness` target，当前 19 个；脚本校验无遗漏） |
+| `zsh scripts/verify-local.sh` | **标准本地全量验证**：Rust fmt / test / clippy + JSON fixture 语法与敏感扫描 + Swift build + 全部 Harness 测试（`apps/macos/Package.swift` 中每个 `*Harness` target，当前 19 个；脚本校验无遗漏）+ 顶层 Node 契约测试（`node --test tests/unit/*.test.mjs`，含漏跑自检，C242） |
 | `cargo test --manifest-path core/collector/Cargo.toml --workspace` | Rust Collector 单元与集成测试 |
 | `zsh scripts/check-collector-fixtures.sh` | 测试 fixture 语法校验与敏感凭证扫描 |
 | `zsh scripts/check-no-python-assets.zsh` | 仓库内禁 Python 资产门禁（含自检；白名单仅 `scripts/adflow_verify.py`） |
