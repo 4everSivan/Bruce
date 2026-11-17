@@ -4,7 +4,7 @@
   "title": "顶层 tests/unit 的 22 项 Node 契约测试未接入任何门禁：verify-local.sh 与 CI 都不运行，回归无法被发现",
   "version": "0.17.1",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "chore/C242-wire-top-level-unit-tests",
   "is_hotfix": false,
   "target": {
@@ -63,14 +63,14 @@
   "verification": {
     "result": true,
     "run_id": "local-20261116-07",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "Go with your recommendation on everything.",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "verify-local.sh Exit 0 且日志中出现 tests/unit 的 22 项通过；人为改坏任一契约断言时 verify-local.sh 非 0 退出（验证后恢复）",
         "false_if": "门禁未运行 tests/unit，或用例失败时门禁仍为 0",
-        "evidence": "2026-11-16 于 chore/C242-wire-top-level-unit-tests（主检出 detach 到 902fbd2 运行）：zsh scripts/verify-local.sh Exit 0，日志 local/C242-verify-local.log 第 1558 行起出现「运行顶层 Node 契约单元测试 (tests/unit, C242)」，tests 22 / pass 22 / fail 0；其余照常：verify-rust.sh 三个 manifest 合计 626 通过 / 0 失败，19 个 Harness 全绿（本分支基于 main，RefreshScheduler / PanelViewModel 打印的 129 / 71 为 main 上写死的旧标签）。人为改坏 u_provider_brand.test.mjs 一条断言时本步骤 exit 1（21 pass / 1 fail，见行为实测），验证后已恢复。",
+        "evidence": "2026-11-16 于 chore/C242-wire-top-level-unit-tests（主检出 detach 到 902fbd2 运行）：zsh scripts/verify-local.sh Exit 0，日志 local/C242-verify-local.log 第 1558 行起出现「运行顶层 Node 契约单元测试 (tests/unit, C242)」，tests 22 / pass 22 / fail 0；其余照常：verify-rust.sh 三个 manifest 合计 626 通过 / 0 失败，19 个 Harness 全绿（本分支基于 main，RefreshScheduler / PanelViewModel 打印的 129 / 71 为 main 上写死的旧标签）。人为改坏 u_provider_brand.test.mjs 一条断言时本步骤 exit 1（21 pass / 1 fail，见行为实测），验证后已恢复。；2026-11-16 七卡合入 main（62b2621）后重跑 zsh scripts/verify-local.sh Exit 0：verify-rust.sh 三个 manifest 合计 644 通过 / 0 失败，19 个 Harness 全绿（RefreshScheduler 137、PanelViewModel 72、Onboarding 180），tests/unit 22 / 22，Panel 双端对拍通过；日志 local/merged-C237-C243-verify-local.log（仅既有 ld search path 与本机 cargo 配置告警）。",
         "result": true
       },
       {
@@ -93,13 +93,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "8015a31",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-16",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "Go with your recommendation on everything.",
+    "signed_rejection_count": 0
   }
 }

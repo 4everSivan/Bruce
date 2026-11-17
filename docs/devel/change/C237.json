@@ -4,7 +4,7 @@
   "title": "瞬态出口探测失败的重试次数跨轮次不累计：整轮合并路径 egressRetryCount 恒为 1，90/180/300 秒退避退化为每 90 秒无限重试",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C237-egress-retry-count-carry",
   "is_hotfix": false,
   "target": {
@@ -67,14 +67,14 @@
   "verification": {
     "result": true,
     "run_id": "local-20261116-02",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "Go with your recommendation on everything.",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy -D warnings 与 verify-local.sh 均 Exit 0；新增的跨轮次用例在修复前失败、修复后通过，断言计数 1/2/3/4 与 90/180/300 秒/无",
         "false_if": "任一测试失败，或新增用例未经过 plan + merge 的真实序列（仍是原地标注）",
-        "evidence": "2026-11-16 于 fix/C237-egress-retry-count-carry：cargo test --workspace（collector）316 通过 / 0 失败；cargo clippy --workspace --all-targets -- -D warnings Exit 0；zsh scripts/verify-local.sh Exit 0（19 个 Harness 全绿：RefreshScheduler 134、PanelViewModel 71、Onboarding 180、CollectorRunner 28 等；日志 local/C237-verify-local.log，仅有既有的 ld「search path not found」链接告警）。新增用例：quota_parity egress_retry_count_escalates_across_merge_rounds（plan + merge 连续 4 轮，断言计数 1/2/3/4、egressRetryAt +90/+180/+300 秒/无，修复前失败于第 2 轮计数 1）、egress_retry_count_resets_after_success、egress_retry_count_not_inherited_by_non_transient_block、scoped_annotation_inherits_egress_retry_count_from_previous；request_contract annotate_accepts_previous_services_for_egress_retry_count；RefreshSchedulerHarness scopedRefreshCarriesEgressRetryCount（经真实进程内策略的定向刷新，撤掉修复时实测发布计数 1，修复后为 3 且 egressRetryAt=+300 秒）。原有原地标注用例保留并通过。另：RefreshSchedulerHarness 末行计数原为写死的 129（main 实际已跑 133 项），本卡改为当前实际 134。",
+        "evidence": "2026-11-16 于 fix/C237-egress-retry-count-carry：cargo test --workspace（collector）316 通过 / 0 失败；cargo clippy --workspace --all-targets -- -D warnings Exit 0；zsh scripts/verify-local.sh Exit 0（19 个 Harness 全绿：RefreshScheduler 134、PanelViewModel 71、Onboarding 180、CollectorRunner 28 等；日志 local/C237-verify-local.log，仅有既有的 ld「search path not found」链接告警）。新增用例：quota_parity egress_retry_count_escalates_across_merge_rounds（plan + merge 连续 4 轮，断言计数 1/2/3/4、egressRetryAt +90/+180/+300 秒/无，修复前失败于第 2 轮计数 1）、egress_retry_count_resets_after_success、egress_retry_count_not_inherited_by_non_transient_block、scoped_annotation_inherits_egress_retry_count_from_previous；request_contract annotate_accepts_previous_services_for_egress_retry_count；RefreshSchedulerHarness scopedRefreshCarriesEgressRetryCount（经真实进程内策略的定向刷新，撤掉修复时实测发布计数 1，修复后为 3 且 egressRetryAt=+300 秒）。原有原地标注用例保留并通过。另：RefreshSchedulerHarness 末行计数原为写死的 129（main 实际已跑 133 项），本卡改为当前实际 134。；2026-11-16 七卡合入 main（62b2621）后重跑 zsh scripts/verify-local.sh Exit 0：verify-rust.sh 三个 manifest 合计 644 通过 / 0 失败，19 个 Harness 全绿（RefreshScheduler 137、PanelViewModel 72、Onboarding 180），tests/unit 22 / 22，Panel 双端对拍通过；日志 local/merged-C237-C243-verify-local.log（仅既有 ld search path 与本机 cargo 配置告警）。",
         "result": true
       },
       {
@@ -97,13 +97,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "3e3c79c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-16",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "Go with your recommendation on everything.",
+    "signed_rejection_count": 0
   }
 }

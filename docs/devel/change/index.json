@@ -182,7 +182,7 @@
     "C237": {
       "title": "瞬态出口探测失败的重试次数跨轮次不累计：整轮合并路径 egressRetryCount 恒为 1，90/180/300 秒退避退化为每 90 秒无限重试",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C237-egress-retry-count-carry",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
@@ -191,7 +191,7 @@
     "C238": {
       "title": "瞬态出口探测退避耗尽后未回到正常刷新节奏：plan 对无 egressRetryAt 的瞬态失败每轮都判 due",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C238-egress-retry-exhausted-cadence",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
@@ -200,7 +200,7 @@
     "C239": {
       "title": "出口探测把真实超时误报为「专用代理不可达」：ureq 读超时（ErrorKind::Io）被归入 EGRESS_PROXY_UNREACHABLE，EGRESS_PROBE_TIMEOUT 几乎不可达",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C239-egress-timeout-classification",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
@@ -209,7 +209,7 @@
     "C240": {
       "title": "Token 用量卡收起态「本月」取最后一个有数据的月份：当月尚无用量时把上月整月总量标成「本月」（双端）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C240-collapsed-month-total-current",
       "topic": "MenuBarIndicator",
       "version": "0.17.1",
@@ -218,7 +218,7 @@
     "C241": {
       "title": "「专用代理需要认证」被当作瞬态失败自动退避重试：探测层认定重试无意义，策略层与调度器却仍按 90/180/300 秒重查",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C241-egress-proxy-auth-not-transient",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
@@ -227,7 +227,7 @@
     "C242": {
       "title": "顶层 tests/unit 的 22 项 Node 契约测试未接入任何门禁：verify-local.sh 与 CI 都不运行，回归无法被发现",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "chore/C242-wire-top-level-unit-tests",
       "topic": "SystemOverview",
       "version": "0.17.1",
@@ -236,7 +236,7 @@
     "C243": {
       "title": "移除重复跟踪的 tests/benchmarks/ 历史基线：4 个文件与 tests/fixtures/legacy_benchmark_baselines/ 逐字节相同且无任何脚本读取",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "chore/C243-remove-duplicate-benchmark-baselines",
       "topic": "SystemOverview",
       "version": "0.17.1",

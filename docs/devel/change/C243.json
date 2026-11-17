@@ -4,7 +4,7 @@
   "title": "移除重复跟踪的 tests/benchmarks/ 历史基线：4 个文件与 tests/fixtures/legacy_benchmark_baselines/ 逐字节相同且无任何脚本读取",
   "version": "0.17.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "chore/C243-remove-duplicate-benchmark-baselines",
   "is_hotfix": false,
   "target": {
@@ -62,16 +62,16 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261116-08",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "Go with your recommendation on everything.",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "verify-local.sh 与 check-collector-fixtures.sh 均 Exit 0（fixture 语法与敏感扫描在删除后照常通过）",
         "false_if": "任一检查失败，或有脚本因找不到旧路径报错",
-        "evidence": "2026-11-16 于 chore/C243-remove-duplicate-benchmark-baselines（主检出 detach 到 b12afa1 运行）：zsh scripts/check-collector-fixtures.sh Exit 0（files=48 secretFindings=[]，扫描范围为 tests/fixtures，删除前后文件数相同）；zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 合计 626 通过 / 0 失败，19 个 Harness 全绿，fixture 扫描通过；日志 local/C243-verify-local.log），无脚本因找不到旧路径报错。",
+        "evidence": "2026-11-16 于 chore/C243-remove-duplicate-benchmark-baselines（主检出 detach 到 b12afa1 运行）：zsh scripts/check-collector-fixtures.sh Exit 0（files=48 secretFindings=[]，扫描范围为 tests/fixtures，删除前后文件数相同）；zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 合计 626 通过 / 0 失败，19 个 Harness 全绿，fixture 扫描通过；日志 local/C243-verify-local.log），无脚本因找不到旧路径报错。；2026-11-16 七卡合入 main（62b2621）后重跑 zsh scripts/verify-local.sh Exit 0：verify-rust.sh 三个 manifest 合计 644 通过 / 0 失败，19 个 Harness 全绿（RefreshScheduler 137、PanelViewModel 72、Onboarding 180），tests/unit 22 / 22，Panel 双端对拍通过；日志 local/merged-C237-C243-verify-local.log（仅既有 ld search path 与本机 cargo 配置告警）。",
         "result": true
       },
       {
@@ -85,8 +85,8 @@
         "item": "反向影响排查",
         "true_if": "全仓（不含 archive 与已收口卡片）不再有对 tests/benchmarks/ 的引用；tests/.state/ 与 docs/official/ 流水线产物未被触碰",
         "false_if": "仍有现行脚本或文档指向旧目录，或误删了范围外的文件",
-        "evidence": "部分满足，待维护者定口径。已满足：现行脚本、测试与文档（排除 docs/archive、docs/devel/change 与 docs/official）git grep tests/benchmarks/ 仅剩本卡在 tests/docs/README.md 新增的迁移说明；已收口卡 C229 的 impact 历史文字未改写；tests/.state/ 与 docs/official/ 未触碰（git status 仅 4 个删除与 tests/docs/README.md）。未满足：docs/official/.cards/manifest.json 等 3 个知识库流水线快照仍列出这 4 个旧路径（源码清单 + 哈希，不读取文件），与「全仓不再有引用」不符；按本卡范围不改动，需知识库流水线下次运行时刷新，或由维护者认可该例外。",
-        "result": null
+        "evidence": "部分满足，待维护者定口径。已满足：现行脚本、测试与文档（排除 docs/archive、docs/devel/change 与 docs/official）git grep tests/benchmarks/ 仅剩本卡在 tests/docs/README.md 新增的迁移说明；已收口卡 C229 的 impact 历史文字未改写；tests/.state/ 与 docs/official/ 未触碰（git status 仅 4 个删除与 tests/docs/README.md）。未满足：docs/official/.cards/manifest.json 等 3 个知识库流水线快照仍列出这 4 个旧路径（源码清单 + 哈希，不读取文件），与「全仓不再有引用」不符；按本卡范围不改动，需知识库流水线下次运行时刷新，或由维护者认可该例外。；2026-11-16 维护者以「Go with your recommendation on everything.」采纳执行者建议：确认删除上述 4 个已跟踪文件，并认可 docs/official/.cards 知识库流水线快照中残留旧路径为例外（快照只登记路径与哈希、不读取文件，由独立流水线下次运行自行刷新，本卡不改动），本项据此记为通过。",
+        "result": true
       }
     ]
   },
@@ -94,13 +94,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "a05b46c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-16",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "Go with your recommendation on everything.",
+    "signed_rejection_count": 0
   }
 }

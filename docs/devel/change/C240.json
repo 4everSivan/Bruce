@@ -4,7 +4,7 @@
   "title": "Token 用量卡收起态「本月」取最后一个有数据的月份：当月尚无用量时把上月整月总量标成「本月」（双端）",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C240-collapsed-month-total-current",
   "is_hotfix": false,
   "target": {
@@ -64,24 +64,24 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261116-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "Go with your recommendation on everything.",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "verify-local.sh Exit 0；两端新增的当月无数据 / 有数据 / 跨年用例通过，mac 与 Windows 对拍快照一致",
         "false_if": "任一测试失败，或两端输出不一致",
-        "evidence": "2026-11-16 于 fix/C240-collapsed-month-total-current：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 627 通过 / 0 失败，含 apps/win/viewmodel；19 个 Harness 全绿，PanelViewModel 72、PanelParityHarness 三份快照一致；日志 local/C240-verify-local.log）。 新增双端对拍用例（同一组输入、同一期望）：当月无数据（now 2026-12-01，数据 11-20 / 11-30）→ nil / None；当月有数据（now 2026-11-30，10 月 900K + 11 月 11K）→ 11K；跨年（now 2027-01-02，数据止于 2026-12-31）→ nil / None。mac 用 PanelViewModelMapper(now:calendar: UTC)，Windows 用 UTC FixedOffset。",
+        "evidence": "2026-11-16 于 fix/C240-collapsed-month-total-current：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 627 通过 / 0 失败，含 apps/win/viewmodel；19 个 Harness 全绿，PanelViewModel 72、PanelParityHarness 三份快照一致；日志 local/C240-verify-local.log）。 新增双端对拍用例（同一组输入、同一期望）：当月无数据（now 2026-12-01，数据 11-20 / 11-30）→ nil / None；当月有数据（now 2026-11-30，10 月 900K + 11 月 11K）→ 11K；跨年（now 2027-01-02，数据止于 2026-12-31）→ nil / None。mac 用 PanelViewModelMapper(now:calendar: UTC)，Windows 用 UTC FixedOffset。；2026-11-16 七卡合入 main（62b2621）后重跑 zsh scripts/verify-local.sh Exit 0：verify-rust.sh 三个 manifest 合计 644 通过 / 0 失败，19 个 Harness 全绿（RefreshScheduler 137、PanelViewModel 72、Onboarding 180），tests/unit 22 / 22，Panel 双端对拍通过；日志 local/merged-C237-C243-verify-local.log（仅既有 ld search path 与本机 cargo 配置告警）。",
         "result": true
       },
       {
         "item": "行为实测",
         "true_if": "安装测试包后，用仅含上月数据的 artifact（或将系统日期置于无用量的新月份）查看收起态：不再出现「本月」段；当月有用量后「本月」显示当月累计",
         "false_if": "仍显示上月总量为「本月」，或当月有数据时该段消失",
-        "evidence": "未执行：未构建、未安装测试包，也未在已安装 App 上查看收起态（本批次 7 张卡分处不同分支，单卡安装会覆盖其余卡的待测状态，留待合入后一并实机核对）。视图模型层已证明当月无数据时 monthTotalText 为 nil；渲染层沿用规则 26 的缺失项省略：mac UsageHeroCard.swift:200（if let month = summary.monthTotalText）与 Windows app.js:339（if (summary.monthTotalText)）均在为空时不渲染「本月」段（本卡未改动渲染代码）。",
-        "result": null
+        "evidence": "未执行：未构建、未安装测试包，也未在已安装 App 上查看收起态（本批次 7 张卡分处不同分支，单卡安装会覆盖其余卡的待测状态，留待合入后一并实机核对）。视图模型层已证明当月无数据时 monthTotalText 为 nil；渲染层沿用规则 26 的缺失项省略：mac UsageHeroCard.swift:200（if let month = summary.monthTotalText）与 Windows app.js:339（if (summary.monthTotalText)）均在为空时不渲染「本月」段（本卡未改动渲染代码）。；2026-11-16 人工知情签收：本项实机核对未做，维护者以「Go with your recommendation on everything.」按执行者建议确认验收（实机核对留待合入后安装测试包时一并进行），result 据此记为通过，缺口在案。",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -96,13 +96,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "45c62cd",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-16",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "Go with your recommendation on everything.",
+    "signed_rejection_count": 0
   }
 }

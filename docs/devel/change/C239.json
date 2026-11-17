@@ -4,7 +4,7 @@
   "title": "出口探测把真实超时误报为「专用代理不可达」：ureq 读超时（ErrorKind::Io）被归入 EGRESS_PROXY_UNREACHABLE，EGRESS_PROBE_TIMEOUT 几乎不可达",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C239-egress-timeout-classification",
   "is_hotfix": false,
   "target": {
@@ -66,14 +66,14 @@
   "verification": {
     "result": true,
     "run_id": "local-20261116-04",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "Go with your recommendation on everything.",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的不应答 / 407 / 502 / 双超时用例全部通过，且在修复前「不应答」用例失败",
         "false_if": "任一测试失败，或用例依赖外网",
-        "evidence": "2026-11-16 于 fix/C239-egress-timeout-classification：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 632 通过 / 0 失败；19 个 Harness 全绿，Onboarding 180，RefreshScheduler 打印 129 为 main 上写死的旧标签；日志 local/C239-verify-local.log）。新增用例：tests_proxy stalled_proxy_read_timeout_is_not_proxy_unreachable（修复前失败）、proxy_connect_407_is_classified_as_proxy_auth、proxy_connect_502_is_classified_as_proxy_unreachable、timeout_detection_walks_the_source_chain（TimedOut / WouldBlock 为超时，ConnectionRefused / ConnectionReset / InvalidData 不是）；egress transport_timeouts_on_both_beacons_are_probe_timeout（主备两次 PROVIDER_TRANSPORT_ERROR → ProbeError::Timeout 且依次请求主、备信标）；tests_quota allowed_quota_request_timeout_keeps_transport_error_code（修复前失败）。全部回环监听器 / 夹具，无外网。",
+        "evidence": "2026-11-16 于 fix/C239-egress-timeout-classification：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 632 通过 / 0 失败；19 个 Harness 全绿，Onboarding 180，RefreshScheduler 打印 129 为 main 上写死的旧标签；日志 local/C239-verify-local.log）。新增用例：tests_proxy stalled_proxy_read_timeout_is_not_proxy_unreachable（修复前失败）、proxy_connect_407_is_classified_as_proxy_auth、proxy_connect_502_is_classified_as_proxy_unreachable、timeout_detection_walks_the_source_chain（TimedOut / WouldBlock 为超时，ConnectionRefused / ConnectionReset / InvalidData 不是）；egress transport_timeouts_on_both_beacons_are_probe_timeout（主备两次 PROVIDER_TRANSPORT_ERROR → ProbeError::Timeout 且依次请求主、备信标）；tests_quota allowed_quota_request_timeout_keeps_transport_error_code（修复前失败）。全部回环监听器 / 夹具，无外网。；2026-11-16 七卡合入 main（62b2621）后重跑 zsh scripts/verify-local.sh Exit 0：verify-rust.sh 三个 manifest 合计 644 通过 / 0 失败，19 个 Harness 全绿（RefreshScheduler 137、PanelViewModel 72、Onboarding 180），tests/unit 22 / 22，Panel 双端对拍通过；日志 local/merged-C237-C243-verify-local.log（仅既有 ld search path 与本机 cargo 配置告警）。",
         "result": true
       },
       {
@@ -96,13 +96,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "e1187db",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-16",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "Go with your recommendation on everything.",
+    "signed_rejection_count": 0
   }
 }

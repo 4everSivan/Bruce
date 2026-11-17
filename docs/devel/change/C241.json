@@ -4,7 +4,7 @@
   "title": "「专用代理需要认证」被当作瞬态失败自动退避重试：探测层认定重试无意义，策略层与调度器却仍按 90/180/300 秒重查",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C241-egress-proxy-auth-not-transient",
   "is_hotfix": false,
   "target": {
@@ -67,14 +67,14 @@
   "verification": {
     "result": true,
     "run_id": "local-20261116-06",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "Go with your recommendation on everything.",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的策略层、调度层与集合一致性用例通过",
         "false_if": "任一测试失败，或 Rust 与 Swift 集合不一致未被用例捕获",
-        "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient：zsh scripts/verify-local.sh Exit 0（rebase 后重跑：verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 637 通过 / 0 失败；19 个 Harness 全绿，RefreshScheduler 137、Onboarding 180；日志 local/C241-verify-local-2.log，rebase 前首轮 local/C241-verify-local.log 同为 Exit 0）。 新增用例：quota_parity proxy_auth_block_stamps_attempt_and_schedules_no_retry（写 quotaAttemptedAt、不排定重试、间隔内不 due、满间隔 due、手动刷新可立即重查、瞬态 → 需认证不继承计数）；RefreshSchedulerHarness proxyAuthEgressKeepsNormalInterval（artifact 带 egressRetryAt 也不提前唤醒；经真实进程内策略发布的 service 写 quotaAttemptedAt、无 egressRetryAt / egressRetryCount，下一次定时 > 900 秒）与 transientEgressReasonsMatchPolicySource。撤掉本卡 quota.rs 与 EgressAlertEvaluator.swift 修改时实测失败于「代理需认证不得产生提前唤醒」；在 quota.rs 集合中人为加入一项时守卫实测失败并列出两侧差异（验证后已恢复）。",
+        "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient：zsh scripts/verify-local.sh Exit 0（rebase 后重跑：verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 637 通过 / 0 失败；19 个 Harness 全绿，RefreshScheduler 137、Onboarding 180；日志 local/C241-verify-local-2.log，rebase 前首轮 local/C241-verify-local.log 同为 Exit 0）。 新增用例：quota_parity proxy_auth_block_stamps_attempt_and_schedules_no_retry（写 quotaAttemptedAt、不排定重试、间隔内不 due、满间隔 due、手动刷新可立即重查、瞬态 → 需认证不继承计数）；RefreshSchedulerHarness proxyAuthEgressKeepsNormalInterval（artifact 带 egressRetryAt 也不提前唤醒；经真实进程内策略发布的 service 写 quotaAttemptedAt、无 egressRetryAt / egressRetryCount，下一次定时 > 900 秒）与 transientEgressReasonsMatchPolicySource。撤掉本卡 quota.rs 与 EgressAlertEvaluator.swift 修改时实测失败于「代理需认证不得产生提前唤醒」；在 quota.rs 集合中人为加入一项时守卫实测失败并列出两侧差异（验证后已恢复）。；2026-11-16 七卡合入 main（62b2621）后重跑 zsh scripts/verify-local.sh Exit 0：verify-rust.sh 三个 manifest 合计 644 通过 / 0 失败，19 个 Harness 全绿（RefreshScheduler 137、PanelViewModel 72、Onboarding 180），tests/unit 22 / 22，Panel 双端对拍通过；日志 local/merged-C237-C243-verify-local.log（仅既有 ld search path 与本机 cargo 配置告警）。",
         "result": true
       },
       {
@@ -88,7 +88,7 @@
         "item": "反向影响排查",
         "true_if": "其余四类瞬态失败的退避与提前唤醒不变；手动刷新可立即重查代理需认证的服务；设置页线路测试文案不变",
         "false_if": "其他瞬态原因的重试行为改变",
-        "evidence": "其余四类瞬态失败：C236 / C237 / C238 的退避、到点强制重查、耗尽回到正常节奏用例全部通过（egress_retry_count_escalates_across_merge_rounds 等使用 EGRESS_PROBE_TIMEOUT / EGRESS_PROXY_UNREACHABLE；egressRetryAtShortensNextTimer 仍提前到 90 秒量级）；手动刷新：用例断言 force_refresh + bypass_cooldown 立即 due；设置页线路测试（apps/macos/Sources/BruceApp/Settings/EgressRouteTester.swift）与文案本链未改动（git diff main 无该文件）；探测层 ProbeError::is_transient 本就不含 ProxyAuth，未改动。",
+        "evidence": "其余四类瞬态失败：C236 / C237 / C238 的退避、到点强制重查、耗尽回到正常节奏用例全部通过（egress_retry_count_escalates_across_merge_rounds 等使用 EGRESS_PROBE_TIMEOUT / EGRESS_PROXY_UNREACHABLE；egressRetryAtShortensNextTimer 仍提前到 90 秒量级）；手动刷新：用例断言 force_refresh + bypass_cooldown 立即 due；设置页线路测试（apps/macos/Sources/BruceApp/Settings/EgressRouteTester.swift）与文案本链未改动（git diff main 无该文件）；探测层 ProbeError::is_transient 本就不含 ProxyAuth，未改动。（2026-11-16 维护者以「Go with your recommendation on everything.」采纳执行者建议，确认 §4.5.1 规则修改：EGRESS_PROXY_AUTH 移出瞬态集合。）",
         "result": true
       }
     ]
@@ -97,13 +97,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "b963929",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-16",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "Go with your recommendation on everything.",
+    "signed_rejection_count": 0
   }
 }
