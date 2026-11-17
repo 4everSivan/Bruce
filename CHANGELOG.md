@@ -25,6 +25,9 @@
   - **循环动画退役**：Nothing Hero 数字呼吸、顶部状态灯刷新脉冲、14 日柱逐列生长移除，状态灯刷新态保留静态光晕；
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
+### Removed
+- **移除重复跟踪的 `tests/benchmarks/` 历史基线 ([C243](docs/devel/change/C243.json))**：4 个 JSON 基线在测试目录重组时已落到 `tests/fixtures/legacy_benchmark_baselines/`，旧目录副本逐字节相同且无脚本读取，删除前再次 `cmp` 确认后以 `git rm` 移除，保留位置的 4 个文件 SHA-256 不变；`tests/docs/README.md` 迁移说明补注旧路径去向。
+
 ### Fixed
 - **「专用代理需要认证」不再按瞬态失败自动退避重试 ([C241](docs/devel/change/C241.json))**：
   - **现象**：探测层认定代理需认证重试无意义（不改用备用信标），但策略层与 mac 调度器的瞬态集合仍包含 `EGRESS_PROXY_AUTH`，一个必须由用户改配置才能恢复的问题仍触发 90/180/300 秒三次提前唤醒与重查，且不写 `quotaAttemptedAt`；

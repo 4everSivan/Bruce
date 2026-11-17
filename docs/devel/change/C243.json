@@ -4,7 +4,7 @@
   "title": "移除重复跟踪的 tests/benchmarks/ 历史基线：4 个文件与 tests/fixtures/legacy_benchmark_baselines/ 逐字节相同且无任何脚本读取",
   "version": "0.17.1",
   "type": "Refactor",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "chore/C243-remove-duplicate-benchmark-baselines",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "for f in tests/benchmarks/*.json; do cmp \"$f\" \"tests/fixtures/legacy_benchmark_baselines/$(basename \"$f\")\" || exit 2; done; git grep -n \"tests/benchmarks/\" -- . ':!docs/archive' ':!docs/devel/change'",
     "expected": "cmp 全部相同且 git grep 无命中 (exit 1)；若 tests/benchmarks/ 已不存在则记录 is_completed: true 并跳过；若文件已出现差异则停止并向维护者汇报，不做删除",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 chore/C243-remove-duplicate-benchmark-baselines（worktree local/worktrees/C243，基于 main e3f7a68）：cmp 4 个文件全部逐字节相同（未出现差异，未触发中止条件）。git grep 不是预期的「无命中」：除归档与变更卡外仍命中 docs/official/.cards/ 下 3 个文件（manifest.json 12 处、runs/EBEFB5EA…/source-snapshot.json 与 working-baseline.json 各 1 处），均为独立知识库流水线记录的源码清单快照（路径 + 内容哈希，不读取文件内容），不是读取方；本卡明确 docs/official 不在范围，未改动，留待维护者定口径（见反向影响排查）。删除的确认：维护者 2026-11-16 在会话中要求「knock out all the tasks for cards C237–C243」，执行方按同意删除这 4 个已跟踪文件处理（仅在本分支，未合入）。is_completed=false。"
   },
   "callback": {
     "before": [
@@ -48,22 +48,22 @@
     {
       "scope": "目录说明同步",
       "before": "docs/README.md 与设计 00 的目录树若仍列出 tests/benchmarks/ 则与现实不符。",
-      "after": "检索并修正现行文档（不含 archive）中对 tests/benchmarks/ 的目录描述；设计 00 无相关描述时 design.modified 在执行时改为 false 并在卡内说明。",
+      "after": "检索并修正现行文档（不含 archive）中对 tests/benchmarks/ 的目录描述；设计 00 无相关描述时 design.modified 在执行时改为 false 并在卡内说明。（执行核对 2026-11-16）现行文档（不含 archive、变更卡与 docs/official 知识库产物）无 tests/benchmarks/ 目录描述，无需修正。",
       "impact": "docs/README.md、docs/devel/design/00-系统总体设计.md（如有）。"
     }
   ],
   "design": {
     "doc": "docs/devel/design/00-系统总体设计.md",
     "topic": "SystemOverview",
-    "modified": true,
+    "modified": false,
     "rule_diff": {
       "before": "现行文档的目录说明中 tests/benchmarks/ 作为基准基线目录出现（如有）；实际同一批文件另存于 tests/fixtures/legacy_benchmark_baselines/。",
-      "after": "历史基准基线只保留在 tests/fixtures/legacy_benchmark_baselines/；tests/benchmark/（单数）为基准脚本目录；不再存在 tests/benchmarks/。"
+      "after": "历史基准基线只保留在 tests/fixtures/legacy_benchmark_baselines/；tests/benchmark/（单数）为基准脚本目录；不再存在 tests/benchmarks/。（执行核对 2026-11-16）设计 00 与 docs/README.md 均无 tests/benchmarks/ 目录描述（git grep 无命中），design.modified 按卡内约定改为 false；迁移说明只在 tests/docs/README.md 补注。"
     }
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261116-08",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -71,21 +71,21 @@
         "item": "自动化测试",
         "true_if": "verify-local.sh 与 check-collector-fixtures.sh 均 Exit 0（fixture 语法与敏感扫描在删除后照常通过）",
         "false_if": "任一检查失败，或有脚本因找不到旧路径报错",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 chore/C243-remove-duplicate-benchmark-baselines（主检出 detach 到 b12afa1 运行）：zsh scripts/check-collector-fixtures.sh Exit 0（files=48 secretFindings=[]，扫描范围为 tests/fixtures，删除前后文件数相同）；zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 合计 626 通过 / 0 失败，19 个 Harness 全绿，fixture 扫描通过；日志 local/C243-verify-local.log），无脚本因找不到旧路径报错。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "删除后 `git ls-files tests/benchmarks` 无输出，tests/fixtures/legacy_benchmark_baselines/ 下 4 个文件仍在且内容未变（与删除前的校验和一致）",
         "false_if": "新位置文件缺失或内容变化",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16：删除前再次逐个 cmp 全部相同后 git rm；git ls-files tests/benchmarks 输出 0 行，目录已不存在；tests/fixtures/legacy_benchmark_baselines/ 4 个文件删除前后 SHA-256 一致（shasum -a 256 -c 全部 OK：python-collector-baseline-smoke d94a520b…、python-collector-baseline 5d524c21…、rust-collector-matrix e7778bd9…、rust-comparison 3559a827…）。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "全仓（不含 archive 与已收口卡片）不再有对 tests/benchmarks/ 的引用；tests/.state/ 与 docs/official/ 流水线产物未被触碰",
         "false_if": "仍有现行脚本或文档指向旧目录，或误删了范围外的文件",
-        "evidence": "",
+        "evidence": "部分满足，待维护者定口径。已满足：现行脚本、测试与文档（排除 docs/archive、docs/devel/change 与 docs/official）git grep tests/benchmarks/ 仅剩本卡在 tests/docs/README.md 新增的迁移说明；已收口卡 C229 的 impact 历史文字未改写；tests/.state/ 与 docs/official/ 未触碰（git status 仅 4 个删除与 tests/docs/README.md）。未满足：docs/official/.cards/manifest.json 等 3 个知识库流水线快照仍列出这 4 个旧路径（源码清单 + 哈希，不读取文件），与「全仓不再有引用」不符；按本卡范围不改动，需知识库流水线下次运行时刷新，或由维护者认可该例外。",
         "result": null
       }
     ]
@@ -93,7 +93,7 @@
   "rejections": [],
   "sync": {
     "design_pinned": false,
-    "changelog": false,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
