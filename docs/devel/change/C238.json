@@ -4,7 +4,7 @@
   "title": "瞬态出口探测退避耗尽后未回到正常刷新节奏：plan 对无 egressRetryAt 的瞬态失败每轮都判 due",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C238-egress-retry-exhausted-cadence",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy --test quota_parity exhausted_egress_retry_follows_normal_interval",
     "expected": "修复前该用例失败（egressRetryCount=4、无 egressRetryAt、距上次尝试 60 秒时 plan 仍 include_external_quotas=true）；若通过则记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 fix/C238-egress-retry-exhausted-cadence（叠在 fix/C237 62674c3 之上）：先只加用例运行预检命令，exhausted_egress_retry_follows_normal_interval 失败于「耗尽后距上次尝试 60 秒不得重查」（egressRetryCount=4、无 egressRetryAt、间隔 60 秒时 plan 仍 include_external_quotas=true）；同批新增的 exhausted_egress_failure_stamps_attempt_and_keeps_count 亦失败（2 failed / 18 passed），缺陷确认存在，is_completed=false。C237 分支上的同一演练（local/egress-drill/c237-run.log）第 5–7 步亦每 60 秒判 due。"
   },
   "callback": {
     "before": [
@@ -50,7 +50,7 @@
     {
       "scope": "回填与调度侧核对",
       "before": "mark_carried 仅在计数未耗尽且缺 egressRetryAt 时补首档退避；mac 调度器在 egressRetryAt 为空时不提前唤醒。",
-      "after": "核对耗尽态下 mark_carried 不再补排、调度器 pendingEgressRetryAt 为 nil 并回到 refreshInterval；补 RefreshSchedulerHarness 用例：artifact 为耗尽态瞬态失败时下一次定时延迟等于正常间隔。预期无需改生产代码，如需改动在卡内补 changes 条目。",
+      "after": "核对耗尽态下 mark_carried 不再补排、调度器 pendingEgressRetryAt 为 nil 并回到 refreshInterval；补 RefreshSchedulerHarness 用例：artifact 为耗尽态瞬态失败时下一次定时延迟等于正常间隔。预期无需改生产代码，如需改动在卡内补 changes 条目。（执行核对 2026-11-16）mark_carried：判据改用共享的 egress_retry_exhausted 辅助函数，语义与原「计数 < 档位数」等价，耗尽态不再补排（用例断言）；mac 调度器 earliestTransientRetryAt 只读 egressRetryAt，耗尽态为 nil，未改生产代码；新增 RefreshSchedulerHarness 用例经真实进程内策略覆盖。",
       "impact": "collector-policy/src/quota.rs::mark_carried（仅核对）；apps/macos RefreshSchedulerEgressRetryTests.swift。"
     }
   ],
@@ -64,8 +64,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261116-03",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -73,29 +73,29 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增用例覆盖：耗尽后间隔内 plan 不 due 且 provider 被跳过、满间隔后 due、force_refresh 仍 due、成功后清除计数、旧 artifact 缺字段仍补排",
         "false_if": "任一测试失败，或耗尽后仍在间隔内判 due",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 fix/C238-egress-retry-exhausted-cadence：cargo test -p collector-policy 全部通过（quota_parity 20 项）；zsh scripts/verify-local.sh Exit 0（verify-rust.sh 对 collector、apps/win/viewmodel、apps/win/src-tauri 三个 manifest 跑 fmt / test / clippy -D warnings，合计 635 通过 / 0 失败；19 个 Harness 全绿，RefreshScheduler 135；日志 local/C238-verify-local.log）。新增用例：exhausted_egress_retry_follows_normal_interval（间隔 60 秒：耗尽后 60 秒 / 2 分 59 秒内不 due 且 claude 被跳过，满 3 分钟 due；间隔 30 分钟：29:59 不 due、30:00 due）、exhausted_egress_retry_still_honours_force_refresh、legacy_transient_failure_without_retry_fields_is_still_due、exhausted_egress_failure_stamps_attempt_and_keeps_count（第 4 次失败写 quotaAttemptedAt、保留计数 4、不写 rateLimitedAt；跳过回填不补排；第 5 次计数 5；恢复成功清除）；RefreshSchedulerHarness exhaustedEgressRetryKeepsNormalInterval（上一份计数 3 + 本轮瞬态失败 → 计数 4、无 egressRetryAt、写 quotaAttemptedAt、下一次定时 > 900 秒；撤掉本卡 quota.rs 修改时实测失败于「耗尽后应写尝试时间戳」）。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "Release collector 指向未监听回环端口、刷新间隔设为 1 分钟：前三次重试按 90/180/300 秒发生，之后探测间隔不短于 3 分钟且不再出现 egressRetryAt；mac 端定时唤醒回到正常间隔",
         "false_if": "耗尽后仍每分钟探测，或永久不再重试",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 本机演练（local/egress-drill/c238-run.log；本分支 Release Bruce-collector 真实运行，plan + merge 链接本分支 collector-policy，模拟时钟）：egressRules 指向未监听回环端口 59999，刷新间隔 60 秒、步长 60 秒共 12 步：+0/+90/+270 秒三次重试排定 +90/+180/+300 秒，+570 秒第 4 次失败后 egressRetryAt 消失并写入 quotaAttemptedAt，此后探测发生在 +750 / +930 秒（每 180 秒一次，间隔内的 60 秒步长均 ran=false），全程 EGRESS_PROXY_UNREACHABLE 阻断，未向订阅额度端点发包。mac 端定时回到正常间隔由 RefreshSchedulerHarness 用例覆盖；未在已安装 App 上实机观察唤醒间隔。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "未耗尽阶段的退避、到点强制重查、Codex 永不跳过、限流冷却与锁屏抑制均不变；专用代理恢复后首次成功即清除耗尽态并恢复正常展示",
         "false_if": "退避阶段行为改变，或恢复后仍停留在阻断/耗尽状态",
-        "evidence": "",
-        "result": null
+        "evidence": "未耗尽阶段：C236 / C237 的退避、到点强制重查与 Codex 永不跳过用例（plan_waits_for_egress_retry_at_then_forces_due、codex_is_not_skipped_while_egress_retry_is_pending、egress_retry_count_escalates_across_merge_rounds）全部通过；限流冷却与锁屏抑制由共享 quota-policy-parity fixture 及 RefreshSchedulerHarness 既有用例覆盖，全部通过；恢复：exhausted_egress_failure_stamps_attempt_and_keeps_count 断言首次成功即清除计数与重试字段并标 fresh。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },

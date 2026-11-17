@@ -25,6 +25,10 @@
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
 ### Fixed
+- **瞬态出口探测退避耗尽后未回到正常刷新节奏 ([C238](docs/devel/change/C238.json))**：
+  - **现象**：三次退避（90/180/300 秒）耗尽后，门禁对无 `egressRetryAt` 的瞬态失败每轮都判 due，且瞬态失败从不写 `quotaAttemptedAt`、没有时间锚；刷新间隔设为 1 分钟时会每分钟重查该 provider 的全部账号，绕过 3 分钟自动查额下限（被 C237 掩盖，C237 修复后立即暴露）；
+  - **修复**：档位耗尽的那次及之后的瞬态失败按普通失败写入 `quotaAttemptedAt` 并保留 `egressRetryCount`；门禁只对未耗尽的瞬态失败走退避分支，耗尽态回到正常新鲜度门禁，手动刷新与窗口边界仍可强制重查，旧 artifact 缺字段仍补排；回填对耗尽态不再补排首档退避；
+  - **验证**：新增耗尽态间隔门禁、强制刷新、旧 artifact 补排、耗尽写时间戳 / 恢复清除用例与 `RefreshSchedulerHarness` 耗尽后回到正常间隔用例；Release collector 指向未监听端口、间隔 1 分钟实测：90/180/300 秒三次重试后每 180 秒探测一次。
 - **瞬态出口探测失败的重试次数跨轮次不累计 ([C237](docs/devel/change/C237.json))**：
   - **现象**：C236 的 90/180/300 秒退避依赖 `egressRetryCount` 逐轮递增，但整轮回填与 mac 定向刷新都用 Collector 本轮新产出的 service 对象标注，计数每轮都从 0 起算，恒为 1——专用代理持续不可用时每约 90 秒提前唤醒并重查一次，永不升档、永不停止，同 provider 其余账号也随之低于 3 分钟自动查额下限；
   - **修复**：`collector-policy` 新增退避计数继承：仅当上一份与本轮都是瞬态出口阻断时按 service ID 继承计数，成功或转为非瞬态阻断时照旧清除；整轮 `merge` 与定向 `quotaAnnotate` 走同一函数，`quotaAnnotate` 请求新增可选 `previousServices`（mac 传入定向合并前的上一份 artifact），Windows 无出口保护、无行为变化；
