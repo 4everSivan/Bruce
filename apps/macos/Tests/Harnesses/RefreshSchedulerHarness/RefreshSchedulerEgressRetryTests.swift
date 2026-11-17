@@ -157,6 +157,55 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    /// C238: 第 4 次瞬态失败耗尽退避档位后不再写 egressRetryAt, 调度器回到正常刷新间隔.
+    /// 经真实进程内策略: 上一份已失败 3 次, 本轮再失败即耗尽.
+    static func exhaustedEgressRetryKeepsNormalInterval(repository: URL) async throws {
+        let executor = MockCollectorExecutor()
+        let clock = ManualClock()
+        executor.artifactOverride = makeEgressRetryArtifact(reason: "EGRESS_PROBE_TIMEOUT", retryAt: nil)
+        let timers = FakeTimerScheduler()
+        let (scheduler, store, root) = try makeScheduler(
+            repository: repository,
+            executor: executor,
+            clock: clock,
+            timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        var previous = makeEgressRetryArtifact(
+            reason: "EGRESS_PROBE_TIMEOUT",
+            retryAt: clock.now().addingTimeInterval(-1)
+        )
+        if case .object(var object) = previous,
+           case .array(var services)? = object["services"],
+           case .object(var service)? = services.first {
+            service["egressRetryCount"] = .integer(3)
+            services[0] = .object(service)
+            object["services"] = .array(services)
+            previous = .object(object)
+        }
+        try store.publish(previous, for: .agentUsage, attemptedAt: clock.now().addingTimeInterval(-300))
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+        let stored = try store.load(.agentUsage, now: clock.now(), staleAfter: 3600)
+        let service = stored.artifact.objectValue?["services"]?.arrayValue?.first?.objectValue
+        try refreshExpect(
+            service?["egressRetryCount"]?.intValue == 4 && service?["egressRetryAt"] == nil,
+            "第 4 次瞬态失败应耗尽退避且不再排定重试, 实际: \(String(describing: service))"
+        )
+        try refreshExpect(
+            service?["quotaAttemptedAt"]?.stringIdValue != nil,
+            "耗尽后应写尝试时间戳, 回到正常新鲜度门禁"
+        )
+        guard let delay = timers.tokens.last(where: { !$0.isCancelled })?.delay else {
+            throw RefreshTestFailure.expectation("应排定下一次刷新")
+        }
+        try refreshExpect(delay > 900, "耗尽后不得再提前唤醒, 实际: \(delay)")
+    }
+
     /// 提取最早重试时刻 + 新错误码的徽标映射.
     static func egressRetryHintAndBadges() throws {
         let base = Date(timeIntervalSince1970: 1_786_000_000)

@@ -518,3 +518,139 @@ fn scoped_annotation_inherits_egress_retry_count_from_previous() {
     assert!(recovered["services"][0].get("egressRetryCount").is_none());
     assert!(recovered["services"][0].get("egressRetryAt").is_none());
 }
+
+/// 退避耗尽态的瞬态出口失败 (C238): 计数 4、无 egressRetryAt、上次尝试为 `attempted`。
+fn exhausted_egress_service(attempted: &str) -> Value {
+    let mut service = egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT");
+    service["egressRetryCount"] = json!(4);
+    service["quotaAttemptedAt"] = json!(attempted);
+    service["capturedAt"] = json!("2026-11-16T11:00:00Z");
+    service
+}
+
+fn exhausted_plan_input(previous: &Value, now: &str, interval_secs: i64) -> QuotaRunPolicy {
+    plan(&PlanInput {
+        previous: Some(previous),
+        enabled_providers: None,
+        now_ms: epoch_ms(now),
+        interval_secs,
+        force_refresh: false,
+        bypass_cooldown: false,
+        suppress_external_quotas: false,
+    })
+}
+
+#[test]
+fn exhausted_egress_retry_follows_normal_interval() {
+    let previous = json!({"services": [exhausted_egress_service("2026-11-16T12:00:00Z")]});
+    // 刷新间隔 60 秒 (C160): 自动查额仍不低于 3 分钟下限 (C164)。
+    let within = exhausted_plan_input(&previous, "2026-11-16T12:01:00Z", 60);
+    assert!(
+        !within.include_external_quotas,
+        "耗尽后距上次尝试 60 秒不得重查"
+    );
+    assert_eq!(within.skip_providers, BTreeSet::from(["claude".to_owned()]));
+    let still_within = exhausted_plan_input(&previous, "2026-11-16T12:02:59Z", 60);
+    assert!(
+        !still_within.include_external_quotas,
+        "3 分钟下限内不得重查"
+    );
+    let due = exhausted_plan_input(&previous, "2026-11-16T12:03:00Z", 60);
+    assert!(due.include_external_quotas, "满 3 分钟后回到正常节奏重查");
+    assert!(due.skip_providers.is_empty());
+    // 30 分钟间隔: 按正常新鲜度门禁。
+    assert!(!exhausted_plan_input(&previous, "2026-11-16T12:29:59Z", 1800).include_external_quotas);
+    assert!(exhausted_plan_input(&previous, "2026-11-16T12:30:00Z", 1800).include_external_quotas);
+}
+
+#[test]
+fn exhausted_egress_retry_still_honours_force_refresh() {
+    let previous = json!({"services": [exhausted_egress_service("2026-11-16T12:00:00Z")]});
+    let policy = plan(&PlanInput {
+        previous: Some(&previous),
+        enabled_providers: None,
+        now_ms: epoch_ms("2026-11-16T12:00:30Z"),
+        interval_secs: 1800,
+        force_refresh: true,
+        bypass_cooldown: false,
+        suppress_external_quotas: false,
+    });
+    assert!(
+        policy.include_external_quotas,
+        "手动 / 窗口边界强制刷新仍可重查"
+    );
+    assert!(policy.skip_providers.is_empty());
+}
+
+#[test]
+fn legacy_transient_failure_without_retry_fields_is_still_due() {
+    // C236 之前的旧 artifact: 瞬态失败、无计数与 egressRetryAt, 有新鲜的 capturedAt。
+    let mut service = egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT");
+    service["capturedAt"] = json!("2026-11-16T11:59:00Z");
+    let previous = json!({"services": [service]});
+    let policy = exhausted_plan_input(&previous, "2026-11-16T12:00:00Z", 1800);
+    assert!(policy.include_external_quotas, "未耗尽且缺字段时尽快补排");
+}
+
+#[test]
+fn exhausted_egress_failure_stamps_attempt_and_keeps_count() {
+    let mut artifact = json!({"services": [ok_claude_service("2026-11-16T11:00:00Z")]});
+    let mut now_ms = epoch_ms("2026-11-16T12:00:00Z");
+    for _ in 0..3 {
+        artifact = egress_round(&artifact, now_ms, "EGRESS_PROBE_TIMEOUT");
+        now_ms = collector_policy::parse_ms(artifact["services"][0].get("egressRetryAt")).unwrap();
+        assert!(
+            artifact["services"][0].get("quotaAttemptedAt").is_none(),
+            "退避阶段不占额度尝试配额"
+        );
+    }
+    // 第 4 次失败: 档位耗尽, 按普通失败写尝试时间戳, 保留计数, 不再排定重试。
+    artifact = egress_round(&artifact, now_ms, "EGRESS_PROBE_TIMEOUT");
+    let service = &artifact["services"][0];
+    assert_eq!(service["egressRetryCount"], 4);
+    assert!(service.get("egressRetryAt").is_none());
+    assert_eq!(service["quotaAttemptedAt"], timestamp_iso(now_ms).as_str());
+    assert!(service.get("rateLimitedAt").is_none(), "出口失败不是限流");
+    assert_eq!(service["freshness"], "stale");
+
+    // 耗尽态被跳过回填时不再补排首档退避。
+    let skipped = QuotaRunPolicy {
+        include_external_quotas: false,
+        skip_providers: BTreeSet::from(["claude".to_owned()]),
+        rate_limited_providers: BTreeSet::new(),
+    };
+    let carried = merge(
+        Some(&artifact),
+        &json!({"services": []}),
+        &skipped,
+        now_ms + 60_000,
+        60,
+    );
+    assert!(carried["services"][0].get("egressRetryAt").is_none());
+    assert_eq!(carried["services"][0]["egressRetryCount"], 4);
+
+    // 满间隔 (egress_round 使用 30 分钟) 后的第 5 次失败: 仍为耗尽态, 尝试时间戳前移。
+    let later = now_ms + 1_800_000;
+    artifact = egress_round(&artifact, later, "EGRESS_PROBE_TIMEOUT");
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 5);
+    assert!(artifact["services"][0].get("egressRetryAt").is_none());
+    assert_eq!(
+        artifact["services"][0]["quotaAttemptedAt"],
+        timestamp_iso(later).as_str()
+    );
+
+    // 代理恢复: 首次成功即清除耗尽态。
+    let recovered_at = later + 180_000;
+    let current = json!({"services": [ok_claude_service(&timestamp_iso(recovered_at))]});
+    artifact = merge(
+        Some(&artifact),
+        &current,
+        &QuotaRunPolicy::include_all(),
+        recovered_at,
+        60,
+    );
+    let service = &artifact["services"][0];
+    assert!(service.get("egressRetryCount").is_none());
+    assert!(service.get("egressRetryAt").is_none());
+    assert_eq!(service["freshness"], "fresh");
+}
