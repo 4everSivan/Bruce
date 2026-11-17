@@ -654,3 +654,32 @@ fn exhausted_egress_failure_stamps_attempt_and_keeps_count() {
     assert!(service.get("egressRetryAt").is_none());
     assert_eq!(service["freshness"], "fresh");
 }
+
+#[test]
+fn exhausted_windows_service_requeries_boundary_only_once() {
+    // C238: 失败 service 借用旧成功快照的 capturedAt / windows; 重置时刻落在旧快照之后时,
+    // 只应在边界之后重查一次, 之后以最近一次尝试为锚回到正常节奏, 不能每轮都判「已过边界」。
+    let reset = epoch_ms("2026-11-16T13:00:00Z") / 1000;
+    let exhausted = |attempted: &str| {
+        let mut service = exhausted_egress_service(attempted);
+        service["kind"] = json!("windows");
+        service["windows"] = json!([{"label": "5小时", "usedPercent": 40, "resetsAt": reset}]);
+        service["capturedAt"] = json!("2026-11-16T10:00:00Z");
+        json!({"services": [service]})
+    };
+    // 上次尝试在重置之前: 边界已过且尚未重查, 立即重查 (不受 3 分钟下限)。
+    let before_reset = exhausted("2026-11-16T12:59:00Z");
+    assert!(
+        exhausted_plan_input(&before_reset, "2026-11-16T13:00:30Z", 60).include_external_quotas,
+        "边界之后首次必须重查"
+    );
+    // 边界之后已重查过一次 (仍失败): 回到正常节奏, 3 分钟内不得再重查。
+    let after_reset = exhausted("2026-11-16T14:00:00Z");
+    for now in ["2026-11-16T14:01:00Z", "2026-11-16T14:02:59Z"] {
+        assert!(
+            !exhausted_plan_input(&after_reset, now, 60).include_external_quotas,
+            "{now}: 已在边界后尝试过, 不得每轮重查"
+        );
+    }
+    assert!(exhausted_plan_input(&after_reset, "2026-11-16T14:03:00Z", 60).include_external_quotas);
+}

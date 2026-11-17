@@ -285,7 +285,7 @@ fn reset_epoch(window: &Value) -> Option<i64> {
         .or_else(|| reset.as_f64().map(|value| value as i64))
 }
 
-/// 上次快照之后是否有窗口 `resetsAt` (epoch 秒) 已过去 (C037 兼容)。
+/// 上次快照 / 尝试之后是否有窗口 `resetsAt` (epoch 秒) 已过去 (C037 兼容, C238 起以较晚者为锚)。
 fn has_passed_boundary(services: &[&Value], now_ms: i64) -> bool {
     let now_epoch = now_ms.div_euclid(1000);
     services.iter().any(|service| {
@@ -295,14 +295,18 @@ fn has_passed_boundary(services: &[&Value], now_ms: i64) -> bool {
         let Some(captured) = captured_at(service) else {
             return false;
         };
-        let captured_epoch = captured.div_euclid(1000);
+        // 锚点取快照与最近一次真实尝试中较晚者 (C238): 失败 service 借用的是旧成功快照的
+        // capturedAt, 只看快照时重置一旦落在其后, 每轮都会判「已过边界」而绕过额度周期;
+        // 以最近一次尝试为锚, 边界之后只重查一次 (design/02 规则 12「下一次本地 run」)。
+        let anchor = attempt_at(service).map_or(captured, |attempted| attempted.max(captured));
+        let anchor_epoch = anchor.div_euclid(1000);
         service
             .get("windows")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .filter_map(reset_epoch)
-            .any(|reset| reset <= now_epoch && reset > captured_epoch)
+            .any(|reset| reset <= now_epoch && reset > anchor_epoch)
     })
 }
 
