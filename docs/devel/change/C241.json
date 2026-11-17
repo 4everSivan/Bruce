@@ -19,7 +19,7 @@
     "command": "git grep -n \"EGRESS_PROXY_AUTH\" -- core/collector/crates/collector-policy/src/quota.rs apps/macos/Sources/BruceAppCore/EgressAlertEvaluator.swift",
     "expected": "两个文件的瞬态集合内均命中 EGRESS_PROXY_AUTH（缺陷仍在）；若已移除则记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient（叠在 fix/C238 ee408f5 之上）：预检命令命中 quota.rs:55 与 EgressAlertEvaluator.swift:28 两处瞬态集合中的 EGRESS_PROXY_AUTH（另一处 :123 为徽标文案映射，不属集合），缺陷仍在；新增的 proxy_auth_block_stamps_attempt_and_schedules_no_retry 在修复前失败（quotaAttemptedAt 未写）。is_completed=false。规则修改的采纳：维护者 2026-11-16 在会话中要求「knock out all the tasks for cards C237–C243」，执行方按采纳本卡提议处理，请在签收时一并确认。"
+    "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient（叠在 fix/C238 ee408f5 之上）：预检命令命中 quota.rs:55 与 EgressAlertEvaluator.swift:28 两处瞬态集合中的 EGRESS_PROXY_AUTH（另一处 :123 为徽标文案映射，不属集合），缺陷仍在；新增的 proxy_auth_block_stamps_attempt_and_schedules_no_retry 在修复前失败（quotaAttemptedAt 未写）。is_completed=false。规则修改的采纳：维护者 2026-11-16 在会话中要求「knock out all the tasks for cards C237–C243」，执行方按采纳本卡提议处理，请在签收时一并确认。 （2026-11-16 本分支随 C238 补充窗口边界锚点后已 rebase 到新的 fix/C238 tip，quota_parity 末尾两条新增用例的追加冲突按「两者都保留」解决后重跑门禁。）"
   },
   "callback": {
     "before": [
@@ -74,7 +74,7 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的策略层、调度层与集合一致性用例通过",
         "false_if": "任一测试失败，或 Rust 与 Swift 集合不一致未被用例捕获",
-        "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 636 通过 / 0 失败；19 个 Harness 全绿，RefreshScheduler 137、Onboarding 180；日志 local/C241-verify-local.log）。 新增用例：quota_parity proxy_auth_block_stamps_attempt_and_schedules_no_retry（写 quotaAttemptedAt、不排定重试、间隔内不 due、满间隔 due、手动刷新可立即重查、瞬态 → 需认证不继承计数）；RefreshSchedulerHarness proxyAuthEgressKeepsNormalInterval（artifact 带 egressRetryAt 也不提前唤醒；经真实进程内策略发布的 service 写 quotaAttemptedAt、无 egressRetryAt / egressRetryCount，下一次定时 > 900 秒）与 transientEgressReasonsMatchPolicySource。撤掉本卡 quota.rs 与 EgressAlertEvaluator.swift 修改时实测失败于「代理需认证不得产生提前唤醒」；在 quota.rs 集合中人为加入一项时守卫实测失败并列出两侧差异（验证后已恢复）。",
+        "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient：zsh scripts/verify-local.sh Exit 0（rebase 后重跑：verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 637 通过 / 0 失败；19 个 Harness 全绿，RefreshScheduler 137、Onboarding 180；日志 local/C241-verify-local-2.log，rebase 前首轮 local/C241-verify-local.log 同为 Exit 0）。 新增用例：quota_parity proxy_auth_block_stamps_attempt_and_schedules_no_retry（写 quotaAttemptedAt、不排定重试、间隔内不 due、满间隔 due、手动刷新可立即重查、瞬态 → 需认证不继承计数）；RefreshSchedulerHarness proxyAuthEgressKeepsNormalInterval（artifact 带 egressRetryAt 也不提前唤醒；经真实进程内策略发布的 service 写 quotaAttemptedAt、无 egressRetryAt / egressRetryCount，下一次定时 > 900 秒）与 transientEgressReasonsMatchPolicySource。撤掉本卡 quota.rs 与 EgressAlertEvaluator.swift 修改时实测失败于「代理需认证不得产生提前唤醒」；在 quota.rs 集合中人为加入一项时守卫实测失败并列出两侧差异（验证后已恢复）。",
         "result": true
       },
       {
