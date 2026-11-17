@@ -446,3 +446,84 @@ fn application_emits_credential_update_for_stepfun_refresh() {
     assert!(service.get("credential_update").is_none());
     assert_eq!(http.calls.load(Ordering::Acquire), 3);
 }
+
+/// 出口放行后的额度请求经真实 ureq 传输走一个接受连接但不应答的回环「代理」(C239):
+/// 探测 trace 由夹具直接给出 JP, 额度请求委托给真实 `UreqHttpClient`。
+struct AllowedThenStalledHttp {
+    stalled_port: u16,
+}
+
+impl HttpClient for AllowedThenStalledHttp {
+    fn send(&self, _: HttpRequest, _: &CancellationToken) -> Result<HttpResponse, ProviderError> {
+        panic!("受保护订阅不得直连")
+    }
+
+    fn send_via_loopback_proxy(
+        &self,
+        _: u16,
+        request: HttpRequest,
+        cancellation: &CancellationToken,
+    ) -> Result<HttpResponse, ProviderError> {
+        if request.url.contains("cdn-cgi/trace") {
+            return Ok(HttpResponse {
+                status: 200,
+                body: b"ip=192.0.2.1\nloc=JP\n".to_vec(),
+            });
+        }
+        collector_provider::UreqHttpClient::default().send_via_loopback_proxy(
+            self.stalled_port,
+            request,
+            cancellation,
+        )
+    }
+}
+
+#[test]
+fn allowed_quota_request_timeout_keeps_transport_error_code() {
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::time::Duration;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let stalled_port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut buffer = [0u8; 2048];
+        let _ = stream.read(&mut buffer);
+        std::thread::sleep(Duration::from_millis(1500));
+    });
+
+    let mut request = request(&["externalQuotas"]);
+    request.timeouts.external_request_seconds = 1.0;
+    request.context.insert(
+        "egressRules".into(),
+        json!({"deepseek":{"country":"JP","port":12345}}),
+    );
+    request.credentials.insert(
+        "deepseekQuotaAccounts".into(),
+        json!({"account": {"display_name":"fixture", "api_key":"fixture"}}),
+    );
+    let http = AllowedThenStalledHttp { stalled_port };
+    let window = super::CollectionWindow::from_context(&request.context).unwrap();
+    let context =
+        super::RunContext::new(&request, window, &http, super::RuntimeLimits::default()).unwrap();
+    let result = super::collect_quota_usage(&context);
+    server.join().unwrap();
+
+    let service = &result.services[0];
+    assert_eq!(service["egress"]["status"], "allowed", "{service}");
+    let codes: Vec<&str> = result
+        .diagnostics
+        .iter()
+        .map(|item| item.code.as_str())
+        .collect();
+    assert!(codes.contains(&"PROVIDER_TRANSPORT_ERROR"), "{codes:?}");
+    assert!(
+        !codes.iter().any(|code| code.starts_with("EGRESS_")),
+        "放行后的额度超时不得使用 EGRESS_* 代码: {codes:?}"
+    );
+    assert_eq!(service["failureKind"], "network", "{service}");
+}
