@@ -4,7 +4,7 @@
   "title": "出口探测瞬态失败自愈：备用信标重试、失败不占额度刷新配额、错误分类",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C236-egress-probe-resilience",
   "is_hotfix": false,
   "target": {
@@ -72,8 +72,8 @@
   "verification": {
     "result": true,
     "run_id": "local-20261116-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -102,13 +102,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "cd34f5f",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.7.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-17",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片",
+    "signed_rejection_count": 0
   }
 }
