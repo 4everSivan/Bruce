@@ -200,7 +200,7 @@
     "C239": {
       "title": "出口探测把真实超时误报为「专用代理不可达」：ureq 读超时（ErrorKind::Io）被归入 EGRESS_PROXY_UNREACHABLE，EGRESS_PROBE_TIMEOUT 几乎不可达",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C239-egress-timeout-classification",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",

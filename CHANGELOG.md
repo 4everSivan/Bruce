@@ -29,6 +29,10 @@
   - **现象**：探测层认定代理需认证重试无意义（不改用备用信标），但策略层与 mac 调度器的瞬态集合仍包含 `EGRESS_PROXY_AUTH`，一个必须由用户改配置才能恢复的问题仍触发 90/180/300 秒三次提前唤醒与重查，且不写 `quotaAttemptedAt`；
   - **修复**：`EGRESS_PROXY_AUTH` 移出 collector-policy `TRANSIENT_EGRESS_REASONS` 与 mac `EgressAlertEvaluator.transientProbeReasons`，与配置无效同类：写尝试时间戳、清除退避字段，按正常间隔或手动刷新重查；徽标「代理需认证」与阻断语义不变；
   - **验证**：新增策略层用例、`RefreshSchedulerHarness` 代理需认证不缩短周期用例，以及读取 `quota.rs` 字面量与 Swift 集合比对的一致性源码守卫（人为制造漂移时实测失败）；本机 407 回环端口实测：写 `quotaAttemptedAt`、无 `egressRetryAt`，按 3 分钟下限重查。
+- **出口探测把真实超时误报为「专用代理不可达」 ([C239](docs/devel/change/C239.json))**：
+  - **现象**：ureq 把读超时包成 `ErrorKind::Io`，C236 的分类把它与连接失败一并归为 `EGRESS_PROXY_UNREACHABLE`；代理正常、信标偶发超时（C236 立项场景）时看板显示「代理不可达」，把排查引向错误方向，`EGRESS_PROBE_TIMEOUT` 几乎不可达；出口放行后的额度接口超时也被记成「专用代理连接失败」；
+  - **修复**：专用代理传输分类前沿错误 `source` 链查找 `io::Error`，`TimedOut` / `WouldBlock` 保留 `PROVIDER_TRANSPORT_ERROR`（探测层主备两次都超时即 `EGRESS_PROBE_TIMEOUT`，放行后的额度超时不再带 `EGRESS_*` 代码）；连接被拒、DNS、CONNECT 非 2xx、TLS 失败仍为代理不可达，407 仍为代理需认证；直连查额错误码不变；
+  - **验证**：回环监听器覆盖「接受后不应答 / 407 / 502」与放行后额度超时，修复前「不应答」两例实测为 `EGRESS_PROXY_UNREACHABLE`；Release collector 经不应答端口实测 `EGRESS_PROBE_TIMEOUT`、未监听端口仍为 `EGRESS_PROXY_UNREACHABLE`；经本机专用代理单独请求备用信标 `1.1.1.1` 一次：200、`loc=US`、证书校验通过。
 - **瞬态出口探测退避耗尽后未回到正常刷新节奏 ([C238](docs/devel/change/C238.json))**：
   - **现象**：三次退避（90/180/300 秒）耗尽后，门禁对无 `egressRetryAt` 的瞬态失败每轮都判 due，且瞬态失败从不写 `quotaAttemptedAt`、没有时间锚；刷新间隔设为 1 分钟时会每分钟重查该 provider 的全部账号，绕过 3 分钟自动查额下限（被 C237 掩盖，C237 修复后立即暴露）；
   - **修复**：档位耗尽的那次及之后的瞬态失败按普通失败写入 `quotaAttemptedAt` 并保留 `egressRetryCount`；门禁只对未耗尽的瞬态失败走退避分支，耗尽态回到正常新鲜度门禁，手动刷新与窗口边界仍可强制重查，旧 artifact 缺字段仍补排；回填对耗尽态不再补排首档退避；窗口边界强制重查改以快照与最近一次尝试中较晚者为锚，失败的 windows 类 service（如 Claude / Codex）在边界之后只重查一次，不再每轮重查；

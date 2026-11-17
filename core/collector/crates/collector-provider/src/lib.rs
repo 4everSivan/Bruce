@@ -383,9 +383,30 @@ impl UreqHttpClient {
     }
 }
 
+/// 传输错误的底层原因是否为超时 (C239)：ureq 把读写超时经 `From<io::Error>` 包成
+/// `ErrorKind::Io`（连接超时则为 `ConnectionFailed`），需沿 `source` 链查找 `io::Error`；
+/// 套接字读超时在 macOS 上表现为 `WouldBlock`，与 `TimedOut` 同样视为超时。
+fn is_transport_timeout(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut current = Some(error);
+    while let Some(error) = current {
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            if matches!(
+                io.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ) {
+                return true;
+            }
+        }
+        current = error.source();
+    }
+    false
+}
+
 impl UreqHttpClient {
     /// `classify_proxy_errors` 只在专用代理传输上启用：让出口探测能区分
     /// “代理没起来/需要认证” 与真正的探测超时；直连查额保持原有错误码。
+    /// 超时（连接已建立但在时限内无响应）不属于代理不可达，保留
+    /// `PROVIDER_TRANSPORT_ERROR`，由出口探测映射为 `EGRESS_PROBE_TIMEOUT` (C239)。
     fn send_with(
         &self,
         request: HttpRequest,
@@ -418,6 +439,9 @@ impl UreqHttpClient {
                     match transport.kind() {
                         ureq::ErrorKind::ProxyUnauthorized => {
                             ("EGRESS_PROXY_AUTH", "专用代理需要认证")
+                        }
+                        _ if is_transport_timeout(&transport) => {
+                            ("PROVIDER_TRANSPORT_ERROR", "Provider 网络请求超时")
                         }
                         ureq::ErrorKind::ProxyConnect
                         | ureq::ErrorKind::ConnectionFailed

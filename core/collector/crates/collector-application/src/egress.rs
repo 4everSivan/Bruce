@@ -371,6 +371,21 @@ mod tests {
     }
 
     #[test]
+    fn transport_timeouts_on_both_beacons_are_probe_timeout() {
+        // C239: 传输层超时保留 PROVIDER_TRANSPORT_ERROR, 主备两次都超时才判探测超时。
+        let cache = ProbeCache::default();
+        let http = SequencedHttp::new(2, "PROVIDER_TRANSPORT_ERROR", "");
+        assert_eq!(
+            cache.probe(7897, &http, &CancellationToken::new()),
+            Err(ProbeError::Timeout)
+        );
+        assert_eq!(
+            http.calls.lock().unwrap().clone(),
+            vec![PRIMARY_TRACE_URL.to_owned(), FALLBACK_TRACE_URL.to_owned()]
+        );
+    }
+
+    #[test]
     fn proxy_auth_failure_is_not_retried_with_fallback() {
         let cache = ProbeCache::default();
         let http = SequencedHttp::new(1, "EGRESS_PROXY_AUTH", "");

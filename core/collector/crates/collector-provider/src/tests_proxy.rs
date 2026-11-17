@@ -97,3 +97,94 @@ fn https_request_uses_explicit_loopback_proxy() {
         "{received}"
     );
 }
+
+/// 回环「代理」: 接受一个连接并读取请求头后, 回写 `response`; `None` 表示不应答,
+/// 保持连接直到客户端 1 秒超时之后。
+fn serve_once(response: Option<&'static [u8]>) -> (u16, std::thread::JoinHandle<()>) {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut buffer = [0u8; 2048];
+        let _ = stream.read(&mut buffer);
+        match response {
+            Some(response) => {
+                let _ = stream.write_all(response);
+            }
+            None => std::thread::sleep(Duration::from_millis(1500)),
+        }
+    });
+    (port, handle)
+}
+
+fn proxy_error_code(response: Option<&'static [u8]>) -> String {
+    let (port, server) = serve_once(response);
+    let error = UreqHttpClient::default()
+        .send_via_loopback_proxy(port, request(), &CancellationToken::new())
+        .unwrap_err();
+    server.join().unwrap();
+    error.diagnostic.code
+}
+
+#[test]
+fn stalled_proxy_read_timeout_is_not_proxy_unreachable() {
+    // C239: 代理接受连接后不应答 (信标慢 / 上游卡住) 是超时, 不是代理不可达。
+    assert_eq!(proxy_error_code(None), "PROVIDER_TRANSPORT_ERROR");
+}
+
+#[test]
+fn proxy_connect_407_is_classified_as_proxy_auth() {
+    assert_eq!(
+        proxy_error_code(Some(
+            b"HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n"
+        )),
+        "EGRESS_PROXY_AUTH"
+    );
+}
+
+#[test]
+fn proxy_connect_502_is_classified_as_proxy_unreachable() {
+    assert_eq!(
+        proxy_error_code(Some(
+            b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+        )),
+        "EGRESS_PROXY_UNREACHABLE"
+    );
+}
+
+#[test]
+fn timeout_detection_walks_the_source_chain() {
+    use std::io;
+
+    #[derive(Debug)]
+    struct Wrapper(io::Error);
+    impl std::fmt::Display for Wrapper {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("wrapper")
+        }
+    }
+    impl std::error::Error for Wrapper {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    for kind in [io::ErrorKind::TimedOut, io::ErrorKind::WouldBlock] {
+        assert!(crate::is_transport_timeout(&Wrapper(io::Error::from(kind))));
+    }
+    for kind in [
+        io::ErrorKind::ConnectionRefused,
+        io::ErrorKind::ConnectionReset,
+        io::ErrorKind::InvalidData,
+    ] {
+        assert!(!crate::is_transport_timeout(&Wrapper(io::Error::from(
+            kind
+        ))));
+    }
+}
