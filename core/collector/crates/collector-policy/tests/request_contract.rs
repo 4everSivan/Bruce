@@ -91,6 +91,36 @@ fn merge_and_annotate_return_services() {
 }
 
 #[test]
+fn annotate_accepts_previous_services_for_egress_retry_count() {
+    // C237: 定向刷新经 previousServices 继承瞬态出口退避计数; 缺省 / null 视为无历史。
+    let blocked = json!({"id": "claude_1", "provider": "claude", "status": "error",
+        "failureKind": "network", "windows": [],
+        "egress": {"status": "blocked", "reason": "EGRESS_PROBE_TIMEOUT"}});
+    let mut previous = blocked.clone();
+    previous["egressRetryCount"] = json!(1);
+    let request = |previous_services: Value| {
+        json!({
+            "schemaVersion": 1,
+            "operation": "quotaAnnotate",
+            "now": NOW,
+            "previousServices": previous_services,
+            "services": [blocked.clone()],
+            "serviceIds": ["claude_1"],
+        })
+    };
+    let inherited = call(&request(json!([previous])));
+    assert_eq!(inherited["status"], "success", "{inherited}");
+    assert_eq!(inherited["result"]["services"][0]["egressRetryCount"], 2);
+    assert_eq!(
+        inherited["result"]["services"][0]["egressRetryAt"],
+        "2026-10-26T12:03:00Z"
+    );
+
+    let fresh = call(&request(Value::Null));
+    assert_eq!(fresh["result"]["services"][0]["egressRetryCount"], 1);
+}
+
+#[test]
 fn unknown_fields_are_rejected_at_every_level() {
     let mut top = plan_request();
     top["extra"] = json!(1);

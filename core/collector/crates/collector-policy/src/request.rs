@@ -61,6 +61,9 @@ struct MergeRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AnnotateRequest {
     now: String,
+    /// 定向合并前的上一份 services (C237): 供瞬态出口退避计数按 ID 继承; 缺省视为无。
+    #[serde(default)]
+    previous_services: Option<Vec<Value>>,
     services: Vec<Value>,
     service_ids: BTreeSet<String>,
 }
@@ -239,7 +242,15 @@ fn run(operation: &str, fields: Value) -> Result<Value, Failure> {
         "quotaAnnotate" => {
             let request: AnnotateRequest = parse(fields)?;
             let mut artifact = json!({"services": request.services});
-            annotate_services(&mut artifact, &request.service_ids, now_ms(&request.now)?);
+            let previous = request
+                .previous_services
+                .map(|services| json!({"services": services}));
+            annotate_services(
+                &mut artifact,
+                previous.as_ref(),
+                &request.service_ids,
+                now_ms(&request.now)?,
+            );
             Ok(json!({"services": artifact["services"]}))
         }
         "boundaryIds" => {

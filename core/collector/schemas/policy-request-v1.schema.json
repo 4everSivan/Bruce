@@ -48,6 +48,10 @@
         "schemaVersion": { "const": 1 },
         "operation": { "const": "quotaAnnotate" },
         "now": { "$ref": "#/$defs/timestamp" },
+        "previousServices": {
+          "$ref": "#/$defs/servicesOrNull",
+          "description": "定向合并前的上一份 services (C237): 供瞬态出口退避计数 egressRetryCount 按 ID 继承; null / 缺省视为无历史"
+        },
         "services": { "$ref": "#/$defs/services" },
         "serviceIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
       }

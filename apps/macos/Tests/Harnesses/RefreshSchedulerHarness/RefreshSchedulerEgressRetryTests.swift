@@ -98,6 +98,65 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    /// C237: 定向刷新用本轮新对象替换目标 service (不带 egressRetryCount), 退避计数须经
+    /// quotaAnnotate 的 previousServices 从上一份继承, 不能每次手动刷新都回到第 1 档.
+    static func scopedRefreshCarriesEgressRetryCount(repository: URL) async throws {
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-egress-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ArtifactStore(rootURL: root)
+
+        var previous = makeEgressRetryArtifact(
+            reason: "EGRESS_PROBE_TIMEOUT",
+            retryAt: base.addingTimeInterval(-10)
+        )
+        if case .object(var object) = previous,
+           case .array(var services)? = object["services"],
+           case .object(var service)? = services.first {
+            service["egressRetryCount"] = .integer(2)
+            services[0] = .object(service)
+            object["services"] = .array(services)
+            previous = .object(object)
+        }
+        try store.publish(previous, for: .agentUsage, attemptedAt: base.addingTimeInterval(-60))
+
+        let executor = MockCollectorExecutor()
+        executor.repository = repository
+        executor.artifactOverride = makeEgressRetryArtifact(reason: "EGRESS_PROBE_TIMEOUT", retryAt: nil)
+        let pipeline = RefreshExecutionPipeline(
+            executor: executor,
+            quotaPolicy: CollectorQuotaPolicy(transport: HarnessQuotaPolicy.transport),
+            store: store,
+            runInputProvider: nil,
+            credentialUpdates: nil,
+            codexTokenManager: nil,
+            isStopped: { false },
+            now: { base }
+        )
+        let result = await pipeline.run(RefreshPipelineRequest(
+            module: .agentUsage,
+            intent: .timer(),
+            scope: .subscriptionProviders([.claude]),
+            staleAfter: 3600,
+            now: base,
+            quotaRefreshInterval: 1800
+        ))
+        guard case .completed(let run) = result,
+              let service = run.publishedArtifact?.objectValue?["services"]?.arrayValue?.first?.objectValue else {
+            throw RefreshTestFailure.expectation("定向刷新应发布 artifact, got \(result)")
+        }
+        try refreshExpect(
+            service["egressRetryCount"]?.intValue == 3,
+            "定向刷新应继承上一份计数 2 并递增为 3, 实际: \(String(describing: service["egressRetryCount"]))"
+        )
+        try refreshExpect(
+            service["egressRetryAt"]?.stringIdValue == ISODate.string(from: base.addingTimeInterval(300)),
+            "第 3 次瞬态失败应排定 300 秒后重试, 实际: \(String(describing: service["egressRetryAt"]))"
+        )
+    }
+
     /// 提取最早重试时刻 + 新错误码的徽标映射.
     static func egressRetryHintAndBadges() throws {
         let base = Date(timeIntervalSince1970: 1_786_000_000)

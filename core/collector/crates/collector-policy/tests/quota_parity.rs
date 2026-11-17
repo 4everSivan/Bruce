@@ -165,6 +165,7 @@ fn scoped_annotation_stamps_only_selected_services() {
     let mut by_id = artifact.clone();
     annotate_services(
         &mut by_id,
+        None,
         &BTreeSet::from(["kimi_coding".to_owned(), "zhipu_a".to_owned()]),
         now_ms,
     );
@@ -239,7 +240,7 @@ fn transient_egress_failure_does_not_consume_quota_freshness_slot() {
     let ids = BTreeSet::from(["claude_1".to_owned()]);
 
     let first = epoch_ms("2026-11-16T12:00:00Z");
-    annotate_services(&mut artifact, &ids, first);
+    annotate_services(&mut artifact, None, &ids, first);
     let service = &artifact["services"][0];
     assert!(
         service.get("quotaAttemptedAt").is_none(),
@@ -248,21 +249,21 @@ fn transient_egress_failure_does_not_consume_quota_freshness_slot() {
     assert_eq!(service["egressRetryCount"], 1);
     assert_eq!(service["egressRetryAt"], "2026-11-16T12:01:30Z");
 
-    annotate_services(&mut artifact, &ids, epoch_ms("2026-11-16T12:01:30Z"));
+    annotate_services(&mut artifact, None, &ids, epoch_ms("2026-11-16T12:01:30Z"));
     assert_eq!(artifact["services"][0]["egressRetryCount"], 2);
     assert_eq!(
         artifact["services"][0]["egressRetryAt"],
         "2026-11-16T12:04:30Z"
     );
 
-    annotate_services(&mut artifact, &ids, epoch_ms("2026-11-16T12:04:30Z"));
+    annotate_services(&mut artifact, None, &ids, epoch_ms("2026-11-16T12:04:30Z"));
     assert_eq!(artifact["services"][0]["egressRetryCount"], 3);
     assert_eq!(
         artifact["services"][0]["egressRetryAt"],
         "2026-11-16T12:09:30Z"
     );
 
-    annotate_services(&mut artifact, &ids, epoch_ms("2026-11-16T12:09:30Z"));
+    annotate_services(&mut artifact, None, &ids, epoch_ms("2026-11-16T12:09:30Z"));
     assert_eq!(artifact["services"][0]["egressRetryCount"], 4);
     assert!(
         artifact["services"][0].get("egressRetryAt").is_none(),
@@ -277,6 +278,7 @@ fn non_transient_egress_block_keeps_attempt_timestamp() {
     ]});
     annotate_services(
         &mut artifact,
+        None,
         &BTreeSet::from(["claude_1".to_owned()]),
         epoch_ms("2026-11-16T12:00:00Z"),
     );
@@ -336,4 +338,183 @@ fn codex_is_not_skipped_while_egress_retry_is_pending() {
     });
     assert!(policy.include_external_quotas);
     assert!(policy.skip_providers.is_empty());
+}
+
+/// 真实整轮路径 (C237): 每轮由 plan 决定是否查询, Collector 产出全新的 service 对象
+/// (不带上一轮的 egressRetryCount), 再由 merge 与上一份 artifact 合并。
+fn egress_round(previous: &Value, now_ms: i64, reason: &str) -> Value {
+    let policy = plan(&PlanInput {
+        previous: Some(previous),
+        enabled_providers: None,
+        now_ms,
+        interval_secs: 1800,
+        force_refresh: false,
+        bypass_cooldown: false,
+        suppress_external_quotas: false,
+    });
+    assert!(
+        policy.include_external_quotas && !policy.is_skipped("claude"),
+        "到点的瞬态出口失败必须进入本轮查询"
+    );
+    let current = json!({"services": [egress_blocked_service("claude_1", reason)]});
+    merge(Some(previous), &current, &policy, now_ms, 1800)
+}
+
+fn ok_claude_service(captured: &str) -> Value {
+    let mut service = service("claude_1", "claude", captured);
+    service.as_object_mut().unwrap().remove("quotaAttemptedAt");
+    service
+}
+
+#[test]
+fn egress_retry_count_escalates_across_merge_rounds() {
+    let mut artifact = json!({"services": [ok_claude_service("2026-11-16T11:00:00Z")]});
+    let mut now_ms = epoch_ms("2026-11-16T12:00:00Z");
+    let expected = [
+        (1, Some("2026-11-16T12:01:30Z")),
+        (2, Some("2026-11-16T12:04:30Z")),
+        (3, Some("2026-11-16T12:09:30Z")),
+        (4, None),
+    ];
+    for (round, (count, retry_at)) in expected.into_iter().enumerate() {
+        artifact = egress_round(&artifact, now_ms, "EGRESS_PROBE_TIMEOUT");
+        let service = &artifact["services"][0];
+        assert_eq!(
+            service["egressRetryCount"],
+            count,
+            "第 {} 轮计数",
+            round + 1
+        );
+        assert_eq!(
+            service.get("egressRetryAt").and_then(Value::as_str),
+            retry_at,
+            "第 {} 轮重试时刻",
+            round + 1
+        );
+        assert_eq!(service["freshness"], "stale", "失败借用合格旧值");
+        assert_eq!(service["capturedAt"], "2026-11-16T11:00:00Z");
+        if let Some(retry_at) = retry_at {
+            now_ms = epoch_ms(retry_at);
+        }
+    }
+}
+
+#[test]
+fn egress_retry_count_resets_after_success() {
+    let mut artifact = json!({"services": [ok_claude_service("2026-11-16T11:00:00Z")]});
+    artifact = egress_round(
+        &artifact,
+        epoch_ms("2026-11-16T12:00:00Z"),
+        "EGRESS_PROBE_TIMEOUT",
+    );
+    artifact = egress_round(
+        &artifact,
+        epoch_ms("2026-11-16T12:01:30Z"),
+        "EGRESS_PROXY_UNREACHABLE",
+    );
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 2);
+
+    let now_ms = epoch_ms("2026-11-16T12:04:30Z");
+    let current = json!({"services": [ok_claude_service("2026-11-16T12:04:30Z")]});
+    artifact = merge(
+        Some(&artifact),
+        &current,
+        &QuotaRunPolicy::include_all(),
+        now_ms,
+        1800,
+    );
+    let service = &artifact["services"][0];
+    assert!(service.get("egressRetryCount").is_none(), "成功清除计数");
+    assert!(service.get("egressRetryAt").is_none());
+    assert_eq!(service["quotaAttemptedAt"], "2026-11-16T12:04:30Z");
+
+    // 成功后的新一轮失败重新从第 1 次计。
+    let later = epoch_ms("2026-11-16T13:00:00Z");
+    let current = json!({"services": [egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT")]});
+    artifact = merge(
+        Some(&artifact),
+        &current,
+        &QuotaRunPolicy::include_all(),
+        later,
+        1800,
+    );
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 1);
+    assert_eq!(
+        artifact["services"][0]["egressRetryAt"],
+        "2026-11-16T13:01:30Z"
+    );
+}
+
+#[test]
+fn egress_retry_count_not_inherited_by_non_transient_block() {
+    let mut artifact = json!({"services": [ok_claude_service("2026-11-16T11:00:00Z")]});
+    artifact = egress_round(
+        &artifact,
+        epoch_ms("2026-11-16T12:00:00Z"),
+        "EGRESS_PROBE_TIMEOUT",
+    );
+    artifact = egress_round(
+        &artifact,
+        epoch_ms("2026-11-16T12:01:30Z"),
+        "EGRESS_PROBE_TIMEOUT",
+    );
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 2);
+
+    // 转为国家不匹配 (明确决策): 不继承, 写尝试时间戳并清除两个字段。
+    artifact = egress_round(
+        &artifact,
+        epoch_ms("2026-11-16T12:04:30Z"),
+        "EGRESS_COUNTRY_MISMATCH",
+    );
+    let service = &artifact["services"][0];
+    assert!(service.get("egressRetryCount").is_none());
+    assert!(service.get("egressRetryAt").is_none());
+    assert_eq!(service["quotaAttemptedAt"], "2026-11-16T12:04:30Z");
+
+    // 之后再出现瞬态失败: 上一份不是瞬态阻断, 从第 1 次计。
+    let now_ms = epoch_ms("2026-11-16T13:00:00Z");
+    let current = json!({"services": [egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT")]});
+    artifact = merge(
+        Some(&artifact),
+        &current,
+        &QuotaRunPolicy::include_all(),
+        now_ms,
+        1800,
+    );
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 1);
+}
+
+#[test]
+fn scoped_annotation_inherits_egress_retry_count_from_previous() {
+    // 定向刷新 (C237): 定向合并器用本轮新对象替换目标 service, 计数须从合并前的上一份继承。
+    let mut previous_service = egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT");
+    previous_service["egressRetryCount"] = json!(2);
+    previous_service["egressRetryAt"] = json!("2026-11-16T12:04:30Z");
+    let previous = json!({"services": [previous_service]});
+    let ids = BTreeSet::from(["claude_1".to_owned()]);
+
+    let mut merged =
+        json!({"services": [egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT")]});
+    annotate_services(
+        &mut merged,
+        Some(&previous),
+        &ids,
+        epoch_ms("2026-11-16T12:04:30Z"),
+    );
+    assert_eq!(merged["services"][0]["egressRetryCount"], 3);
+    assert_eq!(
+        merged["services"][0]["egressRetryAt"],
+        "2026-11-16T12:09:30Z"
+    );
+
+    // 本轮成功: 不继承, 两个字段被清除。
+    let mut recovered = json!({"services": [{"id": "claude_1", "provider": "claude", "status": "ok", "windows": []}]});
+    annotate_services(
+        &mut recovered,
+        Some(&previous),
+        &ids,
+        epoch_ms("2026-11-16T12:04:30Z"),
+    );
+    assert!(recovered["services"][0].get("egressRetryCount").is_none());
+    assert!(recovered["services"][0].get("egressRetryAt").is_none());
 }

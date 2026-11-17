@@ -448,6 +448,23 @@ fn apply_freshness(object: &mut Map<String, Value>, previous: Option<&Value>) {
     }
 }
 
+/// 瞬态出口退避计数的跨轮次继承 (C237)。整轮回填与定向刷新时, 本轮 service 是
+/// Collector 新产出的对象, 不带上一轮的 `egressRetryCount`; 仅当上一份与本轮都是瞬态
+/// 出口阻断时继承其计数, 本轮成功或转为非瞬态阻断时不继承 (由 `stamp_attempt` 清除)。
+/// 本轮对象已带计数 (对同一 artifact 原地标注) 时保持不变。须在 `stamp_attempt` 前调用。
+fn inherit_egress_retry_count(object: &mut Map<String, Value>, previous: Option<&Value>) {
+    if object.contains_key("egressRetryCount") || transient_egress_reason(object).is_none() {
+        return;
+    }
+    let inherited = previous
+        .filter(|previous| is_transient_egress_failure(previous))
+        .and_then(|previous| previous.get("egressRetryCount"))
+        .and_then(Value::as_i64);
+    if let Some(count) = inherited {
+        object.insert("egressRetryCount".to_owned(), Value::from(count.max(0)));
+    }
+}
+
 /// 本轮真实查询过的 service: 写 `quotaAttemptedAt`; 限流失败写 `rateLimitedAt`,
 /// 成功则清除。
 fn stamp_attempt(object: &mut Map<String, Value>, now_iso: &str, now_ms: i64) {
@@ -577,6 +594,7 @@ pub fn merge(
     let annotate = |service: &Value, previous: Option<&Value>| {
         let mut service = service.clone();
         if let Some(object) = service.as_object_mut() {
+            inherit_egress_retry_count(object, previous);
             stamp_attempt(object, &now_iso, now_ms);
             apply_freshness(object, previous);
         }
@@ -619,13 +637,24 @@ pub fn merge(
     result
 }
 
-fn annotate_where(artifact: &mut Value, now_ms: i64, selected: impl Fn(&Value) -> bool) {
+fn annotate_where(
+    artifact: &mut Value,
+    previous: Option<&Value>,
+    now_ms: i64,
+    selected: impl Fn(&Value) -> bool,
+) {
     let now_iso = timestamp_iso(now_ms);
+    let previous_by_id = index_by_id(services(previous));
     let Some(services) = artifact.get_mut("services").and_then(Value::as_array_mut) else {
         return;
     };
     for service in services.iter_mut().filter(|service| selected(service)) {
+        let previous = service
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|id| previous_by_id.get(id).copied());
         if let Some(object) = service.as_object_mut() {
+            inherit_egress_retry_count(object, previous);
             stamp_attempt(object, &now_iso, now_ms);
             if !object_failed(object) {
                 object
@@ -637,9 +666,15 @@ fn annotate_where(artifact: &mut Value, now_ms: i64, selected: impl Fn(&Value) -
 }
 
 /// 定向刷新: 只给本轮真实查询到的 service (按 ID) 写尝试时间戳; 合并与失败借用由
-/// 定向合并器完成, 这里不改动。
-pub fn annotate_services(artifact: &mut Value, service_ids: &BTreeSet<String>, now_ms: i64) {
-    annotate_where(artifact, now_ms, |service| {
+/// 定向合并器完成, 这里不改动。`previous` 为定向合并前的上一份 artifact: 定向合并用
+/// 本轮新对象替换目标 service, 瞬态出口退避计数需从这里按 ID 继承 (C237)。
+pub fn annotate_services(
+    artifact: &mut Value,
+    previous: Option<&Value>,
+    service_ids: &BTreeSet<String>,
+    now_ms: i64,
+) {
+    annotate_where(artifact, previous, now_ms, |service| {
         service
             .get("id")
             .and_then(Value::as_str)
@@ -648,7 +683,10 @@ pub fn annotate_services(artifact: &mut Value, service_ids: &BTreeSet<String>, n
 }
 
 /// 定向刷新: 给目标 provider 的全部 service 写尝试时间戳 (定向合并后目标 provider 只剩
-/// 本轮返回的 service)。
+/// 本轮返回的 service)。仅 Windows 使用; Windows 运行上下文不含出口分组, service 不会
+/// 带瞬态出口阻断, 因此不需要上一份 artifact 继承退避计数 (C237 核对)。
 pub fn annotate_provider(artifact: &mut Value, provider: &str, now_ms: i64) {
-    annotate_where(artifact, now_ms, |service| provider_id(service) == provider);
+    annotate_where(artifact, None, now_ms, |service| {
+        provider_id(service) == provider
+    });
 }
