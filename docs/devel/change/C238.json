@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C238",
+  "title": "瞬态出口探测退避耗尽后未回到正常刷新节奏：plan 对无 egressRetryAt 的瞬态失败每轮都判 due",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C238-egress-retry-exhausted-cadence",
+  "is_hotfix": false,
+  "target": {
+    "module": "网络出口国家校验",
+    "component": "共享额度策略 collector-policy::quota（plan / stamp_attempt / mark_carried）",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "设计 11 §4.5.3 规定三次退避耗尽后「不再排定新的 egressRetryAt，回到正常刷新节奏」。但 plan()（quota.rs:357-378）对存在瞬态出口失败的 provider，在 egressRetryAt 缺失时落入 `_ => due = true`：每一轮刷新都强制重查。同时 stamp_attempt 对瞬态失败始终移除 quotaAttemptedAt，耗尽后没有任何时间锚可供正常新鲜度门禁判断，即使去掉该分支，无 capturedAt 的 service 仍会被判为不新鲜。刷新间隔可设到 1 分钟（C160），耗尽后会以刷新间隔为周期持续重查该 provider 的全部账号，绕过 3 分钟自动查额下限（C164）。该缺陷目前被 C237（计数恒为 1、egressRetryAt 永远存在）掩盖，C237 修复后立即暴露，因此须紧随 C237 处理。",
+  "precheck": {
+    "description": "新增「退避耗尽后按正常间隔门禁」回归用例后运行，确认耗尽后仍每轮 due",
+    "command": "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy --test quota_parity exhausted_egress_retry_follows_normal_interval",
+    "expected": "修复前该用例失败（egressRetryCount=4、无 egressRetryAt、距上次尝试 60 秒时 plan 仍 include_external_quotas=true）；若通过则记录 is_completed: true 并跳过",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C238-egress-retry-exhausted-cadence fix/C237-egress-retry-count-carry  # 叠在 C237 之上：需要计数真实递增才能到达耗尽态"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "swift run --package-path apps/macos RefreshSchedulerHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C238 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C238 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "耗尽后的尝试时间锚",
+      "before": "stamp_attempt 对瞬态失败一律移除 quotaAttemptedAt；第 4 次及以后只是不再写 egressRetryAt，service 上没有任何「上次尝试」时间。",
+      "after": "退避档位耗尽（egressRetryCount 已达 EGRESS_RETRY_BACKOFF_SECS.len()）的那次及之后的瞬态失败，按普通失败写入 quotaAttemptedAt=now，并保留 egressRetryCount（保持耗尽态，直到成功或转为非瞬态时清除）；未耗尽时行为不变（不写 quotaAttemptedAt、排定 egressRetryAt）。",
+      "impact": "collector-policy/src/quota.rs：stamp_attempt。"
+    },
+    {
+      "scope": "plan 的耗尽分支",
+      "before": "瞬态失败且 egressRetryAt 缺失 → due = true（每轮强制重查）。",
+      "after": "瞬态失败且 egressRetryAt 缺失：若 egressRetryCount 已耗尽，则不走瞬态分支，落入既有的强制刷新 / 窗口边界 / 新鲜度门禁（以 quotaAttemptedAt 为锚，遵守 effective_interval_secs 与 3 分钟下限）；若计数未耗尽且缺字段（C236 之前的旧 artifact），保持现有 due=true 以便尽快补排。egressRetryAt 存在时的等待 / 到点强制重查逻辑不变。",
+      "impact": "collector-policy/src/quota.rs：plan；手动刷新（force_refresh）与 bypass_cooldown 语义不变。"
+    },
+    {
+      "scope": "回填与调度侧核对",
+      "before": "mark_carried 仅在计数未耗尽且缺 egressRetryAt 时补首档退避；mac 调度器在 egressRetryAt 为空时不提前唤醒。",
+      "after": "核对耗尽态下 mark_carried 不再补排、调度器 pendingEgressRetryAt 为 nil 并回到 refreshInterval；补 RefreshSchedulerHarness 用例：artifact 为耗尽态瞬态失败时下一次定时延迟等于正常间隔。预期无需改生产代码，如需改动在卡内补 changes 条目。",
+      "impact": "collector-policy/src/quota.rs::mark_carried（仅核对）；apps/macos RefreshSchedulerEgressRetryTests.swift。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.5.3 只写「三次耗尽后不再排定新的 egressRetryAt，回到正常刷新节奏」；§4.5.2 写「瞬态失败不写 quotaAttemptedAt」，未说明耗尽后以什么时间为锚回到正常节奏。",
+      "after": "§4.5.2 / §4.5.3 补充：退避耗尽后的瞬态失败按普通失败写入 quotaAttemptedAt 并保留 egressRetryCount；plan 对耗尽态走正常新鲜度门禁（不低于 3 分钟自动查额下限），手动刷新与窗口边界仍可强制重查；成功或非瞬态结果清除计数。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增用例覆盖：耗尽后间隔内 plan 不 due 且 provider 被跳过、满间隔后 due、force_refresh 仍 due、成功后清除计数、旧 artifact 缺字段仍补排",
+        "false_if": "任一测试失败，或耗尽后仍在间隔内判 due",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Release collector 指向未监听回环端口、刷新间隔设为 1 分钟：前三次重试按 90/180/300 秒发生，之后探测间隔不短于 3 分钟且不再出现 egressRetryAt；mac 端定时唤醒回到正常间隔",
+        "false_if": "耗尽后仍每分钟探测，或永久不再重试",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未耗尽阶段的退避、到点强制重查、Codex 永不跳过、限流冷却与锁屏抑制均不变；专用代理恢复后首次成功即清除耗尽态并恢复正常展示",
+        "false_if": "退避阶段行为改变，或恢复后仍停留在阻断/耗尽状态",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

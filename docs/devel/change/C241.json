@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C241",
+  "title": "「专用代理需要认证」被当作瞬态失败自动退避重试：探测层认定重试无意义，策略层与调度器却仍按 90/180/300 秒重查",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C241-egress-proxy-auth-not-transient",
+  "is_hotfix": false,
+  "target": {
+    "module": "网络出口国家校验",
+    "component": "collector-policy 瞬态原因集合 / mac EgressAlertEvaluator.transientProbeReasons",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "同一个结论在两层口径不一：collector-application/src/egress.rs 的 ProbeError::is_transient 不含 ProxyAuth，注释写明「配置/认证问题重试也不会改变结论」，主信标返回 407 后不再请求备用信标；而 collector-policy/src/quota.rs:51-57 的 TRANSIENT_EGRESS_REASONS 与 mac EgressAlertEvaluator.swift:25-31 的 transientProbeReasons 都包含 EGRESS_PROXY_AUTH，设计 11 §4.5.1 也把它列为瞬态。结果是一个需要用户改配置才能恢复的问题（当前仅支持免认证端口）仍会触发三次提前唤醒与重查，且不写 quotaAttemptedAt。本卡提议把 EGRESS_PROXY_AUTH 移出瞬态集合，与 EGRESS_CONFIG_INVALID 同类处理。这是对 §4.5.1 既定规则的修改，需维护者在执行前确认采纳；若维护者决定保留现状，本卡应关闭并改为只统一探测层注释。",
+  "precheck": {
+    "description": "确认策略层与 mac 端的瞬态集合仍包含 EGRESS_PROXY_AUTH",
+    "command": "git grep -n \"EGRESS_PROXY_AUTH\" -- core/collector/crates/collector-policy/src/quota.rs apps/macos/Sources/BruceAppCore/EgressAlertEvaluator.swift",
+    "expected": "两个文件的瞬态集合内均命中 EGRESS_PROXY_AUTH（缺陷仍在）；若已移除则记录 is_completed: true 并跳过",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "取得维护者对「EGRESS_PROXY_AUTH 移出瞬态集合」这一规则修改的确认",
+      "git checkout -b fix/C241-egress-proxy-auth-not-transient fix/C238-egress-retry-exhausted-cadence  # 与 C237/C238 同改 quota.rs，叠在其后避免冲突"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "swift run --package-path apps/macos RefreshSchedulerHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C241 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C241 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "策略层瞬态集合",
+      "before": "TRANSIENT_EGRESS_REASONS 含 5 项，EGRESS_PROXY_AUTH 失败不写 quotaAttemptedAt、排定 egressRetryAt。",
+      "after": "集合移除 EGRESS_PROXY_AUTH（剩 4 项）；代理需认证按非瞬态阻断处理：写 quotaAttemptedAt、清除 egressRetryAt / egressRetryCount，按正常刷新间隔或手动刷新重查。",
+      "impact": "collector-policy/src/quota.rs；quota_parity 新增「PROXY_AUTH 写尝试时间戳且不排定重试」用例。"
+    },
+    {
+      "scope": "mac 调度提前唤醒集合",
+      "before": "EgressAlertEvaluator.transientProbeReasons 含 EGRESS_PROXY_AUTH，带 egressRetryAt 时会缩短下一次定时。",
+      "after": "同步移除该项，使两处集合保持一致；RefreshSchedulerEgressRetryTests 增「PROXY_AUTH 即使带 egressRetryAt 也不缩短周期」断言。徽标与卡片文案映射（代理需认证）不变。",
+      "impact": "apps/macos/Sources/BruceAppCore/EgressAlertEvaluator.swift 与对应 Harness。"
+    },
+    {
+      "scope": "两处集合的一致性守护",
+      "before": "Rust 与 Swift 各维护一份字符串集合，无任何检查保证一致。",
+      "after": "在 RefreshSchedulerHarness 中增加一条守护断言：读取 quota.rs 源码中的 TRANSIENT_EGRESS_REASONS 字面量并与 Swift 集合比对（沿用仓库已有的源码守护测试写法）；若现有共享策略 FFI 已能导出该集合则优先改为单一来源，并在卡内说明取舍。",
+      "impact": "apps/macos/Tests/Harnesses/RefreshSchedulerHarness。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.5.1：EGRESS_PROBE_TIMEOUT、EGRESS_PROXY_UNREACHABLE、EGRESS_PROXY_AUTH、EGRESS_BAD_STATUS、EGRESS_COUNTRY_UNKNOWN 视为瞬态探测失败。",
+      "after": "§4.5.1：瞬态范围为 EGRESS_PROBE_TIMEOUT、EGRESS_PROXY_UNREACHABLE、EGRESS_BAD_STATUS、EGRESS_COUNTRY_UNKNOWN；EGRESS_PROXY_AUTH 与 EGRESS_CONFIG_INVALID 同属需用户修改配置的问题，不进入自动重试。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的策略层、调度层与集合一致性用例通过",
+        "false_if": "任一测试失败，或 Rust 与 Swift 集合不一致未被用例捕获",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Release collector 经一个对 CONNECT 返回 407 的本机端口运行：artifact 带 quotaAttemptedAt、无 egressRetryAt，mac 端下一次定时为正常间隔；看板仍显示「代理需认证」并阻断查额",
+        "false_if": "仍出现 90 秒量级的提前唤醒，或阻断被放行",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余四类瞬态失败的退避与提前唤醒不变；手动刷新可立即重查代理需认证的服务；设置页线路测试文案不变",
+        "false_if": "其他瞬态原因的重试行为改变",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C237",
+  "title": "瞬态出口探测失败的重试次数跨轮次不累计：整轮合并路径 egressRetryCount 恒为 1，90/180/300 秒退避退化为每 90 秒无限重试",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C237-egress-retry-count-carry",
+  "is_hotfix": false,
+  "target": {
+    "module": "网络出口国家校验",
+    "component": "共享额度策略 collector-policy::quota（merge / stamp_attempt）",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "C236 引入的退避依赖 egressRetryCount 逐轮递增，但 stamp_attempt（quota.rs:453）只从「本轮 service 对象」读取计数；整轮刷新路径 merge() 中本轮 service 是 Collector 新产出的对象，从不带上一轮的 egressRetryCount，apply_freshness 的 BORROWED_FIELDS 也不含该字段，且 stamp_attempt 先于 apply_freshness 执行。2026-11-16 代码评审用临时测试驱动 plan + merge 连续 6 轮失败（每轮间隔 91 秒）：每轮都是 count=1、egressRetryAt=now+90s。现有用例 transient_egress_failure_does_not_consume_quota_freshness_slot 之所以通过，是因为它对同一份 artifact 原地反复调用 annotate_services，而真实整轮路径不是这样走的。后果：专用代理持续不可用时，mac 调度器每约 90 秒被提前唤醒一次并跑完整采集，永不升档、永不停止，违反设计 11 §4.5.3；且 plan 按 provider 粒度置 due，同 provider 下其余账号也随之每约 90 秒被重查，低于 MIN_QUOTA_INTERVAL_SECS（3 分钟）的自动查额下限，存在触发 429 的风险（是否存在同 provider 账号分属不同出口分组的配置，执行时需先确认）。",
+  "precheck": {
+    "description": "新增经由 plan + merge 的跨轮次回归用例后运行，确认计数不递增的缺陷仍存在",
+    "command": "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy --test quota_parity egress_retry_count_escalates_across_merge_rounds",
+    "expected": "修复前该用例失败（第 2 轮 egressRetryCount 仍为 1、egressRetryAt 仍为 +90 秒）；若通过则说明已被前序提交修复，记录 is_completed: true 并跳过",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C237-egress-retry-count-carry  # 基于 main（C236 已在 main）",
+      "确认 C236 已取得人工确认或明确同意在其上叠加修复（C236 当前 in_progress）"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "swift run --package-path apps/macos RefreshSchedulerHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C237 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C237 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "整轮合并的重试计数继承",
+      "before": "merge() 的 annotate 直接对本轮新产出的 service 调 stamp_attempt，读取到的 egressRetryCount 恒为缺省 0，写回 1 并排定 now+90s。",
+      "after": "annotate 在 stamp_attempt 之前，按 service id 从上一份 service 继承 egressRetryCount：仅当上一份同样是瞬态出口阻断（transient_egress_reason 命中）且本轮仍为瞬态阻断时继承；本轮成功或转为非瞬态阻断时不继承并照旧清除两个字段。继承逻辑收敛为一个小函数，stamp_attempt 签名不变。",
+      "impact": "collector-policy/src/quota.rs：merge、annotate；mac 通过 collector-policy FFI、Windows 通过 quota_policy.rs 复用同一实现，无需各端改动。"
+    },
+    {
+      "scope": "定向刷新与其他标注入口核对",
+      "before": "annotate_services（request.rs:242 定向刷新）与 annotate_provider（Windows runtime_core.rs:576）对合并后的 artifact 原地标注；merge_round 不继承计数。是否同样丢失计数未经验证。",
+      "after": "逐个核对三条入口（merge / annotate_services / annotate_provider）在真实调用序列下 egressRetryCount 的来源；凡是在标注前会用本轮新对象替换旧 service 的路径，统一走同一个继承函数；确认无需改动的路径在卡内 evidence 写明依据。",
+      "impact": "collector-policy/src/request.rs、quota.rs::merge_round；apps/win/src-tauri/src/runtime_core.rs 仅核对（Windows 当前无出口保护，预期无行为变化）。"
+    },
+    {
+      "scope": "回归用例改走真实路径",
+      "before": "quota_parity 只有对同一 artifact 原地反复标注的用例，覆盖不到「上一份 artifact + 本轮新对象」的真实序列。",
+      "after": "新增 egress_retry_count_escalates_across_merge_rounds：用 plan + merge 连续 4 轮失败，断言计数 1/2/3/4、egressRetryAt 为 +90/+180/+300 秒/无；新增「失败两轮后成功」用例断言两个字段被清除、下次失败从 1 重新计；新增「瞬态 → 非瞬态阻断」用例断言不继承。保留原有原地标注用例。",
+      "impact": "collector-policy/tests/quota_parity.rs。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": false,
+    "rule_diff": {
+      "before": "§4.5.3：第 1 / 2 / 3 次瞬态失败分别在 90 / 180 / 300 秒后允许重试；三次耗尽后不再排定新的 egressRetryAt。",
+      "after": "规则不变；本卡使实现符合该规则（设计正文无需修改，仅在变更记录表登记本卡）。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace、clippy -D warnings 与 verify-local.sh 均 Exit 0；新增的跨轮次用例在修复前失败、修复后通过，断言计数 1/2/3/4 与 90/180/300 秒/无",
+        "false_if": "任一测试失败，或新增用例未经过 plan + merge 的真实序列（仍是原地标注）",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "用与 App 同源的 Release collector 指向未监听的回环端口连续运行 4 轮（复用上一轮 artifact 作为 previous），artifact 中 egressRetryCount 依次为 1/2/3/4，egressRetryAt 间隔依次为 90/180/300 秒后消失；全程 fail-closed、未触碰任何订阅额度端点",
+        "false_if": "计数停在 1、重试间隔不升档，或期间出现放行查额",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "成功结果与非瞬态阻断（CN/不匹配/配置无效）仍清除两个字段并写 quotaAttemptedAt；限流冷却、窗口边界重查、Codex 永不跳过、失败借用旧值（BORROWED_FIELDS）语义不变；Windows 侧 viewmodel/runtime 测试无回归",
+        "false_if": "计数被带入成功或非瞬态结果，或既有额度门禁用例出现回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

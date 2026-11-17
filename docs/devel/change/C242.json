@@ -1,0 +1,105 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C242",
+  "title": "顶层 tests/unit 的 22 项 Node 契约测试未接入任何门禁：verify-local.sh 与 CI 都不运行，回归无法被发现",
+  "version": "0.17.1",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "chore/C242-wire-top-level-unit-tests",
+  "is_hotfix": false,
+  "target": {
+    "module": "本地全量验证门禁",
+    "component": "scripts/verify-local.sh / tests/unit / tests/benchmark",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "tests/unit 下 5 个文件（artifact 契约、定价目录、定价展示、provider 品牌、额度策略契约）共 22 项用例，2026-11-16 手动运行 `node --test tests/unit/*.test.mjs` 为 22 通过 / 0 失败，但 scripts/verify-local.sh 与 .github/workflows/ci.yml 均无任何引用，这些契约被破坏时不会有门禁报错。tests/benchmark 的 5 组基准同样未接入，其运行入口 b_run_all.bench.mjs 把结果写到 tests/tmp/（已被 .gitignore 忽略），与 AGENTS.md 三.2「测试运行产物一律写入 local/」不一致。该项自 2026-11-09 全仓评审起一直未立卡。",
+  "precheck": {
+    "description": "确认门禁脚本与 CI 仍未引用顶层测试目录",
+    "command": "git grep -n \"tests/unit\\|tests/benchmark/\" -- scripts/verify-local.sh .github/workflows",
+    "expected": "无命中 (exit 1)，缺口仍在；若已有引用则记录 is_completed: true 并跳过",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b chore/C242-wire-top-level-unit-tests  # 基于 main"
+    ],
+    "after": [
+      "node --test tests/unit/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C242 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C242 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "单元测试接入门禁",
+      "before": "verify-local.sh 的 Node 步骤只调用 scripts/ 下的检查脚本（check-ci-tool-deps、widget-performance-harness、gen-*.mjs --check、check-change-ledger、check-site-sync），不运行 tests/unit。",
+      "after": "在 verify-local.sh 的 Node 检查段增加一步 `node --test tests/unit/*.test.mjs`（按文件通配，不传目录：传目录在当前 Node 版本下被当作单个失败用例），失败即令门禁非 0 退出；CI 通过 verify-local.sh 自动覆盖，无需单独改 ci.yml。同时加一条自检：tests/unit 下存在未被通配命中的测试文件时报错，防止命名漂移后静默漏跑。",
+      "impact": "scripts/verify-local.sh；门禁热重跑耗时预期增加不足 1 秒（实测 22 项约 70ms）。"
+    },
+    {
+      "scope": "基准的定位与产物路径",
+      "before": "tests/benchmark 无人运行；b_run_all.bench.mjs 输出到 tests/tmp/bench_latest.json。",
+      "after": "基准不作为门禁（耗时与机器相关，阈值比较易抖动），保留为手动入口；把输出目录改为 local/bench/（不存在时创建），并在 tests/docs/README.md 写明运行命令、产物位置与「不进门禁」的定位。已存在的 tests/tmp/ 不由 AI 删除，留待维护者处理。",
+      "impact": "tests/benchmark/b_run_all.bench.mjs、tests/docs/README.md；.gitignore 的 /tests/tmp/ 规则保留。"
+    },
+    {
+      "scope": "门禁文档事实同步",
+      "before": "设计 00 §3.4 与 AGENTS.md「标准验证与打包命令」表未提到顶层 Node 单元测试；§3.4 仍写「17 项 Harness」（AGENTS.md 已是 19）。",
+      "after": "§3.4 增加一条说明顶层 tests/unit 契约测试纳入门禁及其运行方式，并把 Harness 数量改为与 AGENTS.md 一致的当前值；AGENTS.md 命令表的 verify-local 行补上该步骤。",
+      "impact": "docs/devel/design/00-系统总体设计.md、AGENTS.md（项目自定义规则 §3）。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "§3.4：verify-local.sh 覆盖 Rust 工作区、Node 前端冒烟及 macOS 17 项 Harness 测试；未涉及顶层 tests/unit。",
+      "after": "§3.4：门禁另运行顶层 tests/unit 的 Node 契约测试（`node --test tests/unit/*.test.mjs`，含漏跑自检）；tests/benchmark 为手动基准，不进门禁，产物写入 local/bench/；Harness 数量更新为当前实际值。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local.sh Exit 0 且日志中出现 tests/unit 的 22 项通过；人为改坏任一契约断言时 verify-local.sh 非 0 退出（验证后恢复）",
+        "false_if": "门禁未运行 tests/unit，或用例失败时门禁仍为 0",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "手动运行基准入口后产物出现在 local/bench/，tests/tmp/ 不再新增文件；漏跑自检在放入一个不匹配通配的测试文件时报错（验证后移除）",
+        "false_if": "基准仍写入 tests/tmp/，或漏跑自检不生效",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "CI 的 verify-local 作业无需新增工具依赖（scripts/check-ci-tool-deps.mjs 通过）；门禁热重跑耗时无明显增加；既有 Node 检查步骤顺序与输出不变",
+        "false_if": "CI 因缺依赖失败，或门禁耗时显著上升",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

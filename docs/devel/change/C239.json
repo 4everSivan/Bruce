@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C239",
+  "title": "出口探测把真实超时误报为「专用代理不可达」：ureq 读超时（ErrorKind::Io）被归入 EGRESS_PROXY_UNREACHABLE，EGRESS_PROBE_TIMEOUT 几乎不可达",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C239-egress-timeout-classification",
+  "is_hotfix": false,
+  "target": {
+    "module": "网络出口国家校验",
+    "component": "collector-provider 专用代理传输错误分类 / collector-application 探测诊断映射",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "C236 的错误分类在 collector-provider/src/lib.rs:418-431 按 ureq::ErrorKind 映射：ConnectionFailed / Dns / Io / ProxyConnect 等一律为 EGRESS_PROXY_UNREACHABLE。但 ureq 2.12.1 把所有 io::Error（含读超时 TimedOut / WouldBlock）经 `From<io::Error>` 包成 ErrorKind::Io（error.rs:381）。2026-11-16 代码评审用临时测试验证：回环监听器接受连接后不应答、请求超时 1 秒，send_via_loopback_proxy 返回 EGRESS_PROXY_UNREACHABLE 而非超时。也就是 C236 立项针对的场景（代理正常、信标偶发 3 秒超时）现在显示「代理不可达 / 请确认端口已监听」，把用户引向错误的排查方向；设计 11 §4.4 与 §5「两次均超时 → EGRESS_PROBE_TIMEOUT」的验收场景实际无法达成。此外 ProxyHttpClient 让出口已放行后的额度请求也走同一分类：额度接口慢或超时会被记成「专用代理连接失败」。（TLS/握手失败归入代理不可达是 §4.4 的既定口径，不在本卡修改范围。）",
+  "precheck": {
+    "description": "新增「代理接受连接后不应答」回归用例后运行，确认超时仍被归为代理不可达",
+    "command": "cargo test --manifest-path core/collector/Cargo.toml -p collector-provider stalled_proxy_read_timeout_is_not_proxy_unreachable",
+    "expected": "修复前该用例失败（返回 EGRESS_PROXY_UNREACHABLE）；若通过则记录 is_completed: true 并跳过",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C239-egress-timeout-classification  # 基于 main，与 C237/C238 无代码重叠"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "swift build --package-path apps/macos",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C239 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C239 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "传输层超时识别",
+      "before": "send_with 在 classify_proxy_errors=true 时只看 ureq::ErrorKind，Io 与 ConnectionFailed 不区分底层原因。",
+      "after": "分类前沿 std::error::Error::source 链查找 io::Error：kind 为 TimedOut 或 WouldBlock 时不归入代理不可达，保留 PROVIDER_TRANSPORT_ERROR（由 egress.rs::classify_transport 的缺省分支映射为 ProbeError::Timeout → EGRESS_PROBE_TIMEOUT）；连接被拒绝、DNS、CONNECT 非 2xx、TLS 握手失败等仍为 EGRESS_PROXY_UNREACHABLE，407/401 仍为 EGRESS_PROXY_AUTH。超时判定封装为一个私有函数并配单测。",
+      "impact": "collector-provider/src/lib.rs：send_with；collector-application/src/egress.rs::classify_transport 无需改动（核对映射）。"
+    },
+    {
+      "scope": "放行后额度请求的错误码",
+      "before": "ProxyHttpClient 转发额度请求时同样启用分类：出口已 allowed 的 service 在额度接口超时后带 EGRESS_PROXY_UNREACHABLE 诊断。",
+      "after": "超时不再被归为代理错误后，额度接口超时回到 PROVIDER_TRANSPORT_ERROR；连接级错误（代理中途退出）仍保留代理分类。核对 finalize_outcome / failureKind 与 mac、Windows 展示层不依赖这些代码区分行为，并在 evidence 记录核对结果。",
+      "impact": "collector-application/src/execution.rs（仅核对）；tests_quota.rs 增「放行后额度请求超时 → PROVIDER_TRANSPORT_ERROR」用例。"
+    },
+    {
+      "scope": "回归用例",
+      "before": "tests_proxy.rs 只有「连接被拒绝 → EGRESS_PROXY_UNREACHABLE」；egress.rs 的超时用例用伪造错误码，绕过了真实传输分类。",
+      "after": "tests_proxy.rs 新增：监听器接受后不应答 → 非 EGRESS_PROXY_UNREACHABLE；监听器对 CONNECT 回 407 → EGRESS_PROXY_AUTH；回 502 → EGRESS_PROXY_UNREACHABLE。egress.rs 新增：主备两次传输超时 → ProbeError::Timeout。全部使用回环监听器，不访问外网。",
+      "impact": "collector-provider/src/tests_proxy.rs、collector-application/src/egress.rs 测试模块。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.4「专用代理不可达」行：无法连接本机专用代理端口（含 TLS/握手失败）；未说明传输层超时的归属，实现把读超时也归入此类。",
+      "after": "§4.4 补充：传输层超时（连接已建立但在时限内无响应）不属于代理不可达，主备两次均超时归为 EGRESS_PROBE_TIMEOUT；出口放行后的额度请求超时沿用 PROVIDER_TRANSPORT_ERROR，不使用 EGRESS_* 代码。§5「错误分类」验收场景同步写明超时的判定方式。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的不应答 / 407 / 502 / 双超时用例全部通过，且在修复前「不应答」用例失败",
+        "false_if": "任一测试失败，或用例依赖外网",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Release collector 经一个接受连接但不转发的本机端口探测，artifact 的 egress.reason 为 EGRESS_PROBE_TIMEOUT、看板徽标为「探测失败」；指向未监听端口仍为 EGRESS_PROXY_UNREACHABLE；另经真实专用代理单独请求备用信标 https://1.1.1.1/cdn-cgi/trace 一次，确认证书校验通过并能解析 loc（C236 仅以 mock 覆盖该路径）",
+        "false_if": "超时仍显示代理不可达，或备用信标在真实网络下无法完成握手/解析",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "直连查额（classify_proxy_errors=false）错误码不变；主信标超时仍触发备用信标重试；瞬态集合与退避（C237/C238）不受影响；EgressRouteTester 设置页文案不变",
+        "false_if": "直连路径错误码变化，或超时不再触发备用信标重试",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

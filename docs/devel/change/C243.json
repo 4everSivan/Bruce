@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C243",
+  "title": "移除重复跟踪的 tests/benchmarks/ 历史基线：4 个文件与 tests/fixtures/legacy_benchmark_baselines/ 逐字节相同且无任何脚本读取",
+  "version": "0.17.1",
+  "type": "Refactor",
+  "status": "pending",
+  "branch": "chore/C243-remove-duplicate-benchmark-baselines",
+  "is_hotfix": false,
+  "target": {
+    "module": "仓库测试资产布局",
+    "component": "tests/benchmarks/（python-collector-baseline*.json、rust-collector-matrix.json、rust-comparison.json）",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "tests/benchmarks/ 下 4 个 JSON 基线在测试目录重组时已按 tests/docs/README.md 的说明落到 tests/fixtures/legacy_benchmark_baselines/，但旧目录没有随之删除。2026-11-16 评审用 cmp 逐个比对，4 个文件与新位置逐字节相同；全仓检索除归档卡（C001）与 C229 的历史说明外，没有脚本、测试或文档读取 tests/benchmarks/ 路径。保留两份会让后续修改只改到其中一份，且目录名与现行的 tests/benchmark/（单数，基准脚本）极易混淆。评审中同时核对了另外两处曾被怀疑的遗留：tests/.state/ 被 tests/docs 用例文档引用（回归阈值配置），docs/official/.cards 与 .staging 属 docs/README.md 写明的独立知识库流水线产物——二者都是在用资产，不在本卡范围。",
+  "precheck": {
+    "description": "确认两处基线仍逐字节相同且旧目录无引用",
+    "command": "for f in tests/benchmarks/*.json; do cmp \"$f\" \"tests/fixtures/legacy_benchmark_baselines/$(basename \"$f\")\" || exit 2; done; git grep -n \"tests/benchmarks/\" -- . ':!docs/archive' ':!docs/devel/change'",
+    "expected": "cmp 全部相同且 git grep 无命中 (exit 1)；若 tests/benchmarks/ 已不存在则记录 is_completed: true 并跳过；若文件已出现差异则停止并向维护者汇报，不做删除",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "取得维护者对删除 tests/benchmarks/ 这 4 个已跟踪文件的确认（删除已跟踪文件）",
+      "git checkout -b chore/C243-remove-duplicate-benchmark-baselines  # 基于 main"
+    ],
+    "after": [
+      "zsh scripts/check-collector-fixtures.sh",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C243 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C243 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "删除重复目录",
+      "before": "tests/benchmarks/ 与 tests/fixtures/legacy_benchmark_baselines/ 各有一份相同的 4 个基线文件。",
+      "after": "以 git rm 移除 tests/benchmarks/ 下 4 个文件（目录随之消失），只保留 tests/fixtures/legacy_benchmark_baselines/；删除前再次执行预检中的 cmp，任何一个不相同即中止。",
+      "impact": "tests/benchmarks/；不涉及任何运行时代码与构建脚本。"
+    },
+    {
+      "scope": "历史引用处理",
+      "before": "C229 卡的 impact 文字与归档卡 C001 提到 tests/benchmarks/ 路径。",
+      "after": "已收口/已归档卡片是历史事实，不改写；在 tests/docs/README.md 的迁移说明处补一句「旧目录 tests/benchmarks/ 已于 C243 移除」，供按旧路径检索的人找到新位置。",
+      "impact": "tests/docs/README.md。"
+    },
+    {
+      "scope": "目录说明同步",
+      "before": "docs/README.md 与设计 00 的目录树若仍列出 tests/benchmarks/ 则与现实不符。",
+      "after": "检索并修正现行文档（不含 archive）中对 tests/benchmarks/ 的目录描述；设计 00 无相关描述时 design.modified 在执行时改为 false 并在卡内说明。",
+      "impact": "docs/README.md、docs/devel/design/00-系统总体设计.md（如有）。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "现行文档的目录说明中 tests/benchmarks/ 作为基准基线目录出现（如有）；实际同一批文件另存于 tests/fixtures/legacy_benchmark_baselines/。",
+      "after": "历史基准基线只保留在 tests/fixtures/legacy_benchmark_baselines/；tests/benchmark/（单数）为基准脚本目录；不再存在 tests/benchmarks/。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local.sh 与 check-collector-fixtures.sh 均 Exit 0（fixture 语法与敏感扫描在删除后照常通过）",
+        "false_if": "任一检查失败，或有脚本因找不到旧路径报错",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "删除后 `git ls-files tests/benchmarks` 无输出，tests/fixtures/legacy_benchmark_baselines/ 下 4 个文件仍在且内容未变（与删除前的校验和一致）",
+        "false_if": "新位置文件缺失或内容变化",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "全仓（不含 archive 与已收口卡片）不再有对 tests/benchmarks/ 的引用；tests/.state/ 与 docs/official/ 流水线产物未被触碰",
+        "false_if": "仍有现行脚本或文档指向旧目录，或误删了范围外的文件",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
