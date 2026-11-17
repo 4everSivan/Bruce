@@ -82,11 +82,14 @@ extension PanelViewModelMapper {
             : "—"
 
         let monthly = makeUsageMonthly(artifact)
+        // C240: 「本月」只取 now 所在本地月份 (与 dayKeyFormatter 同一时区口径); 当月尚无数据时
+        // 省略该段, 不能沿用月份列表末位 (上一个有数据的月份).
+        let currentMonthKey = String(dayKeyFormatter().string(from: now).prefix(7))
         let collapsedSummary = makeCollapsedSummary(
             artifact,
             todayTotal: totals.total,
             cacheHitRateText: cacheHitRateText,
-            monthTotalText: monthly.months.last?.totalText,
+            monthTotalText: monthly.months.first(where: { $0.key == currentMonthKey })?.totalText,
             now: now
         )
         return UsageHeroViewModel(

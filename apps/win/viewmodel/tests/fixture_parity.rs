@@ -342,3 +342,57 @@ fn collapsed_summary_handles_delta_cap_savings_and_missing_fallbacks() {
     assert_eq!(flat_summary.day_delta_text.as_deref(), Some("持平"));
     assert!(!flat_summary.day_delta_negative);
 }
+
+/// C240: 「本月」只取 now 所在本地月份的累计; 当月尚无数据 (数据止于上月) 或跨年时为 None,
+/// 不能把上一个有数据月份的整月总量标成「本月」 (与 Swift collapsedMonthTotalRequiresCurrentMonth 对拍)。
+#[test]
+fn collapsed_month_total_requires_current_month() {
+    let mapper = PanelViewModelMapper::default();
+    let month_total = |now: chrono::DateTime<FixedOffset>, days: &[(&str, u64)]| {
+        let mut artifact = load_valid_artifact();
+        artifact.agents.truncate(1);
+        artifact.agents[0].daily = days
+            .iter()
+            .map(|(date, total)| collector_domain::DailyUsage {
+                date: (*date).to_owned(),
+                input: *total,
+                output: 0,
+                cache_read: 0,
+                cache_creation: 0,
+                total: *total,
+            })
+            .collect();
+        mapper
+            .make(Some(&artifact), now)
+            .usage
+            .unwrap()
+            .collapsed_summary
+            .month_total_text
+    };
+    let utc = FixedOffset::east_opt(0).unwrap();
+    assert_eq!(
+        month_total(
+            utc.with_ymd_and_hms(2026, 12, 1, 9, 0, 0).unwrap(),
+            &[("2026-11-20", 300_000), ("2026-11-30", 11_000)]
+        ),
+        None,
+        "当月无数据时不得把 11 月总量标成本月"
+    );
+    assert_eq!(
+        month_total(
+            utc.with_ymd_and_hms(2026, 11, 30, 9, 0, 0).unwrap(),
+            &[("2026-10-31", 900_000), ("2026-11-30", 11_000)]
+        )
+        .as_deref(),
+        Some("11K"),
+        "当月有数据取当月累计"
+    );
+    assert_eq!(
+        month_total(
+            utc.with_ymd_and_hms(2027, 1, 2, 9, 0, 0).unwrap(),
+            &[("2026-12-31", 4_000)]
+        ),
+        None,
+        "跨年: 数据止于 12 月、now 为 1 月时省略"
+    );
+}

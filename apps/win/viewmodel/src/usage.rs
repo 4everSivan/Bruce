@@ -167,11 +167,17 @@ impl PanelViewModelMapper {
 
         let today = now.date_naive();
         let (monthly, half_year) = self.make_usage_monthly(artifact);
+        // C240: 「本月」只取 today 所在月份; 当月尚无数据时为 None (省略该段), 不能沿用
+        // 月份列表末位 (上一个有数据的月份)。
+        let current_month_key = today.format("%Y-%m").to_string();
         let collapsed_summary = make_collapsed_summary(
             artifact,
             totals.4,
             &cache_hit_rate_text,
-            monthly.last().map(|item| item.total_text.as_str()),
+            monthly
+                .iter()
+                .find(|item| item.key == current_month_key)
+                .map(|item| item.total_text.as_str()),
             today,
         );
         UsageHeroViewModel {

@@ -29,6 +29,10 @@
   - **现象**：探测层认定代理需认证重试无意义（不改用备用信标），但策略层与 mac 调度器的瞬态集合仍包含 `EGRESS_PROXY_AUTH`，一个必须由用户改配置才能恢复的问题仍触发 90/180/300 秒三次提前唤醒与重查，且不写 `quotaAttemptedAt`；
   - **修复**：`EGRESS_PROXY_AUTH` 移出 collector-policy `TRANSIENT_EGRESS_REASONS` 与 mac `EgressAlertEvaluator.transientProbeReasons`，与配置无效同类：写尝试时间戳、清除退避字段，按正常间隔或手动刷新重查；徽标「代理需认证」与阻断语义不变；
   - **验证**：新增策略层用例、`RefreshSchedulerHarness` 代理需认证不缩短周期用例，以及读取 `quota.rs` 字面量与 Swift 集合比对的一致性源码守卫（人为制造漂移时实测失败）；本机 407 回环端口实测：写 `quotaAttemptedAt`、无 `egressRetryAt`，按 3 分钟下限重查。
+- **Token 用量卡收起态「本月」不再把上月总量当成本月（双端）([C240](docs/devel/change/C240.json))**：
+  - **现象**：C235 收起态摘要取月份列表末位作为「本月」，而列表只含有数据的月份；月初当月尚无用量（或隔月未使用）时，上一个有数据月份的整月总量被标为「本月」；
+  - **修复**：mac `PanelViewModelMapper` 与 Windows `usage.rs` 按注入 `now` 所在本地月份（`yyyy-MM`）匹配月份键，当月无数据时为空、次行省略该段；展开态月度柱与半年汇总不变；
+  - **验证**：双端新增「当月无数据 / 当月有数据 / 跨年」用例（修复前两端均输出 11 月总量 311K），`PanelParityHarness` 三份对拍快照无需更新；design/03 规则 26 同步改写。
 - **出口探测把真实超时误报为「专用代理不可达」 ([C239](docs/devel/change/C239.json))**：
   - **现象**：ureq 把读超时包成 `ErrorKind::Io`，C236 的分类把它与连接失败一并归为 `EGRESS_PROXY_UNREACHABLE`；代理正常、信标偶发超时（C236 立项场景）时看板显示「代理不可达」，把排查引向错误方向，`EGRESS_PROBE_TIMEOUT` 几乎不可达；出口放行后的额度接口超时也被记成「专用代理连接失败」；
   - **修复**：专用代理传输分类前沿错误 `source` 链查找 `io::Error`，`TimedOut` / `WouldBlock` 保留 `PROVIDER_TRANSPORT_ERROR`（探测层主备两次都超时即 `EGRESS_PROBE_TIMEOUT`，放行后的额度超时不再带 `EGRESS_*` 代码）；连接被拒、DNS、CONNECT 非 2xx、TLS 失败仍为代理不可达，407 仍为代理需认证；直连查额错误码不变；

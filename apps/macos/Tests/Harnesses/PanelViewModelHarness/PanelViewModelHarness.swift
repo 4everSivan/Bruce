@@ -313,6 +313,7 @@ struct PanelViewModelHarness {
         try collapsedSummarySumsTodayDailyModelSavingsOnly()
         try collapsedSummaryCarriesMonthTotalAndMissingFallback()
         try collapsedSummaryMatchesWorkbenchTodaySavings()
+        try collapsedMonthTotalRequiresCurrentMonth()
         try collapsedPeakWindowPicksTightestWindow()
         try collapsedPeakWindowSpansAccountsAndSkipsBalanceOnly()
         try hourlyCollapsedPointsSumWithPeakText()
@@ -327,7 +328,7 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatePolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 71")
+        print("PanelViewModel tests passed: 72")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -2359,6 +2360,37 @@ struct PanelViewModelHarness {
         try expect(usage.collapsedSummary.dayDeltaText == nil, "无数据环比为空")
         try expect(usage.collapsedSummary.cacheSavingsText == nil, "无省费为空")
         try expect(usage.collapsedSummary.monthTotalText == nil, "无月度为空")
+    }
+
+    /// C240: 「本月」只取 now 所在本地月份的累计; 当月尚无数据 (数据止于上月) 或跨年时省略,
+    /// 不能把上一个有数据月份的整月总量标成「本月」.
+    private static func collapsedMonthTotalRequiresCurrentMonth() throws {
+        func monthTotal(now: String, days: [(String, Int)]) throws -> String? {
+            let date = try unwrap(ISO8601DateFormatter().date(from: now))
+            let artifact = makeAgentUsageArtifact(
+                agents: [makeAgent(
+                    id: "codex", name: "Codex",
+                    dailyEntries: days.map { AgentDailyUsage(date: $0.0, input: $0.1, output: 0, total: $0.1) }
+                )],
+                services: []
+            )
+            let mapper = PanelViewModelMapper(now: { date }, calendar: utcCalendar)
+            return try unwrap(
+                mapper.make(agentUsage: artifact, moduleStatuses: readyStatuses).usage
+            ).collapsedSummary.monthTotalText
+        }
+        let noCurrent = try monthTotal(
+            now: "2026-12-01T09:00:00Z",
+            days: [("2026-11-20", 300_000), ("2026-11-30", 11_000)]
+        )
+        try expect(noCurrent == nil, "当月无数据时不得把 11 月总量标成本月, 实得 \(noCurrent ?? "nil")")
+        let current = try monthTotal(
+            now: "2026-11-30T09:00:00Z",
+            days: [("2026-10-31", 900_000), ("2026-11-30", 11_000)]
+        )
+        try expect(current == "11K", "当月有数据取当月累计, 实得 \(current ?? "nil")")
+        let newYear = try monthTotal(now: "2027-01-02T09:00:00Z", days: [("2026-12-31", 4_000)])
+        try expect(newYear == nil, "跨年: 数据止于 12 月、now 为 1 月时省略, 实得 \(newYear ?? "nil")")
     }
 
     /// 工作台真实 dailyModels fixture: 验证持平环比与跨 Agent 今日省费求和.

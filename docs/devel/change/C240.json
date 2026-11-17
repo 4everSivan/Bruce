@@ -4,7 +4,7 @@
   "title": "Token 用量卡收起态「本月」取最后一个有数据的月份：当月尚无用量时把上月整月总量标成「本月」（双端）",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C240-collapsed-month-total-current",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "cargo test --manifest-path apps/win/viewmodel/Cargo.toml collapsed_month_total_requires_current_month && swift run --package-path apps/macos PanelViewModelHarness",
     "expected": "修复前新增用例失败（now 为 12 月 1 日、数据止于 11 月时 monthTotalText 为 11 月总量而非 nil）；若通过则记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 fix/C240-collapsed-month-total-current（基于 main e3f7a68）：先加双端用例运行预检命令，Windows collapsed_month_total_requires_current_month 失败（now=2026-12-01、数据止于 11 月：left Some(\"311K\") / right None），mac PanelViewModelHarness 同样失败于「当月无数据时不得把 11 月总量标成本月, 实得 311K」；缺陷确认存在，is_completed=false。"
   },
   "callback": {
     "before": [
@@ -50,7 +50,7 @@
     {
       "scope": "对拍与用例",
       "before": "PanelViewModelHarness / usage::tests / fixture_parity 只覆盖「有当月数据」与「完全无月度数据」。",
-      "after": "两端各新增：now 在当月无数据（数据止于上月）→ monthTotalText 为 nil；now 在当月有数据 → 取当月；跨年（数据止于 12 月、now 为 1 月）→ nil。核对三份 agent-usage-*.panel.json 对拍快照是否因注入 now 变化需要更新，如需更新同步两端。",
+      "after": "两端各新增：now 在当月无数据（数据止于上月）→ monthTotalText 为 nil；now 在当月有数据 → 取当月；跨年（数据止于 12 月、now 为 1 月）→ nil。核对三份 agent-usage-*.panel.json 对拍快照是否因注入 now 变化需要更新，如需更新同步两端。（执行核对 2026-11-16）三份 agent-usage-*.panel.json 对拍快照无需更新：fixture 注入的 now 所在月份本就有数据，PanelParityHarness 与 Windows fixture_parity 修复后原样通过（valid 仍为 311K）。PanelViewModelHarness 末行计数为写死标签，随新增用例由 71 改为 72。",
       "impact": "apps/macos/Tests/Harnesses/PanelViewModelHarness、PanelParityHarness；apps/win/viewmodel/tests/fixture_parity.rs；tests/fixtures/viewmodel-parity/。"
     }
   ],
@@ -65,7 +65,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261116-05",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -73,29 +73,29 @@
         "item": "自动化测试",
         "true_if": "verify-local.sh Exit 0；两端新增的当月无数据 / 有数据 / 跨年用例通过，mac 与 Windows 对拍快照一致",
         "false_if": "任一测试失败，或两端输出不一致",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 fix/C240-collapsed-month-total-current：zsh scripts/verify-local.sh Exit 0（verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 627 通过 / 0 失败，含 apps/win/viewmodel；19 个 Harness 全绿，PanelViewModel 72、PanelParityHarness 三份快照一致；日志 local/C240-verify-local.log）。 新增双端对拍用例（同一组输入、同一期望）：当月无数据（now 2026-12-01，数据 11-20 / 11-30）→ nil / None；当月有数据（now 2026-11-30，10 月 900K + 11 月 11K）→ 11K；跨年（now 2027-01-02，数据止于 2026-12-31）→ nil / None。mac 用 PanelViewModelMapper(now:calendar: UTC)，Windows 用 UTC FixedOffset。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "安装测试包后，用仅含上月数据的 artifact（或将系统日期置于无用量的新月份）查看收起态：不再出现「本月」段；当月有用量后「本月」显示当月累计",
         "false_if": "仍显示上月总量为「本月」，或当月有数据时该段消失",
-        "evidence": "",
+        "evidence": "未执行：未构建、未安装测试包，也未在已安装 App 上查看收起态（本批次 7 张卡分处不同分支，单卡安装会覆盖其余卡的待测状态，留待合入后一并实机核对）。视图模型层已证明当月无数据时 monthTotalText 为 nil；渲染层沿用规则 26 的缺失项省略：mac UsageHeroCard.swift:200（if let month = summary.monthTotalText）与 Windows app.js:339（if (summary.monthTotalText)）均在为空时不渲染「本月」段（本卡未改动渲染代码）。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "展开态月度柱、半年汇总（含被裁剪月份的半年总量为既定口径）与模型用量区块不变；较昨日、省费、命中率三项输出不变",
         "false_if": "展开态月度或半年数值变化，或其余摘要项被影响",
-        "evidence": "",
-        "result": null
+        "evidence": "展开态月度柱 / 半年汇总：makeUsageMonthly / make_usage_monthly 未改动，PanelParityHarness 三份快照（含 monthly / halfYear 字段）与 Windows fixture_parity 全部原样通过；模型用量区块、较昨日、省费、命中率：makeCollapsedSummary 其余参数与逻辑未改动，collapsedSummaryComputesDayDeltaAndCap / SumsTodayDailyModelSavingsOnly / MatchesWorkbenchTodaySavings 与 Windows collapsed_summary_handles_delta_cap_savings_and_missing_fallbacks 全部通过。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
