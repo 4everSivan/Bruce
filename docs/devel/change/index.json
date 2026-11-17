@@ -236,7 +236,7 @@
     "C243": {
       "title": "移除重复跟踪的 tests/benchmarks/ 历史基线：4 个文件与 tests/fixtures/legacy_benchmark_baselines/ 逐字节相同且无任何脚本读取",
       "type": "Refactor",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "chore/C243-remove-duplicate-benchmark-baselines",
       "topic": "SystemOverview",
       "version": "0.17.1",
