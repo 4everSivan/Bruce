@@ -1,6 +1,6 @@
 # Bruce 测试文档中心 (tests/docs/)
 
-> **module**: global ｜ **type**: index ｜ **updated_at**: 2026-11-02 ｜ **status**: active
+> **module**: global ｜ **type**: index ｜ **updated_at**: 2026-11-16 ｜ **status**: active
 
 ## 1. 测试体系概览与快速入口
 
@@ -12,6 +12,9 @@
   - 全量测试：`$test-anything run`
   - 单元测试：`$test-anything run unittest`
   - 基准测试：`$test-anything run benchmark`
+
+- **门禁接入 (C242)**：`zsh scripts/verify-local.sh` 运行 `node --test tests/unit/*.test.mjs`（按文件通配，不传目录：传目录会被 `node --test` 当作单个失败用例），并先自检 `tests/unit` 下没有未被通配命中的测试文件，CI 经 verify-local 自动覆盖；
+- **基准定位**：`tests/benchmark/` 为手动基准，不进门禁（耗时与机器相关，阈值比较易抖动）。运行 `node tests/benchmark/b_run_all.bench.mjs`，结果打印到标准输出并写入 `local/bench/bench_latest.json`（旧产物目录 `tests/tmp/` 已停用，既有文件由维护者处理）。
 
 > 本套件覆盖跨端契约与 Windows 纯函数层；Rust Collector 与 Swift Harness 仍以 `zsh scripts/verify-local.sh` 为准。既有共享 fixture 已按原路径保留在 `tests/fixtures/`，Rust `include_str!`、Swift Harness 与 `scripts/check-collector-fixtures.sh` 无需改路径。
 

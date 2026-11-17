@@ -4,7 +4,7 @@
   "title": "顶层 tests/unit 的 22 项 Node 契约测试未接入任何门禁：verify-local.sh 与 CI 都不运行，回归无法被发现",
   "version": "0.17.1",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "chore/C242-wire-top-level-unit-tests",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "git grep -n \"tests/unit\\|tests/benchmark/\" -- scripts/verify-local.sh .github/workflows",
     "expected": "无命中 (exit 1)，缺口仍在；若已有引用则记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 chore/C242-wire-top-level-unit-tests（worktree local/worktrees/C242，基于 main e3f7a68）：预检 git grep 无命中 (exit 1)，缺口仍在；node --test tests/unit/*.test.mjs 为 22 通过 / 0 失败（约 80 ms），node --test tests/unit（传目录）在 Node v25.2.1 下被当作单个失败用例「test at tests/unit:1:1 ✖」，与卡内判断一致。is_completed=false。"
   },
   "callback": {
     "before": [
@@ -35,13 +35,13 @@
     {
       "scope": "单元测试接入门禁",
       "before": "verify-local.sh 的 Node 步骤只调用 scripts/ 下的检查脚本（check-ci-tool-deps、widget-performance-harness、gen-*.mjs --check、check-change-ledger、check-site-sync），不运行 tests/unit。",
-      "after": "在 verify-local.sh 的 Node 检查段增加一步 `node --test tests/unit/*.test.mjs`（按文件通配，不传目录：传目录在当前 Node 版本下被当作单个失败用例），失败即令门禁非 0 退出；CI 通过 verify-local.sh 自动覆盖，无需单独改 ci.yml。同时加一条自检：tests/unit 下存在未被通配命中的测试文件时报错，防止命名漂移后静默漏跑。",
+      "after": "在 verify-local.sh 的 Node 检查段增加一步 `node --test tests/unit/*.test.mjs`（按文件通配，不传目录：传目录在当前 Node 版本下被当作单个失败用例），失败即令门禁非 0 退出；CI 通过 verify-local.sh 自动覆盖，无需单独改 ci.yml。同时加一条自检：tests/unit 下存在未被通配命中的测试文件时报错，防止命名漂移后静默漏跑。（执行 2026-11-16）步骤放在 check-site-sync 之后、PanelParityHarness 之前；漏跑自检：tests/unit 下（含子目录）文件名含 test / spec 却不在 tests/unit/*.test.mjs 通配结果中的文件一律报错退出（普通辅助模块不受影响）。",
       "impact": "scripts/verify-local.sh；门禁热重跑耗时预期增加不足 1 秒（实测 22 项约 70ms）。"
     },
     {
       "scope": "基准的定位与产物路径",
       "before": "tests/benchmark 无人运行；b_run_all.bench.mjs 输出到 tests/tmp/bench_latest.json。",
-      "after": "基准不作为门禁（耗时与机器相关，阈值比较易抖动），保留为手动入口；把输出目录改为 local/bench/（不存在时创建），并在 tests/docs/README.md 写明运行命令、产物位置与「不进门禁」的定位。已存在的 tests/tmp/ 不由 AI 删除，留待维护者处理。",
+      "after": "基准不作为门禁（耗时与机器相关，阈值比较易抖动），保留为手动入口；把输出目录改为 local/bench/（不存在时创建），并在 tests/docs/README.md 写明运行命令、产物位置与「不进门禁」的定位。已存在的 tests/tmp/ 不由 AI 删除，留待维护者处理。（执行 2026-11-16）tests/docs/README.md 第 1 节补「门禁接入」与「基准定位」两条；既有 tests/tmp/（本机已有 bench_latest.json，未跟踪、被忽略）未删除。",
       "impact": "tests/benchmark/b_run_all.bench.mjs、tests/docs/README.md；.gitignore 的 /tests/tmp/ 规则保留。"
     },
     {
@@ -61,8 +61,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261116-07",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -70,29 +70,29 @@
         "item": "自动化测试",
         "true_if": "verify-local.sh Exit 0 且日志中出现 tests/unit 的 22 项通过；人为改坏任一契约断言时 verify-local.sh 非 0 退出（验证后恢复）",
         "false_if": "门禁未运行 tests/unit，或用例失败时门禁仍为 0",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 chore/C242-wire-top-level-unit-tests（主检出 detach 到 902fbd2 运行）：zsh scripts/verify-local.sh Exit 0，日志 local/C242-verify-local.log 第 1558 行起出现「运行顶层 Node 契约单元测试 (tests/unit, C242)」，tests 22 / pass 22 / fail 0；其余照常：verify-rust.sh 三个 manifest 合计 626 通过 / 0 失败，19 个 Harness 全绿（本分支基于 main，RefreshScheduler / PanelViewModel 打印的 129 / 71 为 main 上写死的旧标签）。人为改坏 u_provider_brand.test.mjs 一条断言时本步骤 exit 1（21 pass / 1 fail，见行为实测），验证后已恢复。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "手动运行基准入口后产物出现在 local/bench/，tests/tmp/ 不再新增文件；漏跑自检在放入一个不匹配通配的测试文件时报错（验证后移除）",
         "false_if": "基准仍写入 tests/tmp/，或漏跑自检不生效",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 worktree：① 基准：node tests/benchmark/b_run_all.bench.mjs Exit 0，6 项指标约 376 ms，产物写入 local/bench/bench_latest.json，worktree 中 tests/tmp/ 未被创建。② 漏跑自检：抽取 verify-local.sh 中本段单独运行（/tmp/c242-unit-step.zsh），放入 tests/unit/u_drift.test.js 时报「tests/unit 存在未被 *.test.mjs 通配命中的测试文件 (会被静默漏跑): tests/unit/u_drift.test.js」并 exit 1；放入 tests/unit/nested/u_nested.test.mjs 同样 exit 1；两者验证后已移除。③ 人为在 u_provider_brand.test.mjs 首个断言前插入 assert.fail 时本段 exit 1（21 pass / 1 fail），验证后已恢复（git status 干净）。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "CI 的 verify-local 作业无需新增工具依赖（scripts/check-ci-tool-deps.mjs 通过）；门禁热重跑耗时无明显增加；既有 Node 检查步骤顺序与输出不变",
         "false_if": "CI 因缺依赖失败，或门禁耗时显著上升",
-        "evidence": "",
-        "result": null
+        "evidence": "node scripts/check-ci-tool-deps.mjs Exit 0（无新增工具依赖：node 已是 verify-local 既有依赖，CI verify 作业使用 macOS runner 预装 Node，未新增 setup 步骤）；新增步骤约 0.1 秒；既有 Node 检查步骤（check-ci-tool-deps、widget-performance-harness、gen-*.mjs --check、check-change-ledger、check-site-sync）顺序与输出未改，本步插在其后。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },

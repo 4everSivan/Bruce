@@ -13,6 +13,7 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Changed
+- **顶层 `tests/unit` 契约测试接入本地门禁 ([C242](docs/devel/change/C242.json))**：`verify-local.sh` 新增 `node --test tests/unit/*.test.mjs`（22 项 artifact / 定价 / provider 品牌 / 额度策略契约，此前门禁与 CI 均未运行），运行前自检 `tests/unit` 下没有未被通配命中的测试文件；`tests/benchmark/` 定位为手动基准、不进门禁，产物由 `tests/tmp/` 改写到 `local/bench/`；设计 00 §3.4、AGENTS.md 命令表与 `tests/docs/README.md` 同步。
 - **Token 用量卡收起态改用方案 A4 摘要（双端）([C235](docs/devel/change/C235.json))**：
   - **收起态右侧重排**：移除近 7 天迷你热力条（`collapsedWeekLevels` / `.mini-week`），保留左侧 17pt 今日总 Token；右侧主行显示「命中 XX% | ≈ ¥XX.XX」（缺值展示暗淡 `—`），次行以 `·` 分隔展示「较昨日 ↑N%/↓N%/持平 · 省 ¥XX.XX · 本月 XXX」，无数据子项自动省略，全空时整行隐藏；
   - **数据与视图契约**：新增 `UsageCollapsedSummary`（Rust `usage::make_collapsed_summary` 与 Swift `PanelViewModelMapper.makeCollapsedSummary` 1:1 对齐），`dailyModels` 仅累加今日缓存省费，`PanelFormat.cnyText` 拆为 `costText` 与省费文案共享格式器；

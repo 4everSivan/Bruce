@@ -14,7 +14,8 @@ import { run as runProviderBrand, meta as metaProviderBrand } from "./b_provider
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const tmpDir = join(repoRoot, "tests/tmp");
+// 基准产物与其他运行产物一样写入 local/ (AGENTS.md 三.2, C242); 基准为手动入口, 不进门禁。
+const outDir = join(repoRoot, "local/bench");
 
 const suites = [
   { meta: metaPricingCatalog, run: runPricingCatalog },
@@ -31,7 +32,7 @@ for (const suite of suites) {
 }
 const durationMs = performance.now() - started;
 
-mkdirSync(tmpDir, { recursive: true });
+mkdirSync(outDir, { recursive: true });
 const output = {
   run_id: new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15),
   executed_at: new Date().toISOString(),
@@ -39,5 +40,5 @@ const output = {
   total: metrics.length,
   metrics,
 };
-writeFileSync(join(tmpDir, "bench_latest.json"), `${JSON.stringify(output, null, 2)}\n`);
+writeFileSync(join(outDir, "bench_latest.json"), `${JSON.stringify(output, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
