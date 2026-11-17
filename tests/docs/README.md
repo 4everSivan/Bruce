@@ -1,6 +1,6 @@
 # Bruce 测试文档中心 (tests/docs/)
 
-> **module**: global ｜ **type**: index ｜ **updated_at**: 2026-11-02 ｜ **status**: active
+> **module**: global ｜ **type**: index ｜ **updated_at**: 2026-11-16 ｜ **status**: active
 
 ## 1. 测试体系概览与快速入口
 
@@ -35,5 +35,5 @@
 ## 4. 存量测试接管说明
 
 - 原 `tests/`（44 个文件：36 个共享 fixture、4 个基准基线、4 个视觉资源）已原子迁移至 `_test_anything_backup/original_tests/tests/`，备份只读。
-- 共享 fixture 与视觉资源已按原相对路径回填到新 `tests/fixtures/`、`tests/visual/`；4 个基准基线落在 `tests/fixtures/legacy_benchmark_baselines/`。
+- 共享 fixture 与视觉资源已按原相对路径回填到新 `tests/fixtures/`、`tests/visual/`；4 个基准基线落在 `tests/fixtures/legacy_benchmark_baselines/`；迁移时遗留在旧目录 `tests/benchmarks/`（复数）的逐字节相同副本已于 [C243](../../docs/devel/change/C243.json) 移除，按旧路径检索请改到该目录。`tests/benchmark/`（单数）是基准脚本目录，与此无关。
 - 既有 Rust/Swift/Windows 原生测试代码未迁移，仍由各自 runner 执行。
