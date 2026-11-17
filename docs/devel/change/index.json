@@ -227,7 +227,7 @@
     "C242": {
       "title": "顶层 tests/unit 的 22 项 Node 契约测试未接入任何门禁：verify-local.sh 与 CI 都不运行，回归无法被发现",
       "type": "Enhancement",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "chore/C242-wire-top-level-unit-tests",
       "topic": "SystemOverview",
       "version": "0.17.1",
