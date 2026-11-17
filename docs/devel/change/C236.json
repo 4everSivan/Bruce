@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C236",
+  "title": "出口探测瞬态失败自愈：备用信标重试、失败不占额度刷新配额、错误分类",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C236-egress-probe-resilience",
+  "is_hotfix": false,
+  "target": {
+    "module": "网络出口国家校验",
+    "component": "Collector 出口探测 / 共享额度策略 / 刷新调度 / 设置页线路测试",
+    "design_doc": "docs/devel/design/11-网络出口国家校验.md",
+    "design_topic": "NetworkEgressCountry"
+  },
+  "why": "出口探测每次都新建连接且只有一次机会、硬超时 3 秒；本机用 Release collector 实测 10 次出现 1 次 3.06 秒超时（正常约 0.6 秒），瞬时抖动即被判为失败。失败后 collector-policy 仍写入 quotaAttemptedAt，把探测失败当成一次额度尝试，使该 provider 在默认 30 分钟刷新间隔内被跳过并持续展示阻断；所有传输错误还被折叠为同一个 EGRESS_PROBE_TIMEOUT，代理未启动、需要认证、信标非 200 与真超时无法区分。结果是偶发网络抖动被放大为「经常探测失败、阻断半小时」。",
+  "precheck": {
+    "description": "确认仓库内尚无备用信标重试、探测失败短退避与错误分类实现",
+    "command": "git grep -n \"egressRetryAt\\|PROBE_FALLBACK\\|EGRESS_PROXY_UNREACHABLE\\|EGRESS_BAD_STATUS\" -- core apps/macos",
+    "expected": "无命中 (exit 1)，缺陷仍存在",
+    "is_completed": false,
+    "evidence": "2026-11-16 预检：命令无命中 (exit 1)；本机 egress.rs 仍为单次 3 秒探测，快照 09:37 记录 Claude EGRESS_PROBE_TIMEOUT、Codex allowed US；09:43 恢复，确认属瞬时抖动而非线路持续不可用。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C236-egress-probe-resilience"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "swift build --package-path apps/macos",
+      "swift run --package-path apps/macos RefreshSchedulerHarness",
+      "swift run --package-path apps/macos PanelViewModelHarness",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C236 --to verified --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card C236 --receipt 复核、输出节点回执"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "出口探测异常流",
+      "before": "每次探测新建 Agent，单次请求硬超时 3 秒；任何传输错误、非 200、响应无效都映射为 EGRESS_PROBE_TIMEOUT；同轮同端口用 OnceLock 缓存最终结果。",
+      "after": "首次请求 cloudflare.com 3 秒；失败后 400ms 退避，改用备用信标 1.1.1.1 再做一次最长 5 秒的尝试，两次都失败才判探测失败；同轮同端口仍只共享一次最终结果。只对传输失败、非 200、响应无效重试，国家决策（CN/不匹配）不重试。",
+      "impact": "collector-application/egress.rs、tests_quota.rs；同轮次合并语义不变，探测时间上限从约 3 秒变为约 8.4 秒（仍在 externalRequestSeconds=10 与 moduleSeconds=90 预算内）。"
+    },
+    {
+      "scope": "探测错误分类",
+      "before": "代理不可达、代理要求认证、TLS/握手失败、信标非 200、响应解析失败全部显示「探测失败」，前端无法区分配置问题与瞬时网络问题。",
+      "after": "新增 EGRESS_PROXY_UNREACHABLE / EGRESS_PROXY_AUTH / EGRESS_BAD_STATUS；仅真正的两次超时保留 EGRESS_PROBE_TIMEOUT，解析失败保留 EGRESS_COUNTRY_UNKNOWN；mac 看板徽标、卡片标题与设置页手测文案分别映射，仍 fail-closed。",
+      "impact": "collector-provider 代理传输错误码、collector-application 诊断映射、ArtifactModels/EgressAlertEvaluator、EgressRouteTester。"
+    },
+    {
+      "scope": "额度刷新门禁与自动重试",
+      "before": "探测失败与其他失败一样写入 quotaAttemptedAt；共享额度门禁据此跳过该 provider 整个刷新间隔（默认 30 分钟），阻断状态由旧 service 原样回填。",
+      "after": "瞬态探测失败（超时/代理不可达/需认证/信标异常/出口未知）不写 quotaAttemptedAt，改写入 egressRetryAt 与 egressRetryCount：90 秒、180 秒、300 秒各重试一次，之后回到正常周期；调度器把最近的 egressRetryAt 计入下一次唤醒时间（不改变 30 分钟正常节奏），到点后的定时刷新强制重查该 provider 而不再受新鲜度门禁阻挡。成功或非瞬态阻断时清除 egressRetryAt/egressRetryCount。真实故障仍严格阻断，绝不因重试放行查额。",
+      "impact": "collector-policy/quota.rs 与 quota_parity 测试、mac RefreshScheduler.scheduleNextRefresh；锁屏/离线仍沿用既有抑制与恢复逻辑。"
+    },
+    {
+      "scope": "设置页线路测试一致性",
+      "before": "EgressRouteTester 使用 URLSession 单次 3 秒请求，任何异常都返回「探测失败，请检查专用代理」，与 Collector 的探测路径不一致。",
+      "after": "与 Collector 对齐：先请求主信标 3 秒，失败后 400ms 退避改用备用信标 5 秒；两次都失败才提示，并按 URLError/HTTP 状态区分代理不可达、代理需认证、信标异常与超时。",
+      "impact": "apps/macos EgressRouteTester.swift；国家匹配/不匹配的展示文案不变。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/11-网络出口国家校验.md",
+    "topic": "NetworkEgressCountry",
+    "modified": true,
+    "rule_diff": {
+      "before": "4.2 规定探测为单次 HTTPS GET，超时 2.5~3.0 秒；4.4 仅定义探测超时/断网为 EGRESS_PROBE_TIMEOUT；额度刷新门禁未区分探测失败与真实额度尝试。",
+      "after": "4.2 改为首次主信标 3 秒、失败后退避并改用备用信标最长 5 秒、两次都失败才判探测失败；4.4 增加代理不可达、代理需认证、信标异常三类错误码与文案；4.5 新增瞬态探测失败不占额度尝试配额、按 90/180/300 秒退避重试且调度器提前唤醒的规则。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261116-01",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Rust collector workspace 全量测试与 mac 相关 Harness 全绿，退出码 0，含备用信标重试、最终结果缓存、瞬态失败退避与调度提前唤醒的针对性用例",
+        "false_if": "存在任何测试失败、报错或缺少对应回归用例",
+        "evidence": "2026-11-16 于 fix/C236-egress-probe-resilience：cargo test --workspace 与 cargo clippy -p collector-application -p collector-policy -p collector-provider --all-targets -- -D warnings 均 Exit 0；zsh scripts/verify-local.sh Exit 0（19 个 Harness 全绿：RefreshScheduler 129、PanelViewModel 71、Onboarding 180、CollectorRunner 28 等）；新增用例覆盖主信标失败回退、同轮最终结论缓存、代理认证不重试、瞬态退避 90/180/300、调度提前唤醒与徽标映射。日志 local/C236-verify-local.log。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "本机 trace 探测连续多次不再出现单次 3 秒即失败；模拟首次失败时能由备用信标恢复；瞬态失败后下一次唤醒时间提前到 90 秒量级且不再占用 30 分钟额度周期",
+        "false_if": "仍出现单次超时即阻断、失败后仍被跳过 30 分钟，或重试导致真实故障被放行",
+        "evidence": "2026-11-16 使用与 App 同源的 collector 探测路径做 trace-only 演练（假 DeepSeek 凭据 + 预期 CN，探测到 US 即在决策阶段短路，未触碰 Claude 或任何订阅额度端点）：修复前 10 次出现 1 次 3.06s 超时；修复后连续 5 次 5/5 成功（0.68–1.01s，均 EGRESS_COUNTRY_MISMATCH|US）。主备信标回退与同轮缓存由自动化用例覆盖。 2026-11-16 10:17 已重新打包并安装 Universal 2 测试包（PID 88564，codesign 通过）：内置 collector 对未监听回环端口返回 EGRESS_PROXY_UNREACHABLE（新错误分类生效），经 7897 经主信标探测得 US；部署报告 local/deploy_report.md。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "国家匹配/不匹配/CN/配置无效的既有语义与 fail-closed 行为不变，未分组订阅零干扰，额度查额与出口阻断快照完整保留",
+        "false_if": "出现误放行、误报警、破坏既有快照或让非瞬态阻断进入重试",
+        "evidence": "国家不匹配 / CN / 配置无效仍走原决策且不进入自动重试（harness「non-transient egress keeps interval」通过）；瞬态失败仍 fail-closed，仅调整重试时机与文案；未分组订阅路径、同轮同端口合并、额度查额代理端口与历史快照均未改；verify-local 全量 19 Harness 无回归。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -25,6 +25,12 @@
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
 ### Fixed
+- **出口探测瞬态失败自愈与错误分类 ([C236](docs/devel/change/C236.json))**：
+  - **现象**：出口探测每次新建连接且只有一次机会、硬超时 3 秒，本机 Release collector 实测 10 次出现 1 次 3.06 秒超时即判失败；失败又被写入 `quotaAttemptedAt`，使该 provider 在默认 30 分钟刷新间隔内被跳过并持续展示阻断；代理不可达、需认证、信标非 200 与真超时统一显示「探测失败」；
+  - **探测重试**：主信标 3 秒失败后，退避 400ms 改用 `1.1.1.1` 备用信标再试一次（最长 5 秒），两次都失败才阻断；同轮同端口仍共享一次最终结论，国家决策（CN/不匹配）不在探测层重试；
+  - **门禁与唤醒**：瞬态失败不再占额度刷新配额，改为 `egressRetryAt` / `egressRetryCount`，按 90/180/300 秒退避；调度器把最早的 `egressRetryAt` 计入下一次唤醒时间（至少 30 秒），到点后的定时刷新强制重查该 provider，成功或非瞬态阻断即清除；真实故障始终 fail-closed；
+  - **错误分类**：新增 `EGRESS_PROXY_UNREACHABLE` / `EGRESS_PROXY_AUTH` / `EGRESS_BAD_STATUS`，看板徽标、卡片标题与设置页手测文案分别映射；设置页手测同步主备信标与超时预算；
+  - **验证**：Rust workspace 全绿；`RefreshSchedulerHarness` 129 项（含主信标失败回退、最终结论缓存、瞬态退避与提前唤醒）、`PanelViewModelHarness` 71 项、`BruceOnboardingCoreHarness` 180 项全绿。
 - **纵向布局快捷键收放在面板贴屏时仍抖动 ([C234](docs/devel/change/C234.json))**：
   - **现象**：收起 Token 用量卡、展开另外两张后，用 ⌘2 收起订阅用量卡会抖一下，鼠标点击同一张卡片不抖（C232 之后仍存在）；
   - **根因**：快捷键在收放前用 `scrollTo(card, anchor: .top)` 把整张卡片顶到视口上缘。内容未超出面板时这是空操作；面板被屏幕高度夹取、内容可滚动时，即使标题行本来可见也会瞬时滚走一段，随后卡片收起、内容变短，滚动偏移在同一段动画里被逐帧夹回——卡片栈先上跳再滑回；
