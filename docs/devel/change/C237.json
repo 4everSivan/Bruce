@@ -4,7 +4,7 @@
   "title": "瞬态出口探测失败的重试次数跨轮次不累计：整轮合并路径 egressRetryCount 恒为 1，90/180/300 秒退避退化为每 90 秒无限重试",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C237-egress-retry-count-carry",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy --test quota_parity egress_retry_count_escalates_across_merge_rounds",
     "expected": "修复前该用例失败（第 2 轮 egressRetryCount 仍为 1、egressRetryAt 仍为 +90 秒）；若通过则说明已被前序提交修复，记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 fix/C237-egress-retry-count-carry（基于 main e3f7a68，C236 已合入 main、尚待签收，维护者以「knock out all the tasks for cards C237–C243」同意在其上叠加）：先只加用例运行预检命令，egress_retry_count_escalates_across_merge_rounds 失败于「第 2 轮计数 left: 1 right: 2」，同时新增的成功重置 / 非瞬态不继承两例也因计数恒为 1 失败（3 failed），缺陷确认存在，is_completed=false。"
   },
   "callback": {
     "before": [
@@ -45,8 +45,8 @@
     {
       "scope": "定向刷新与其他标注入口核对",
       "before": "annotate_services（request.rs:242 定向刷新）与 annotate_provider（Windows runtime_core.rs:576）对合并后的 artifact 原地标注；merge_round 不继承计数。是否同样丢失计数未经验证。",
-      "after": "逐个核对三条入口（merge / annotate_services / annotate_provider）在真实调用序列下 egressRetryCount 的来源；凡是在标注前会用本轮新对象替换旧 service 的路径，统一走同一个继承函数；确认无需改动的路径在卡内 evidence 写明依据。",
-      "impact": "collector-policy/src/request.rs、quota.rs::merge_round；apps/win/src-tauri/src/runtime_core.rs 仅核对（Windows 当前无出口保护，预期无行为变化）。"
+      "after": "逐个核对三条入口（merge / annotate_services / annotate_provider）在真实调用序列下 egressRetryCount 的来源；凡是在标注前会用本轮新对象替换旧 service 的路径，统一走同一个继承函数；确认无需改动的路径在卡内 evidence 写明依据。（执行核对 2026-11-16）merge：已改为继承；annotate_services（mac 定向刷新 quotaAnnotate）：ScopedQuotaSnapshotMerger 用本轮新对象替换目标 service，只借 BORROWED_FIELDS，计数同样丢失——RefreshSchedulerHarness 新增用例在撤掉修复时实测发布 egressRetryCount=1——已改为经请求新增的可选 previousServices 走同一继承函数；merge_round：不调用 stamp_attempt、不写任何退避字段，无需改动；annotate_provider（仅 Windows）：Windows 不向 collector 下发 egressRules（apps/win 全目录无 egress 引用），service 不会带出口阻断，签名不变、传 None。",
+      "impact": "collector-policy/src/quota.rs（annotate_where / annotate_services 增 previous 参数）、request.rs（AnnotateRequest 增可选 previousServices）、schemas/policy-request-v1.schema.json；mac QuotaPolicyClient.annotate 与 RefreshExecutionPipeline 传入定向合并前的上一份 artifact；apps/win 仅核对，无改动。 设计 08 规则 5 同步一句 quotaAnnotate 携带 previousServices 的契约说明。"
     },
     {
       "scope": "回归用例改走真实路径",
@@ -65,8 +65,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261116-02",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -74,29 +74,29 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy -D warnings 与 verify-local.sh 均 Exit 0；新增的跨轮次用例在修复前失败、修复后通过，断言计数 1/2/3/4 与 90/180/300 秒/无",
         "false_if": "任一测试失败，或新增用例未经过 plan + merge 的真实序列（仍是原地标注）",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 fix/C237-egress-retry-count-carry：cargo test --workspace（collector）316 通过 / 0 失败；cargo clippy --workspace --all-targets -- -D warnings Exit 0；zsh scripts/verify-local.sh Exit 0（19 个 Harness 全绿：RefreshScheduler 134、PanelViewModel 71、Onboarding 180、CollectorRunner 28 等；日志 local/C237-verify-local.log，仅有既有的 ld「search path not found」链接告警）。新增用例：quota_parity egress_retry_count_escalates_across_merge_rounds（plan + merge 连续 4 轮，断言计数 1/2/3/4、egressRetryAt +90/+180/+300 秒/无，修复前失败于第 2 轮计数 1）、egress_retry_count_resets_after_success、egress_retry_count_not_inherited_by_non_transient_block、scoped_annotation_inherits_egress_retry_count_from_previous；request_contract annotate_accepts_previous_services_for_egress_retry_count；RefreshSchedulerHarness scopedRefreshCarriesEgressRetryCount（经真实进程内策略的定向刷新，撤掉修复时实测发布计数 1，修复后为 3 且 egressRetryAt=+300 秒）。原有原地标注用例保留并通过。另：RefreshSchedulerHarness 末行计数原为写死的 129（main 实际已跑 133 项），本卡改为当前实际 134。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "用与 App 同源的 Release collector 指向未监听的回环端口连续运行 4 轮（复用上一轮 artifact 作为 previous），artifact 中 egressRetryCount 依次为 1/2/3/4，egressRetryAt 间隔依次为 90/180/300 秒后消失；全程 fail-closed、未触碰任何订阅额度端点",
         "false_if": "计数停在 1、重试间隔不升档，或期间出现放行查额",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 本机演练（local/egress-drill，链接本分支 collector-policy 的本地驱动，不入仓库）：Release Bruce-collector（本分支 cargo build --release）以 externalQuotas 能力运行，egressRules 将 deepseek 指向未监听回环端口 59999（lsof 确认无监听），凭据为假 api_key；每轮以上一轮合并结果为 previous 调 plan + merge，模拟时钟按 egressRetryAt 推进。结果（local/egress-drill/c237-run.log）：第 1–4 轮 reason=EGRESS_PROXY_UNREACHABLE、egressRetryCount=1/2/3/4、egressRetryAt=+90/+180/+300 秒/无，全程 status=partial 阻断、quotaAttemptedAt 未写；探测在代理连接阶段失败，未向任何订阅额度端点发包。时钟为模拟推进，collector 为真实运行。第 5 轮起仍每个 60 秒步长判 due（耗尽后节奏问题，属 C238）。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "成功结果与非瞬态阻断（CN/不匹配/配置无效）仍清除两个字段并写 quotaAttemptedAt；限流冷却、窗口边界重查、Codex 永不跳过、失败借用旧值（BORROWED_FIELDS）语义不变；Windows 侧 viewmodel/runtime 测试无回归",
         "false_if": "计数被带入成功或非瞬态结果，或既有额度门禁用例出现回归",
-        "evidence": "",
-        "result": null
+        "evidence": "成功结果与非瞬态阻断：egress_retry_count_resets_after_success / egress_retry_count_not_inherited_by_non_transient_block / non_transient_egress_block_keeps_attempt_timestamp 断言两字段清除并写 quotaAttemptedAt；共享 quota-policy-parity 与 quota-carry-over-parity fixture（限流冷却、窗口边界重查、Codex 永不跳过、BORROWED_FIELDS 失败借用）全部通过；Windows：cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features 共 251 项通过（annotate_provider 签名不变），verify-local 内 verify-rust.sh 另对 apps/win/viewmodel 与 apps/win/src-tauri 跑 fmt / test / clippy，均通过。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
     "design_pinned": false,
-    "changelog": false,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },

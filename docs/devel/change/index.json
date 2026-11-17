@@ -182,7 +182,7 @@
     "C237": {
       "title": "瞬态出口探测失败的重试次数跨轮次不累计：整轮合并路径 egressRetryCount 恒为 1，90/180/300 秒退避退化为每 90 秒无限重试",
       "type": "BugFix",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C237-egress-retry-count-carry",
       "topic": "NetworkEgressCountry",
       "version": "0.17.1",
