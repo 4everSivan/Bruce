@@ -4,7 +4,7 @@
   "title": "「专用代理需要认证」被当作瞬态失败自动退避重试：探测层认定重试无意义，策略层与调度器却仍按 90/180/300 秒重查",
   "version": "0.17.1",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C241-egress-proxy-auth-not-transient",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "git grep -n \"EGRESS_PROXY_AUTH\" -- core/collector/crates/collector-policy/src/quota.rs apps/macos/Sources/BruceAppCore/EgressAlertEvaluator.swift",
     "expected": "两个文件的瞬态集合内均命中 EGRESS_PROXY_AUTH（缺陷仍在）；若已移除则记录 is_completed: true 并跳过",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient（叠在 fix/C238 ee408f5 之上）：预检命令命中 quota.rs:55 与 EgressAlertEvaluator.swift:28 两处瞬态集合中的 EGRESS_PROXY_AUTH（另一处 :123 为徽标文案映射，不属集合），缺陷仍在；新增的 proxy_auth_block_stamps_attempt_and_schedules_no_retry 在修复前失败（quotaAttemptedAt 未写）。is_completed=false。规则修改的采纳：维护者 2026-11-16 在会话中要求「knock out all the tasks for cards C237–C243」，执行方按采纳本卡提议处理，请在签收时一并确认。 （2026-11-16 本分支随 C238 补充窗口边界锚点后已 rebase 到新的 fix/C238 tip，quota_parity 末尾两条新增用例的追加冲突按「两者都保留」解决后重跑门禁。）"
   },
   "callback": {
     "before": [
@@ -51,7 +51,7 @@
     {
       "scope": "两处集合的一致性守护",
       "before": "Rust 与 Swift 各维护一份字符串集合，无任何检查保证一致。",
-      "after": "在 RefreshSchedulerHarness 中增加一条守护断言：读取 quota.rs 源码中的 TRANSIENT_EGRESS_REASONS 字面量并与 Swift 集合比对（沿用仓库已有的源码守护测试写法）；若现有共享策略 FFI 已能导出该集合则优先改为单一来源，并在卡内说明取舍。",
+      "after": "在 RefreshSchedulerHarness 中增加一条守护断言：读取 quota.rs 源码中的 TRANSIENT_EGRESS_REASONS 字面量并与 Swift 集合比对（沿用仓库已有的源码守护测试写法）；若现有共享策略 FFI 已能导出该集合则优先改为单一来源，并在卡内说明取舍。（执行取舍 2026-11-16）共享策略 FFI 只暴露 quotaPlan / quotaMerge / quotaAnnotate 等计算操作，不导出常量；为一个 4 项字符串集合新增 FFI 操作需同步扩展 policy-request/response schema 与 C ABI 契约，收益不抵成本，故采用源码守卫：RefreshSchedulerHarness transientEgressReasonsMatchPolicySource 读取 quota.rs 的 TRANSIENT_EGRESS_REASONS 字面量与 Swift 集合逐项比对。",
       "impact": "apps/macos/Tests/Harnesses/RefreshSchedulerHarness。"
     }
   ],
@@ -65,8 +65,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261116-06",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -74,29 +74,29 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace、clippy 与 verify-local.sh 均 Exit 0；新增的策略层、调度层与集合一致性用例通过",
         "false_if": "任一测试失败，或 Rust 与 Swift 集合不一致未被用例捕获",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 于 fix/C241-egress-proxy-auth-not-transient：zsh scripts/verify-local.sh Exit 0（rebase 后重跑：verify-rust.sh 三个 manifest 的 fmt / test / clippy -D warnings 合计 637 通过 / 0 失败；19 个 Harness 全绿，RefreshScheduler 137、Onboarding 180；日志 local/C241-verify-local-2.log，rebase 前首轮 local/C241-verify-local.log 同为 Exit 0）。 新增用例：quota_parity proxy_auth_block_stamps_attempt_and_schedules_no_retry（写 quotaAttemptedAt、不排定重试、间隔内不 due、满间隔 due、手动刷新可立即重查、瞬态 → 需认证不继承计数）；RefreshSchedulerHarness proxyAuthEgressKeepsNormalInterval（artifact 带 egressRetryAt 也不提前唤醒；经真实进程内策略发布的 service 写 quotaAttemptedAt、无 egressRetryAt / egressRetryCount，下一次定时 > 900 秒）与 transientEgressReasonsMatchPolicySource。撤掉本卡 quota.rs 与 EgressAlertEvaluator.swift 修改时实测失败于「代理需认证不得产生提前唤醒」；在 quota.rs 集合中人为加入一项时守卫实测失败并列出两侧差异（验证后已恢复）。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "Release collector 经一个对 CONNECT 返回 407 的本机端口运行：artifact 带 quotaAttemptedAt、无 egressRetryAt，mac 端下一次定时为正常间隔；看板仍显示「代理需认证」并阻断查额",
         "false_if": "仍出现 90 秒量级的提前唤醒，或阻断被放行",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-16 本机演练（local/egress-drill/c241-run.log）：local/egress-drill/fake-proxy.mjs 在回环端口 59997 对任何请求回 407（不转发流量），本分支 Release Bruce-collector 真实运行、plan + merge 链接本分支 collector-policy、模拟时钟，刷新间隔 60 秒：diagnostics 为 EGRESS_PROXY_AUTH，service 为 egress blocked + status partial（阻断查额），写入 quotaAttemptedAt、无 egressRetryAt / egressRetryCount；+60 / +120 秒步长 ran=false，+180 秒（3 分钟自动查额下限）才重查，无 90 秒量级提前重查。mac 端定时回到正常间隔由 RefreshSchedulerHarness 用例覆盖；看板「代理需认证」徽标映射由 egressRetryHintAndBadges 覆盖；未在已安装 App 上实机观察。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "其余四类瞬态失败的退避与提前唤醒不变；手动刷新可立即重查代理需认证的服务；设置页线路测试文案不变",
         "false_if": "其他瞬态原因的重试行为改变",
-        "evidence": "",
-        "result": null
+        "evidence": "其余四类瞬态失败：C236 / C237 / C238 的退避、到点强制重查、耗尽回到正常节奏用例全部通过（egress_retry_count_escalates_across_merge_rounds 等使用 EGRESS_PROBE_TIMEOUT / EGRESS_PROXY_UNREACHABLE；egressRetryAtShortensNextTimer 仍提前到 90 秒量级）；手动刷新：用例断言 force_refresh + bypass_cooldown 立即 due；设置页线路测试（apps/macos/Sources/BruceApp/Settings/EgressRouteTester.swift）与文案本链未改动（git diff main 无该文件）；探测层 ProbeError::is_transient 本就不含 ProxyAuth，未改动。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
+    "design_pinned": true,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },

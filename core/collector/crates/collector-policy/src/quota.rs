@@ -48,11 +48,12 @@ const NEVER_SKIPPED: &str = "codex";
 /// 瞬态出口探测失败后的重试退避 (秒): 第 1/2/3 次失败分别排定 90/180/300 秒后重试。
 const EGRESS_RETRY_BACKOFF_SECS: [i64; 3] = [90, 180, 300];
 
-/// 会随线路恢复而自愈的出口探测失败; 国家/配置决策不在其列。
-const TRANSIENT_EGRESS_REASONS: [&str; 5] = [
+/// 会随线路恢复而自愈的出口探测失败; 国家决策与需用户修改配置的问题 (配置无效、
+/// 代理需认证, C241) 不在其列, 与探测层 `ProbeError::is_transient` 同口径。
+/// mac `EgressAlertEvaluator.transientProbeReasons` 必须与此一致 (RefreshSchedulerHarness 源码守卫)。
+const TRANSIENT_EGRESS_REASONS: [&str; 4] = [
     "EGRESS_PROBE_TIMEOUT",
     "EGRESS_PROXY_UNREACHABLE",
-    "EGRESS_PROXY_AUTH",
     "EGRESS_BAD_STATUS",
     "EGRESS_COUNTRY_UNKNOWN",
 ];

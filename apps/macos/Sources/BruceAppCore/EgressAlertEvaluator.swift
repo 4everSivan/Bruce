@@ -22,10 +22,11 @@ package enum EgressAlertEvaluator {
     }
 
     /// 瞬态探测失败原因: 只有这些失败由 collector-policy 写入 egressRetryAt 并值得提前唤醒。
+    /// 必须与 collector-policy `TRANSIENT_EGRESS_REASONS` 一致 (RefreshSchedulerHarness 源码守卫);
+    /// 代理需认证与配置无效需用户修改配置, 不进入自动重试 (C241)。
     package static let transientProbeReasons: Set<String> = [
         "EGRESS_PROBE_TIMEOUT",
         "EGRESS_PROXY_UNREACHABLE",
-        "EGRESS_PROXY_AUTH",
         "EGRESS_BAD_STATUS",
         "EGRESS_COUNTRY_UNKNOWN",
     ]

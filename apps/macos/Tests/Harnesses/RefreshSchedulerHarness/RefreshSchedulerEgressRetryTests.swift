@@ -206,6 +206,77 @@ extension RefreshSchedulerHarness {
         try refreshExpect(delay > 900, "耗尽后不得再提前唤醒, 实际: \(delay)")
     }
 
+    /// C241: 代理需认证需用户改配置, 即使 artifact 带 egressRetryAt 也不缩短周期.
+    static func proxyAuthEgressKeepsNormalInterval(repository: URL) async throws {
+        let base = Date(timeIntervalSince1970: 1_786_000_000)
+        let hinted = makeEgressRetryArtifact(
+            reason: "EGRESS_PROXY_AUTH",
+            retryAt: base.addingTimeInterval(90)
+        )
+        try refreshExpect(
+            EgressAlertEvaluator.earliestTransientRetryAt(artifact: hinted) == nil,
+            "代理需认证不得产生提前唤醒"
+        )
+
+        let executor = MockCollectorExecutor()
+        let clock = ManualClock()
+        executor.artifactOverride = makeEgressRetryArtifact(
+            reason: "EGRESS_PROXY_AUTH",
+            retryAt: clock.now().addingTimeInterval(90)
+        )
+        let timers = FakeTimerScheduler()
+        let (scheduler, store, root) = try makeScheduler(
+            repository: repository,
+            executor: executor,
+            clock: clock,
+            timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+        let stored = try store.load(.agentUsage, now: clock.now(), staleAfter: 3600)
+        let service = stored.artifact.objectValue?["services"]?.arrayValue?.first?.objectValue
+        try refreshExpect(
+            service?["egressRetryAt"] == nil && service?["egressRetryCount"] == nil
+                && service?["quotaAttemptedAt"]?.stringIdValue != nil,
+            "代理需认证应写尝试时间戳且不排定重试, 实际: \(String(describing: service))"
+        )
+        guard let delay = timers.tokens.last(where: { !$0.isCancelled })?.delay else {
+            throw RefreshTestFailure.expectation("应排定下一次刷新")
+        }
+        try refreshExpect(delay > 900, "代理需认证不得缩短刷新周期, 实际: \(delay)")
+    }
+
+    /// C241: Swift 提前唤醒集合必须与 collector-policy 的 TRANSIENT_EGRESS_REASONS 字面量一致
+    /// (共享策略 FFI 不导出该集合, 以源码守卫代替单一来源).
+    static func transientEgressReasonsMatchPolicySource(repository: URL) throws {
+        let url = repository.appendingPathComponent(
+            "core/collector/crates/collector-policy/src/quota.rs"
+        )
+        let source = try String(contentsOf: url, encoding: .utf8)
+        guard let start = source.range(of: "const TRANSIENT_EGRESS_REASONS"),
+              let open = source.range(of: "= [", range: start.upperBound..<source.endIndex),
+              let close = source.range(of: "];", range: open.upperBound..<source.endIndex) else {
+            throw RefreshTestFailure.expectation("quota.rs 中未找到 TRANSIENT_EGRESS_REASONS 字面量")
+        }
+        let body = String(source[open.upperBound..<close.lowerBound])
+        let regex = try NSRegularExpression(pattern: "\"([A-Z_]+)\"")
+        let names = Set(
+            regex.matches(in: body, range: NSRange(body.startIndex..., in: body)).compactMap { match in
+                Range(match.range(at: 1), in: body).map { String(body[$0]) }
+            }
+        )
+        try refreshExpect(names.count >= 1, "应解析出至少一个瞬态原因")
+        try refreshExpect(
+            names == EgressAlertEvaluator.transientProbeReasons,
+            "Rust \(names.sorted()) 与 Swift \(EgressAlertEvaluator.transientProbeReasons.sorted()) 不一致"
+        )
+    }
+
     /// 提取最早重试时刻 + 新错误码的徽标映射.
     static func egressRetryHintAndBadges() throws {
         let base = Date(timeIntervalSince1970: 1_786_000_000)
