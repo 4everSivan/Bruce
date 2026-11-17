@@ -251,7 +251,12 @@ fn egress_error(
     state: &mut Option<Value>,
 ) -> ProviderError {
     let (code, message) = match error {
-        ProbeError::Timeout => ("EGRESS_PROBE_TIMEOUT", "网络出口探测失败，已拦截查额"),
+        ProbeError::Timeout => ("EGRESS_PROBE_TIMEOUT", "主备信标均探测失败，已拦截查额"),
+        ProbeError::ProxyUnreachable => {
+            ("EGRESS_PROXY_UNREACHABLE", "专用代理连接失败，已拦截查额")
+        }
+        ProbeError::ProxyAuth => ("EGRESS_PROXY_AUTH", "专用代理需要认证，已拦截查额"),
+        ProbeError::BadStatus => ("EGRESS_BAD_STATUS", "出口信标返回异常，已拦截查额"),
         ProbeError::UnknownCountry => ("EGRESS_COUNTRY_UNKNOWN", "无法识别出口国家，已拦截查额"),
         ProbeError::InvalidConfig => ("EGRESS_CONFIG_INVALID", "出口保护配置无效，已拦截查额"),
         ProbeError::China => ("EGRESS_CN_DIRECT", "当前线路出口为国内，已拦截查额"),

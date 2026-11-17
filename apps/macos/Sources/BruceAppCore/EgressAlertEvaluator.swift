@@ -21,6 +21,42 @@ package enum EgressAlertEvaluator {
         }
     }
 
+    /// 瞬态探测失败原因: 只有这些失败由 collector-policy 写入 egressRetryAt 并值得提前唤醒。
+    package static let transientProbeReasons: Set<String> = [
+        "EGRESS_PROBE_TIMEOUT",
+        "EGRESS_PROXY_UNREACHABLE",
+        "EGRESS_PROXY_AUTH",
+        "EGRESS_BAD_STATUS",
+        "EGRESS_COUNTRY_UNKNOWN",
+    ]
+
+    /// artifact 中最早的瞬态探测失败重试时间; 无则返回 nil。
+    package static func earliestTransientRetryAt(artifact: JSONValue) -> Date? {
+        guard case .object(let root) = artifact,
+              case .array(let services)? = root["services"] else {
+            return nil
+        }
+        var earliest: Date?
+        for service in services {
+            guard case .object(let svc) = service,
+                  case .object(let egress)? = svc["egress"],
+                  case .string(let status)? = egress["status"],
+                  status == "blocked",
+                  case .string(let reason)? = egress["reason"],
+                  transientProbeReasons.contains(reason),
+                  case .string(let retryAt)? = svc["egressRetryAt"],
+                  let date = ISODate.parse(retryAt) else {
+                continue
+            }
+            if let current = earliest {
+                earliest = min(current, date)
+            } else {
+                earliest = date
+            }
+        }
+        return earliest
+    }
+
     /// 返回当前 artifact 中所有被出口拦截的 serviceID 与 EgressAlertItem
     package static func blockedEntries(
         artifact: JSONValue
@@ -82,6 +118,12 @@ package enum EgressAlertEvaluator {
                     return "⚠️ \(obs) ≠ \(exp)"
                 case "EGRESS_PROBE_TIMEOUT":
                     return "⚠️ 探测失败"
+                case "EGRESS_PROXY_UNREACHABLE":
+                    return "⚠️ 代理不可达"
+                case "EGRESS_PROXY_AUTH":
+                    return "⚠️ 代理需认证"
+                case "EGRESS_BAD_STATUS":
+                    return "⚠️ 信标异常"
                 case "EGRESS_COUNTRY_UNKNOWN":
                     return "⚠️ 出口未知"
                 default:

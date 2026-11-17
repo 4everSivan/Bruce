@@ -43,6 +43,19 @@ fn zero_port_is_rejected_without_network_access() {
 }
 
 #[test]
+fn connection_refused_is_classified_as_proxy_unreachable() {
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let error = UreqHttpClient::default()
+        .send_via_loopback_proxy(port, request(), &CancellationToken::new())
+        .unwrap_err();
+    assert_eq!(error.diagnostic.code, "EGRESS_PROXY_UNREACHABLE");
+}
+
+#[test]
 fn https_request_uses_explicit_loopback_proxy() {
     use std::io::{Read, Write};
     use std::net::TcpListener;

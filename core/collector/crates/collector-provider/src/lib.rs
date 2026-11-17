@@ -383,11 +383,14 @@ impl UreqHttpClient {
     }
 }
 
-impl HttpClient for UreqHttpClient {
-    fn send(
+impl UreqHttpClient {
+    /// `classify_proxy_errors` 只在专用代理传输上启用：让出口探测能区分
+    /// “代理没起来/需要认证” 与真正的探测超时；直连查额保持原有错误码。
+    fn send_with(
         &self,
         request: HttpRequest,
         cancellation: &CancellationToken,
+        classify_proxy_errors: bool,
     ) -> Result<HttpResponse, ProviderError> {
         cancellation.check().map_err(ProviderError::from_runtime)?;
         let mut builder = self
@@ -410,13 +413,38 @@ impl HttpClient for UreqHttpClient {
                 status,
                 body: Self::read_body(response, request.max_response_body_bytes)?,
             }),
-            Err(_) => Err(ProviderError::new(
-                "PROVIDER_TRANSPORT_ERROR",
-                "request",
-                "Provider 网络请求失败",
-                true,
-            )),
+            Err(ureq::Error::Transport(transport)) => {
+                let (code, message) = if classify_proxy_errors {
+                    match transport.kind() {
+                        ureq::ErrorKind::ProxyUnauthorized => {
+                            ("EGRESS_PROXY_AUTH", "专用代理需要认证")
+                        }
+                        ureq::ErrorKind::ProxyConnect
+                        | ureq::ErrorKind::ConnectionFailed
+                        | ureq::ErrorKind::Dns
+                        | ureq::ErrorKind::Io
+                        | ureq::ErrorKind::InvalidProxyUrl
+                        | ureq::ErrorKind::InsecureRequestHttpsOnly => {
+                            ("EGRESS_PROXY_UNREACHABLE", "专用代理连接失败")
+                        }
+                        _ => ("PROVIDER_TRANSPORT_ERROR", "Provider 网络请求失败"),
+                    }
+                } else {
+                    ("PROVIDER_TRANSPORT_ERROR", "Provider 网络请求失败")
+                };
+                Err(ProviderError::new(code, "request", message, true))
+            }
         }
+    }
+}
+
+impl HttpClient for UreqHttpClient {
+    fn send(
+        &self,
+        request: HttpRequest,
+        cancellation: &CancellationToken,
+    ) -> Result<HttpResponse, ProviderError> {
+        self.send_with(request, cancellation, false)
     }
 
     fn send_via_loopback_proxy(
@@ -448,7 +476,7 @@ impl HttpClient for UreqHttpClient {
                 .proxy(proxy)
                 .build(),
         };
-        client.send(request, cancellation)
+        client.send_with(request, cancellation, true)
     }
 }
 

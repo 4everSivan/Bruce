@@ -213,3 +213,127 @@ fn non_object_artifact_is_returned_unchanged() {
     let merged = merge(None, &current, &QuotaRunPolicy::include_all(), 0, 1800);
     assert_eq!(merged, current);
 }
+
+fn egress_blocked_service(id: &str, reason: &str) -> Value {
+    json!({
+        "id": id,
+        "provider": "claude",
+        "status": "error",
+        "failureKind": "network",
+        "windows": [],
+        "egress": {
+            "status": "blocked",
+            "reason": reason,
+            "expected": "US",
+            "observed": null,
+            "maskedIp": null
+        }
+    })
+}
+
+#[test]
+fn transient_egress_failure_does_not_consume_quota_freshness_slot() {
+    let mut artifact = json!({"services": [
+        egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT")
+    ]});
+    let ids = BTreeSet::from(["claude_1".to_owned()]);
+
+    let first = epoch_ms("2026-11-16T12:00:00Z");
+    annotate_services(&mut artifact, &ids, first);
+    let service = &artifact["services"][0];
+    assert!(
+        service.get("quotaAttemptedAt").is_none(),
+        "瞬态探测失败不得冒充额度尝试"
+    );
+    assert_eq!(service["egressRetryCount"], 1);
+    assert_eq!(service["egressRetryAt"], "2026-11-16T12:01:30Z");
+
+    annotate_services(&mut artifact, &ids, epoch_ms("2026-11-16T12:01:30Z"));
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 2);
+    assert_eq!(
+        artifact["services"][0]["egressRetryAt"],
+        "2026-11-16T12:04:30Z"
+    );
+
+    annotate_services(&mut artifact, &ids, epoch_ms("2026-11-16T12:04:30Z"));
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 3);
+    assert_eq!(
+        artifact["services"][0]["egressRetryAt"],
+        "2026-11-16T12:09:30Z"
+    );
+
+    annotate_services(&mut artifact, &ids, epoch_ms("2026-11-16T12:09:30Z"));
+    assert_eq!(artifact["services"][0]["egressRetryCount"], 4);
+    assert!(
+        artifact["services"][0].get("egressRetryAt").is_none(),
+        "三次退避耗尽后回到正常周期"
+    );
+}
+
+#[test]
+fn non_transient_egress_block_keeps_attempt_timestamp() {
+    let mut artifact = json!({"services": [
+        egress_blocked_service("claude_1", "EGRESS_COUNTRY_MISMATCH")
+    ]});
+    annotate_services(
+        &mut artifact,
+        &BTreeSet::from(["claude_1".to_owned()]),
+        epoch_ms("2026-11-16T12:00:00Z"),
+    );
+    let service = &artifact["services"][0];
+    assert_eq!(service["quotaAttemptedAt"], "2026-11-16T12:00:00Z");
+    assert!(service.get("egressRetryAt").is_none());
+    assert!(service.get("egressRetryCount").is_none());
+}
+
+#[test]
+fn plan_waits_for_egress_retry_at_then_forces_due() {
+    let now = epoch_ms("2026-11-16T12:00:00Z");
+    let mut service = egress_blocked_service("claude_1", "EGRESS_PROBE_TIMEOUT");
+    service["capturedAt"] = json!("2026-11-16T11:59:00Z");
+    service["egressRetryAt"] = json!("2026-11-16T12:01:00Z");
+    let previous = json!({"services": [service]});
+    let input = |now_ms| PlanInput {
+        previous: Some(&previous),
+        enabled_providers: None,
+        now_ms,
+        interval_secs: 1800,
+        force_refresh: false,
+        bypass_cooldown: false,
+        suppress_external_quotas: false,
+    };
+
+    let waiting = plan(&input(now));
+    assert!(!waiting.include_external_quotas);
+    assert_eq!(
+        waiting.skip_providers,
+        BTreeSet::from(["claude".to_owned()])
+    );
+
+    let due = plan(&input(epoch_ms("2026-11-16T12:01:01Z")));
+    assert!(
+        due.include_external_quotas,
+        "egressRetryAt 到点后必须绕过 30 分钟新鲜度门禁"
+    );
+    assert!(due.skip_providers.is_empty());
+}
+
+#[test]
+fn codex_is_not_skipped_while_egress_retry_is_pending() {
+    let now = epoch_ms("2026-11-16T12:00:00Z");
+    let mut service = egress_blocked_service("codex_1", "EGRESS_PROBE_TIMEOUT");
+    service["provider"] = json!("codex");
+    service["egressRetryAt"] = json!("2026-11-16T12:01:00Z");
+    let previous = json!({"services": [service]});
+    let policy = plan(&PlanInput {
+        previous: Some(&previous),
+        enabled_providers: None,
+        now_ms: now,
+        interval_secs: 1800,
+        force_refresh: false,
+        bypass_cooldown: false,
+        suppress_external_quotas: false,
+    });
+    assert!(policy.include_external_quotas);
+    assert!(policy.skip_providers.is_empty());
+}

@@ -171,6 +171,9 @@ package struct EgressPresentationInfo: Codable, Equatable, Sendable {
         case "EGRESS_CN_DIRECT": return "国内出口"
         case "EGRESS_COUNTRY_MISMATCH": return "\(observed ?? "?") ≠ \(expected ?? "?")"
         case "EGRESS_PROBE_TIMEOUT": return "探测失败"
+        case "EGRESS_PROXY_UNREACHABLE": return "代理不可达"
+        case "EGRESS_PROXY_AUTH": return "代理需认证"
+        case "EGRESS_BAD_STATUS": return "信标异常"
         case "EGRESS_COUNTRY_UNKNOWN": return "出口未知"
         default: return "配置无效"
         }
