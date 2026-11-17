@@ -683,3 +683,55 @@ fn exhausted_windows_service_requeries_boundary_only_once() {
     }
     assert!(exhausted_plan_input(&after_reset, "2026-11-16T14:03:00Z", 60).include_external_quotas);
 }
+
+#[test]
+fn proxy_auth_block_stamps_attempt_and_schedules_no_retry() {
+    // C241: 「专用代理需要认证」需用户改配置, 与配置无效同类, 不进入自动退避重试。
+    let mut artifact = json!({"services": [ok_claude_service("2026-11-16T11:00:00Z")]});
+    let now_ms = epoch_ms("2026-11-16T12:00:00Z");
+    let current = json!({"services": [egress_blocked_service("claude_1", "EGRESS_PROXY_AUTH")]});
+    artifact = merge(
+        Some(&artifact),
+        &current,
+        &QuotaRunPolicy::include_all(),
+        now_ms,
+        1800,
+    );
+    let service = &artifact["services"][0];
+    assert_eq!(service["quotaAttemptedAt"], "2026-11-16T12:00:00Z");
+    assert!(service.get("egressRetryAt").is_none());
+    assert!(service.get("egressRetryCount").is_none());
+
+    // 正常间隔内被跳过, 满间隔后才重查; 手动刷新可立即重查。
+    let within = exhausted_plan_input(&artifact, "2026-11-16T12:01:30Z", 1800);
+    assert!(
+        !within.include_external_quotas,
+        "代理需认证不得 90 秒后提前重查"
+    );
+    assert!(exhausted_plan_input(&artifact, "2026-11-16T12:30:00Z", 1800).include_external_quotas);
+    let manual = plan(&PlanInput {
+        previous: Some(&artifact),
+        enabled_providers: None,
+        now_ms: epoch_ms("2026-11-16T12:00:10Z"),
+        interval_secs: 1800,
+        force_refresh: true,
+        bypass_cooldown: true,
+        suppress_external_quotas: false,
+    });
+    assert!(manual.include_external_quotas, "手动刷新可立即重查");
+
+    // 由瞬态失败转为需认证: 不继承计数, 清除两个字段。
+    let mut transient = json!({"services": [ok_claude_service("2026-11-16T11:00:00Z")]});
+    transient = egress_round(&transient, now_ms, "EGRESS_PROBE_TIMEOUT");
+    let later = epoch_ms("2026-11-16T12:01:30Z");
+    let current = json!({"services": [egress_blocked_service("claude_1", "EGRESS_PROXY_AUTH")]});
+    transient = merge(
+        Some(&transient),
+        &current,
+        &QuotaRunPolicy::include_all(),
+        later,
+        1800,
+    );
+    assert!(transient["services"][0].get("egressRetryCount").is_none());
+    assert!(transient["services"][0].get("egressRetryAt").is_none());
+}
