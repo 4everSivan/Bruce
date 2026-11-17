@@ -24,6 +24,9 @@
   - **循环动画退役**：Nothing Hero 数字呼吸、顶部状态灯刷新脉冲、14 日柱逐列生长移除，状态灯刷新态保留静态光晕；
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
+### Removed
+- **移除重复跟踪的 `tests/benchmarks/` 历史基线 ([C243](docs/devel/change/C243.json))**：4 个 JSON 基线在测试目录重组时已落到 `tests/fixtures/legacy_benchmark_baselines/`，旧目录副本逐字节相同且无脚本读取，删除前再次 `cmp` 确认后以 `git rm` 移除，保留位置的 4 个文件 SHA-256 不变；`tests/docs/README.md` 迁移说明补注旧路径去向。
+
 ### Fixed
 - **出口探测瞬态失败自愈与错误分类 ([C236](docs/devel/change/C236.json))**：
   - **现象**：出口探测每次新建连接且只有一次机会、硬超时 3 秒，本机 Release collector 实测 10 次出现 1 次 3.06 秒超时即判失败；失败又被写入 `quotaAttemptedAt`，使该 provider 在默认 30 分钟刷新间隔内被跳过并持续展示阻断；代理不可达、需认证、信标非 200 与真超时统一显示「探测失败」；
