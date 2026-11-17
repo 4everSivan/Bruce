@@ -17,11 +17,32 @@ pub(crate) struct Trace {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProbeError {
     Timeout,
+    ProxyUnreachable,
+    ProxyAuth,
+    BadStatus,
     UnknownCountry,
     InvalidConfig,
     China,
     Mismatch,
 }
+
+impl ProbeError {
+    /// 瞬态失败允许用备用信标再试一次；配置/认证问题重试也不会改变结论。
+    fn is_transient(self) -> bool {
+        matches!(
+            self,
+            Self::Timeout | Self::ProxyUnreachable | Self::BadStatus | Self::UnknownCountry
+        )
+    }
+}
+
+/// 首次探测使用 Cloudflare 主信标；失败后退避并改用备用的 1.1.1.1 信标。
+const PRIMARY_TRACE_URL: &str = "https://cloudflare.com/cdn-cgi/trace";
+const FALLBACK_TRACE_URL: &str = "https://1.1.1.1/cdn-cgi/trace";
+const PRIMARY_TIMEOUT: Duration = Duration::from_secs(3);
+const FALLBACK_TIMEOUT: Duration = Duration::from_secs(5);
+const RETRY_BACKOFF: Duration = Duration::from_millis(400);
+const MAX_TRACE_BODY_BYTES: usize = 4096;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Rule {
@@ -99,23 +120,64 @@ impl ProbeCache {
         };
         entry
             .get_or_init(|| {
-                let request = HttpRequest {
-                    method: "GET".to_owned(),
-                    url: "https://cloudflare.com/cdn-cgi/trace".to_owned(),
-                    headers: BTreeMap::new(),
-                    body: None,
-                    timeout: Duration::from_secs(3),
-                    max_response_body_bytes: 4096,
-                };
-                let response = http
-                    .send_via_loopback_proxy(port, request, cancellation)
-                    .map_err(|_| ProbeError::Timeout)?;
-                if response.status != 200 || response.body.len() > 4096 {
-                    return Err(ProbeError::Timeout);
+                match attempt(port, PRIMARY_TRACE_URL, PRIMARY_TIMEOUT, http, cancellation) {
+                    Ok(trace) => Ok(trace),
+                    Err(primary) if primary.is_transient() => {
+                        // 两次尝试之间允许取消；探测不在后台线程里长睡。
+                        if cancellation.check().is_err() {
+                            return Err(ProbeError::Timeout);
+                        }
+                        std::thread::sleep(RETRY_BACKOFF);
+                        if cancellation.check().is_err() {
+                            return Err(ProbeError::Timeout);
+                        }
+                        attempt(
+                            port,
+                            FALLBACK_TRACE_URL,
+                            FALLBACK_TIMEOUT,
+                            http,
+                            cancellation,
+                        )
+                    }
+                    Err(error) => Err(error),
                 }
-                parse_trace(&response.body)
             })
             .clone()
+    }
+}
+
+/// 单次信标请求；任何传输错误按代理错误分类，非 200 或响应超限归为信标异常。
+fn attempt(
+    port: u16,
+    url: &str,
+    timeout: Duration,
+    http: &dyn HttpClient,
+    cancellation: &CancellationToken,
+) -> Result<Trace, ProbeError> {
+    let request = HttpRequest {
+        method: "GET".to_owned(),
+        url: url.to_owned(),
+        headers: BTreeMap::new(),
+        body: None,
+        timeout,
+        max_response_body_bytes: MAX_TRACE_BODY_BYTES,
+    };
+    let response = http
+        .send_via_loopback_proxy(port, request, cancellation)
+        .map_err(classify_transport)?;
+    if response.status != 200 || response.body.len() > MAX_TRACE_BODY_BYTES {
+        return Err(ProbeError::BadStatus);
+    }
+    parse_trace(&response.body)
+}
+
+/// 代理传输错误分类：供上层区分“代理没起来/需认证”与真正的探测超时。
+fn classify_transport(error: collector_provider::ProviderError) -> ProbeError {
+    match error.diagnostic.code.as_str() {
+        "EGRESS_CONFIG_INVALID" => ProbeError::InvalidConfig,
+        "EGRESS_PROXY_AUTH" => ProbeError::ProxyAuth,
+        "EGRESS_PROXY_UNAVAILABLE" | "EGRESS_PROXY_UNREACHABLE" => ProbeError::ProxyUnreachable,
+        _ => ProbeError::Timeout,
     }
 }
 
@@ -222,6 +284,137 @@ mod tests {
         assert!(parse_trace(b"ip=invalid\nloc=JP\n").is_err());
         let ipv6 = parse_trace(b"ip=2001:db8::1\nloc=US\n").unwrap();
         assert_eq!(ipv6.masked_ip, "2001:db8:****:****:****:****:****:****");
+    }
+
+    struct SequencedHttp {
+        calls: Mutex<Vec<String>>,
+        fail_remaining: AtomicUsize,
+        error_code: &'static str,
+        body: &'static str,
+    }
+
+    impl SequencedHttp {
+        fn new(failures: usize, error_code: &'static str, body: &'static str) -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                fail_remaining: AtomicUsize::new(failures),
+                error_code,
+                body,
+            }
+        }
+    }
+
+    impl HttpClient for SequencedHttp {
+        fn send(
+            &self,
+            _: HttpRequest,
+            _: &CancellationToken,
+        ) -> Result<HttpResponse, ProviderError> {
+            panic!("出口探测不得直连")
+        }
+
+        fn send_via_loopback_proxy(
+            &self,
+            _: u16,
+            request: HttpRequest,
+            _: &CancellationToken,
+        ) -> Result<HttpResponse, ProviderError> {
+            self.calls.lock().unwrap().push(request.url);
+            let remaining = self.fail_remaining.load(Ordering::SeqCst);
+            if remaining > 0 {
+                self.fail_remaining.fetch_sub(1, Ordering::SeqCst);
+                return Err(ProviderError::new(
+                    self.error_code,
+                    "request",
+                    "fixture",
+                    true,
+                ));
+            }
+            Ok(HttpResponse {
+                status: 200,
+                body: self.body.as_bytes().to_vec(),
+            })
+        }
+    }
+
+    #[test]
+    fn retries_with_fallback_beacon_after_transient_failure() {
+        let cache = ProbeCache::default();
+        let http = SequencedHttp::new(1, "PROVIDER_TRANSPORT_ERROR", "ip=192.0.2.1\nloc=US\n");
+        let trace = cache.probe(7897, &http, &CancellationToken::new()).unwrap();
+        assert_eq!(trace.country, "US");
+        let calls = http.calls.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            vec![PRIMARY_TRACE_URL.to_owned(), FALLBACK_TRACE_URL.to_owned()]
+        );
+    }
+
+    #[test]
+    fn final_failure_is_cached_after_both_attempts() {
+        let cache = ProbeCache::default();
+        let http = SequencedHttp::new(2, "EGRESS_PROXY_UNREACHABLE", "");
+        let token = CancellationToken::new();
+        assert_eq!(
+            cache.probe(7897, &http, &token),
+            Err(ProbeError::ProxyUnreachable)
+        );
+        assert_eq!(
+            cache.probe(7897, &http, &token),
+            Err(ProbeError::ProxyUnreachable)
+        );
+        assert_eq!(
+            http.calls.lock().unwrap().len(),
+            2,
+            "同轮次最终结论只探测一组"
+        );
+    }
+
+    #[test]
+    fn proxy_auth_failure_is_not_retried_with_fallback() {
+        let cache = ProbeCache::default();
+        let http = SequencedHttp::new(1, "EGRESS_PROXY_AUTH", "");
+        assert_eq!(
+            cache.probe(7897, &http, &CancellationToken::new()),
+            Err(ProbeError::ProxyAuth)
+        );
+        assert_eq!(http.calls.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn bad_status_falls_back_to_secondary_beacon() {
+        struct StatusHttp(AtomicUsize);
+        impl HttpClient for StatusHttp {
+            fn send(
+                &self,
+                _: HttpRequest,
+                _: &CancellationToken,
+            ) -> Result<HttpResponse, ProviderError> {
+                panic!("出口探测不得直连")
+            }
+
+            fn send_via_loopback_proxy(
+                &self,
+                _: u16,
+                _: HttpRequest,
+                _: &CancellationToken,
+            ) -> Result<HttpResponse, ProviderError> {
+                let call = self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(HttpResponse {
+                    status: if call == 0 { 403 } else { 200 },
+                    body: if call == 0 {
+                        b"blocked".to_vec()
+                    } else {
+                        b"ip=192.0.2.1\nloc=JP\n".to_vec()
+                    },
+                })
+            }
+        }
+        let cache = ProbeCache::default();
+        let http = StatusHttp(AtomicUsize::new(0));
+        let trace = cache.probe(7897, &http, &CancellationToken::new()).unwrap();
+        assert_eq!(trace.country, "JP");
+        assert_eq!(http.0.load(Ordering::SeqCst), 2);
     }
 
     #[test]

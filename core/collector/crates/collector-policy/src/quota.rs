@@ -45,6 +45,18 @@ pub const BORROWED_FIELDS: [&str; 7] = [
 /// 永不跳过的 provider: 其四源合并 / 定向重试需要完整首轮结果。
 const NEVER_SKIPPED: &str = "codex";
 
+/// 瞬态出口探测失败后的重试退避 (秒): 第 1/2/3 次失败分别排定 90/180/300 秒后重试。
+const EGRESS_RETRY_BACKOFF_SECS: [i64; 3] = [90, 180, 300];
+
+/// 会随线路恢复而自愈的出口探测失败; 国家/配置决策不在其列。
+const TRANSIENT_EGRESS_REASONS: [&str; 5] = [
+    "EGRESS_PROBE_TIMEOUT",
+    "EGRESS_PROXY_UNREACHABLE",
+    "EGRESS_PROXY_AUTH",
+    "EGRESS_BAD_STATUS",
+    "EGRESS_COUNTRY_UNKNOWN",
+];
+
 /// 单轮刷新对外部额度查询的决策。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -144,6 +156,26 @@ pub fn attempt_at(service: &Value) -> Option<i64> {
                 None
             }
         })
+}
+
+/// 出口探测被阻断且原因为瞬态失败 (可随线路恢复自愈)。
+fn transient_egress_reason(object: &Map<String, Value>) -> Option<&str> {
+    let egress = object.get("egress")?.as_object()?;
+    if egress.get("status").and_then(Value::as_str) != Some("blocked") {
+        return None;
+    }
+    let reason = egress.get("reason").and_then(Value::as_str)?;
+    TRANSIENT_EGRESS_REASONS.contains(&reason).then_some(reason)
+}
+
+fn is_transient_egress_failure(service: &Value) -> bool {
+    service
+        .as_object()
+        .is_some_and(|object| transient_egress_reason(object).is_some())
+}
+
+fn egress_retry_at(service: &Value) -> Option<i64> {
+    parse_ms(service.get("egressRetryAt"))
 }
 
 /// 限流文案识别 (C118 前旧 artifact 的回退判据)。
@@ -322,6 +354,29 @@ pub fn plan(input: &PlanInput<'_>) -> QuotaRunPolicy {
             }
             continue;
         }
+        // 瞬态出口探测失败: 到 egressRetryAt 前等待; 到点后强制重查, 不受额度周期约束。
+        // 瞬态失败已在 annotate 时移除 quotaAttemptedAt, 这里显式给出 due 以免被
+        // capturedAt 的新鲜度误判跳过; Codex 永不 skip, 立即重查。
+        if services
+            .iter()
+            .any(|service| is_transient_egress_failure(service))
+        {
+            let retry_at = services
+                .iter()
+                .filter_map(|service| egress_retry_at(service))
+                .min();
+            match retry_at {
+                Some(at) if input.now_ms < at => {
+                    if skippable {
+                        skip.insert(provider.clone());
+                    } else {
+                        due = true;
+                    }
+                }
+                _ => due = true,
+            }
+            continue;
+        }
         // 强制刷新, 或上次快照后已有窗口重置: 即使未满间隔也必须重查。
         if input.force_refresh || has_passed_boundary(services, input.now_ms) {
             due = true;
@@ -395,7 +450,34 @@ fn apply_freshness(object: &mut Map<String, Value>, previous: Option<&Value>) {
 
 /// 本轮真实查询过的 service: 写 `quotaAttemptedAt`; 限流失败写 `rateLimitedAt`,
 /// 成功则清除。
-fn stamp_attempt(object: &mut Map<String, Value>, now_iso: &str) {
+fn stamp_attempt(object: &mut Map<String, Value>, now_iso: &str, now_ms: i64) {
+    // 瞬态探测失败不代表额度接口已被尝试: 不写 quotaAttemptedAt, 改排定短退避重试。
+    if transient_egress_reason(object).is_some() {
+        let attempts = object
+            .get("egressRetryCount")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .max(0);
+        object.remove("quotaAttemptedAt");
+        object.insert(
+            "egressRetryCount".to_owned(),
+            Value::from(attempts.saturating_add(1)),
+        );
+        match EGRESS_RETRY_BACKOFF_SECS.get(attempts as usize) {
+            Some(delay) => {
+                object.insert(
+                    "egressRetryAt".to_owned(),
+                    Value::String(timestamp_iso(now_ms + delay * 1000)),
+                );
+            }
+            None => {
+                object.remove("egressRetryAt");
+            }
+        }
+        return;
+    }
+    object.remove("egressRetryAt");
+    object.remove("egressRetryCount");
     let failed = object_failed(object);
     let rate_limited = object_is_rate_limited(object);
     object.insert(
@@ -414,6 +496,23 @@ fn stamp_attempt(object: &mut Map<String, Value>, now_iso: &str) {
 
 /// 被跳过 provider 的回填标注: 失败 / 冷却 / 成功快照已过间隔 → stale, 否则缺省补 fresh。
 fn mark_carried(object: &mut Map<String, Value>, cooling: bool, now_ms: i64, interval_secs: i64) {
+    // 旧 artifact 的瞬态失败没有 egressRetryAt: 补一个首档退避, 避免永久停留在被跳过状态。
+    if transient_egress_reason(object).is_some()
+        && object.get("egressRetryAt").is_none()
+        && object
+            .get("egressRetryCount")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            < EGRESS_RETRY_BACKOFF_SECS.len() as i64
+    {
+        object.insert(
+            "egressRetryAt".to_owned(),
+            Value::String(timestamp_iso(now_ms + EGRESS_RETRY_BACKOFF_SECS[0] * 1000)),
+        );
+        object
+            .entry("egressRetryCount")
+            .or_insert_with(|| Value::from(0));
+    }
     let interval_secs = effective_interval_secs(interval_secs);
     let aged =
         parse_ms(object.get("capturedAt")).is_none_or(|at| now_ms - at >= interval_secs * 1000);
@@ -478,7 +577,7 @@ pub fn merge(
     let annotate = |service: &Value, previous: Option<&Value>| {
         let mut service = service.clone();
         if let Some(object) = service.as_object_mut() {
-            stamp_attempt(object, &now_iso);
+            stamp_attempt(object, &now_iso, now_ms);
             apply_freshness(object, previous);
         }
         service
@@ -527,7 +626,7 @@ fn annotate_where(artifact: &mut Value, now_ms: i64, selected: impl Fn(&Value) -
     };
     for service in services.iter_mut().filter(|service| selected(service)) {
         if let Some(object) = service.as_object_mut() {
-            stamp_attempt(object, &now_iso);
+            stamp_attempt(object, &now_iso, now_ms);
             if !object_failed(object) {
                 object
                     .entry("freshness")

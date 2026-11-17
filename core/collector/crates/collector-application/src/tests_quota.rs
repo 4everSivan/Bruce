@@ -57,7 +57,9 @@ impl HttpClient for EgressFixtureHttp {
 
 #[test]
 fn protected_quota_uses_proxy_and_blocks_mismatched_trace() {
-    for (loc, expected_queries) in [("CN", 0), ("US", 0), ("FAIL", 0), ("JP", 1)] {
+    for (loc, expected_queries, expected_probes) in
+        [("CN", 0, 1), ("US", 0, 1), ("FAIL", 0, 2), ("JP", 1, 1)]
+    {
         let mut request = request(&["externalQuotas"]);
         request.context.insert(
             "egressRules".into(),
@@ -81,7 +83,7 @@ fn protected_quota_uses_proxy_and_blocks_mismatched_trace() {
                 .unwrap();
         let result = super::collect_quota_usage(&context);
         assert_eq!(http.direct.load(Ordering::SeqCst), 0);
-        assert_eq!(http.probes.load(Ordering::SeqCst), 1);
+        assert_eq!(http.probes.load(Ordering::SeqCst), expected_probes);
         assert_eq!(http.proxy.load(Ordering::SeqCst), expected_queries);
         let state = &result.services[0]["egress"];
         assert_eq!(

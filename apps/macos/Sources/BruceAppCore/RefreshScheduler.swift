@@ -109,6 +109,9 @@ package final class RefreshScheduler {
     /// 定时唤醒据此提前到窗口边界, 避免槽/窗口边界过后长时间展示上一窗口的数据.
     private var windowBoundaries: [Int64] = []
     private var consumedWindowBoundaries: Set<Int64> = []
+    /// 最近一次发布 artifact 中最早的瞬态出口探测重试时刻 (C236):
+    /// 定时唤醒只据此提前, 不改写 30 分钟正常额度周期.
+    private var pendingEgressRetryAt: Date?
     private var wakeObserver: NSObjectProtocol?
     private var reactivationObserver: NSObjectProtocol?
     private let logger = Logger(
@@ -487,6 +490,13 @@ package final class RefreshScheduler {
             boundaryTriggered = delay < intervalRemaining
         }
 
+        // C236: 瞬态出口探测失败按 egressRetryAt 提前唤醒 (至少留 30 秒, 防止同一
+        // artifact 造成紧凑循环); 只缩短正常周期, 不改变额度新鲜度语义。
+        if !shouldSkipBoundaryWake, let retryAt = pendingEgressRetryAt {
+            let retryDelay = max(30, retryAt.timeIntervalSince(clock.now()))
+            delay = min(delay, retryDelay)
+        }
+
         timers[module] = timerScheduler.schedule(after: delay) { [weak self] in
             self?.triggerRefresh(
                 for: module,
@@ -775,6 +785,9 @@ package final class RefreshScheduler {
             onArtifactChange?(module, artifact)
             // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
             windowBoundaries = SubscriptionBoundaryWakePolicy.boundaries(in: artifact)
+            // C236: 瞬态出口探测失败由 collector-policy 写入 egressRetryAt;
+            // 到点后需要一次定时刷新绕过 30 分钟额度周期重查。
+            pendingEgressRetryAt = EgressAlertEvaluator.earliestTransientRetryAt(artifact: artifact)
 
             // 额度预警: 共享 collector-policy::alerts 决策; 状态持久化到独立 metadata 文件,
             // 不再从展示快照反推, 也不在调度器内维护第二份状态机 (design/02 规则 15).
