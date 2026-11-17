@@ -80,6 +80,8 @@ struct RefreshSchedulerHarness {
         try await egressRetryAtShortensNextTimer(repository: repository)
         print("Refresh scheduler: non-transient egress keeps interval (C236)")
         try await nonTransientEgressKeepsNormalInterval(repository: repository)
+        print("Refresh scheduler: scoped refresh carries egress retry count (C237)")
+        try await scopedRefreshCarriesEgressRetryCount(repository: repository)
         print("Refresh scheduler: egress retry hint and badges (C236)")
         try egressRetryHintAndBadges()
         print("Refresh scheduler: codex challenge retry")
@@ -283,6 +285,6 @@ struct RefreshSchedulerHarness {
         try await agentCardRefreshRunsLocalOnlyAndKeepsServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 129")
+        print("Refresh scheduler tests passed: 134")
     }
 }

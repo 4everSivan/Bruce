@@ -121,9 +121,11 @@ package protocol QuotaPolicyComputing: AnyObject {
         interval: TimeInterval
     ) async throws -> JSONValue
 
-    /// 定向刷新: 只给本轮真实查询到的 service 写尝试时间戳.
+    /// 定向刷新: 只给本轮真实查询到的 service 写尝试时间戳. `previous` 为定向合并前的
+    /// 上一份 artifact, 供瞬态出口退避计数按 service ID 继承 (C237).
     func annotate(
         artifact: JSONValue,
+        previous: JSONValue?,
         serviceIDs: Set<String>,
         now: Date
     ) async throws -> JSONValue
@@ -205,6 +207,7 @@ package final class CollectorQuotaPolicy: QuotaPolicyComputing {
 
     package func annotate(
         artifact: JSONValue,
+        previous: JSONValue?,
         serviceIDs: Set<String>,
         now: Date
     ) async throws -> JSONValue {
@@ -214,6 +217,7 @@ package final class CollectorQuotaPolicy: QuotaPolicyComputing {
         }
         let result = try await call("quotaAnnotate", [
             "now": .string(ISODate.string(from: now)),
+            "previousServices": Self.services(of: previous),
             "services": .array(services),
             "serviceIds": .array(serviceIDs.sorted().map(JSONValue.string)),
         ])

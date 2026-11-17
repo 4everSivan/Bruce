@@ -282,6 +282,7 @@ struct RefreshExecutionPipeline {
             do {
                 annotatedArtifact = try await quotaPolicyEngine.annotate(
                     artifact: merged.artifact,
+                    previous: previousArtifact,
                     serviceIDs: serviceIDs(in: firstArtifact),
                     now: now()
                 )
