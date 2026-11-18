@@ -1,0 +1,105 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C247",
+  "title": "官网顶栏右上角增加个人 GitHub Pages 图标链接",
+  "version": "0.17.1",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "feat/C247-website-github-pages-icon",
+  "is_hotfix": false,
+  "target": {
+    "module": "website/",
+    "component": "index.html / css/site.css / tests/unit/u_website_contract.test.mjs",
+    "design_doc": "docs/devel/design/13-官方网站.md",
+    "design_topic": "OfficialWebsite"
+  },
+  "why": "官网顶栏右上角目前只有版本徽标与指向仓库的「GitHub ↗」文本链接，没有维护者个人 GitHub Pages 站点的入口。用户要求在右上角增加一个指向 https://4eversivan.github.io/ 的链接图标，便于访客从项目站点直达个人信息页。",
+  "precheck": {
+    "description": "预检官网顶栏右上角现有内容，确认尚无个人 GitHub Pages 链接",
+    "command": "rg -n 'masthead__meta|4eversivan\\.github\\.io' website/index.html",
+    "expected": "顶栏 meta 仅含版本徽标与仓库 GitHub 文本链接，未出现 4eversivan.github.io",
+    "is_completed": false,
+    "evidence": "修改前：website/index.html:32-35 的 .masthead__meta 仅有 v{{VERSION}} 与 https://github.com/4everSivan/Bruce 文本链接；全站无 4eversivan.github.io 引用。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b feat/C247-website-github-pages-icon"
+    ],
+    "after": [
+      "node scripts/check-site-sync.mjs",
+      "node scripts/build-site.mjs --strict",
+      "node --test tests/unit/*.test.mjs",
+      "node website/tools/responsive-check.mjs",
+      "scripts/adflow-verify --card C247 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "官网顶栏右上角（index.html / css/site.css）",
+      "before": ".masthead__meta 只渲染版本徽标与仓库「GitHub ↗」文本链接，无个人站点入口。",
+      "after": "在版本徽标与仓库链接之后新增图标链接（GitHub mark 内联 SVG，currentColor），指向 https://4eversivan.github.io/，target=_blank + rel=noopener，aria-label/title 明示「GitHub Pages」；浅色与 04 章深色顶栏分别设置常态/悬停色与 hover 底色，图标 24pt 命中区、17pt 图形，不改变既有版本与仓库链接。",
+      "impact": "顶栏右上角多一个可聚焦的图标链接；桌面与窄屏不新增换行或溢出。"
+    },
+    {
+      "scope": "契约测试与设计基线（u_website_contract.test.mjs / 13-官方网站.md / CHANGELOG）",
+      "before": "UT-website-001..004 未覆盖顶栏个人站点入口；设计 13 的可访问性语义未登记该链接。",
+      "after": "新增 UT-website-005 断言图标链接的 class、href、target/rel、aria-label 与内联 SVG 存在；设计 13 §3.9 补登顶栏个人 GitHub Pages 图标链接语义；CHANGELOG [Unreleased] 记账。",
+      "impact": "链接缺失、协议或无障碍属性回退会被单测拦截。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/13-官方网站.md",
+    "topic": "OfficialWebsite",
+    "modified": true,
+    "rule_diff": {
+      "before": "顶栏右上角仅登记版本徽标与仓库 GitHub 链接。",
+      "after": "§3.9 可访问性语义新增：右上角提供指向 https://4eversivan.github.io/ 的个人 GitHub Pages 图标链接，新窗口打开并带明确 aria-label。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261118-06",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "官网门禁与契约测试",
+        "true_if": "check-site-sync、build-site --strict、全量 node --test 与 responsive-check 全部退出码 0",
+        "false_if": "任一脚本失败、占位符丢失或响应式断点溢出",
+        "evidence": "node scripts/check-site-sync.mjs → ok（版本 0.17.0，厂商图标 10 个）；node scripts/build-site.mjs --strict → ok（local/dist/site 30 files / 530 KB，注入 21 个占位符）；node --test tests/unit/*.test.mjs → 27 passed / 0 failed（含新增 UT-website-005）；node website/tools/responsive-check.mjs → Chromium 与 WebKit 在 320–1440 全部 PASS，「响应式检查通过」。",
+        "result": true
+      },
+      {
+        "item": "顶栏图标呈现与跳转语义",
+        "true_if": "桌面与移动断点下右上角可见 GitHub 图标链接，href 为 https://4eversivan.github.io/ ，新窗口打开，aria-label 明示 GitHub Pages，浅色与深色顶栏下可辨识",
+        "false_if": "图标缺失/被裁切/与仓库链接混淆，链接地址或 target/rel 不符，深色顶栏不可见",
+        "evidence": "Playwright 读取构建产物实测：href=https://4eversivan.github.io/、target=_blank、rel=noopener、aria-label=「访问 sivan 的 GitHub Pages（新窗口）」、title=GitHub Pages；命中区 24×24、图形 17×17，位于 .masthead__meta 最右（x=1344/1440）。浅色常态 color rgba(22,21,15,0.54)；滚入 04 章深色顶栏后 is-dark=true，color rgba(239,236,227,0.46)，hover color rgb(239,236,227) + bg rgba(255,255,255,0.08)。320px 视口下 docW=320、vw=320、图标 right=300 可见且无横向溢出。",
+        "result": true
+      },
+      {
+        "item": "浏览器截图自检",
+        "true_if": "构建产物在 Chromium 桌面与移动视口真实截图确认右上角图标与既有内容无换行/裁切",
+        "false_if": "截图显示溢出、错位或图标不可见",
+        "evidence": "Chromium 真实截图复核：1440px 浅色顶栏（版本徽标 + GitHub 文本 + 新图标同排，图标在版本后）、390px 移动顶栏（版本隐藏后 GitHub 文本 + 图标仍同排可见）、1440px 04 章深色顶栏（图标在深底上可辨识）；三张截图均无换行、裁切或横向溢出（local/site-audit/responsive-* 与本次 /tmp 截图）。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "d36ac95",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "2026-11-18",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}
