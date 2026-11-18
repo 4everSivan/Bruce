@@ -13,6 +13,11 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Changed
+- **官方网站版式精修、去 AI 腔重构与连续动效编排 ([C244](docs/devel/change/C244.json))**：
+  - **视觉纠偏与 1:1 状态条补齐**：提高桌面叠放态液态玻璃磨砂底板不透明度并清除叠牌半透明系数，消除底层 Nothing 数字透印重影；允许桌面点击后排卡片或底部主题切换条物理发牌前置；移除 Nothing 热力图图例行内绿色，改为 CSS 与琥珀色阶联动；按 `system-spec.md §1.3` 补充首屏及 01 章联动的 22pt 菜单栏配额环与实时状态条；02 章补充「本机会话只读扫描（10）」与「云端订阅额度查询（10）」双栏明细。
+  - **去 AI 腔版式与样式表整理**：重写平实克制的工程事实文案与台账分栏章节头，清理对称口号、机翻隐喻、页脚自报纸色文字与装饰 Emoji；合并清理 `base.css` 与 `site.css` 历史冗余覆盖，修正混排拉丁字距与 `.skip-link` 越界显露。
+  - **连续动效与持久化骨架**：引入 `--ease-silk` 与 `--ease-morph` 曲线，将首屏叠牌改为 `slotOrder` 物理发牌与切换器滑动指示器，01 章升级为双向层叠切换、量条/曲线渐进绘制与手风琴高度 RAF 跟踪，03 章补齐热力图波纹、台账滚入与滑动浮标，04/05 章重构为持久化 DOM 骨架 + `0fr↔1fr` 抽屉、弹窗缩放显隐、KPI 滚动插值与 120fps 原地十字准星（全部遵循 `prefers-reduced-motion: reduce`）。
+  - **文档与测试**：同步更新 `docs/devel/design/13-官方网站.md`、`site-{hero,panel,install,mobile}.png` 四张截图，并新增 `tests/unit/u_website_contract.test.mjs`（`UT-website-001..004`）接入顶层单元测试。
 - **顶层 `tests/unit` 契约测试接入本地门禁 ([C242](docs/devel/change/C242.json))**：`verify-local.sh` 新增 `node --test tests/unit/*.test.mjs`（22 项 artifact / 定价 / provider 品牌 / 额度策略契约，此前门禁与 CI 均未运行），运行前自检 `tests/unit` 下没有未被通配命中的测试文件；`tests/benchmark/` 定位为手动基准、不进门禁，产物由 `tests/tmp/` 改写到 `local/bench/`；设计 00 §3.4、AGENTS.md 命令表与 `tests/docs/README.md` 同步。
 - **Token 用量卡收起态改用方案 A4 摘要（双端）([C235](docs/devel/change/C235.json))**：
   - **收起态右侧重排**：移除近 7 天迷你热力条（`collapsedWeekLevels` / `.mini-week`），保留左侧 17pt 今日总 Token；右侧主行显示「命中 XX% | ≈ ¥XX.XX」（缺值展示暗淡 `—`），次行以 `·` 分隔展示「较昨日 ↑N%/↓N%/持平 · 省 ¥XX.XX · 本月 XXX」，无数据子项自动省略，全空时整行隐藏；
