@@ -265,6 +265,8 @@ struct PanelViewModelHarness {
         try codexAccountsGroupIntoOneSection()
         try subscriptionIsNilWhenAllPlaceholders()
         try serviceErrorKeepsNoteAndDiagnoses()
+        try subscriptionFailureIssueUsesHumanTitles()
+        try multiAccountFailureIssueAggregates()
         try egressStateMapsWithoutAffectingUnmanagedProviders()
         try blockedSnapshotWindowsShowInterceptedText()
         try egressScopeFiltersBlockedAlertsToTargetProvider()
@@ -554,6 +556,75 @@ struct PanelViewModelHarness {
             )),
             "缺少 serviceIssue 诊断: \(vm.diagnostics)"
         )
+    }
+
+    // C246: 刷新失败统一为段内问题卡, 标题按 failureKind 转人话, 原始 note 进 tooltip.
+    private static func subscriptionFailureIssueUsesHumanTitles() throws {
+        let auth = makeService(
+            id: "kimi",
+            name: "Kimi",
+            status: "error",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)],
+            note: "查询失败: HTTP 401",
+            failureKind: "auth"
+        )
+        let authSection = try subscriptionSectionsWithDiagnostics(services: [auth]).sections[0]
+        let authIssue = authSection.failureIssue
+        try expect(authIssue?.title == "凭据失效", "auth 应映射为凭据失效: \(String(describing: authIssue))")
+        try expect(authIssue?.detail == "HTTP 401", "detail 应去掉「查询失败: 」前缀: \(String(describing: authIssue?.detail))")
+        try expect(authIssue?.tooltip == "HTTP 401", "tooltip 应承载原因: \(String(describing: authIssue?.tooltip))")
+        // note 仍保留给诊断与旧入口, 只是 UI 不再直接渲染.
+        try expect(authSection.note == "查询失败: HTTP 401", "section note 应保留")
+
+        // 无 note 时给出可执行兜底.
+        let offline = makeService(id: "grok", name: "Grok", status: "error", failureKind: "network")
+        let offlineIssue = try subscriptionSectionsWithDiagnostics(services: [offline]).sections[0].failureIssue
+        try expect(offlineIssue?.title == "网络异常", "network 应映射为网络异常")
+        try expect(offlineIssue?.detail == "请稍后重试", "无 note 时 detail 应有兜底")
+
+        // empty 不是刷新失败, 不升级为问题卡.
+        let empty = makeService(id: "stepfun", name: "StepFun", status: "empty", note: "未取到额度数据")
+        let emptySection = try subscriptionSectionsWithDiagnostics(services: [empty]).sections[0]
+        try expect(emptySection.failureIssue == nil, "empty 不应生成失败卡")
+
+        // 出口阻断优先: 同时失败时失败卡让位, 避免双卡重复.
+        let blocked = EgressPresentationInfo(
+            status: .blocked, reason: "EGRESS_COUNTRY_MISMATCH",
+            expected: "JP", observed: "US", maskedIp: "192.0.***.***"
+        )
+        let blockedService = makeService(
+            id: "claude", name: "Claude", status: "error",
+            note: "查询失败: HTTP 500", failureKind: "server", egress: blocked
+        )
+        let blockedSection = try subscriptionSectionsWithDiagnostics(services: [blockedService]).sections[0]
+        try expect(blockedSection.egress?.status == .blocked, "出口阻断应保留")
+        try expect(blockedSection.failureIssue == nil, "出口阻断时不应叠加失败卡")
+    }
+
+    // C246: 多账号失败聚合为 provider 级一张卡; 标题取最需处置类型, 逐账号原因进 tooltip.
+    private static func multiAccountFailureIssueAggregates() throws {
+        let auth = makeService(
+            id: "codex_aaaa0001", name: "Codex · main", status: "error",
+            app: "codex", note: "查询失败: HTTP 401", failureKind: "auth"
+        )
+        let limited = makeService(
+            id: "codex_bbbb0002", name: "Codex · work", status: "error",
+            app: "codex", note: "查询失败: 429 Too Many Requests", failureKind: "rateLimit"
+        )
+        let healthy = makeService(
+            id: "codex_cccc0003", name: "Codex · spare", status: "ok",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 12, windowMinutes: 300)],
+            app: "codex"
+        )
+        let section = try subscriptionSectionsWithDiagnostics(services: [auth, limited, healthy]).sections[0]
+        let issue = section.failureIssue
+        try expect(issue?.title == "凭据失效", "多账号标题应取最高优先类型 auth: \(String(describing: issue))")
+        try expect(issue?.detail == "2/3 个账号刷新失败", "多账号 detail 应为失败账号统计: \(String(describing: issue?.detail))")
+        let tooltip = issue?.tooltip ?? ""
+        try expect(tooltip.contains("main：HTTP 401"), "tooltip 应列出失败账号原因: \(tooltip)")
+        try expect(tooltip.contains("work：429 Too Many Requests"), "tooltip 应列出失败账号原因: \(tooltip)")
+        try expect(!tooltip.contains("spare"), "健康账号不应进入 tooltip: \(tooltip)")
     }
 
     private static func egressStateMapsWithoutAffectingUnmanagedProviders() throws {
@@ -1957,6 +2028,45 @@ struct PanelViewModelHarness {
             let got = SubscriptionPresentationPolicy.codexGroupStatus(from: statuses)
             try expect(got == expected, "groupStatus(\(statuses)) => \(got)")
         }
+
+        // C246: failureKind → 人话标题; 未知 / 缺省统一兜底「刷新失败」.
+        let failureTitleCases: [(String?, String)] = [
+            ("credential", "凭据读取失败"),
+            ("storage", "凭据存储异常"),
+            ("auth", "凭据失效"),
+            ("permission", "权限不足"),
+            ("rateLimit", "请求被限流"),
+            ("network", "网络异常"),
+            ("server", "服务端异常"),
+            ("invalidResponse", "数据格式异常"),
+            ("tokenUnavailable", "登录已失效"),
+            (nil, "刷新失败"),
+            ("unknown", "刷新失败"),
+        ]
+        for (kind, expected) in failureTitleCases {
+            let got = SubscriptionPresentationPolicy.failureTitle(for: kind)
+            try expect(
+                got == expected,
+                "failureTitle(\(String(describing: kind))) => \(got), 期望 \(expected)"
+            )
+        }
+        // 半角 / 全角「查询失败」前缀都应剥离, 空原因回落 nil.
+        try expect(
+            SubscriptionPresentationPolicy.failureDetail(from: "查询失败: HTTP 401") == "HTTP 401",
+            "半角前缀应剥离"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.failureDetail(from: "查询失败：HTTP 401") == "HTTP 401",
+            "全角前缀应剥离"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.failureDetail(from: "  ") == nil,
+            "空白原因应回落 nil"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.failureDetail(from: nil) == nil,
+            "nil 原因应回落 nil"
+        )
 
         // Jev 暂时屏蔽规则 (C018)
         try expect(
