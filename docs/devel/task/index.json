@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 3 - 订阅额度预警架构重构",
-  "updated_at": "2026-11-06",
+  "updated_at": "2026-11-18",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -146,17 +146,12 @@
         "T01",
         "T02",
         "T03",
-        "T04",
-        "T31"
+        "T04"
       ]
     },
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
-      "tasks": [
-        "T28",
-        "T30",
-        "T32"
-      ]
+      "tasks": []
     },
     "AgentAnalytics": {
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
@@ -168,9 +163,7 @@
     },
     "SharedPolicyCore": {
       "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
-      "tasks": [
-        "T29"
-      ]
+      "tasks": []
     },
     "PricingCatalogSync": {
       "design_doc": "docs/devel/design/09-模型价格表远端同步.md",
@@ -190,9 +183,7 @@
     },
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
-      "tasks": [
-        "T33"
-      ]
+      "tasks": []
     }
   },
   "tasks": {
@@ -249,73 +240,6 @@
       ],
       "file": "docs/devel/task/T04.json",
       "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
-    },
-    "T28": {
-      "title": "订阅窗口语义身份契约：collector 输出 windowKey/windowMode 与 artifact 窗口契约",
-      "status": "completed",
-      "branch": "refactor/T28-quota-alert-contract",
-      "topic": "SubscriptionQuota",
-      "milestone": "M16-订阅额度预警架构重构",
-      "depends_on": [],
-      "file": "docs/devel/task/T28.json"
-    },
-    "T29": {
-      "title": "共享额度预警决策内核：collector-policy::alerts 与 alertDecide 契约",
-      "status": "completed",
-      "branch": "refactor/T28-quota-alert-contract",
-      "topic": "SharedPolicyCore",
-      "milestone": "M16-订阅额度预警架构重构",
-      "depends_on": [
-        "T28"
-      ],
-      "file": "docs/devel/task/T29.json",
-      "branch_note": "同批实施于 T28 分支"
-    },
-    "T30": {
-      "title": "mac 宿主接入：状态持久化、单一投递出口与旧去重状态机退役",
-      "status": "completed",
-      "branch": "refactor/T28-quota-alert-contract",
-      "topic": "SubscriptionQuota",
-      "milestone": "M16-订阅额度预警架构重构",
-      "depends_on": [
-        "T29"
-      ],
-      "file": "docs/devel/task/T30.json",
-      "branch_note": "同批实施于 T28 分支"
-    },
-    "T31": {
-      "title": "Windows 宿主接入：共享预警状态机、状态文件与单出口投递",
-      "status": "completed",
-      "branch": "refactor/T28-quota-alert-contract",
-      "topic": "WindowsCompat",
-      "milestone": "M16-订阅额度预警架构重构",
-      "depends_on": [
-        "T29"
-      ],
-      "file": "docs/devel/task/T31.json",
-      "branch_note": "同批实施于 T28 分支"
-    },
-    "T32": {
-      "title": "额度预警架构重构收口：死代码清理、文档/CHANGELOG 与全量验收",
-      "status": "completed",
-      "branch": "refactor/T28-quota-alert-contract",
-      "topic": "SubscriptionQuota",
-      "milestone": "M16-订阅额度预警架构重构",
-      "depends_on": [
-        "T30",
-        "T31"
-      ],
-      "file": "docs/devel/task/T32.json",
-      "branch_note": "同批实施于 T28 分支"
-    },
-    "T33": {
-      "title": "官网首屏牌堆与看板章节的手机端适配（三档响应式 + 缩略叠放）",
-      "status": "completed",
-      "branch": "feat/T33-site-mobile",
-      "topic": "OfficialWebsite",
-      "milestone": "M17-官方网站移动端适配",
-      "depends_on": [],
-      "file": "docs/devel/task/T33.json"
     }
   }
 }

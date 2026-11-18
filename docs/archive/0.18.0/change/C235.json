@@ -101,7 +101,7 @@
     "design_pinned": true,
     "changelog": true,
     "commit": "830cebb",
-    "tag": ""
+    "tag": "v0.18.0"
   },
   "gate": {
     "tool": "adflow-verify",

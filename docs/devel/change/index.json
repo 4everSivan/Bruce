@@ -5,23 +5,11 @@
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
-      "changes": [
-        "C226",
-        "C228",
-        "C231",
-        "C242",
-        "C243"
-      ]
+      "changes": []
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
-      "changes": [
-        "C232",
-        "C233",
-        "C234",
-        "C235",
-        "C240"
-      ]
+      "changes": []
     },
     "PricingEngine": {
       "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
@@ -33,17 +21,11 @@
     },
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
-      "changes": [
-        "C229",
-        "C246"
-      ]
+      "changes": []
     },
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
-      "changes": [
-        "C227",
-        "C230"
-      ]
+      "changes": []
     },
     "AgentAnalytics": {
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
@@ -71,221 +53,12 @@
     },
     "NetworkEgressCountry": {
       "design_doc": "docs/devel/design/11-网络出口国家校验.md",
-      "changes": [
-        "C236",
-        "C237",
-        "C238",
-        "C239",
-        "C241"
-      ]
+      "changes": []
     },
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
-      "changes": [
-        "C244",
-        "C245",
-        "C247"
-      ]
+      "changes": []
     }
   },
-  "cards": {
-    "C226": {
-      "title": "现行总账瘦身：归档登记迁入 13 个归档批次总账，现行总账只留活跃卡（ad-flow 1.7.0 分层总账）",
-      "type": "Refactor",
-      "status": "closed",
-      "branch": "chore/C226-ledger-compaction",
-      "topic": "SystemOverview",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C226.json"
-    },
-    "C227": {
-      "title": "夏令时在午夜跳变的时区（智利 / 黎巴嫩 / 古巴等）整轮采集 BRIDGE_INTERNAL_PANIC：本地日起点改取空档后首个合法时刻",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C227-window-dst-gap",
-      "topic": "TokenUsage",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C227.json"
-    },
-    "C228": {
-      "title": "全仓死代码清理：移除 collector / mac / Windows 三端 20 处零引用声明与 BruceApp 启动期冗余兜底",
-      "type": "Refactor",
-      "status": "closed",
-      "branch": "chore/C228-dead-code-cleanup",
-      "topic": "SystemOverview",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C228.json"
-    },
-    "C229": {
-      "title": "采集主流程去死注入与测试钩子：移除从未读取的 CredentialSource，主函数拆为 gather / assemble / publish 阶段",
-      "type": "Refactor",
-      "status": "closed",
-      "branch": "refactor/C229-collector-run-seams",
-      "topic": "SubscriptionQuota",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C229.json"
-    },
-    "C230": {
-      "title": "collector-application 结构整理：lib.rs 约 2000 行内联测试按主题拆为 tests_*.rs，生产文件降至约 1000 行",
-      "type": "Refactor",
-      "status": "closed",
-      "branch": "refactor/C230-application-test-split",
-      "topic": "TokenUsage",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C230.json"
-    },
-    "C231": {
-      "title": "verify-local 禁 Python 门禁误拦本机忽略目录（.agent/）致全套验证无法运行：改为只查仓库资产并自检；AGENTS.md 计数漂移修正与 Harness 接入守护",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "chore/C231-verify-gate-agents-facts",
-      "topic": "SystemOverview",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C231.json"
-    },
-    "C232": {
-      "title": "纵向布局 ⌘1/2/3 展开收缩动画对齐鼠标点击：快捷键先无动画定位，再播放唯一一次收放动画",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C232-stack-shortcut-align-toggle",
-      "topic": "MenuBarIndicator",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C232.json"
-    },
-    "C233": {
-      "title": "看板只保留基础动效：移除标题横移、摘要接力淡入、额度条与数字更新动效、柱体生长、Hero 呼吸与状态灯脉冲（双端）",
-      "type": "Enhancement",
-      "status": "closed",
-      "branch": "fix/C233-dashboard-motion-trim",
-      "topic": "MenuBarIndicator",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C233.json"
-    },
-    "C234": {
-      "title": "纵向布局快捷键收放在面板贴屏、内容可滚动时仍抖动：定位改为标题行最小滚动，标题行可见时不滚动",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C234-stack-shortcut-header-visible-scroll",
-      "topic": "MenuBarIndicator",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C234.json"
-    },
-    "C235": {
-      "title": "Token 用量卡收起态右侧由近 7 天迷你热力条改为方案 A4 摘要：缓存命中率 + 估算费用与较昨日 / 省费 / 本月次行（双端）",
-      "type": "Enhancement",
-      "status": "closed",
-      "branch": "fix/C235-usage-collapsed-summary",
-      "topic": "MenuBarIndicator",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C235.json"
-    },
-    "C236": {
-      "title": "出口探测瞬态失败自愈：备用信标重试、失败不占额度刷新配额、错误分类",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C236-egress-probe-resilience",
-      "topic": "NetworkEgressCountry",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C236.json"
-    },
-    "C237": {
-      "title": "瞬态出口探测失败的重试次数跨轮次不累计：整轮合并路径 egressRetryCount 恒为 1，90/180/300 秒退避退化为每 90 秒无限重试",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C237-egress-retry-count-carry",
-      "topic": "NetworkEgressCountry",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C237.json"
-    },
-    "C238": {
-      "title": "瞬态出口探测退避耗尽后未回到正常刷新节奏：plan 对无 egressRetryAt 的瞬态失败每轮都判 due",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C238-egress-retry-exhausted-cadence",
-      "topic": "NetworkEgressCountry",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C238.json"
-    },
-    "C239": {
-      "title": "出口探测把真实超时误报为「专用代理不可达」：ureq 读超时（ErrorKind::Io）被归入 EGRESS_PROXY_UNREACHABLE，EGRESS_PROBE_TIMEOUT 几乎不可达",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C239-egress-timeout-classification",
-      "topic": "NetworkEgressCountry",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C239.json"
-    },
-    "C240": {
-      "title": "Token 用量卡收起态「本月」取最后一个有数据的月份：当月尚无用量时把上月整月总量标成「本月」（双端）",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C240-collapsed-month-total-current",
-      "topic": "MenuBarIndicator",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C240.json"
-    },
-    "C241": {
-      "title": "「专用代理需要认证」被当作瞬态失败自动退避重试：探测层认定重试无意义，策略层与调度器却仍按 90/180/300 秒重查",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C241-egress-proxy-auth-not-transient",
-      "topic": "NetworkEgressCountry",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C241.json"
-    },
-    "C242": {
-      "title": "顶层 tests/unit 的 22 项 Node 契约测试未接入任何门禁：verify-local.sh 与 CI 都不运行，回归无法被发现",
-      "type": "Enhancement",
-      "status": "closed",
-      "branch": "chore/C242-wire-top-level-unit-tests",
-      "topic": "SystemOverview",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C242.json"
-    },
-    "C243": {
-      "title": "移除重复跟踪的 tests/benchmarks/ 历史基线：4 个文件与 tests/fixtures/legacy_benchmark_baselines/ 逐字节相同且无任何脚本读取",
-      "type": "Refactor",
-      "status": "closed",
-      "branch": "chore/C243-remove-duplicate-benchmark-baselines",
-      "topic": "SystemOverview",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C243.json"
-    },
-    "C244": {
-      "title": "官网版式精修、去 AI 腔重构与连续动效编排：修复叠牌透印与热力图图例错配、补齐 22pt 菜单栏实况条与 10+10 双源名录、消除切换闪跳并打磨连续过渡",
-      "type": "Enhancement",
-      "status": "closed",
-      "branch": "fix/C244-website-editorial-polish",
-      "topic": "OfficialWebsite",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C244.json"
-    },
-    "C245": {
-      "title": "官网全站强制开启动画效果并移除首屏底部材质切换按钮：移除 prefers-reduced-motion 静默降级并精简首屏冗余按钮",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C245-force-enable-website-motion",
-      "topic": "OfficialWebsite",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C245.json"
-    },
-    "C246": {
-      "title": "订阅刷新失败统一为段内问题卡并按 failureKind 输出人话标题（macOS）",
-      "type": "Enhancement",
-      "status": "closed",
-      "branch": "fix/C246-subscription-failure-issue-card",
-      "topic": "SubscriptionQuota",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C246.json"
-    },
-    "C247": {
-      "title": "官网顶栏右上角增加个人 GitHub Pages 图标链接",
-      "type": "Enhancement",
-      "status": "closed",
-      "branch": "feat/C247-website-github-pages-icon",
-      "topic": "OfficialWebsite",
-      "version": "0.17.1",
-      "file": "docs/devel/change/C247.json"
-    }
-  }
+  "cards": {}
 }

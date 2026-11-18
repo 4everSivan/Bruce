@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-18
+
 ### Added
 - **官网首屏牌堆手机端适配：三档响应式与纵向缩略叠放 (T33)**：
   - **三档断点**：`>1100px` 右侧横向三卡；`721–1100px` 保留三卡并整堆等比缩放（不再在 1100px 砍成单卡）；`≤720px` 三张纵向缩略叠放（当前卡展开、其余两张留顶条，点顶条切换），牌堆移到标题之后、导语之前，手机首屏可见；
@@ -13,22 +15,22 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Changed
-- **官网顶栏右上角增加个人 GitHub Pages 图标链接 ([C247](docs/devel/change/C247.json))**：在版本徽标与仓库「GitHub ↗」文本链接之后新增 GitHub 图形图标链接，指向 `https://4eversivan.github.io/`，新窗口打开并带 `aria-label`/`title` 明示去向；图标采用 `currentColor` 内联 SVG，浅色与 04 章深色顶栏分别设置常态/悬停色，24pt 命中区不改变既有顶栏排布；新增 `UT-website-005` 契约断言，设计 13 §3.9 同步登记。
-- **订阅刷新失败统一为段内问题卡并按 failureKind 输出人话标题（macOS）([C246](docs/devel/change/C246.json))**：
+- **官网顶栏右上角增加个人 GitHub Pages 图标链接 ([C247](docs/archive/0.18.0/change/C247.json))**：在版本徽标与仓库「GitHub ↗」文本链接之后新增 GitHub 图形图标链接，指向 `https://4eversivan.github.io/`，新窗口打开并带 `aria-label`/`title` 明示去向；图标采用 `currentColor` 内联 SVG，浅色与 04 章深色顶栏分别设置常态/悬停色，24pt 命中区不改变既有顶栏排布；新增 `UT-website-005` 契约断言，设计 13 §3.9 同步登记。
+- **订阅刷新失败统一为段内问题卡并按 failureKind 输出人话标题（macOS）([C246](docs/archive/0.18.0/change/C246.json))**：
   - **现象**：订阅额度刷新失败时，macOS 仪表盘只在 provider 段最底部（多账号在账号子卡底部）输出一行 10pt 橙色小字，与出口 IP 校验不通过时的段内问题卡（图标 + 人话标题 + 说明 + 去设置/重测）形态不一致，失败原因靠下且无可操作入口；
   - **改法**：抽取通用 `ProviderIssueCard`，出口阻断与刷新失败共用同一单行问题卡（段头下方、正文之上），右侧「去设置 / 重试」；标题按 `failureKind` 映射为凭据失效 / 网络异常 / 请求被限流 / 服务端异常 / 数据格式异常 / 凭据读取失败 / 凭据存储异常 / 权限不足 / 登录已失效（缺省「刷新失败」），单账号 detail 为去掉「查询失败: 」前缀的原因，多账号聚合为「N/M 个账号刷新失败」并逐账号写入 tooltip；出口阻断优先，`status=empty` 不升级为问题卡；删除账号子卡底部错误小字；
   - **验证**：`PanelViewModelMapper` 新增 `failureIssue` 视图模型（含失败类型优先级与原因清洗纯策略），`PanelViewModelHarness` 新增单账号/多账号/出口优先/empty/标题表驱动用例（72 项全过），`PanelParityHarness` 五份对拍无 golden 变更；design/02 新增规则 17。
-- **官方网站版式精修、去 AI 腔重构与连续动效编排 ([C244](docs/devel/change/C244.json))**：
+- **官方网站版式精修、去 AI 腔重构与连续动效编排 ([C244](docs/archive/0.18.0/change/C244.json))**：
   - **视觉纠偏与 1:1 状态条补齐**：提高桌面叠放态液态玻璃磨砂底板不透明度并清除叠牌半透明系数，消除底层 Nothing 数字透印重影；允许桌面点击后排卡片或底部主题切换条物理发牌前置；移除 Nothing 热力图图例行内绿色，改为 CSS 与琥珀色阶联动；按 `system-spec.md §1.3` 补充首屏及 01 章联动的 22pt 菜单栏配额环与实时状态条；02 章补充「本机会话只读扫描（10）」与「云端订阅额度查询（10）」双栏明细。
   - **去 AI 腔版式与样式表整理**：重写平实克制的工程事实文案与台账分栏章节头，清理对称口号、机翻隐喻、页脚自报纸色文字与装饰 Emoji；合并清理 `base.css` 与 `site.css` 历史冗余覆盖，修正混排拉丁字距与 `.skip-link` 越界显露。
   - **连续动效与持久化骨架**：引入 `--ease-silk` 与 `--ease-morph` 曲线，将首屏叠牌改为 `slotOrder` 物理发牌与切换器滑动指示器，01 章升级为双向层叠切换、量条/曲线渐进绘制与手风琴高度 RAF 跟踪，03 章补齐热力图波纹、台账滚入与滑动浮标，04/05 章重构为持久化 DOM 骨架 + `0fr↔1fr` 抽屉、弹窗缩放显隐、KPI 滚动插值与 120fps 原地十字准星（全部遵循 `prefers-reduced-motion: reduce`）。
   - **文档与测试**：同步更新 `docs/devel/design/13-官方网站.md`、`site-{hero,panel,install,mobile}.png` 四张截图，并新增 `tests/unit/u_website_contract.test.mjs`（`UT-website-001..004`）接入顶层单元测试。
-- **顶层 `tests/unit` 契约测试接入本地门禁 ([C242](docs/devel/change/C242.json))**：`verify-local.sh` 新增 `node --test tests/unit/*.test.mjs`（22 项 artifact / 定价 / provider 品牌 / 额度策略契约，此前门禁与 CI 均未运行），运行前自检 `tests/unit` 下没有未被通配命中的测试文件；`tests/benchmark/` 定位为手动基准、不进门禁，产物由 `tests/tmp/` 改写到 `local/bench/`；设计 00 §3.4、AGENTS.md 命令表与 `tests/docs/README.md` 同步。
-- **Token 用量卡收起态改用方案 A4 摘要（双端）([C235](docs/devel/change/C235.json))**：
+- **顶层 `tests/unit` 契约测试接入本地门禁 ([C242](docs/archive/0.18.0/change/C242.json))**：`verify-local.sh` 新增 `node --test tests/unit/*.test.mjs`（22 项 artifact / 定价 / provider 品牌 / 额度策略契约，此前门禁与 CI 均未运行），运行前自检 `tests/unit` 下没有未被通配命中的测试文件；`tests/benchmark/` 定位为手动基准、不进门禁，产物由 `tests/tmp/` 改写到 `local/bench/`；设计 00 §3.4、AGENTS.md 命令表与 `tests/docs/README.md` 同步。
+- **Token 用量卡收起态改用方案 A4 摘要（双端）([C235](docs/archive/0.18.0/change/C235.json))**：
   - **收起态右侧重排**：移除近 7 天迷你热力条（`collapsedWeekLevels` / `.mini-week`），保留左侧 17pt 今日总 Token；右侧主行显示「命中 XX% | ≈ ¥XX.XX」（缺值展示暗淡 `—`），次行以 `·` 分隔展示「较昨日 ↑N%/↓N%/持平 · 省 ¥XX.XX · 本月 XXX」，无数据子项自动省略，全空时整行隐藏；
   - **数据与视图契约**：新增 `UsageCollapsedSummary`（Rust `usage::make_collapsed_summary` 与 Swift `PanelViewModelMapper.makeCollapsedSummary` 1:1 对齐），`dailyModels` 仅累加今日缓存省费，`PanelFormat.cnyText` 拆为 `costText` 与省费文案共享格式器；
   - **验证与对拍**：更新 design/03 规则 15 / 新增规则 26、`PanelViewModelHarness`、`PanelParityHarness`（刷新三份 `agent-usage-*.panel.json`）、Rust `fixture_parity` 与 Windows 前端 DOM/CSS 用例。
-- **看板只保留基础动效（双端）([C233](docs/devel/change/C233.json))**：
+- **看板只保留基础动效（双端）([C233](docs/archive/0.18.0/change/C233.json))**：
   - **背景**：看板动效过于复杂、部分场景卡顿；保留面板开合、卡片收放高度、Tab 定向滑动与刷新旋转，移除装饰性动效；
   - **标题不再移动**：收起态拖拽手柄移入卡片左边距，不再占标题行宽度，标题在收起 / 展开两态同一位置；收起摘要与状态件直接换位，不再接力淡入；
   - **数值直接落终值**：额度条、Nothing 分段、百分比与余额数字刷新后一步到位，移除弹簧滑动、右缘高光、扫光、入场生长与数字滚动；mac 删除 `MeterMotionPolicy`，Windows 删除渲染后补间层 `motion.js`；
@@ -36,54 +38,54 @@
   - **回归守卫**：`NativeLifecycleHarness` 断言手柄不超过卡片左边距并以源码守卫拦截退役动效回流，Windows 前端测试新增对应断言；design/03 规则 11 / 13、design/05 规则 34 同步改写。
 
 ### Removed
-- **移除重复跟踪的 `tests/benchmarks/` 历史基线 ([C243](docs/devel/change/C243.json))**：4 个 JSON 基线在测试目录重组时已落到 `tests/fixtures/legacy_benchmark_baselines/`，旧目录副本逐字节相同且无脚本读取，删除前再次 `cmp` 确认后以 `git rm` 移除，保留位置的 4 个文件 SHA-256 不变；`tests/docs/README.md` 迁移说明补注旧路径去向。
+- **移除重复跟踪的 `tests/benchmarks/` 历史基线 ([C243](docs/archive/0.18.0/change/C243.json))**：4 个 JSON 基线在测试目录重组时已落到 `tests/fixtures/legacy_benchmark_baselines/`，旧目录副本逐字节相同且无脚本读取，删除前再次 `cmp` 确认后以 `git rm` 移除，保留位置的 4 个文件 SHA-256 不变；`tests/docs/README.md` 迁移说明补注旧路径去向。
 
 ### Fixed
-- **官网全站强制开启动画并移除首屏底部冗余切换按钮 ([C245](docs/devel/change/C245.json))**：
+- **官网全站强制开启动画并移除首屏底部冗余切换按钮 ([C245](docs/archive/0.18.0/change/C245.json))**：
   - **强制开启动效**：移除 `website/css/{base,panel,site,settings}.css` 全部 `prefers-reduced-motion` 媒体查询（包括 `base.css` 全局 `0.001ms` 压缩与 `[data-reveal]` 禁用）以及 `website/js/{panel,site,analysis}.js` 中 14 处 `reduceMq` 跳过守卫，即使宿主机关闭系统动画仍完整播放全部过渡与动画；
   - **精简首屏底部栏**：移除 Hero 叠牌底部的三枚材质切换按钮及对应 `.deck-switcher__glider` / `syncSwitcher()` 冗余逻辑，保留极简细线与“点击任意面板提至前景 · 样例数据”提示，桌面端直接点击叠放面板即可切卡；
   - **验证与文档**：新增 `UT-website-002`/`004` 回归断言，在 Chromium `reducedMotion: "reduce"` 模拟与双内核响应式（320–1440px）全测通过；同步更新 `docs/devel/design/13-官方网站.md` 与 `docs/assets/screenshots/site-hero.png`。
-- **「专用代理需要认证」不再按瞬态失败自动退避重试 ([C241](docs/devel/change/C241.json))**：
+- **「专用代理需要认证」不再按瞬态失败自动退避重试 ([C241](docs/archive/0.18.0/change/C241.json))**：
   - **现象**：探测层认定代理需认证重试无意义（不改用备用信标），但策略层与 mac 调度器的瞬态集合仍包含 `EGRESS_PROXY_AUTH`，一个必须由用户改配置才能恢复的问题仍触发 90/180/300 秒三次提前唤醒与重查，且不写 `quotaAttemptedAt`；
   - **修复**：`EGRESS_PROXY_AUTH` 移出 collector-policy `TRANSIENT_EGRESS_REASONS` 与 mac `EgressAlertEvaluator.transientProbeReasons`，与配置无效同类：写尝试时间戳、清除退避字段，按正常间隔或手动刷新重查；徽标「代理需认证」与阻断语义不变；
   - **验证**：新增策略层用例、`RefreshSchedulerHarness` 代理需认证不缩短周期用例，以及读取 `quota.rs` 字面量与 Swift 集合比对的一致性源码守卫（人为制造漂移时实测失败）；本机 407 回环端口实测：写 `quotaAttemptedAt`、无 `egressRetryAt`，按 3 分钟下限重查。
-- **Token 用量卡收起态「本月」不再把上月总量当成本月（双端）([C240](docs/devel/change/C240.json))**：
+- **Token 用量卡收起态「本月」不再把上月总量当成本月（双端）([C240](docs/archive/0.18.0/change/C240.json))**：
   - **现象**：C235 收起态摘要取月份列表末位作为「本月」，而列表只含有数据的月份；月初当月尚无用量（或隔月未使用）时，上一个有数据月份的整月总量被标为「本月」；
   - **修复**：mac `PanelViewModelMapper` 与 Windows `usage.rs` 按注入 `now` 所在本地月份（`yyyy-MM`）匹配月份键，当月无数据时为空、次行省略该段；展开态月度柱与半年汇总不变；
   - **验证**：双端新增「当月无数据 / 当月有数据 / 跨年」用例（修复前两端均输出 11 月总量 311K），`PanelParityHarness` 三份对拍快照无需更新；design/03 规则 26 同步改写。
-- **出口探测把真实超时误报为「专用代理不可达」 ([C239](docs/devel/change/C239.json))**：
+- **出口探测把真实超时误报为「专用代理不可达」 ([C239](docs/archive/0.18.0/change/C239.json))**：
   - **现象**：ureq 把读超时包成 `ErrorKind::Io`，C236 的分类把它与连接失败一并归为 `EGRESS_PROXY_UNREACHABLE`；代理正常、信标偶发超时（C236 立项场景）时看板显示「代理不可达」，把排查引向错误方向，`EGRESS_PROBE_TIMEOUT` 几乎不可达；出口放行后的额度接口超时也被记成「专用代理连接失败」；
   - **修复**：专用代理传输分类前沿错误 `source` 链查找 `io::Error`，`TimedOut` / `WouldBlock` 保留 `PROVIDER_TRANSPORT_ERROR`（探测层主备两次都超时即 `EGRESS_PROBE_TIMEOUT`，放行后的额度超时不再带 `EGRESS_*` 代码）；连接被拒、DNS、CONNECT 非 2xx、TLS 失败仍为代理不可达，407 仍为代理需认证；直连查额错误码不变；
   - **验证**：回环监听器覆盖「接受后不应答 / 407 / 502」与放行后额度超时，修复前「不应答」两例实测为 `EGRESS_PROXY_UNREACHABLE`；Release collector 经不应答端口实测 `EGRESS_PROBE_TIMEOUT`、未监听端口仍为 `EGRESS_PROXY_UNREACHABLE`；经本机专用代理单独请求备用信标 `1.1.1.1` 一次：200、`loc=US`、证书校验通过。
-- **瞬态出口探测退避耗尽后未回到正常刷新节奏 ([C238](docs/devel/change/C238.json))**：
+- **瞬态出口探测退避耗尽后未回到正常刷新节奏 ([C238](docs/archive/0.18.0/change/C238.json))**：
   - **现象**：三次退避（90/180/300 秒）耗尽后，门禁对无 `egressRetryAt` 的瞬态失败每轮都判 due，且瞬态失败从不写 `quotaAttemptedAt`、没有时间锚；刷新间隔设为 1 分钟时会每分钟重查该 provider 的全部账号，绕过 3 分钟自动查额下限（被 C237 掩盖，C237 修复后立即暴露）；
   - **修复**：档位耗尽的那次及之后的瞬态失败按普通失败写入 `quotaAttemptedAt` 并保留 `egressRetryCount`；门禁只对未耗尽的瞬态失败走退避分支，耗尽态回到正常新鲜度门禁，手动刷新与窗口边界仍可强制重查，旧 artifact 缺字段仍补排；回填对耗尽态不再补排首档退避；窗口边界强制重查改以快照与最近一次尝试中较晚者为锚，失败的 windows 类 service（如 Claude / Codex）在边界之后只重查一次，不再每轮重查；
   - **验证**：新增耗尽态间隔门禁、强制刷新、旧 artifact 补排、耗尽写时间戳 / 恢复清除用例与 `RefreshSchedulerHarness` 耗尽后回到正常间隔用例；Release collector 指向未监听端口、间隔 1 分钟实测：90/180/300 秒三次重试后每 180 秒探测一次。
-- **瞬态出口探测失败的重试次数跨轮次不累计 ([C237](docs/devel/change/C237.json))**：
+- **瞬态出口探测失败的重试次数跨轮次不累计 ([C237](docs/archive/0.18.0/change/C237.json))**：
   - **现象**：C236 的 90/180/300 秒退避依赖 `egressRetryCount` 逐轮递增，但整轮回填与 mac 定向刷新都用 Collector 本轮新产出的 service 对象标注，计数每轮都从 0 起算，恒为 1——专用代理持续不可用时每约 90 秒提前唤醒并重查一次，永不升档、永不停止，同 provider 其余账号也随之低于 3 分钟自动查额下限；
   - **修复**：`collector-policy` 新增退避计数继承：仅当上一份与本轮都是瞬态出口阻断时按 service ID 继承计数，成功或转为非瞬态阻断时照旧清除；整轮 `merge` 与定向 `quotaAnnotate` 走同一函数，`quotaAnnotate` 请求新增可选 `previousServices`（mac 传入定向合并前的上一份 artifact），Windows 无出口保护、无行为变化；
   - **验证**：新增经 `plan + merge` 真实序列的跨轮次用例（计数 1/2/3/4、重试 +90/+180/+300 秒/无）、成功后重置与非瞬态不继承用例、契约与 `RefreshSchedulerHarness` 定向刷新用例（修复前实测发布计数 1）；Release collector 指向未监听回环端口连续 4 轮实测计数 1/2/3/4。
-- **出口探测瞬态失败自愈与错误分类 ([C236](docs/devel/change/C236.json))**：
+- **出口探测瞬态失败自愈与错误分类 ([C236](docs/archive/0.18.0/change/C236.json))**：
   - **现象**：出口探测每次新建连接且只有一次机会、硬超时 3 秒，本机 Release collector 实测 10 次出现 1 次 3.06 秒超时即判失败；失败又被写入 `quotaAttemptedAt`，使该 provider 在默认 30 分钟刷新间隔内被跳过并持续展示阻断；代理不可达、需认证、信标非 200 与真超时统一显示「探测失败」；
   - **探测重试**：主信标 3 秒失败后，退避 400ms 改用 `1.1.1.1` 备用信标再试一次（最长 5 秒），两次都失败才阻断；同轮同端口仍共享一次最终结论，国家决策（CN/不匹配）不在探测层重试；
   - **门禁与唤醒**：瞬态失败不再占额度刷新配额，改为 `egressRetryAt` / `egressRetryCount`，按 90/180/300 秒退避；调度器把最早的 `egressRetryAt` 计入下一次唤醒时间（至少 30 秒），到点后的定时刷新强制重查该 provider，成功或非瞬态阻断即清除；真实故障始终 fail-closed；
   - **错误分类**：新增 `EGRESS_PROXY_UNREACHABLE` / `EGRESS_PROXY_AUTH` / `EGRESS_BAD_STATUS`，看板徽标、卡片标题与设置页手测文案分别映射；设置页手测同步主备信标与超时预算；
   - **验证**：Rust workspace 全绿；`RefreshSchedulerHarness` 129 项（含主信标失败回退、最终结论缓存、瞬态退避与提前唤醒）、`PanelViewModelHarness` 71 项、`BruceOnboardingCoreHarness` 180 项全绿。
-- **纵向布局快捷键收放在面板贴屏时仍抖动 ([C234](docs/devel/change/C234.json))**：
+- **纵向布局快捷键收放在面板贴屏时仍抖动 ([C234](docs/archive/0.18.0/change/C234.json))**：
   - **现象**：收起 Token 用量卡、展开另外两张后，用 ⌘2 收起订阅用量卡会抖一下，鼠标点击同一张卡片不抖（C232 之后仍存在）；
   - **根因**：快捷键在收放前用 `scrollTo(card, anchor: .top)` 把整张卡片顶到视口上缘。内容未超出面板时这是空操作；面板被屏幕高度夹取、内容可滚动时，即使标题行本来可见也会瞬时滚走一段，随后卡片收起、内容变短，滚动偏移在同一段动画里被逐帧夹回——卡片栈先上跳再滑回；
   - **修复**：定位目标改为卡片标题行探针，以不带锚点的 `scrollTo` 做最小滚动：标题行已在视口内时不滚动，与鼠标点击逐帧一致；仅标题行在视口外时才带回视口。新增 `DashboardStackShortcutScrollAnchor`，`NativeLifecycleHarness` 以源码守卫锁定；
   - **边界**：收放动画、⌘ 映射、Tab 布局不变；Windows 端 `scrollIntoView({ block: "start" })` 未改动。
-- **纵向布局快捷键展开收缩动画对齐鼠标点击 ([C232](docs/devel/change/C232.json))**：
+- **纵向布局快捷键展开收缩动画对齐鼠标点击 ([C232](docs/archive/0.18.0/change/C232.json))**：
   - **现象**：同一张卡片用 ⌘1/2/3 展开后再用快捷键收缩会出现抖动，鼠标点击卡片标题收放则平滑；
   - **根因**：鼠标路径只在标题 Button action 里包一条 `withAnimation` 调 `toggleCardCollapsed`；快捷键路径在 `MenuBarViews.onChange(shortcutScrollTarget)` 里把 `scrollTo` 与 `toggleCardCollapsed` **各包一条** 0.30s `withAnimation`，滚动目标/可用滚动范围随卡片高度逐帧变化，与卡片高度、窗口高度三方同时动画；
   - **修复**：快捷键先**无动画** `scrollTo` 定位，再用唯一一条 `DashboardMotionTiming.contentResizeCurve` 动画切换折叠；减弱动态效果时连收放动画也直接落值。新增 `DashboardStackShortcutMotionPolicy` 作为唯一编排点，`NativeLifecycleHarness` 断言两种映射；
   - **边界**：目标卡在视口外时表现为“瞬时定位 + 平滑收放”；Tab 布局、⌘ 映射、鼠标点击行为均不变。
-- **verify-local 禁 Python 门禁误拦本机忽略目录，全套验证无法运行 ([C231](docs/devel/change/C231.json))**：
+- **verify-local 禁 Python 门禁误拦本机忽略目录，全套验证无法运行 ([C231](docs/archive/0.18.0/change/C231.json))**：
   - **门禁**：原 `find` 全盘扫描会被 `.gitignore` 已忽略的本机 AI 工具目录（如 `.agent/skills/**/*.py`）命中，在任何检查前 `exit 1`；改由新增 `scripts/check-no-python-assets.zsh` 以 `git ls-files --cached --others --exclude-standard` 只检查会进入仓库的文件，白名单仍仅 `scripts/adflow_verify.py`，强制跟踪的被忽略文件照常拦截，非 Git 工作树显式失败；正式检查前在临时仓库自检 4 项；`.gitignore` 补 `node_modules/`；
   - **Harness 接入守护**：verify-local 在 `swift build` 前核对 `Package.swift` 中每个 `*Harness` target 均被运行，漏接即失败；
   - **AGENTS.md**：Harness 数 18 → 19、Onboarding Core 用例数 165 → 180，禁 Python 规则改为描述新门禁口径。
-- **夏令时在午夜跳变的时区整轮采集 `BRIDGE_INTERNAL_PANIC` ([C227](docs/devel/change/C227.json))**：
+- **夏令时在午夜跳变的时区整轮采集 `BRIDGE_INTERNAL_PANIC` ([C227](docs/archive/0.18.0/change/C227.json))**：
   - **现象**：America/Santiago、Asia/Beirut、America/Havana 等夏令时于 00:00 开始的时区，跳变日本地午夜不存在，`CollectionWindow::from_context` 计算该日起点时 `expect` panic，Bridge 以 `BRIDGE_INTERNAL_PANIC` 收尾、不产出 artifact；默认 14 天窗口覆盖跳变日期间（每年两次、各约两周）每轮刷新都复现；
   - **修复**：新增 `local_day_start`，午夜落在空档时自分钟向后探测、取空档结束后的首个合法本地时刻作为当日起点（午夜重叠仍取较早一次，其余时区边界毫秒值不变）；探测失败改返回 `WindowError::MissingDayBoundary` 诊断而非 panic；新增回归用例锁定智利 2026-09-06 与黎巴嫩 2026-03-29 两例。
 - **订阅额度预警窗口未重置却重复弹气泡：窗口身份、观测、状态与投递四层重构 (T28–T31)**：
@@ -94,11 +96,11 @@
   - **退役旧路径**：mac `QuotaAlertEvaluator` / `QuotaAlertDeliveryState` 与 Windows `AlertDeliveryState` 本地状态机删除；双端共用 `tests/fixtures/quota-alert-state-parity/cases.json` 对拍。
 
 ### Changed
-- **collector-application 内联测试按主题拆分 ([C230](docs/devel/change/C230.json))**：`lib.rs` 约 2000 行内联测试拆为 `tests_run` / `tests_quota` / `tests_local` / `tests_history`，共享夹具收进 `tests_support`，与同 workspace 其他 crate 的 `tests_*.rs` 约定一致；`lib.rs` 由 2936 行降至约 1000 行纯生产代码，33 个用例逐个保留、断言不变。
-- **采集主流程去死注入与测试钩子 ([C229](docs/devel/change/C229.json))**：
+- **collector-application 内联测试按主题拆分 ([C230](docs/archive/0.18.0/change/C230.json))**：`lib.rs` 约 2000 行内联测试拆为 `tests_run` / `tests_quota` / `tests_local` / `tests_history`，共享夹具收进 `tests_support`，与同 workspace 其他 crate 的 `tests_*.rs` 约定一致；`lib.rs` 由 2936 行降至约 1000 行纯生产代码，33 个用例逐个保留、断言不变。
+- **采集主流程去死注入与测试钩子 ([C229](docs/archive/0.18.0/change/C229.json))**：
   - **死凭据注入**：`collect_agent_usage_with_dependencies` 去掉从未被读取的 `CredentialSource` 参数与 `RunContext` 字段，凭据唯一来源为宿主注入的 `request.credentials`；`matrix-fixture` 的 `credential-expired` 基准模式因此从未生效，一并删除；新增源码扫描用例守住「生产代码不引用宿主凭据读取入口」，规则写入 design/02；
   - **分阶段**：230 行主函数拆为 `prepare_run` / `gather` / `assemble` / `publish`，另抽出 `resolve_pricing_table` 与 `build_agents`；生产签名中的 `#[cfg(test)] final_probe` 参数移除，取消用例改经真实阶段接缝在发布前取消；行为不变。
-- **全仓死代码清理：三端 20 处零引用声明与启动期冗余兜底 ([C228](docs/devel/change/C228.json))**：
+- **全仓死代码清理：三端 20 处零引用声明与启动期冗余兜底 ([C228](docs/archive/0.18.0/change/C228.json))**：
   - **collector**：删除无调用方的 `ALERT_THRESHOLDS`（与 `alert_tier` 硬编码判据可静默分叉的「假真源」）、`QuotaRunPolicy::local_only`、`CollectionWindow::day_of_millis / contains_day`、`UsageContributionBuilder::from_contribution`、`pricing::builtin_schema_version`，以及 `RunContext` 中与 `collect_local_usage` 重复解析的 `home` 字段；
   - **Windows 壳**：删除 `QUOTA_ALERT_THRESHOLDS / QUOTA_ALERT_THRESHOLD` 两个零引用常量，阈值唯一实现保持在共享 `collector-policy`；
   - **mac**：删除自称「兼容旧调用点 / 向后兼容」但已无调用方的 `BruceGlassStyle`、`glassButtonStyle / glassFormRowBackground` 及其修饰器、`usesGlass`、`NothingDragHandle`、三个 Codex v2 键别名，以及 `claudeCredentialsFileValid`、`displayNames()`、`liveQuotaRatios` 与三个未使用的 Nothing 颜色 token；
