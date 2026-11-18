@@ -1,0 +1,125 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C244",
+  "title": "官网版式精修、去 AI 腔重构与连续动效编排：修复叠牌透印与热力图图例错配、补齐 22pt 菜单栏实况条与 10+10 双源名录、消除切换闪跳并打磨连续过渡",
+  "version": "0.17.1",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C244-website-editorial-polish",
+  "is_hotfix": false,
+  "target": {
+    "module": "website/",
+    "component": "index.html / css/{base,site,panel}.css / js/{data,panel,egress,analysis,site}.js",
+    "design_doc": "docs/devel/design/13-官方网站.md",
+    "design_topic": "OfficialWebsite"
+  },
+  "why": "现行官网经过多轮增量追加，存在明显「AI 模板感」与视觉缺陷：1) 全站标题高度同质化（清一色两段对称金句）、夹杂机翻隐喻与页脚自报字体色值等 AI 腔文案；2) 首屏液态玻璃面板底板过透导致底层 Nothing 点阵透印串行，且桌面叠牌后两张长期半截遮挡无法前置检视；3) Nothing 主题热力图为琥珀色而图例硬编码为绿色、混排拉丁词（macOS / Nothing）被宽字距拉散、.skip-link 在部分视口越界显露；4) 缺失核心 22pt 菜单栏状态项实物呈现，02 章仅靠 132px 无字巨型图标跑马灯难以分辨 10 类本机会话与 10 家云端订阅；5) site.css 累积逾 5000 行多层重复覆盖规则。",
+  "precheck": {
+    "description": "检查官网源码中是否存在页脚自报纸色/字体文案、Nothing 热力图硬编码绿色图例及缺失菜单栏状态条组件",
+    "command": "node -e 'const fs=require(\"fs\");const html=fs.readFileSync(\"website/index.html\",\"utf8\");const pjs=fs.readFileSync(\"website/js/panel.js\",\"utf8\");console.log({selfMeta:html.includes(\"纸色 #f1efe9\"),hardcodedLegend:pjs.includes(\"levelColor(l)\"),hasMenubarStrip:html.includes(\"menubar-specimen\")})'",
+    "expected": "变更前：selfMeta=true, hardcodedLegend=true, hasMenubarStrip=false；变更后：selfMeta=false, hardcodedLegend=false, hasMenubarStrip=true。",
+    "is_completed": false,
+    "evidence": "2026-11-18 于 main b481c53 实测输出：{ selfMeta: true, hardcodedLegend: true, hasMenubarStrip: false }；截图实测液态玻璃叠放透印、Nothing 图例琥珀/绿错配、.skip-link 越界。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C244-website-editorial-polish"
+    ],
+    "after": [
+      "node scripts/check-site-sync.mjs",
+      "node scripts/build-site.mjs",
+      "node website/tools/responsive-check.mjs --shots",
+      "node --test tests/unit/*.test.mjs",
+      "node scripts/check-change-ledger.mjs",
+      "zsh scripts/check-no-python-assets.zsh",
+      "scripts/adflow-verify --card C244 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "全站文案与信息层级（website/index.html）",
+      "before": "各章节均为对称两段式口号与机翻隐喻，页脚含「正文宋体…纸色 #f1efe9」自指说明及 24.5vw 巨型裁切字标；缺少菜单栏状态项实物与 10+10 数据源分类。",
+      "after": "重写为克制平实的工程事实文案；章节头改为台账顶线分栏（序号/标题 + 规格注记）；首屏与 01 章增补按源码常数绘制的 22pt 菜单栏状态项样张；02 章在精简图标带下增补「本机会话只读扫描（10）」与「云端订阅额度查询（10）」双栏明细；页脚收束为清爽的下载校验台账与比例克制的品牌落款。",
+      "impact": "消除 AI 生成腔与模板套路感，访客首屏即直观看懂菜单栏常驻形态与本地闭环边界。"
+    },
+    {
+      "scope": "首屏叠牌与面板高保真细节（website/js/panel.js, website/css/panel.css）",
+      "before": "液态玻璃叠放时底色 46% 透明导致底层卡片数字透印重影；桌面端后两张卡片无法点击前置；Nothing 热力图图例色块由 JS 行内硬编码绿色，与琥珀色热力格矛盾。",
+      "after": "提高叠放态液态玻璃磨砂底板不透明度并保留镜面高光与背板柔光；支持桌面端点击任意叠放卡片或底部主题切换条平滑前置检视，且保持三卡同屏可见与移动端顶条折叠完全兼容；移除图例行内色值改由 CSS 按主题统一驱动 0–5 六档色阶；01 章顶部增设随主题切换联动的 macOS 菜单栏状态条。",
+      "impact": "三套原生材质均可完整无遮挡浏览，消除文字重影与色阶错配，保持 responsive-check 全部断言兼容。"
+    },
+    {
+      "scope": "版式样式表瘦身与工作台降噪（website/css/base.css, website/css/site.css, website/js/{site,egress,analysis,data}.js）",
+      "before": "base.css 双重 :root 覆盖，site.css 逾 5000 行含大量废弃布局覆盖；拉丁专有名词套用 0.24em–0.3em 宽字距被拉散；.skip-link 未彻底隐藏；04/05 章含 emoji 按钮与高饱和彩虹标签。",
+      "after": "合并整理 base.css 与 site.css，清除历史废弃选择器；建立标题衬线 + 技术说明无衬线的清晰字体分工，修正混排拉丁字距与 .skip-link 焦点显隐；将 egress.js 与 analysis.js 中的 emoji 图标和花哨徽章替换为原生风格单色矢量图标与克制语义标签。",
+      "impact": "全站从纸面叙事到交互工作台形成统一、耐看的原生软件画册质感。"
+    },
+    {
+      "scope": "全站交互动效与持久化骨架重构（website/css/{base,panel,site}.css, website/js/{panel,site,egress,analysis}.js）",
+      "before": "桌面叠牌仅硬切 z-index 无位置调度；01/04/05 章高频交互依赖整块 innerHTML 重建，切卡、折叠手风琴、弹层开关与图表十字准星均有明显生硬闪跳；03 章缺少波纹与数值滚入。",
+      "after": "引入 --ease-silk 与 --ease-morph 连续缓动：首屏叠牌按物理 slotOrder 发牌置换，切换栏/选项卡/分段器配备滑动指示器；01 章增加双向层叠过渡、菜单栏皮肤胶囊轻弹、量条与曲线渐进绘制及手风琴高度 RAF 跟踪；03 章增加 26 周热力图波纹、台账滚入与滑动浮标；04/05 章重构为持久化 DOM + 0fr↔1fr 抽屉、弹窗缩放显隐、KPI 滚动插值与 120fps 原地十字准星。",
+      "impact": "消除全站切页与交互闪跳，保持响应速度的同时呈现原生 macOS 级连续手感，并严格遵循 prefers-reduced-motion: reduce。"
+    },
+    {
+      "scope": "设计文档同步与官网契约单测（docs/devel/design/13-官方网站.md, tests/unit/u_website_contract.test.mjs）",
+      "before": "design/13 仍残留旧六章描述，tests/unit 无官网结构、去 AI 腔与连续动效契约守护。",
+      "after": "同步更新 design/13 五章基线与 §6.8 精修及动效纪要；新增 u_website_contract.test.mjs（UT-website-001..004）覆盖占位符完整性、热力图色阶、10+10 数据源、去 AI 自指文案与连续过渡契约。",
+      "impact": "纳入 verify-local.sh 顶层 Node 单测自动守护。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/13-官方网站.md",
+    "topic": "OfficialWebsite",
+    "modified": true,
+    "rule_diff": {
+      "before": "3.1 描述旧六章结构；3.7/3.8 规定桌面牌堆完全不可切换且液态玻璃使用低不透明度层叠；3.9 仅规定 320ms 牌堆切换。",
+      "after": "校准为现行五章结构 + 页脚下载台账；规定混排拉丁专有名词自然字距、标题衬线与技术注解无衬线分工、叠牌磨砂防透印与物理 slotOrder 发牌前置、全站持久化 DOM 连续动效编排与 reduced-motion 规范，并增补 §6.8 纪要。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261118-02",
+    "user_quote": "确认，停掉本地服务，提交到远端，如果存在分支，合并后清理，不要提pr，推送到远端后部署新website",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "check-site-sync.mjs、build-site.mjs --strict、responsive-check.mjs（Chromium + WebKit 全宽度）与 node --test tests/unit/*.test.mjs 全部 Exit 0",
+        "false_if": "任一门禁、构建、响应式断言或顶层契约单测失败",
+        "evidence": "2026-11-18 于 fix/C244-website-editorial-polish：node scripts/check-site-sync.mjs Exit 0（版本 0.17.0，图标 10 个）；node scripts/build-site.mjs --strict Exit 0（local/dist/site 30 文件 / 533 KB，注入 21 处占位符，dmg 19.2 MB / exe 6.1 MB）；node website/tools/responsive-check.mjs --shots Exit 0（Chromium + WebKit 共 124 项断言全 PASS，覆盖 320/390/768/1024/1100/1101/1440）；node --test tests/unit/*.test.mjs 26/26 全绿（含 UT-website-001..004）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "桌面（1440px）与移动端（390px）实测截图及交互断言确认：首屏叠牌无透印且支持物理发牌前置、22pt 菜单栏状态条与三卡联动、04/05 章持久化 DOM 连续动效流畅、全站无横向溢出与视觉瑕疵",
+        "false_if": "存在文字重叠透印、切换闪跳、交互失效、运行时报错或残留模板腔文案",
+        "evidence": "2026-11-18 Chromium Playwright 交互全测（verify-motion.mjs，零 pageerror）与双内核截图（已更新 docs/assets/screenshots/site-{hero,panel,install,mobile}.png，67K–283K）：Hero 叠牌 slotOrder 置换与 glider 滑块对齐（dx<=0.45px）；01 章双向切卡与 Agent/多账号手风琴高度跟随（699→758 / 701→839）；03 章热力图波纹与平滑浮标；04 章双卡换位、警告条 0px 连续收起与新建通道弹窗显隐；05 章时间范围 KPI 滚动、120fps 原地十字准星（SVG 节点不重建）与抽屉 0fr↔1fr 收放。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "check-change-ledger.mjs、check-no-python-assets.zsh 与 adflow-verify 全部通过，不影响 apps/ 与 core/ 构建及既有门禁",
+        "false_if": "破坏总账一致性、引入违规脚本资产或触发门禁阻断",
+        "evidence": "node scripts/check-change-ledger.mjs Exit 0（cards=19 topics=14）；zsh scripts/check-no-python-assets.zsh Exit 0（自检 4 项通过）；改动严格收敛于 website/、docs/ 与 tests/unit/u_website_contract.test.mjs，未触碰 apps/ 与 core/ 运行时代码。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "cd0c667",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "2026-11-18",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "确认，停掉本地服务，提交到远端，如果存在分支，合并后清理，不要提pr，推送到远端后部署新website",
+    "signed_rejection_count": 0
+  }
+}
