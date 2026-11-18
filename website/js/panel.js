@@ -1,8 +1,8 @@
 /* ============================================================
    BRUCE — official site
-   panel.js : static rebuild of the menu bar panel (three skins, three cards)
-   Constants follow panel-spec.md: 440 panel, 14 radius,
-   8 card radius, 15/13 card padding, 10 card gap.
+   panel.js : 1:1 DOM reconstruction & choreographed transitions for
+              the 22pt menu-bar status item, hero 3-card deck, and
+              Section 01 interactive popover.
    ============================================================ */
 (function () {
   "use strict";
@@ -12,12 +12,20 @@
   if (!deck || !D) return;
 
   var THEMES = ["classic", "liquid", "nothing"];
+  var slotOrder = ["nothing", "liquid", "classic"]; /* slot 0 (back) -> slot 2 (front) */
   var DECK_W = 776;
   var STEP_Y = 42;
   var CARD_LABEL = { token: "Token 用量", quota: "订阅用量", hourly: "Agent 用量" };
+  var CARD_INDEX = { token: 0, quota: 1, hourly: 2 };
   var narrowMq = window.matchMedia("(max-width: 720px)");
-  var front = "classic"; /* ≤720 纵向叠放时展开的那张 */
-  var root = deck; /* 事件委托挂在整个牌堆上 */
+  var reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var front = "classic";
+
+  var switcher = document.getElementById("deck-switcher");
+  var switcherBtns = Array.prototype.slice.call(
+    document.querySelectorAll("[data-focus-theme]")
+  );
+  var switcherGlider = null;
 
   function slot(theme) {
     return document.getElementById("panel-" + theme);
@@ -37,16 +45,19 @@
   var CARD = { nothing: "token", liquid: "hourly", classic: "quota" };
 
   /* ---------- 01 看板：可交互的卡片预览 ----------------------------- */
-  /* 三张卡各用首屏牌堆里的同一套肤：Nothing → Token、经典 → 订阅、液态玻璃 → Agent */
   var ANATOMY_THEMES = { token: "nothing", quota: "classic", hourly: "liquid" };
   var anatomyPanel = document.getElementById("anatomy-panel");
   var anatomyBox = document.getElementById("anatomy-panelbox");
   var anatomyStage = document.getElementById("anatomy-stage");
+  var anatomyMenubar = document.getElementById("anatomy-menubar");
+  var heroMenubar = document.getElementById("hero-menubar");
+  var anatomyTabsWrap = document.querySelector(".anatomy__tabs");
   var anatomyTabs = Array.prototype.slice.call(
     document.querySelectorAll(".anatomy__tabs [data-anatomy-card]")
   );
+  var anatomyGlider = null;
   var anatomyCard = "token";
-
+  var activeLayer = null;
 
   /* ---------- formatters ------------------------------------------ */
   function trim(s) {
@@ -62,6 +73,93 @@
     var s = n.toFixed(3);
     if (s.endsWith("0")) s = n.toFixed(2);
     return "≈ ¥" + s;
+  }
+
+  /* ---------- 22pt 菜单栏状态项（system-spec.md §1.3–1.8） ---------- */
+  function orbitGaugeSvg(ratio) {
+    var r = 6.4;
+    var cx = 11;
+    var cy = 11;
+    var circ = 2 * Math.PI * r;
+    var dash = (ratio * circ).toFixed(2);
+    var angle = -Math.PI / 2 + ratio * Math.PI * 2;
+    var sx = (cx + r * Math.cos(angle)).toFixed(2);
+    var sy = (cy + r * Math.sin(angle)).toFixed(2);
+    return (
+      '<svg class="mb-orbit" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="rgba(22,21,15,0.18)" stroke-width="1.4"/>' +
+      '<circle class="mb-orbit__arc" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#15803d" stroke-width="1.4" stroke-linecap="round"' +
+      ' style="--arc-circ:' + circ.toFixed(2) + ';--arc-dash:' + dash + '"' +
+      ' stroke-dasharray="' + dash + " " + circ.toFixed(2) + '" transform="rotate(-90 ' + cx + " " + cy + ')"/>' +
+      '<circle class="mb-orbit__sat" cx="' + sx + '" cy="' + sy + '" r="1.9" fill="#15803d"/>' +
+      '<circle class="mb-orbit__core" cx="' + sx + '" cy="' + sy + '" r="0.75" fill="#ffffff"/>' +
+      "</svg>"
+    );
+  }
+
+  function statusItemPillHtml(theme, active) {
+    var isNothing = theme === "nothing";
+    var sep = isNothing ? '<span class="mb-sep">/</span>' : '<span class="mb-gap"></span>';
+    return (
+      '<span class="mb-pill' + (isNothing ? " is-nothing" : "") + (active ? " is-open" : "") + '">' +
+      orbitGaugeSvg(0.62) +
+      '<span class="mb-metrics num">' +
+      "<span>62%</span>" + sep +
+      "<span>586.6M</span>" + sep +
+      "<span>$46.41</span>" +
+      "</span>" +
+      "</span>"
+    );
+  }
+
+  function renderHeroMenubar() {
+    if (!heroMenubar) return;
+    heroMenubar.innerHTML = statusItemPillHtml("classic", false);
+  }
+
+  function updateAnatomyMenubar(theme) {
+    if (!anatomyMenubar) return;
+    var skinText = theme === "nothing" ? "Nothing" : theme === "liquid" ? "液态玻璃" : "经典";
+    var isNothing = theme === "nothing";
+
+    if (!anatomyMenubar.dataset.mounted) {
+      var wifiSvg =
+        '<svg width="13" height="10" viewBox="0 0 15 11" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" aria-hidden="true">' +
+        '<path d="M1.4 3.6a9.2 9.2 0 0 1 12.2 0"/><path d="M3.6 6a6 6 0 0 1 7.8 0"/><path d="M5.9 8.4a2.8 2.8 0 0 1 3.2 0"/><circle cx="7.5" cy="10.1" r="0.7" fill="currentColor" stroke="none"/></svg>';
+      var batSvg =
+        '<svg width="19" height="10" viewBox="0 0 21 11" fill="none" aria-hidden="true">' +
+        '<rect x="0.7" y="1" width="17.2" height="9" rx="2.2" stroke="currentColor" stroke-width="1.1" opacity="0.55"/>' +
+        '<rect x="2.2" y="2.5" width="12.6" height="6" rx="1.1" fill="currentColor" opacity="0.75"/>' +
+        '<path d="M19.2 3.8a1.6 1.6 0 0 1 0 3.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/></svg>';
+      anatomyMenubar.innerHTML =
+        '<span class="menubar-bar__tag">macOS 菜单栏 · <b class="menubar-bar__skin">' + skinText + "</b></span>" +
+        '<div class="menubar-bar__right">' +
+        statusItemPillHtml(theme, true) +
+        '<span class="menubar-bar__sys" aria-hidden="true">' + wifiSvg + batSvg + '<span class="num">15:52</span></span>' +
+        "</div>";
+      anatomyMenubar.dataset.mounted = "1";
+      return;
+    }
+
+    var skinNode = anatomyMenubar.querySelector(".menubar-bar__skin");
+    var pillNode = anatomyMenubar.querySelector(".mb-pill");
+    if (skinNode && skinNode.textContent !== skinText) {
+      skinNode.classList.remove("is-swap");
+      void skinNode.offsetWidth;
+      skinNode.textContent = skinText;
+      skinNode.classList.add("is-swap");
+    }
+    if (pillNode) {
+      pillNode.classList.toggle("is-nothing", isNothing);
+      var metricsNode = pillNode.querySelector(".mb-metrics");
+      if (metricsNode) {
+        var sep = isNothing ? '<span class="mb-sep">/</span>' : '<span class="mb-gap"></span>';
+        metricsNode.innerHTML = "<span>62%</span>" + sep + "<span>586.6M</span>" + sep + "<span>$46.41</span>";
+      }
+      pillNode.classList.remove("is-pulse");
+      void pillNode.offsetWidth;
+      pillNode.classList.add("is-pulse");
+    }
   }
 
   /* ---------- icons ------------------------------------------------ */
@@ -106,15 +204,15 @@
     );
   }
 
-  /* ---------- 模型用量（token 卡第 6 行，位置同源码） --------------- */
+  /* ---------- 模型用量（token 卡第 6 行） -------------------------- */
   function modelBlock() {
     var rows = D.pricing.slice().sort(function (a, b) { return b.used - a.used; });
-    var k = 1; /* 固定 3 月窗口 */
+    var k = 1;
     var max = Math.max.apply(null, rows.map(function (r) { return r.used * k; }));
     var total = rows.reduce(function (a, r) { return a + r.used * k; }, 0);
     var list = rows.slice(0, 4);
     var body = list
-      .map(function (r) {
+      .map(function (r, idx) {
         var v = r.used * k;
         var share = Math.round((v / total) * 100);
         var tint = r.mark && r.mark.toLowerCase() !== "#ffffff" ? r.mark : r.tile;
@@ -123,7 +221,7 @@
           '<span class="bp-model__swatch" style="background:' + tint + '"></span>' +
           '<span class="bp-model__name">' + (r.id || r.name).toUpperCase() + "</span>" +
           '<span class="bp-model__bar"><i style="width:' + (v / max) * 100 +
-          "%;background:" + tint + '"></i></span>' +
+          "%;background:" + tint + ";--d:" + (60 + idx * 45) + 'ms"></i></span>' +
           '<span class="bp-model__pct">' + share + "%</span>" +
           '<span class="bp-model__val">' + fmtTokens(v) + "</span>" +
           "</div>"
@@ -135,7 +233,7 @@
         return '<span class="bp-win' + (w[0] === "3m" ? " is-on" : "") + '">' + w[1] + "</span>";
       })
       .join("");
-    var more = '<span class="bp-models__more">共 ' + rows.length + ' 款 · 按用量排序</span>';
+    var more = '<span class="bp-models__more">共 ' + rows.length + " 款 · 按用量排序</span>";
     return (
       '<div class="bp-models">' +
       '<div class="bp-models__head"><span class="bp-models__title">模型用量' + ICON.chevdown + "</span>" +
@@ -164,26 +262,26 @@
       .map(function (m) {
         return (
           '<div class="bp-month' + (m.current ? " is-current" : "") + '">' +
-          '<span class="bp-month__k">' + m.k + '</span>' +
+          '<span class="bp-month__k">' + m.k + "</span>" +
           '<span class="bp-month__v">' + m.v + "</span></div>"
         );
       })
       .join("");
 
-    /* heatmap: 26 columns × 7 rows, 0–5 scale, nulls after today */
     var cellsHt = "";
-    D.heatmap.weeks.forEach(function (week) {
-      week.forEach(function (level) {
+    D.heatmap.weeks.forEach(function (week, cIdx) {
+      week.forEach(function (level, rIdx) {
+        var delay = cIdx * 8 + rIdx * 4;
         cellsHt +=
           level === null
             ? '<span class="bp-heatmap__cell"></span>'
-            : '<span class="bp-heatmap__cell" data-level="' + level + '" title="' + level + '/5"></span>';
+            : '<span class="bp-heatmap__cell" data-level="' + level + '" style="--cd:' + delay + 'ms" title="' + level + '/5"></span>';
       });
     });
 
     var legendSwatches = "";
-    for (var l = 1; l <= 5; l += 1) {
-      legendSwatches += '<i data-level="' + l + '" style="background:' + levelColor(l) + '"></i>';
+    for (var l = 0; l <= 5; l += 1) {
+      legendSwatches += '<i data-level="' + l + '"></i>';
     }
 
     var body =
@@ -214,12 +312,8 @@
     );
   }
 
-  function levelColor(l) {
-    return ["", "#cbd9c7", "#a6c0a2", "#7ba077", "#4e7a52", "#2a4a31"][l];
-  }
-
   /* ---------- hourly card ------------------------------------------ */
-  function hourlyCard() {
+  function hourlyCard(uid) {
     var H = D.hourly;
     var max = 0;
     H.bars.forEach(function (d) {
@@ -228,7 +322,6 @@
 
     var cols;
     if (M === "nothing") {
-      /* Nothing：每天 3×8 = 24 格点阵，从底往上填 */
       cols = H.bars
         .map(function (d) {
           var on = Math.max(1, Math.round((d.total / max) * 24));
@@ -246,15 +339,14 @@
       cols = H.bars
         .map(function (d, i) {
           var segs = "";
-          /* first agent sits at the bottom of the stack */
           d.parts
             .slice()
             .reverse()
             .forEach(function (p) {
               var h = Math.max(1, (p.tokens / max) * 65);
               segs +=
-                '<span class="bp-bars__seg" style="height:' + h + 'px;background:' + p.color +
-                ";--d:" + i * 30 + 'ms"></span>';
+                '<span class="bp-bars__seg" style="height:' + h + "px;background:" + p.color +
+                ";--d:" + i * 24 + 'ms"></span>';
             });
           return '<div class="bp-bars__col" title="' + fmtTokens(d.total) + ' tokens">' + segs + "</div>";
         })
@@ -269,17 +361,17 @@
 
     var rows = H.hourly
       .map(function (h, idx) {
-        var open = idx === 0; /* 第一行展开，卡片高度与其余两张对齐 */
+        var open = idx === 0;
         var maxP = Math.max.apply(null, h.points);
         var pts = h.points.map(function (v, i) {
           var x = (i / 23) * 386;
           var y = 25 - (v / maxP) * 23;
           return x.toFixed(1) + "," + y.toFixed(1);
         });
-        var gid = "ag" + idx;
+        var gid = (uid || M) + "-ag" + idx;
         var lineColor = M === "nothing" ? "#1c8c3d" : h.color;
         var line =
-          '<svg class="bp-agent__line" viewBox="0 0 386 26" preserveAspectRatio="none" aria-hidden="true">' +
+          '<svg class="bp-agent__line" style="--d:' + (50 + idx * 45) + 'ms" viewBox="0 0 386 26" preserveAspectRatio="none" aria-hidden="true">' +
           "<defs><linearGradient id='" + gid + "' x1='0' y1='0' x2='0' y2='1'>" +
           "<stop offset='0' stop-color='" + lineColor + "' stop-opacity='0.18'/>" +
           "<stop offset='1' stop-color='" + lineColor + "' stop-opacity='0.02'/>" +
@@ -295,8 +387,8 @@
         ];
         var shareBar = shares
           .map(function (s, i) {
-            var cols = [h.color, "#7bc6d9", "#c9c9c9"];
-            return '<i style="width:' + s[1] + "%;background:" + cols[i] + '"></i>';
+            var c = [h.color, "#7bc6d9", "#c9c9c9"];
+            return '<i style="width:' + s[1] + "%;background:" + c[i] + '"></i>';
           })
           .join("");
         var shareRows = shares
@@ -334,9 +426,10 @@
   }
 
   /* ---------- subscription card ------------------------------------ */
-  function windowRow(w) {
+  function windowRow(w, delayMs) {
     var level = w.used >= 80 ? "critical" : w.used >= 50 ? "warning" : "normal";
     var meter;
+    var dStyle = delayMs != null ? ";--d:" + delayMs + "ms" : "";
     if (M === "nothing") {
       var total = 24;
       var on = Math.round((Math.min(100, w.used) / 100) * total);
@@ -350,7 +443,7 @@
     } else {
       meter =
         '<span class="bp-meter"><span class="bp-meter__fill" data-level="' + level +
-        '" style="width:' + Math.min(100, w.used) + '%"></span></span>';
+        '" style="width:' + Math.min(100, w.used) + "%" + dStyle + '"></span></span>';
     }
     return (
       '<div class="bp-window">' +
@@ -375,7 +468,8 @@
     );
   }
 
-  function providerBlock(p) {
+  function providerBlock(p, pIdx) {
+    var baseDelay = 30 + (pIdx || 0) * 45;
     var head =
       '<div class="bp-prov__head">' +
       badge(p) +
@@ -402,22 +496,22 @@
             '<span class="bp-account__name">' + a.name + "</span>" +
             (a.tag ? '<span class="bp-account__tag">' + a.tag + "</span>" : "") +
             "</div>" +
-            a.windows.map(windowRow).join("") +
+            a.windows.map(function (w, wIdx) { return windowRow(w, wIdx * 35); }).join("") +
             "</div>"
           );
         })
         .join("");
 
       body =
-        windowRow(p.collapsed) +
+        windowRow(p.collapsed, baseDelay) +
         '<div class="bp-accounts"><div><div class="bp-accounts__inner">' + accounts + "</div></div></div>";
     } else {
-      body = p.windows.map(windowRow).join("");
+      body = p.windows
+        .map(function (w, wIdx) { return windowRow(w, baseDelay + wIdx * 30); })
+        .join("");
     }
 
-    return (
-      '<div class="bp-prov">' + head + body + "</div>"
-    );
+    return '<div class="bp-prov' + (p.accounts ? " bp-prov--multi" : "") + '">' + head + body + "</div>";
   }
 
   function quotaCard() {
@@ -473,10 +567,16 @@
     );
   }
 
+  var uidSeq = 0;
   function surface(material, cardName, opts) {
     M = material;
+    uidSeq += 1;
     var body =
-      cardName === "quota" ? quotaCard() : cardName === "hourly" ? hourlyCard() : tokenCard();
+      cardName === "quota"
+        ? quotaCard()
+        : cardName === "hourly"
+          ? hourlyCard("u" + uidSeq)
+          : tokenCard();
     return (
       '<div class="bp-surface" data-material="' + material + '" data-layout="tabs">' +
       header(cardName, opts && opts.interactive) +
@@ -486,22 +586,76 @@
     );
   }
 
-  /* ---------- 静态渲染 ---------------------------------------------- */
+  /* ---------- Switcher & Anatomy Glider Indicators ------------------ */
+  function ensureSwitcherGlider() {
+    if (!switcher || switcherGlider) return;
+    switcherGlider = document.createElement("span");
+    switcherGlider.className = "deck-switcher__glider";
+    switcherGlider.setAttribute("aria-hidden", "true");
+    switcher.insertBefore(switcherGlider, switcher.firstChild);
+  }
+
+  function syncSwitcher() {
+    ensureSwitcherGlider();
+    var activeBtn = null;
+    switcherBtns.forEach(function (btn) {
+      var on = btn.getAttribute("data-focus-theme") === front;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on) activeBtn = btn;
+    });
+    if (switcherGlider && activeBtn && switcher.offsetParent !== null) {
+      switcherGlider.style.width = activeBtn.offsetWidth + "px";
+      switcherGlider.style.height = activeBtn.offsetHeight + "px";
+      switcherGlider.style.transform =
+        "translate3d(" + activeBtn.offsetLeft + "px, " + activeBtn.offsetTop + "px, 0)";
+      switcherGlider.style.opacity = "1";
+    }
+  }
+
+  function ensureAnatomyGlider() {
+    if (!anatomyTabsWrap || anatomyGlider) return;
+    anatomyGlider = document.createElement("span");
+    anatomyGlider.className = "anatomy__glider";
+    anatomyGlider.setAttribute("aria-hidden", "true");
+    anatomyTabsWrap.insertBefore(anatomyGlider, anatomyTabsWrap.firstChild);
+  }
+
+  function syncAnatomyGlider() {
+    ensureAnatomyGlider();
+    var currentTab = null;
+    anatomyTabs.forEach(function (tab) {
+      var on = tab.getAttribute("data-anatomy-card") === anatomyCard;
+      tab.classList.toggle("is-current", on);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+      if (on) currentTab = tab;
+    });
+    if (anatomyGlider && currentTab) {
+      anatomyGlider.style.height = currentTab.offsetHeight + "px";
+      anatomyGlider.style.transform = "translate3d(0, " + currentTab.offsetTop + "px, 0)";
+      anatomyGlider.style.opacity = "1";
+    }
+  }
+
+  /* ---------- 首屏渲染与三档布局 ------------------------------------ */
   function render() {
     THEMES.forEach(function (theme) {
       var el = slot(theme);
       if (el) el.innerHTML = surface(theme, CARD[theme]);
       var it = item(theme);
       if (it) {
+        var sIdx = slotOrder.indexOf(theme);
+        it.setAttribute("data-slot", String(sIdx));
+        it.style.setProperty("--slot", String(sIdx));
         it.classList.toggle("is-front", theme === front);
+        it.classList.toggle("is-focus", theme === front);
         var label = it.querySelector(".deck__peek-v");
         if (label) label.textContent = CARD_LABEL[CARD[theme]] || "";
       }
     });
+    syncSwitcher();
   }
 
-  /* 牌堆布局：>720 三卡横向（整堆 transform 缩放），≤720 纵向缩略叠放。
-     高度一律按面板实测内容计算，不再写死 1004px，也不使用 zoom。 */
   function layoutDeck() {
     var host = deck.parentElement;
     if (!host) return;
@@ -517,6 +671,7 @@
         var on = theme === front;
         if (it) {
           it.classList.toggle("is-front", on);
+          it.classList.remove("is-focus");
           var btn = it.querySelector(".deck__peek");
           if (btn) btn.setAttribute("aria-expanded", on ? "true" : "false");
         }
@@ -536,6 +691,7 @@
       deck.style.height = "";
       deck.style.transform = "";
       host.style.height = "";
+      syncSwitcher();
       return;
     }
 
@@ -545,8 +701,12 @@
       var it = item(theme);
       var sh = sheet(theme);
       var panel = slot(theme);
+      var sIdx = slotOrder.indexOf(theme);
       if (it) {
         it.classList.remove("is-front");
+        it.classList.toggle("is-focus", theme === front);
+        it.setAttribute("data-slot", String(sIdx));
+        it.style.setProperty("--slot", String(sIdx));
         var btn = it.querySelector(".deck__peek");
         if (btn) btn.setAttribute("aria-expanded", "false");
       }
@@ -566,26 +726,88 @@
     deck.style.height = naturalH + "px";
     deck.style.transform = "scale(" + deckScale + ")";
     host.style.height = Math.round(naturalH * deckScale) + "px";
+    syncSwitcher();
   }
 
-  /* ---------- 01 看板：纵向 tab 切换单卡 ----------------------------- */
+  function setFrontTheme(theme) {
+    if (!theme || THEMES.indexOf(theme) === -1 || theme === front) return;
+    front = theme;
+    /* 将选中的主题顺滑发牌至前景槽位 (slot 2)，其余两张保持相对层级退居 0 / 1 */
+    slotOrder = slotOrder.filter(function (t) { return t !== theme; }).concat([theme]);
+    var promoted = item(theme);
+    if (promoted && !narrowMq.matches && !reduceMq.matches) {
+      promoted.classList.remove("is-promoting");
+      void promoted.offsetWidth;
+      promoted.classList.add("is-promoting");
+      window.setTimeout(function () {
+        promoted.classList.remove("is-promoting");
+      }, 560);
+    }
+    layoutDeck();
+  }
+
+  /* ---------- 01 看板：丝滑双向切换 + 手风琴联动 ------------------- */
+  function getAnatomyScale() {
+    if (!anatomyStage) return 1;
+    return Math.min(1, anatomyStage.clientWidth / 440);
+  }
+
   function fitAnatomy() {
     if (!anatomyPanel || !anatomyBox || !anatomyStage) return;
-    var scale = Math.min(1, anatomyStage.clientWidth / 440);
-    anatomyPanel.style.transform = "scale(" + scale + ")";
+    var scale = getAnatomyScale();
+    var targetEl = activeLayer || anatomyPanel;
+    anatomyPanel.style.setProperty("--panel-scale", "scale(" + scale + ")");
+    if (activeLayer) {
+      activeLayer.style.transform = "scale(" + scale + ")";
+    } else {
+      anatomyPanel.style.transform = "scale(" + scale + ")";
+    }
+    var rawH = targetEl.offsetHeight;
     anatomyBox.style.width = Math.round(440 * scale) + "px";
-    anatomyBox.style.height = Math.round(anatomyPanel.offsetHeight * scale) + "px";
+    anatomyBox.style.height = Math.round(rawH * scale) + "px";
+    if (anatomyMenubar) {
+      anatomyMenubar.style.width = Math.round(440 * scale) + "px";
+    }
+    syncAnatomyGlider();
   }
 
-  function renderAnatomy() {
+  function mountAnatomyCard(direction) {
     if (!anatomyPanel) return;
     var theme = ANATOMY_THEMES[anatomyCard] || "nothing";
-    anatomyPanel.innerHTML = surface(theme, anatomyCard, { interactive: true });
-    anatomyTabs.forEach(function (tab) {
-      var on = tab.getAttribute("data-anatomy-card") === anatomyCard;
-      tab.classList.toggle("is-current", on);
-      tab.setAttribute("aria-selected", on ? "true" : "false");
-    });
+    var scale = getAnatomyScale();
+
+    /* anatomyPanel 本身不再整体缩放，改由内部 layer 承载缩放与进退场位移 */
+    anatomyPanel.style.transform = "none";
+    anatomyPanel.style.setProperty("--panel-scale", "scale(" + scale + ")");
+
+    var nextLayer = document.createElement("div");
+    nextLayer.className = "anatomy__panel-layer";
+    nextLayer.style.transform = "scale(" + scale + ")";
+    nextLayer.innerHTML = surface(theme, anatomyCard, { interactive: true });
+
+    if (activeLayer && direction && !reduceMq.matches) {
+      var prevLayer = activeLayer;
+      prevLayer.classList.remove("is-entering-next", "is-entering-prev");
+      prevLayer.classList.add(direction > 0 ? "is-leaving-next" : "is-leaving-prev");
+      nextLayer.classList.add(direction > 0 ? "is-entering-next" : "is-entering-prev");
+      anatomyPanel.appendChild(nextLayer);
+      window.setTimeout(function () {
+        if (prevLayer.parentNode === anatomyPanel) {
+          anatomyPanel.removeChild(prevLayer);
+        }
+      }, 270);
+      window.setTimeout(function () {
+        nextLayer.classList.remove("is-entering-next", "is-entering-prev");
+      }, 380);
+    } else {
+      anatomyPanel.innerHTML = "";
+      anatomyPanel.appendChild(nextLayer);
+    }
+
+    activeLayer = nextLayer;
+    updateAnatomyMenubar(theme);
+    syncAnatomyGlider();
+
     if (anatomyStage) {
       anatomyStage.setAttribute("data-material", theme);
       anatomyStage.setAttribute("aria-labelledby", "anatomy-tab-" + anatomyCard);
@@ -595,8 +817,11 @@
 
   function selectAnatomy(cardName) {
     if (!cardName || cardName === anatomyCard) return;
+    var prevIdx = CARD_INDEX[anatomyCard] || 0;
+    var nextIdx = CARD_INDEX[cardName] || 0;
+    var dir = nextIdx >= prevIdx ? 1 : -1;
     anatomyCard = cardName;
-    renderAnatomy();
+    mountAnatomyCard(dir);
   }
 
   anatomyTabs.forEach(function (tab) {
@@ -610,18 +835,75 @@
       var btn = e.target.closest("[data-anatomy-card]");
       if (btn && anatomyPanel.contains(btn)) {
         selectAnatomy(btn.getAttribute("data-anatomy-card"));
+        return;
+      }
+      /* Agent 行展开/收起手风琴 */
+      var agentHead = e.target.closest(".bp-agent__head");
+      if (agentHead && anatomyPanel.contains(agentHead)) {
+        var agentRow = agentHead.closest(".bp-agent");
+        if (agentRow) {
+          agentRow.classList.toggle("is-open");
+          syncHeightDuringTransition();
+        }
+        return;
+      }
+      /* 刷新微图标点按旋转反馈 */
+      var refreshIcon = e.target.closest(".bp-icon");
+      if (refreshIcon && anatomyPanel.contains(refreshIcon)) {
+        e.stopPropagation();
+        refreshIcon.classList.add("is-spinning");
+        window.setTimeout(function () {
+          refreshIcon.classList.remove("is-spinning");
+        }, 620);
+        return;
+      }
+      /* 多账号订阅行展开/收起手风琴 */
+      var provHead = e.target.closest(".bp-prov--multi .bp-prov__head");
+      if (provHead && anatomyPanel.contains(provHead)) {
+        var provBlock = provHead.closest(".bp-prov");
+        if (provBlock) {
+          provBlock.classList.toggle("is-open");
+          syncHeightDuringTransition();
+        }
       }
     });
   }
 
-  /* ≤720 纵向叠放：点顶条切换展开的卡 */
+  var heightRaf = null;
+  function syncHeightDuringTransition() {
+    var start = performance.now();
+    if (heightRaf) cancelAnimationFrame(heightRaf);
+    if (anatomyBox) anatomyBox.classList.add("is-tracking-height");
+    function step(now) {
+      fitAnatomy();
+      if (now - start < 340) {
+        heightRaf = requestAnimationFrame(step);
+      } else if (anatomyBox) {
+        anatomyBox.classList.remove("is-tracking-height");
+      }
+    }
+    heightRaf = requestAnimationFrame(step);
+  }
+
+  /* 移动端顶条切换 + 桌面端点击后排卡片发牌至前景 */
   deck.addEventListener("click", function (e) {
-    var btn = e.target.closest(".deck__peek");
-    if (!btn || !deck.contains(btn) || !narrowMq.matches) return;
-    var theme = btn.getAttribute("data-deck-theme");
-    if (!theme || theme === front) return;
-    front = theme;
-    layoutDeck();
+    var peek = e.target.closest(".deck__peek");
+    if (peek && deck.contains(peek) && narrowMq.matches) {
+      setFrontTheme(peek.getAttribute("data-deck-theme"));
+      return;
+    }
+    if (!narrowMq.matches) {
+      var clickedItem = e.target.closest(".deck__item");
+      if (clickedItem && deck.contains(clickedItem)) {
+        setFrontTheme(clickedItem.getAttribute("data-theme"));
+      }
+    }
+  });
+
+  switcherBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      setFrontTheme(btn.getAttribute("data-focus-theme"));
+    });
   });
 
   function relayout() {
@@ -633,9 +915,16 @@
   if (narrowMq.addEventListener) narrowMq.addEventListener("change", relayout);
   else if (narrowMq.addListener) narrowMq.addListener(relayout);
 
+  renderHeroMenubar();
   render();
   layoutDeck();
-  renderAnatomy();
+  mountAnatomyCard(0);
+
+  /* 首屏牌堆初始扇面入场完成后释放入场锁，避免干扰后续切换过渡 */
+  deck.classList.add("is-booting");
+  window.setTimeout(function () {
+    deck.classList.remove("is-booting");
+  }, 620);
 
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(relayout);

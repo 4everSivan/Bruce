@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-17",
+  "updated_at": "2026-11-18",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -76,6 +76,12 @@
         "C238",
         "C239",
         "C241"
+      ]
+    },
+    "OfficialWebsite": {
+      "design_doc": "docs/devel/design/13-官方网站.md",
+      "changes": [
+        "C244"
       ]
     }
   },
@@ -241,6 +247,15 @@
       "topic": "SystemOverview",
       "version": "0.17.1",
       "file": "docs/devel/change/C243.json"
+    },
+    "C244": {
+      "title": "官网版式精修、去 AI 腔重构与连续动效编排：修复叠牌透印与热力图图例错配、补齐 22pt 菜单栏实况条与 10+10 双源名录、消除切换闪跳并打磨连续过渡",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C244-website-editorial-polish",
+      "topic": "OfficialWebsite",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C244.json"
     }
   }
 }
