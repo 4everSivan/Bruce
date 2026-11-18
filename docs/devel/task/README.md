@@ -22,7 +22,9 @@ T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends
 
 ## 3. 建卡与依赖规则
 
-卡号用 `scripts/adflow-verify --next-id task` 取得，如 `T01`：它覆盖现行总账、各归档批次总账与归档目录，以及本机其他工作树和本地/远端跟踪分支中的最大编号，跨版本不重置。该结果不提供原子预占，合入主干前须在合并结果上校验（见 [AGENTS.md](../../../AGENTS.md) 五.1），核对重复号与 Git 冲突；改号时同步卡内子任务编号、索引和依赖引用，不覆盖已有事项。
+建卡前先运行 `scripts/adflow-verify --scaffold new-card --plan --track task --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> --milestone <里程碑> [--todo <待办文本>] --json`；`executable` 为 true 后按 `writes` / `topics` 创建卡片与总账登记、按 `todo` 删除待办行，禁止手抄模板或手写登记；为 false 时先补齐 `missing` 输入再重跑。这些命令由 Agent 执行，人类只需用自然语言提出需求。
+
+卡号由计划给出（口径同 `scripts/adflow-verify --next-id task`），如 `T01`：它覆盖现行总账、各归档批次总账与归档目录，以及本机其他工作树和本地/远端跟踪分支中的最大编号，跨版本不重置。该结果不提供原子预占，合入主干前须在合并结果上校验（见 [AGENTS.md](../../../AGENTS.md) 五.1），核对重复号与 Git 冲突；改号时同步卡内子任务编号、索引和依赖引用，不覆盖已有事项。
 
 | 字段组 | 建卡时写什么 | 完成时补什么 |
 |---|---|---|
