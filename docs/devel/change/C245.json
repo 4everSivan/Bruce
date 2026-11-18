@@ -1,0 +1,119 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C245",
+  "title": "官网全站强制开启动画效果并移除首屏底部材质切换按钮：移除 prefers-reduced-motion 静默降级并精简首屏冗余按钮",
+  "version": "0.17.1",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C245-force-enable-website-motion",
+  "is_hotfix": false,
+  "target": {
+    "module": "website/",
+    "component": "index.html / css/{base,panel,site,settings}.css / js/{panel,site,analysis}.js",
+    "design_doc": "docs/devel/design/13-官方网站.md",
+    "design_topic": "OfficialWebsite"
+  },
+  "why": "当访问者宿主机开启系统级“减弱动态效果”（prefers-reduced-motion: reduce）时，base.css 的全局规则会将全站动画与过渡压到 0.001ms 并禁用 [data-reveal]，panel.css / site.css / settings.css 也存在相应媒体查询覆盖或限制，同时 panel.js / site.js / analysis.js 通过 reduceMq.matches 跳过连续交互动画，导致关闭系统动画的机器几乎看不到官网动效；此外，首屏叠牌已支持直接点击后排卡片切到前景，底栏三个“Nothing / 液态玻璃 / 经典材质”切换按钮视觉冗余，按人工要求一并移除。",
+  "precheck": {
+    "description": "预检官网源码是否存在 prefers-reduced-motion / reduceMq 屏蔽判断以及首屏底部三个材质切换按钮",
+    "command": "rg -c \"prefers-reduced-motion: reduce|reduceMq|deck-switcher__btn\" website/",
+    "expected": "命中降级判断与三个按钮定义说明问题尚存；修复后源码及构建产物对应命中应全部清除",
+    "is_completed": false,
+    "evidence": "修改前扫描命中：website/css/base.css:1、website/css/panel.css:3、website/css/site.css:1（另有 settings.css:1）、website/js/panel.js:3、website/js/site.js:3、website/js/analysis.js:8，且 website/index.html#deck-switcher 包含 3 枚 data-focus-theme 按钮。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C245-force-enable-website-motion"
+    ],
+    "after": [
+      "node scripts/check-site-sync.mjs",
+      "node scripts/build-site.mjs --strict",
+      "node --test tests/unit/*.test.mjs",
+      "node website/tools/responsive-check.mjs",
+      "node scripts/check-change-ledger.mjs",
+      "zsh scripts/check-no-python-assets.zsh",
+      "scripts/adflow-verify --card C245 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "CSS 动效媒体查询全局与局部策略（base.css / panel.css / site.css / settings.css）",
+      "before": "base.css 在 @media (prefers-reduced-motion: reduce) 中全局注入 0.001ms 覆盖及 [data-reveal] 禁用；panel.css 另设 3 处、site.css 设 1 处降级块；settings.css 仅在 no-preference 时启用 .pane 过渡。",
+      "after": "彻底移除上述 4 份 CSS 中全部 @media (prefers-reduced-motion: ...) 媒体查询与包装，保留完整 CSS keyframes、cubic-bezier 缓动与 @starting-style 过渡。",
+      "impact": "系统开启“减弱动态效果”时，全站所有过渡与循环动效仍以完整时长流畅运行。"
+    },
+    {
+      "scope": "JS 连续交互编排守卫（panel.js / site.js / analysis.js）",
+      "before": "panel.js、site.js 与 analysis.js 通过 reduceMq.matches 跳过 Hero .is-promoting、Section 01 双向滑入、数字滚动与 Section 05 .is-animating / .is-bars-in / .is-pulsing 等动效。",
+      "after": "删除 3 份 JS 中的 reduceMq 声明及全部 14 处跳过守卫，无条件执行完整动画编排。",
+      "impact": "关闭系统动画的机器上所有交互切换与滚入显影均可正常播放动态过渡。"
+    },
+    {
+      "scope": "移除首屏牌堆底部三个切换按钮（index.html / site.css / panel.js）",
+      "before": "桌面端 Hero 牌堆底部 #deck-switcher 渲染“Nothing Token 用量 / 液态玻璃 Agent 用量 / 经典材质 订阅用量”三枚按钮及对应 .deck-switcher__glider、syncSwitcher() 逻辑。",
+      "after": "移除上述三个 button 与冗余的按钮滑块 CSS/JS，仅保留简洁底线与右对齐“点击任意面板提至前景 · 样例数据”提示，继续支持直接点击叠放面板或移动端顶条切换前景。",
+      "impact": "首屏右栏底部线条利落克制，零按钮堆积干扰，直接点击后排卡片仍丝滑发牌置前。"
+    },
+    {
+      "scope": "契约单测与设计文档基线（u_website_contract.test.mjs / 13-官方网站.md）",
+      "before": "UT-website-002/004 未禁用 prefers-reduced-motion 并依赖 .deck-switcher__glider；设计文档 §3.6~3.9 仍写有底栏主题引线切换按钮。",
+      "after": "更新 UT-website-002 与 UT-website-004，校验 7 份官网 CSS/JS 不含 prefers-reduced-motion / reduceMq 且已移除 deck-switcher__btn / data-focus-theme / syncSwitcher；同步更新 13-官方网站.md。",
+      "impact": "单测与设计文档和代码实现保持严格一致。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/13-官方网站.md",
+    "topic": "OfficialWebsite",
+    "modified": true,
+    "rule_diff": {
+      "before": "官网默认遵循 prefers-reduced-motion: reduce 静默压缩时长与跳过 JS 连续过渡，并在首屏牌堆底部提供三个主题切换按钮。",
+      "after": "更新 §3.6~3.9 与 §6.8 第 5 条：明确全站强制开启动效（忽略 prefers-reduced-motion: reduce），并移除首屏牌堆底部的三枚材质切换按钮，改为直接点击叠放面板切至前景、底栏仅保留提示。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261118-04",
+    "user_quote": "停掉服务，合并到主分支",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试与同步构建",
+        "true_if": "check-site-sync、build-site --strict、全量 node --test 退出码 0，且源码与构建产物无 prefers-reduced-motion / reduceMq 与 deck-switcher__btn",
+        "false_if": "同步构建失败、单测失败或跳过、或仍残留禁用判断与被删按钮",
+        "evidence": "node scripts/check-site-sync.mjs && node scripts/build-site.mjs --strict 退出码 0（local/dist/site/ 30 files / 528 KB，21 占位符注入）；node --test tests/unit/*.test.mjs 26 passed / 0 failed（含更新后 UT-website-002 与 UT-website-004）。",
+        "result": true
+      },
+      {
+        "item": "reducedMotion=reduce 动效实测",
+        "true_if": "Chromium 在 reducedMotion='reduce' 模拟下所有 CSS 过渡/关键帧保持真实时长、Hero 按钮数=0、直接点击后排卡片正常播放 .is-promoting 与各章连续动画且零报错",
+        "false_if": "任何过渡/动画被静音、Hero 按钮未移除、直接点击面板不切换或抛出运行时异常",
+        "evidence": "Chromium reducedMotion:'reduce' 运行 verify-reduced-motion.mjs 16 项断言全过、零 pageerror：switcherBtns=0、mqReduced=true 时 deckTrans=0.52s、reveal=0.72s、marquee=44s(running)、orbit=0.88s、anatomyGlider=0.36s、wbGlider=0.28s、modal=0.22s；直接点击后排 nothing 面板触发 .is-promoting 并切至 slot 2，Section01/03/04/05 连续动画均实测触发。",
+        "result": true
+      },
+      {
+        "item": "响应式与合规门禁",
+        "true_if": "Chromium 与 WebKit 双引擎响应式全断点通过且变更总账与 Python 门禁退出码 0",
+        "false_if": "存在横向溢出、布局错位、总账不一致或仓库门禁报错",
+        "evidence": "node website/tools/responsive-check.mjs 在 Chromium 与 WebKit 7 个视口宽度（320–1440px）全部 PASS；node scripts/check-change-ledger.mjs 通过（cards=20 topics=14）；zsh scripts/check-no-python-assets.zsh 通过（自检 4 项）。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "72bbd47",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.7.0",
+    "ran_at": "2026-11-18",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "停掉服务，合并到主分支",
+    "signed_rejection_count": 0
+  }
+}

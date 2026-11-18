@@ -81,7 +81,8 @@
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
       "changes": [
-        "C244"
+        "C244",
+        "C245"
       ]
     }
   },
@@ -256,6 +257,15 @@
       "topic": "OfficialWebsite",
       "version": "0.17.1",
       "file": "docs/devel/change/C244.json"
+    },
+    "C245": {
+      "title": "官网全站强制开启动画效果并移除首屏底部材质切换按钮：移除 prefers-reduced-motion 静默降级并精简首屏冗余按钮",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C245-force-enable-website-motion",
+      "topic": "OfficialWebsite",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C245.json"
     }
   }
 }
