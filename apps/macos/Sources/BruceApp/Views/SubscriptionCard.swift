@@ -235,17 +235,22 @@ private struct ProviderSectionView: View {
         section.windows.isEmpty && !section.isMultiAccount && section.balance != nil
     }
 
-    /// 当前段是否处于出口阻断态: 问题卡单独放大上下留白, 不放行段保持原 3pt 节奏.
+    /// 当前段是否处于出口阻断态: 阻断时头部显示目标国旗, 底部说明让位给问题卡.
     private var isEgressBlocked: Bool {
         section.egress?.status == .blocked
+    }
+
+    /// C246: 段内问题卡 (出口阻断或刷新失败) 存在时, 段头与正文之间留出独立间距.
+    private var hasIssueCard: Bool {
+        isEgressBlocked || section.failureIssue != nil
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             head
-                .padding(.bottom, isEgressBlocked ? 10 : 3)
+                .padding(.bottom, hasIssueCard ? 10 : 3)
 
-            egressIssue
+            issueCard
 
             if section.isMultiAccount {
                 multiAccountContent
@@ -254,8 +259,10 @@ private struct ProviderSectionView: View {
                 singleAccountContent
             }
 
-            // error/empty 段保留 collector 说明, 不静默吞掉.
-            if !isEgressBlocked, (section.status == "error" || section.status == "empty"), let note = section.note {
+            // error/empty 段保留 collector 说明, 不静默吞掉; error 已由问题卡承载时不再重复,
+            // empty 不是刷新失败, 继续按底部说明展示 (C246).
+            if !isEgressBlocked, section.failureIssue == nil,
+               (section.status == "error" || section.status == "empty"), let note = section.note {
                 Text(note)
                     .font(.system(size: 10))
                     .foregroundStyle(Color(hex: "#ff9f0a"))
@@ -275,56 +282,30 @@ private struct ProviderSectionView: View {
         .padding(.bottom, 8)
     }
 
-    /// 出口阻断问题卡: 单行紧凑布局 (30pt) ——
-    /// 图标 + 标题 + 1px 分隔 + 保护说明同排, 右侧去设置/重测;
-    /// 标题行下与卡片下各 10pt, 避免卡片贴住标题与进度条.
+    /// 段内问题卡: 出口阻断优先, 其次刷新失败 (C246).
+    /// 两种问题共用同一单行紧凑布局, 仅文案与重试标签不同.
     @ViewBuilder
-    private var egressIssue: some View {
+    private var issueCard: some View {
         if let egress = section.egress, egress.status == .blocked {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10))
-                Text(egress.cardTitleText)
-                    .font(.system(size: 10, weight: .semibold))
-                    .lineLimit(1)
-                Rectangle()
-                    .fill(Color.orange.opacity(0.30))
-                    .frame(width: 1, height: 9)
-                let snapshotHint = section.hasProtectedSnapshot ? " · 保持历史快照" : ""
-                Text("已拦截查额以保护账号\(snapshotHint)")
-                    .font(.system(size: 9))
-                    .opacity(0.72)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                Spacer(minLength: 8)
-                egressActions
-            }
-            .font(.system(size: 9))
-            .foregroundStyle(.orange)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(minHeight: 30)
-            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-            .help(egressTooltip(egress))
-            .padding(.bottom, 10)
+            let snapshotHint = section.hasProtectedSnapshot ? " · 保持历史快照" : ""
+            ProviderIssueCard(
+                title: egress.cardTitleText,
+                detail: "已拦截查额以保护账号\(snapshotHint)",
+                tooltip: egressTooltip(egress),
+                retryLabel: "重测",
+                refreshControl: refreshControl,
+                onOpenSettings: onOpenSettings
+            )
+        } else if let failure = section.failureIssue {
+            ProviderIssueCard(
+                title: failure.title,
+                detail: failure.detail,
+                tooltip: failure.tooltip,
+                retryLabel: "重试",
+                refreshControl: refreshControl,
+                onOpenSettings: onOpenSettings
+            )
         }
-    }
-
-    /// 问题卡右侧操作区: 去设置 / 重测 以 8pt 间距 + 1px 竖线分隔.
-    private var egressActions: some View {
-        HStack(spacing: 8) {
-            Button("去设置", action: onOpenSettings)
-                .buttonStyle(.plain)
-            if let refreshControl {
-                Rectangle()
-                    .fill(Color.orange.opacity(0.28))
-                    .frame(width: 1, height: 10)
-                Button("重测", action: refreshControl.action)
-                    .buttonStyle(.plain)
-                    .disabled(!refreshControl.presentation.isEnabled)
-            }
-        }
-        .font(.system(size: 9))
     }
 
     // MARK: 多账号内容
@@ -464,6 +445,66 @@ private struct ProviderSectionView: View {
         } else {
             return "出口已校验放行"
         }
+    }
+}
+
+// MARK: - 段内问题卡
+
+/// 段内单行问题卡 (C188 出口阻断 / C246 刷新失败共用):
+/// 图标 + 人话标题 + 1px 分隔 + 简短原因同排, 右侧去设置/重试;
+/// 完整说明收在 tooltip, 避免长文案撑破单行布局.
+/// 标题行下与卡片下各 10pt, 避免卡片贴住标题与进度条 (由父视图负责上间距).
+private struct ProviderIssueCard: View {
+    let title: String
+    let detail: String
+    let tooltip: String
+    var retryLabel: String = "重试"
+    var refreshControl: ProviderRefreshControl? = nil
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .lineLimit(1)
+            Rectangle()
+                .fill(Color.orange.opacity(0.30))
+                .frame(width: 1, height: 9)
+            Text(detail)
+                .font(.system(size: 9))
+                .opacity(0.72)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 8)
+            actions
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(.orange)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minHeight: 30)
+        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        .help(tooltip)
+        .padding(.bottom, 10)
+    }
+
+    /// 右侧操作区: 去设置 / 重试 以 8pt 间距 + 1px 竖线分隔.
+    private var actions: some View {
+        HStack(spacing: 8) {
+            Button("去设置", action: onOpenSettings)
+                .buttonStyle(.plain)
+            if let refreshControl {
+                Rectangle()
+                    .fill(Color.orange.opacity(0.28))
+                    .frame(width: 1, height: 10)
+                Button(retryLabel, action: refreshControl.action)
+                    .buttonStyle(.plain)
+                    .disabled(!refreshControl.presentation.isEnabled)
+            }
+        }
+        .font(.system(size: 9))
     }
 }
 
@@ -877,13 +918,8 @@ private struct ProviderAccountCard: View {
                 WindowRowView(row: row, protectedSnapshot: account.hasProtectedSnapshot)
             }
 
-            // 分组段本身不带 note, 账号级 error 说明在子卡内展示.
-            if account.status == "error", let note = account.note {
-                Text(note)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color(hex: "#ff9f0a"))
-                    .padding(.top, 2)
-            }
+            // C246: 账号级错误说明不再在子卡底部重复, 统一由段头下方问题卡聚合呈现
+            // (逐账号原因收在问题卡 tooltip).
             // 非 ok 且保留有上次成功数据: 明确标注这是上次成功快照.
             if let lastSuccessText = account.lastSuccessText {
                 Text(lastSuccessText)

@@ -3,6 +3,26 @@ import BruceOnboardingCore
 
 // MARK: - SubscriptionPresentationPolicy
 
+/// 刷新失败账号快照 (C246): 供问题卡聚合, 策略层不依赖视图模型.
+package struct SubscriptionFailureAccount: Equatable, Sendable {
+    package let name: String
+    package let status: String
+    package let failureKind: String?
+    package let note: String?
+
+    package init(
+        name: String,
+        status: String,
+        failureKind: String?,
+        note: String?
+    ) {
+        self.name = name
+        self.status = status
+        self.failureKind = failureKind
+        self.note = note
+    }
+}
+
 /// 订阅卡纯展示规则 (S5a): 从 Panel 映射器拆出, 便于表驱动锁定.
 /// 冻结: kimi_coding→kimi 排序键; volcengine 显示名剥离; 加量包文案隐藏;
 /// deepseek 月度挂载; codex 分组判定; partial 占位 skip.
@@ -186,5 +206,80 @@ package enum SubscriptionPresentationPolicy: Sendable {
             return lhs.window.usedPercent > rhs.window.usedPercent
         }
         return sorted.first?.window
+    }
+
+    /// 刷新失败问题卡 (C246): 出口阻断优先 (返回 nil, 由出口卡接管);
+    /// 无 error/partial 账号返回 nil; 单账号 detail 取去掉前缀的原因,
+    /// 多账号 detail 取「N/M 个账号刷新失败」, 原始 note 收进 tooltip.
+    package static func failureIssue(
+        accounts: [SubscriptionFailureAccount],
+        egressBlocked: Bool
+    ) -> SubscriptionIssuePresentation? {
+        guard !egressBlocked else { return nil }
+        let failed = accounts.filter { $0.status == "error" || $0.status == "partial" }
+        guard !failed.isEmpty else { return nil }
+        // 多账号同时失败时取最需要用户处置的类型作为卡标题; 同类型按账号顺序稳定兜底.
+        let representative = failed.min {
+            failureTitleRank($0.failureKind) < failureTitleRank($1.failureKind)
+        } ?? failed[0]
+        let title = failureTitle(for: representative.failureKind)
+        if accounts.count == 1, let only = failed.first {
+            let detail = failureDetail(from: only.note) ?? "请稍后重试"
+            return SubscriptionIssuePresentation(title: title, detail: detail, tooltip: detail)
+        }
+        let lines = failed.map { account in
+            let reason = failureDetail(from: account.note)
+                ?? failureTitle(for: account.failureKind)
+            return "\(account.name)：\(reason)"
+        }
+        return SubscriptionIssuePresentation(
+            title: title,
+            detail: "\(failed.count)/\(accounts.count) 个账号刷新失败",
+            tooltip: lines.joined(separator: "\n")
+        )
+    }
+
+    /// failureKind 转人话标题 (C246); 未知类型兜底「刷新失败」.
+    package static func failureTitle(for kind: String?) -> String {
+        switch kind {
+        case "credential": return "凭据读取失败"
+        case "storage": return "凭据存储异常"
+        case "auth": return "凭据失效"
+        case "permission": return "权限不足"
+        case "rateLimit": return "请求被限流"
+        case "network": return "网络异常"
+        case "server": return "服务端异常"
+        case "invalidResponse": return "数据格式异常"
+        case "tokenUnavailable": return "登录已失效"
+        default: return "刷新失败"
+        }
+    }
+
+    /// note 去掉 collector 统一前缀「查询失败: 」/「查询失败：」, 供问题卡单行展示.
+    package static func failureDetail(from note: String?) -> String? {
+        guard let note else { return nil }
+        var text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["查询失败:", "查询失败："] where text.hasPrefix(prefix) {
+            text = String(text.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespaces)
+            break
+        }
+        return text.isEmpty ? nil : text
+    }
+
+    /// 多账号失败标题优先级: 越需要用户处置越靠前.
+    private static func failureTitleRank(_ kind: String?) -> Int {
+        switch kind {
+        case "credential": return 0
+        case "storage": return 1
+        case "auth": return 2
+        case "permission": return 3
+        case "rateLimit": return 4
+        case "network": return 5
+        case "server": return 6
+        case "invalidResponse": return 7
+        case "tokenUnavailable": return 8
+        default: return 9
+        }
     }
 }

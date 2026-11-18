@@ -96,6 +96,16 @@ extension PanelViewModelMapper {
                     lastSuccessText: lastSuccessText(for: svc.service, now: now),
                     hasProtectedSnapshot: svc.service.egress?.status == .blocked && svc.service.freshness == "stale"
                 )
+                // C246: 单账号失败卡; 出口阻断时策略返回 nil, 由出口卡独占提示.
+                let failureIssue = SubscriptionPresentationPolicy.failureIssue(
+                    accounts: [SubscriptionFailureAccount(
+                        name: accountVM.name,
+                        status: svc.service.status,
+                        failureKind: svc.service.failureKind,
+                        note: svc.note
+                    )],
+                    egressBlocked: svc.service.egress?.status == .blocked
+                )
 
                 sections.append(SubscriptionProviderSection(
                     id: svc.service.id,
@@ -121,7 +131,8 @@ extension PanelViewModelMapper {
                     egress: svc.service.egress,
                     hasProtectedSnapshot: svc.service.egress?.status == .blocked && svc.service.freshness == "stale",
                     // C224: 单账号段不渲染账号子卡, 上次成功时间提到 section 级供卡片直接呈现.
-                    lastSuccessText: accountVM.lastSuccessText
+                    lastSuccessText: accountVM.lastSuccessText,
+                    failureIssue: failureIssue
                 ))
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow.
@@ -150,6 +161,19 @@ extension PanelViewModelMapper {
                 let collapsed = SubscriptionPresentationPolicy.collapsedWindow(
                     from: accountVMs
                 )
+                // C246: 多账号按 provider 聚合一张失败卡, 逐账号原因收进 tooltip.
+                let failureAccounts = zip(accountVMs, services).map { account, item in
+                    SubscriptionFailureAccount(
+                        name: account.name,
+                        status: item.service.status,
+                        failureKind: item.service.failureKind,
+                        note: item.note
+                    )
+                }
+                let failureIssue = SubscriptionPresentationPolicy.failureIssue(
+                    accounts: failureAccounts,
+                    egressBlocked: services.contains { $0.service.egress?.status == .blocked }
+                )
 
                 sections.append(SubscriptionProviderSection(
                     id: providerID,
@@ -165,7 +189,8 @@ extension PanelViewModelMapper {
                     accountCountText: "\(accountVMs.count) 个账号",
                     egress: services.compactMap { $0.service.egress }.first(where: { $0.status == .blocked })
                         ?? services.compactMap { $0.service.egress }.first,
-                    hasProtectedSnapshot: services.allSatisfy { $0.service.egress?.status == .blocked && $0.service.freshness == "stale" }
+                    hasProtectedSnapshot: services.allSatisfy { $0.service.egress?.status == .blocked && $0.service.freshness == "stale" },
+                    failureIssue: failureIssue
                 ))
             }
         }

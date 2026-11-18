@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C246",
+  "title": "订阅刷新失败统一为段内问题卡并按 failureKind 输出人话标题（macOS）",
+  "version": "0.17.1",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C246-subscription-failure-issue-card",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos（订阅用量卡）",
+    "component": "SubscriptionCard.swift / SubscriptionMapping.swift / SubscriptionPresentationPolicy.swift / PanelModels.swift",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "订阅额度刷新失败时，macOS 仪表盘把 collector 的 note 渲染成 provider 段最底部一行 10pt 橙色小字（多账号时落在各账号子卡底部），与出口 IP 校验不通过时使用的段内紧凑问题卡（图标 + 人话标题 + 说明 + 去设置/重测）形态不一致：失败原因位置靠下、无标题层级、无可操作入口，容易被当作普通注记忽略。用户要求统一为与出口阻断相同的问题卡，并按 failureKind 输出人话标题。",
+  "precheck": {
+    "description": "预检订阅刷新失败与出口阻断当前各自的渲染路径，确认失败注记仍为段底小字、出口阻断已是段内问题卡",
+    "command": "rg -n 'section.status == \"error\"|account.status == \"error\"|egressIssue|note-line' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift apps/win/src/app.js",
+    "expected": "mac 失败注记为段底/账号子卡底部 10pt 橙色文本，出口阻断为 egressIssue 单行问题卡；Windows 侧仅 note-line 小字，无 egress 渲染",
+    "is_completed": false,
+    "evidence": "修改前：SubscriptionCard.swift:258-263 段底 10pt 橙色 note、:881-886 账号子卡底部 note、:278-311 egressIssue 问题卡（图标+标题+说明+去设置/重测）；apps/win/src/app.js:775、:866 为 note-line 小字，Windows 无出口阻断卡渲染。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C246-subscription-failure-issue-card"
+    ],
+    "after": [
+      "swift build --package-path apps/macos",
+      "swift run --package-path apps/macos PanelViewModelHarness",
+      "swift run --package-path apps/macos PanelParityHarness .",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C246 --receipt"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "订阅视图模型与映射（PanelModels.swift / SubscriptionMapping.swift / SubscriptionPresentationPolicy.swift）",
+      "before": "section 只携带 status 与 note，failureKind 未进入视图模型；失败原因由 UI 直接取 note 渲染，多账号段 section.note 为 nil、错误原因分散在账号子卡。",
+      "after": "新增 SubscriptionIssuePresentation（title/detail/tooltip）并挂到 SubscriptionProviderSection.failureIssue：单账号取 service.status/failureKind/note，多账号按失败账号聚合成 provider 级一张卡；failureKind 经纯策略映射为人话标题，出口阻断态不生成失败卡。",
+      "impact": "订阅卡失败态呈现由 UI 层拼接改为映射层输出；PanelParityHarness 序列化字段保持不变，Windows 对拍 golden 不受影响。"
+    },
+    {
+      "scope": "订阅卡渲染（SubscriptionCard.swift）",
+      "before": "刷新失败在 provider 段最底部（多账号在账号子卡底部）以 10pt 橙色小字输出；出口阻断使用独立的 egressIssue 单行问题卡。",
+      "after": "抽取通用 ProviderIssueCard（图标 + 人话标题 + 1px 分隔 + 简短原因 + 右侧去设置/重试），出口阻断与刷新失败共用同一形态与位置（段头下方、正文之上）；删除账号子卡底部错误小字，原始 note 收敛到 tooltip；status=empty 仍保留底部说明不升级为问题卡。",
+      "impact": "失败信息上移到段头附近并具备可操作入口；多账号段不再逐账号重复错误小字。"
+    },
+    {
+      "scope": "测试与设计基线（PanelViewModelHarness / 设计 02）",
+      "before": "Harness 仅断言 error 段保留 note；设计 02 无刷新失败问题卡规则。",
+      "after": "新增单账号/多账号失败卡、failureKind 标题映射、出口阻断优先级、empty 不升级等用例；设计 02 新增规则 17 并更新变更演进索引与最后更新日期。",
+      "impact": "失败卡文案与优先级由自动化用例锁定，设计文档与实现一致。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "仪表盘订阅卡的刷新失败仅在 provider 段底部/账号子卡底部以 10pt 橙色 note 小字输出，无统一问题卡形态与 failureKind 人话标题。",
+      "after": "新增规则 17：刷新失败与出口阻断统一为段内单行问题卡（段头下方、正文之上）；标题按 failureKind 映射为人话，单账号 detail 为去掉「查询失败: 」前缀的原因、多账号为「N/M 个账号刷新失败」，原始 note 进 tooltip；出口阻断优先，status=empty 不升级；Windows 后续对齐。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261118-05",
+    "user_quote": "合并所有分支，然后清理掉分支",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "swift build 与 PanelViewModelHarness/PanelParityHarness 全绿，且 zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "存在编译失败、Harness 断言失败、对拍 golden 变更或 verify-local 任一步失败",
+        "evidence": "zsh scripts/verify-local.sh → Exit 0（末行「Bruce 本地验证全部通过」）；Rust fmt/test/clippy 全绿，Swift build 通过，19 个 Harness 全部通过（PanelViewModel tests passed: 72），顶层 node --test 26 passed / 0 failed；PanelParityHarness 五份对拍（workbench/valid/partial/empty）全部通过且 golden 无变更。",
+        "result": true
+      },
+      {
+        "item": "失败态呈现与优先级",
+        "true_if": "单账号 error 在段头下方显示问题卡（人话标题 + 去掉前缀的原因 + 去设置/重试），多账号聚合为一张「N/M 个账号刷新失败」，出口阻断时只显示出口卡，empty 仍为底部说明",
+        "false_if": "仍残留段底/账号子卡错误小字、标题与 failureKind 不符、出口阻断被失败卡覆盖或 empty 被误升级",
+        "evidence": "PanelViewModelHarness 新增用例全过：单账号 auth → 「凭据失效」+ detail「HTTP 401」（去「查询失败: 」前缀）+ tooltip 承载原因；network 无 note → 「网络异常」+「请稍后重试」；empty 不生成 failureIssue；出口阻断时 failureIssue=nil（只显示出口卡）；多账号 2/3 失败 → 标题按优先级取 auth、「2/3 个账号刷新失败」、tooltip 逐账号列原因且不含健康账号；failureTitle 全量映射（9 类 + 未知兜底）表驱动通过。视图层删除 ProviderAccountCard 的 error note 小字，失败卡与出口卡共用 ProviderIssueCard。",
+        "result": true
+      },
+      {
+        "item": "实机失败态截图",
+        "true_if": "部署构建后制造一次真实订阅刷新失败，仪表盘按新问题卡形态显示",
+        "false_if": "实机仍为段底小字、卡片文案或按钮异常",
+        "evidence": "未执行：本机无受控失败态订阅，制造真实 401/超时需改动真实凭据或本地数据，未在本次执行；形态复用既有出口阻断问题卡组件（同布局/同操作区），实机失败态留待真实失败或后续部署确认。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "3a55ae2",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "2026-11-18",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed",
+    "signed_quote": "合并所有分支，然后清理掉分支",
+    "signed_rejection_count": 0
+  }
+}

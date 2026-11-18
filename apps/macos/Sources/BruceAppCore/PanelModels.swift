@@ -712,6 +712,21 @@ package struct CodexAccountViewModel: Equatable, Sendable {
     }
 }
 
+/// 订阅段问题卡呈现 (C246): 刷新失败与出口阻断共用同一紧凑问题卡形态.
+/// title 为 failureKind 映射的人话标题, detail 为单行简短原因 (或账号统计),
+/// tooltip 承载原始 note / 逐账号原因, 避免长文案撑破单行布局.
+package struct SubscriptionIssuePresentation: Equatable, Sendable {
+    package let title: String
+    package let detail: String
+    package let tooltip: String
+
+    package init(title: String, detail: String, tooltip: String) {
+        self.title = title
+        self.detail = detail
+        self.tooltip = tooltip
+    }
+}
+
 package struct SubscriptionProviderSection: Equatable, Sendable {
     package let id: String
     package let name: String
@@ -735,6 +750,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// C224: 单账号段的上次成功时间文案 ("上次成功 HH:mm", 仅 freshness=stale);
     /// 多账号段为 nil, 由各账号子卡的 lastSuccessText 呈现.
     package let lastSuccessText: String?
+    /// C246: 刷新失败问题卡呈现; nil 表示无失败、空态或已被出口阻断卡接管.
+    package let failureIssue: SubscriptionIssuePresentation?
 
     package init(
         id: String,
@@ -750,7 +767,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         accountCountText: String?,
         egress: EgressPresentationInfo? = nil,
         hasProtectedSnapshot: Bool = false,
-        lastSuccessText: String? = nil
+        lastSuccessText: String? = nil,
+        failureIssue: SubscriptionIssuePresentation? = nil
     ) {
         self.id = id
         self.name = name
@@ -766,6 +784,7 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         self.egress = egress
         self.hasProtectedSnapshot = hasProtectedSnapshot
         self.lastSuccessText = lastSuccessText
+        self.failureIssue = failureIssue
     }
 
     /// 是否为多账号 section (>= 2 个账号).

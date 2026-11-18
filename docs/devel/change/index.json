@@ -34,7 +34,8 @@
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
       "changes": [
-        "C229"
+        "C229",
+        "C246"
       ]
     },
     "TokenUsage": {
@@ -266,6 +267,15 @@
       "topic": "OfficialWebsite",
       "version": "0.17.1",
       "file": "docs/devel/change/C245.json"
+    },
+    "C246": {
+      "title": "订阅刷新失败统一为段内问题卡并按 failureKind 输出人话标题（macOS）",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C246-subscription-failure-issue-card",
+      "topic": "SubscriptionQuota",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C246.json"
     }
   }
 }
