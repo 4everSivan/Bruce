@@ -273,23 +273,7 @@ em {
   transform: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  [data-reveal] {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
-}
+/* 维护者要求官网全站强制开启动效展示，不随系统「减弱动态效果」静音 */
 
 /* ---------------------------------------------------------------- a11y */
 .visually-hidden {

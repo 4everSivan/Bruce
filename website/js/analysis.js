@@ -587,8 +587,6 @@
   }
 
   /* ---------- state ------------------------------------------------ */
-  var reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
-
   var state = {
     range: "7d",
     chartType: "area", // 'line' | 'area'
@@ -635,7 +633,7 @@
     var activeBtn = segEl.querySelector(".wb-seg__btn.is-on");
     if (!activeBtn || segEl.offsetParent === null) return;
 
-    var useInstant = Boolean(instant || isNew || reduceMq.matches);
+    var useInstant = Boolean(instant || isNew);
     if (useInstant) glider.classList.add("is-instant");
     glider.style.width = activeBtn.offsetWidth + "px";
     glider.style.height = activeBtn.offsetHeight + "px";
@@ -915,7 +913,7 @@
     }
 
     if (kpiRaf) cancelAnimationFrame(kpiRaf);
-    if (!animate || !prevKpiNums || reduceMq.matches) {
+    if (!animate || !prevKpiNums) {
       writeVals(nextNums);
       prevKpiNums = nextNums;
       return;
@@ -1093,7 +1091,7 @@
     if (ch) {
       if (active) {
         var hxPct = ((tlCtx.xAt(idx) / tlCtx.W) * 100).toFixed(2) + "%";
-        if (snapPosition || reduceMq.matches) {
+        if (snapPosition) {
           ch.classList.add("is-snap");
           ch.style.left = hxPct;
           void ch.offsetWidth;
@@ -1354,7 +1352,7 @@
     var svgEl = document.getElementById("wb-chart-svg");
     if (svgEl) {
       svgEl.innerHTML = defsHtml + gridHtml + pathsHtml;
-      if (animateCurve && !reduceMq.matches) {
+      if (animateCurve) {
         svgEl.classList.remove("is-animating");
         void svgEl.getBoundingClientRect();
         svgEl.classList.add("is-animating");
@@ -1494,16 +1492,14 @@
     var listEl = document.getElementById("wb-models-list");
     if (listEl) {
       listEl.innerHTML = bodyHtml;
-      if (!reduceMq.matches) {
-        if (animateSwitch) {
-          listEl.classList.remove("is-switching");
-          void listEl.offsetWidth;
-          listEl.classList.add("is-switching");
-        }
-        listEl.classList.remove("is-bars-in");
+      if (animateSwitch) {
+        listEl.classList.remove("is-switching");
         void listEl.offsetWidth;
-        listEl.classList.add("is-bars-in");
+        listEl.classList.add("is-switching");
       }
+      listEl.classList.remove("is-bars-in");
+      void listEl.offsetWidth;
+      listEl.classList.add("is-bars-in");
     }
   }
 
@@ -1583,7 +1579,7 @@
       '<span><i style="background:#10B981"></i>缓存读</span>' +
       "</div>" +
       "</div>" +
-      '<div class="wb-list' + (reduceMq.matches ? "" : " is-bars-in") + '">' + listHtml + "</div>" +
+      '<div class="wb-list is-bars-in">' + listHtml + "</div>" +
       "</section>";
   }
 
@@ -2017,7 +2013,7 @@
         state.probing = true;
         updateProbeFooter();
         var grid = document.getElementById("wb-probes-grid");
-        if (grid && !reduceMq.matches) {
+        if (grid) {
           grid.classList.remove("is-pulsing");
           void grid.offsetWidth;
           grid.classList.add("is-pulsing");

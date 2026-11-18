@@ -34,6 +34,10 @@
 - **移除重复跟踪的 `tests/benchmarks/` 历史基线 ([C243](docs/devel/change/C243.json))**：4 个 JSON 基线在测试目录重组时已落到 `tests/fixtures/legacy_benchmark_baselines/`，旧目录副本逐字节相同且无脚本读取，删除前再次 `cmp` 确认后以 `git rm` 移除，保留位置的 4 个文件 SHA-256 不变；`tests/docs/README.md` 迁移说明补注旧路径去向。
 
 ### Fixed
+- **官网全站强制开启动画并移除首屏底部冗余切换按钮 ([C245](docs/devel/change/C245.json))**：
+  - **强制开启动效**：移除 `website/css/{base,panel,site,settings}.css` 全部 `prefers-reduced-motion` 媒体查询（包括 `base.css` 全局 `0.001ms` 压缩与 `[data-reveal]` 禁用）以及 `website/js/{panel,site,analysis}.js` 中 14 处 `reduceMq` 跳过守卫，即使宿主机关闭系统动画仍完整播放全部过渡与动画；
+  - **精简首屏底部栏**：移除 Hero 叠牌底部的三枚材质切换按钮及对应 `.deck-switcher__glider` / `syncSwitcher()` 冗余逻辑，保留极简细线与“点击任意面板提至前景 · 样例数据”提示，桌面端直接点击叠放面板即可切卡；
+  - **验证与文档**：新增 `UT-website-002`/`004` 回归断言，在 Chromium `reducedMotion: "reduce"` 模拟与双内核响应式（320–1440px）全测通过；同步更新 `docs/devel/design/13-官方网站.md` 与 `docs/assets/screenshots/site-hero.png`。
 - **「专用代理需要认证」不再按瞬态失败自动退避重试 ([C241](docs/devel/change/C241.json))**：
   - **现象**：探测层认定代理需认证重试无意义（不改用备用信标），但策略层与 mac 调度器的瞬态集合仍包含 `EGRESS_PROXY_AUTH`，一个必须由用户改配置才能恢复的问题仍触发 90/180/300 秒三次提前唤醒与重查，且不写 `quotaAttemptedAt`；
   - **修复**：`EGRESS_PROXY_AUTH` 移出 collector-policy `TRANSIENT_EGRESS_REASONS` 与 mac `EgressAlertEvaluator.transientProbeReasons`，与配置无效同类：写尝试时间戳、清除退避字段，按正常间隔或手动刷新重查；徽标「代理需认证」与阻断语义不变；

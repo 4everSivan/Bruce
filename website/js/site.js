@@ -7,7 +7,6 @@
   "use strict";
 
   var D = window.BRUCE_DATA;
-  var reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   /* ---------- masthead ------------------------------------------- */
   var mast = document.getElementById("masthead");
@@ -94,11 +93,9 @@
   function setReadoutText(text) {
     if (!readout || readout.textContent === text) return;
     readout.textContent = text;
-    if (!reduceMq.matches) {
-      readout.classList.remove("is-tick");
-      void readout.offsetWidth;
-      readout.classList.add("is-tick");
-    }
+    readout.classList.remove("is-tick");
+    void readout.offsetWidth;
+    readout.classList.add("is-tick");
   }
 
   if (grid && D) {
@@ -192,7 +189,7 @@
   var recordSection = document.getElementById("record");
   function animateStatList() {
     var statEls = Array.prototype.slice.call(document.querySelectorAll(".stat-list .v"));
-    if (!statEls.length || reduceMq.matches) return;
+    if (!statEls.length) return;
     var specs = statEls.map(function (el) {
       var raw = el.textContent.trim();
       var m = raw.match(/^([\d.]+)(.*)$/);
