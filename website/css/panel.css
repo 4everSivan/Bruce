@@ -864,11 +864,7 @@
 
 .bp-tip.is-on { opacity: 1; }
 
-@media (prefers-reduced-motion: reduce) {
-  .bp-bars__seg { animation: none; }
-  .bp-icon.is-spinning svg,
-  .bp-btn.is-spinning svg { animation: none; }
-}
+/* 动画已在全局强制开启，不因系统 reduced-motion 停用微观过渡 */
 
 /* ================================================================
    面板内部：真机是中文原生界面 → 系统无衬线（SF Pro + 苹方）
@@ -1158,9 +1154,6 @@
 }
 
 @keyframes bp-breathe2 { from { opacity: 1; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .bp-surface[data-material="nothing"] .bp-heatmap__cell { animation: none; }
-}
 
 /* ================================================================
    模型用量区块（经典 / 液态 / Nothing 共用骨架）
@@ -1868,16 +1861,4 @@
 .anatomy__stage .bp-icon:hover {
   background: rgba(0, 0, 0, 0.06);
   color: rgba(0, 0, 0, 0.82);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .anatomy__stage .bp-model__bar i,
-  .anatomy__stage .bp-meter__fill,
-  .anatomy__stage .bp-heatmap__cell[data-level],
-  .anatomy__stage .bp-agent__line polyline,
-  .anatomy__stage .bp-agent__line polygon {
-    animation: none !important;
-    stroke-dashoffset: 0 !important;
-    opacity: 1 !important;
-  }
 }

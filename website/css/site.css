@@ -605,91 +605,18 @@ button.cta {
   display: none;
 }
 
-/* Desktop deck theme switcher bar */
+/* Desktop deck bottom caption */
 .deck-switcher {
-  position: relative;
   margin-top: 12px;
   padding-top: 10px;
   border-top: var(--hairline) solid var(--rule);
   width: 100%;
   display: flex;
-  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 6px;
-}
-
-.deck-switcher__glider {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 0;
-  border-radius: 5px;
-  background: var(--ink);
-  box-shadow: 0 6px 16px -8px rgba(22, 21, 15, 0.45);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    transform 360ms var(--ease-morph),
-    width 360ms var(--ease-morph),
-    height 360ms var(--ease-morph),
-    opacity 180ms var(--ease);
-}
-
-.deck-switcher__btn {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 5px 11px;
-  border-radius: 5px;
-  border: 1px solid var(--rule);
-  background: rgba(255, 255, 255, 0.45);
-  font-family: var(--sans);
-  font-size: 0.78rem;
-  color: var(--ink-70);
-  transition: background-color 200ms var(--ease), border-color 200ms var(--ease),
-    color 200ms var(--ease);
-}
-
-.deck-switcher__btn .k {
-  font-weight: 600;
-  color: var(--ink);
-  transition: color 200ms var(--ease);
-}
-
-.deck-switcher__btn .v {
-  font-size: 0.72rem;
-  color: var(--ink-52);
-  transition: color 200ms var(--ease);
-}
-
-.deck-switcher__btn:not(.is-active):hover {
-  background: var(--paper-raise);
-  border-color: var(--rule-strong);
-}
-
-.deck-switcher__btn.is-active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper-raise);
-}
-
-.deck-switcher__glider ~ .deck-switcher__btn.is-active {
-  background: transparent;
-  border-color: transparent;
-}
-
-.deck-switcher__btn.is-active .k {
-  color: var(--paper-raise);
-}
-
-.deck-switcher__btn.is-active .v {
-  color: rgba(249, 247, 242, 0.72);
 }
 
 .deck-switcher__hint {
-  margin-left: auto;
   font-size: 0.74rem;
   color: var(--ink-52);
 }
@@ -1387,13 +1314,7 @@ button.cta {
   line-height: 1;
 }
 
-/* 维护者确认保留数据源流动动效 */
-@media (prefers-reduced-motion: reduce) {
-  .marquee .marquee__track {
-    animation-duration: var(--flow-duration, 38s) !important;
-    animation-iteration-count: infinite !important;
-  }
-}
+/* 维护者要求保留全站动效，跑马灯与全站 CSS 一并常驻运行 */
 
 /* Dual-Column 10+10 Source Directory */
 .source-directory {

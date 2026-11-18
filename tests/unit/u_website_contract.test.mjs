@@ -61,6 +61,7 @@ test("UT-website-002: 官网 HTML 保留构建占位符、菜单栏状态项与�
   for (const stalePhrase of ["纸色 #f1efe9", "还没有发生的日子", "桌面上标题在左"]) {
     assert.ok(!html.includes(stalePhrase), `index.html 不应残留套话或元说明: ${stalePhrase}`);
   }
+  assert.ok(!html.includes("deck-switcher__btn") && !html.includes("data-focus-theme"), "首屏不应再渲染三个底部材质切换按钮");
 });
 
 test("UT-website-003: 面板热力图图例与分析工作台保持原生克制，无硬编码色块或装饰 Emoji", () => {
@@ -77,21 +78,34 @@ test("UT-website-003: 面板热力图图例与分析工作台保持原生克制�
   }
 });
 
-test("UT-website-004: 看板、出口保护与分析工作台使用连续过渡与持久骨架，并响应 reduced-motion", () => {
+test("UT-website-004: 看板、出口保护与分析工作台使用连续过渡与持久骨架，并强制开启动效", () => {
   const baseCss = readFileSync(join(siteRoot, "css", "base.css"), "utf8");
   const siteCss = readFileSync(join(siteRoot, "css", "site.css"), "utf8");
   const panelCss = readFileSync(join(siteRoot, "css", "panel.css"), "utf8");
+  const settingsCss = readFileSync(join(siteRoot, "css", "settings.css"), "utf8");
   const panelJs = readFileSync(join(siteRoot, "js", "panel.js"), "utf8");
+  const siteJs = readFileSync(join(siteRoot, "js", "site.js"), "utf8");
   const egressJs = readFileSync(join(siteRoot, "js", "egress.js"), "utf8");
   const analysisJs = readFileSync(join(siteRoot, "js", "analysis.js"), "utf8");
 
   assert.ok(baseCss.includes("--ease-silk") && baseCss.includes("--ease-morph"), "base.css 应声明连续过渡缓动曲线");
-  assert.ok(baseCss.includes("prefers-reduced-motion: reduce"), "base.css 应提供 reduced-motion 降级");
-  assert.ok(panelCss.includes("prefers-reduced-motion: reduce"), "panel.css 应关闭微观动画响应 reduced-motion");
+  for (const [name, content] of [
+    ["base.css", baseCss],
+    ["site.css", siteCss],
+    ["panel.css", panelCss],
+    ["settings.css", settingsCss],
+    ["panel.js", panelJs],
+    ["site.js", siteJs],
+    ["analysis.js", analysisJs],
+  ]) {
+    assert.ok(!content.includes("prefers-reduced-motion"), `${name} 不应包含 prefers-reduced-motion 降级规则，确保关闭系统动画的机器也能强制播放官网动效`);
+    assert.ok(!content.includes("reduceMq"), `${name} 不应通过 reduceMq 跳过动画效果`);
+  }
 
   assert.ok(panelJs.includes("slotOrder") && panelJs.includes("anatomy__glider"), "panel.js 应使用物理槽位发牌与滑块指示器");
+  assert.ok(!panelJs.includes("syncSwitcher") && !siteCss.includes(".deck-switcher__btn"), "已移除首屏底部材质切换按钮及相关滑块/样式代码");
   assert.ok(panelCss.includes(".anatomy__panel-layer"), "panel.css 应包含看板双向层叠过渡层");
-  assert.ok(siteCss.includes(".deck-switcher__glider") && siteCss.includes(".anatomy__glider"), "site.css 应包含滑块指示器样式");
+  assert.ok(siteCss.includes(".wb-seg__glider") && siteCss.includes(".anatomy__glider"), "site.css 应包含滑块指示器样式");
 
   assert.ok(egressJs.includes("ensureSpecimenMounted") && egressJs.includes("ensureSettingsMounted"), "egress.js 应持久化 DOM 骨架避免整块重建");
   assert.ok(siteCss.includes(".eg-issue-wrap.is-open") && siteCss.includes(".eg-sheet-backdrop.is-open"), "site.css 应包含连续折叠与弹层过渡");

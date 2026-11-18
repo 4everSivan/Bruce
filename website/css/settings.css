@@ -23,9 +23,7 @@
   transform-origin: top left;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .bruce-settings .pane { animation: st-pane-in 260ms var(--ease-out) both; }
-}
+.bruce-settings .pane { animation: st-pane-in 260ms var(--ease-out) both; }
 
 @keyframes st-pane-in {
   from { opacity: 0; transform: translateY(4px); }

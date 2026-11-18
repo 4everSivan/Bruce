@@ -18,14 +18,7 @@
   var CARD_LABEL = { token: "Token 用量", quota: "订阅用量", hourly: "Agent 用量" };
   var CARD_INDEX = { token: 0, quota: 1, hourly: 2 };
   var narrowMq = window.matchMedia("(max-width: 720px)");
-  var reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
   var front = "classic";
-
-  var switcher = document.getElementById("deck-switcher");
-  var switcherBtns = Array.prototype.slice.call(
-    document.querySelectorAll("[data-focus-theme]")
-  );
-  var switcherGlider = null;
 
   function slot(theme) {
     return document.getElementById("panel-" + theme);
@@ -586,33 +579,7 @@
     );
   }
 
-  /* ---------- Switcher & Anatomy Glider Indicators ------------------ */
-  function ensureSwitcherGlider() {
-    if (!switcher || switcherGlider) return;
-    switcherGlider = document.createElement("span");
-    switcherGlider.className = "deck-switcher__glider";
-    switcherGlider.setAttribute("aria-hidden", "true");
-    switcher.insertBefore(switcherGlider, switcher.firstChild);
-  }
-
-  function syncSwitcher() {
-    ensureSwitcherGlider();
-    var activeBtn = null;
-    switcherBtns.forEach(function (btn) {
-      var on = btn.getAttribute("data-focus-theme") === front;
-      btn.classList.toggle("is-active", on);
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-      if (on) activeBtn = btn;
-    });
-    if (switcherGlider && activeBtn && switcher.offsetParent !== null) {
-      switcherGlider.style.width = activeBtn.offsetWidth + "px";
-      switcherGlider.style.height = activeBtn.offsetHeight + "px";
-      switcherGlider.style.transform =
-        "translate3d(" + activeBtn.offsetLeft + "px, " + activeBtn.offsetTop + "px, 0)";
-      switcherGlider.style.opacity = "1";
-    }
-  }
-
+  /* ---------- Anatomy Glider Indicator ------------------------------ */
   function ensureAnatomyGlider() {
     if (!anatomyTabsWrap || anatomyGlider) return;
     anatomyGlider = document.createElement("span");
@@ -653,7 +620,6 @@
         if (label) label.textContent = CARD_LABEL[CARD[theme]] || "";
       }
     });
-    syncSwitcher();
   }
 
   function layoutDeck() {
@@ -691,7 +657,6 @@
       deck.style.height = "";
       deck.style.transform = "";
       host.style.height = "";
-      syncSwitcher();
       return;
     }
 
@@ -726,7 +691,6 @@
     deck.style.height = naturalH + "px";
     deck.style.transform = "scale(" + deckScale + ")";
     host.style.height = Math.round(naturalH * deckScale) + "px";
-    syncSwitcher();
   }
 
   function setFrontTheme(theme) {
@@ -735,7 +699,7 @@
     /* 将选中的主题顺滑发牌至前景槽位 (slot 2)，其余两张保持相对层级退居 0 / 1 */
     slotOrder = slotOrder.filter(function (t) { return t !== theme; }).concat([theme]);
     var promoted = item(theme);
-    if (promoted && !narrowMq.matches && !reduceMq.matches) {
+    if (promoted && !narrowMq.matches) {
       promoted.classList.remove("is-promoting");
       void promoted.offsetWidth;
       promoted.classList.add("is-promoting");
@@ -785,7 +749,7 @@
     nextLayer.style.transform = "scale(" + scale + ")";
     nextLayer.innerHTML = surface(theme, anatomyCard, { interactive: true });
 
-    if (activeLayer && direction && !reduceMq.matches) {
+    if (activeLayer && direction) {
       var prevLayer = activeLayer;
       prevLayer.classList.remove("is-entering-next", "is-entering-prev");
       prevLayer.classList.add(direction > 0 ? "is-leaving-next" : "is-leaving-prev");
@@ -898,12 +862,6 @@
         setFrontTheme(clickedItem.getAttribute("data-theme"));
       }
     }
-  });
-
-  switcherBtns.forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      setFrontTheme(btn.getAttribute("data-focus-theme"));
-    });
   });
 
   function relayout() {
