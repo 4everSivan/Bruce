@@ -94,7 +94,7 @@
   },
   "gate": {
     "tool": "adflow-verify",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "ran_at": "",
     "exit_code": null
   }

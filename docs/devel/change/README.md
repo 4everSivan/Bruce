@@ -20,7 +20,9 @@ C 卡承载缺陷修复、功能回调、参数或契约调整及重构，记录
 
 ## 3. 建卡与状态规则
 
-卡号用 `scripts/adflow-verify --next-id change` 取得，如 `C001`：它覆盖现行总账、各归档批次总账与归档目录，以及本机其他工作树和本地/远端跟踪分支中的最大编号，跨版本不重置。该结果不是原子预占，合入主干前须在合并结果上校验（见 [AGENTS.md](../../../AGENTS.md) 五.1），结合 `ID_DUPLICATE` 和 Git 冲突检查；撞号先修正卡号及引用，不得覆盖另一事项。
+建卡前先运行 `scripts/adflow-verify --scaffold new-card --plan --track change --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> --todo <待办行文本> --json`；`executable` 为 true 后按 `writes` / `topics` / `todo` 创建卡片、登记总账并删除待办行，禁止手抄模板或手写登记；为 false 时先补齐 `missing` 输入再重跑。这些命令由 Agent 执行，人类只需用自然语言提出需求。
+
+卡号由计划给出（口径同 `scripts/adflow-verify --next-id change`），如 `C001`：它覆盖现行总账、各归档批次总账与归档目录，以及本机其他工作树和本地/远端跟踪分支中的最大编号，跨版本不重置。该结果不是原子预占，合入主干前须在合并结果上校验（见 [AGENTS.md](../../../AGENTS.md) 五.1），结合 `ID_DUPLICATE` 和 Git 冲突检查；撞号先修正卡号及引用，不得覆盖另一事项。
 
 | 字段组 | 建卡时写什么 | 收口时补什么 |
 |---|---|---|
@@ -75,7 +77,7 @@ scripts/adflow-verify --card C001 --receipt
 
 ## 附：项目既有约定（升级保留）
 
-> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.7.0。
+> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.8.0。
 
 ### 3.1 `topics[].changes` 语义（TD-011 定稿，2026-10-16）
 
