@@ -83,7 +83,8 @@
       "design_doc": "docs/devel/design/13-官方网站.md",
       "changes": [
         "C244",
-        "C245"
+        "C245",
+        "C247"
       ]
     }
   },
@@ -276,6 +277,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.17.1",
       "file": "docs/devel/change/C246.json"
+    },
+    "C247": {
+      "title": "官网顶栏右上角增加个人 GitHub Pages 图标链接",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "feat/C247-website-github-pages-icon",
+      "topic": "OfficialWebsite",
+      "version": "0.17.1",
+      "file": "docs/devel/change/C247.json"
     }
   }
 }

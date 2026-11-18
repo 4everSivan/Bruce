@@ -13,6 +13,7 @@
   - **验证**：新增 `website/tools/responsive-check.mjs`（本地工具、不入构建），Chromium + WebKit 在 320–1440 共 124 项断言；同步更新 `site-hero.png` / `site-mobile.png` 截图与 design/13 基线。
 
 ### Changed
+- **官网顶栏右上角增加个人 GitHub Pages 图标链接 ([C247](docs/devel/change/C247.json))**：在版本徽标与仓库「GitHub ↗」文本链接之后新增 GitHub 图形图标链接，指向 `https://4eversivan.github.io/`，新窗口打开并带 `aria-label`/`title` 明示去向；图标采用 `currentColor` 内联 SVG，浅色与 04 章深色顶栏分别设置常态/悬停色，24pt 命中区不改变既有顶栏排布；新增 `UT-website-005` 契约断言，设计 13 §3.9 同步登记。
 - **订阅刷新失败统一为段内问题卡并按 failureKind 输出人话标题（macOS）([C246](docs/devel/change/C246.json))**：
   - **现象**：订阅额度刷新失败时，macOS 仪表盘只在 provider 段最底部（多账号在账号子卡底部）输出一行 10pt 橙色小字，与出口 IP 校验不通过时的段内问题卡（图标 + 人话标题 + 说明 + 去设置/重测）形态不一致，失败原因靠下且无可操作入口；
   - **改法**：抽取通用 `ProviderIssueCard`，出口阻断与刷新失败共用同一单行问题卡（段头下方、正文之上），右侧「去设置 / 重试」；标题按 `failureKind` 映射为凭据失效 / 网络异常 / 请求被限流 / 服务端异常 / 数据格式异常 / 凭据读取失败 / 凭据存储异常 / 权限不足 / 登录已失效（缺省「刷新失败」），单账号 detail 为去掉「查询失败: 」前缀的原因，多账号聚合为「N/M 个账号刷新失败」并逐账号写入 tooltip；出口阻断优先，`status=empty` 不升级为问题卡；删除账号子卡底部错误小字；
