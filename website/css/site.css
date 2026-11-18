@@ -125,6 +125,30 @@
   font-variant-numeric: lining-nums tabular-nums;
 }
 
+/* 个人 GitHub Pages 图标入口 (C247): 24pt 命中区 + 17pt 图形, 与右侧文本链接同组. */
+.masthead__icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--ink-54);
+  transition: color 200ms var(--ease), background-color 200ms var(--ease);
+}
+
+.masthead__icon-link svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+}
+
+.masthead__icon-link:hover {
+  color: var(--ink);
+  background: rgba(23, 22, 15, 0.06);
+}
+
 /* Dark masthead over Section 04 */
 .masthead.is-dark {
   color: var(--night-ink);
@@ -165,6 +189,19 @@
 .masthead.is-dark .link {
   color: var(--night-ink);
   border-bottom-color: rgba(239, 236, 227, 0.36);
+}
+
+.masthead.is-dark .masthead__icon-link {
+  color: var(--night-ink-45);
+}
+
+.masthead.is-dark .masthead__icon-link:hover {
+  color: var(--night-ink);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.masthead.is-dark .masthead__icon-link:focus-visible {
+  outline-color: var(--night-ink);
 }
 
 @media (max-width: 860px) {

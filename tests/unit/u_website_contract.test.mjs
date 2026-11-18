@@ -113,3 +113,22 @@ test("UT-website-004: 看板、出口保护与分析工作台使用连续过渡�
   assert.ok(analysisJs.includes("ensureWorkbenchMounted") && analysisJs.includes("syncTimelineHover"), "analysis.js 应原地更新十字准星与图表而不重绘整棵树");
   assert.ok(siteCss.includes(".wb-seg__glider") && siteCss.includes(".wb-drawer.is-open"), "site.css 应包含分段滑块与抽屉连续展开样式");
 });
+
+test("UT-website-005: 顶栏右上角提供个人 GitHub Pages 图标链接", () => {
+  const html = readFileSync(join(siteRoot, "index.html"), "utf8");
+  const start = html.indexOf('class="masthead__icon-link"');
+  assert.ok(start >= 0, "顶栏应包含 .masthead__icon-link 图标链接");
+  const anchorStart = html.lastIndexOf("<a", start);
+  const anchorEnd = html.indexOf("</a>", start);
+  assert.ok(anchorStart >= 0 && anchorEnd > start, "图标链接应是完整的 <a> 元素");
+  const anchor = html.slice(anchorStart, anchorEnd + 4);
+
+  assert.match(anchor, /href="https:\/\/4eversivan\.github\.io\/"/, "图标链接应指向 https://4eversivan.github.io/");
+  assert.match(anchor, /target="_blank"/, "图标链接应在新窗口打开");
+  assert.match(anchor, /rel="noopener"/, "图标链接应带 rel=noopener");
+  assert.match(anchor, /aria-label="访问 sivan 的 GitHub Pages/, "图标链接应有明确的 aria-label");
+  assert.match(anchor, /<svg[\s\S]*<\/svg>/, "图标链接应以内联 SVG 呈现 GitHub 图形");
+
+  const metaStart = html.indexOf('class="masthead__meta"');
+  assert.ok(metaStart >= 0 && metaStart < start, "图标链接应位于顶栏右上角 .masthead__meta 内");
+});
