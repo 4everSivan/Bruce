@@ -205,29 +205,29 @@
      logo → assets/agent-icons/<name>.svg（官方 logo 字形，如 Pi Coding Agent）
      以上皆无时用 mono + 品牌底色兜底 */
   var agentSources = [
-    { name: "Kimi Work", icon: "kimi", tile: "#0a84ff" },
-    { name: "Kimi Code CLI", icon: "kimi", tile: "#0a84ff" },
-    { name: "Claude Code", icon: "claude", tile: "#d97757" },
-    { name: "Codex", image: "agent-codex", tile: "#0a0a0a" },
-    { name: "Grok", icon: "grok-icon", tile: "#111111" },
-    { name: "OpenCode", icon: "opencode", tile: "#8a63d2" },
-    { name: "Pi", logo: "pi", tile: "#ff6482" },
-    { name: "ZCode", image: "agent-zcode", tile: "#0a0a0a" },
-    { name: "CodeBuddy", image: "agent-codebuddy", tile: "#5b3df5" },
-    { name: "DeepSeek Harness", icon: "deepseek", tile: "#4d6bfe" },
+    { name: "Claude Code", icon: "claude", tile: "#d97757", tag: "~/.claude/projects" },
+    { name: "Codex", image: "agent-codex", tile: "#0a0a0a", tag: "~/.codex · 含 Orca" },
+    { name: "Kimi Code CLI", icon: "kimi", tile: "#0a84ff", tag: "~/.kimi/history" },
+    { name: "Kimi Work", icon: "kimi", tile: "#0a84ff", tag: "本地工作区会话" },
+    { name: "OpenCode", icon: "opencode", tile: "#8a63d2", tag: "SQLite · mode=ro" },
+    { name: "DeepSeek Harness", icon: "deepseek", tile: "#4d6bfe", tag: "zstd JSONL" },
+    { name: "ZCode", image: "agent-zcode", tile: "#0a0a0a", tag: "本地会话只读" },
+    { name: "CodeBuddy", image: "agent-codebuddy", tile: "#5b3df5", tag: "~/.codebuddy" },
+    { name: "Grok", icon: "grok-icon", tile: "#111111", tag: "~/.grok" },
+    { name: "Pi", logo: "pi", tile: "#ff6482", tag: "~/.pi/agent" },
   ];
 
   var providerSources = [
-    { name: "Kimi", icon: "kimi", tile: "#0a84ff", tag: "5 小时 · 每周" },
-    { name: "DeepSeek", icon: "deepseek", tile: "#4d6bfe", tag: "按量付费" },
-    { name: "Volcengine", icon: "volcengine", tile: "#ff6a00", tag: "5 小时 · 每周 · 每月" },
-    { name: "Codex", icon: "openai-icon", tile: "#10a37f", tag: "多账号" },
     { name: "Claude", icon: "claude", tile: "#d97757", tag: "5 小时 · 每周" },
-    { name: "Grok", icon: "grok-icon", tile: "#111111", tag: "每月" },
-    { name: "OpenCode", icon: "opencode", tile: "#8a63d2", tag: "5 小时 · 每周 · 每月" },
-    { name: "Z.ai", icon: "zai-mark", tile: "#2d2d2d", tag: "5 小时 · 每周" },
-    { name: "StepFun", icon: "stepfun", tile: "#0c5efc", tag: "按量付费" },
+    { name: "ChatGPT / Codex", icon: "openai-icon", tile: "#10a37f", tag: "OAuth 多账号" },
+    { name: "Kimi", icon: "kimi", tile: "#0a84ff", tag: "5 小时 · 每周 · 每月" },
+    { name: "DeepSeek", icon: "deepseek", tile: "#4d6bfe", tag: "可用余额" },
     { name: "Cline", icon: "cline", tile: "#18181b", tag: "5 小时 · 7 天 · 30 天" },
+    { name: "Volcengine", icon: "volcengine", tile: "#ff6a00", tag: "5 小时 · 每周 · 每月" },
+    { name: "Z.ai", icon: "zai-mark", tile: "#2d2d2d", tag: "5 小时 · 每周" },
+    { name: "StepFun", icon: "stepfun", tile: "#0c5efc", tag: "按量余额" },
+    { name: "OpenCode", icon: "opencode", tile: "#8a63d2", tag: "5 小时 · 每周 · 每月" },
+    { name: "Grok", icon: "grok-icon", tile: "#111111", tag: "每月配额" },
   ];
 
   /* ---------- pricing rows, from the built-in catalog ------------ */

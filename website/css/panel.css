@@ -35,17 +35,34 @@
     backdrop-filter 420ms var(--ease);
 }
 
-/* liquid glass: native glass tokens, white 46% tint, thinner card fill */
+/* liquid glass: frosted refractive glass with specular top rim */
 .bp-surface[data-material="liquid"] {
-  --bp-card: rgba(255, 255, 255, 0.36);
-  background: rgba(255, 255, 255, 0.46);
-  border-color: rgba(0, 0, 0, 0.08);
-  -webkit-backdrop-filter: blur(40px) saturate(200%);
-  backdrop-filter: blur(40px) saturate(200%);
+  --bp-card: rgba(255, 255, 255, 0.68);
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(243, 248, 245, 0.76) 52%,
+    rgba(248, 246, 241, 0.80) 100%
+  );
+  border-color: rgba(22, 26, 34, 0.09);
+  -webkit-backdrop-filter: blur(40px) saturate(190%);
+  backdrop-filter: blur(40px) saturate(190%);
   box-shadow:
-    0 36px 80px -28px rgba(20, 24, 34, 0.42),
-    0 12px 26px -16px rgba(20, 24, 34, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 34px 72px -26px rgba(20, 24, 34, 0.34),
+    0 12px 26px -16px rgba(20, 24, 34, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.65);
+}
+
+/* 叠放态下提高磨砂底板不透明度，彻底杜绝下层卡片文字透印重影 */
+.deck .bp-surface[data-material="liquid"] {
+  --bp-card: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(
+    155deg,
+    rgba(252, 253, 252, 0.98) 0%,
+    rgba(241, 246, 243, 0.96) 54%,
+    rgba(247, 245, 240, 0.98) 100%
+  );
 }
 
 /* ---- panel header ---------------------------------------------- */
@@ -396,7 +413,14 @@
   border-radius: 2px;
   display: block;
   margin: 0 1px;
+  background: rgba(0, 0, 0, 0.055);
 }
+
+.bp-heatmap__legend i[data-level="1"] { background: #cbd9c7; }
+.bp-heatmap__legend i[data-level="2"] { background: #a6c0a2; }
+.bp-heatmap__legend i[data-level="3"] { background: #7ba077; }
+.bp-heatmap__legend i[data-level="4"] { background: #4e7a52; }
+.bp-heatmap__legend i[data-level="5"] { background: #2a4a31; }
 
 /* ---- hourly card ------------------------------------------------- */
 .bp-bars {
@@ -1495,17 +1519,26 @@
   color: #fff;
 }
 
-/* 热力图：琥珀色阶 + 更大圆角 */
+/* 热力图：琥珀色阶 + 更大圆角（含图例同步） */
 .bp-surface[data-material="nothing"] .bp-heatmap__grid { gap: 4px; }
-.bp-surface[data-material="nothing"] .bp-heatmap__cell {
-  border-radius: 4px;
+.bp-surface[data-material="nothing"] .bp-heatmap__cell,
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i {
+  border-radius: 3px;
   background: #ececec;
 }
-.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="1"] { background: #efe6d2; }
-.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="2"] { background: #e3d0a4; }
-.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="3"] { background: #d6b877; }
-.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="4"] { background: #c9a24a; }
-.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="5"] { background: #a8842f; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell {
+  border-radius: 4px;
+}
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="1"],
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="1"] { background: #efe6d2; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="2"],
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="2"] { background: #e3d0a4; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="3"],
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="3"] { background: #d6b877; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="4"],
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="4"] { background: #c9a24a; }
+.bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="5"],
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="5"] { background: #a8842f; }
 
 .bp-surface[data-material="nothing"] .bp-section__title {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
@@ -1666,5 +1699,185 @@
   .anatomy__stage .bp-tabs .bp-tab {
     min-width: 38px;
     min-height: 32px;
+  }
+}
+
+/* ================================================================
+   01 看板交互动效：双向层叠过渡、量条舒展、曲线描边与手风琴收放
+   ================================================================ */
+.anatomy__panel-layer {
+  width: 440px;
+  transform-origin: top left;
+  will-change: transform, opacity;
+}
+
+.anatomy__panel-layer.is-entering-next {
+  animation: bp-enter-next 360ms var(--ease-morph) both;
+}
+
+.anatomy__panel-layer.is-entering-prev {
+  animation: bp-enter-prev 360ms var(--ease-morph) both;
+}
+
+.anatomy__panel-layer.is-leaving-next {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  animation: bp-leave-next 250ms var(--ease) forwards;
+}
+
+.anatomy__panel-layer.is-leaving-prev {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  animation: bp-leave-prev 250ms var(--ease) forwards;
+}
+
+@keyframes bp-enter-next {
+  from {
+    opacity: 0;
+    transform: var(--panel-scale, scale(1)) translate3d(16px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: var(--panel-scale, scale(1)) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes bp-enter-prev {
+  from {
+    opacity: 0;
+    transform: var(--panel-scale, scale(1)) translate3d(-16px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: var(--panel-scale, scale(1)) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes bp-leave-next {
+  from {
+    opacity: 1;
+    transform: var(--panel-scale, scale(1)) translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: var(--panel-scale, scale(1)) translate3d(-14px, 0, 0);
+  }
+}
+
+@keyframes bp-leave-prev {
+  from {
+    opacity: 1;
+    transform: var(--panel-scale, scale(1)) translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: var(--panel-scale, scale(1)) translate3d(14px, 0, 0);
+  }
+}
+
+/* 01 章内部微观动效：模型条、配额量条、折线描边与热力格波纹 */
+.anatomy__stage .bp-model__bar i,
+.anatomy__stage .bp-meter__fill {
+  transform-origin: left center;
+  animation: bp-bar-sweep 640ms var(--ease-silk) both;
+  animation-delay: var(--d, 40ms);
+}
+
+@keyframes bp-bar-sweep {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.anatomy__stage .bp-heatmap__cell[data-level] {
+  animation: bp-cell-wave 420ms var(--ease-silk) both;
+  animation-delay: var(--cd, 0ms);
+}
+
+@keyframes bp-cell-wave {
+  from {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.anatomy__stage .bp-agent__line polyline {
+  stroke-dasharray: 520;
+  stroke-dashoffset: 520;
+  animation: bp-line-draw 720ms var(--ease-silk) forwards;
+  animation-delay: var(--d, 60ms);
+}
+
+.anatomy__stage .bp-agent__line polygon {
+  opacity: 0;
+  animation: bp-area-fade 640ms var(--ease-silk) forwards;
+  animation-delay: calc(var(--d, 60ms) + 120ms);
+}
+
+@keyframes bp-line-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes bp-area-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+/* 01 章内可点手风琴（Agent 明细 & 多账号订阅）与刷新旋转 */
+.anatomy__stage .bp-agent__detail,
+.anatomy__stage .bp-accounts {
+  transition: grid-template-rows 280ms var(--ease-morph);
+}
+
+.anatomy__stage .bp-agent__detail > div,
+.anatomy__stage .bp-accounts > div {
+  opacity: 0;
+  transition: opacity 220ms var(--ease);
+}
+
+.anatomy__stage .bp-agent.is-open .bp-agent__detail > div,
+.anatomy__stage .bp-prov.is-open .bp-accounts > div {
+  opacity: 1;
+}
+
+.anatomy__stage .bp-agent__head,
+.anatomy__stage .bp-prov--multi .bp-prov__head,
+.anatomy__stage .bp-icon {
+  cursor: pointer;
+}
+
+.anatomy__stage .bp-agent__head:hover .bp-agent__name,
+.anatomy__stage .bp-prov--multi .bp-prov__head:hover .bp-prov__name {
+  color: #065f46;
+}
+
+.anatomy__stage .bp-icon:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.82);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anatomy__stage .bp-model__bar i,
+  .anatomy__stage .bp-meter__fill,
+  .anatomy__stage .bp-heatmap__cell[data-level],
+  .anatomy__stage .bp-agent__line polyline,
+  .anatomy__stage .bp-agent__line polygon {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
   }
 }

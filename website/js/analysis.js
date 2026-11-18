@@ -587,6 +587,8 @@
   }
 
   /* ---------- state ------------------------------------------------ */
+  var reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+
   var state = {
     range: "7d",
     chartType: "area", // 'line' | 'area'
@@ -596,20 +598,60 @@
     pan: 1, // 1 = anchor right (latest dates)
     hoverIdx: null,
     hoveredHour: null,
+    lockedHour: null,
     modelView: "canonical", // 'canonical' | 'raw'
     expandedModels: { "claude-sonnet-4-6": true },
     expandedAgents: { "claude-code": true },
-    exportNotice: null, // { filename, kind, preview, open }
+    exportNotice: null, // { filename, kind, desc, preview, open }
     probing: false,
     probeNote: "可用",
     dataCache: {},
   };
+
+  var prevKpiNums = null;
+  var kpiRaf = null;
+  var tlCtx = null;
 
   function getSnapshot() {
     if (!state.dataCache[state.range]) {
       state.dataCache[state.range] = buildRangeData(state.range);
     }
     return state.dataCache[state.range];
+  }
+
+  /* ---------- segmented glider helper ------------------------------ */
+  function syncSegGlider(segEl, instant) {
+    if (!segEl) return;
+    var glider = segEl.querySelector(".wb-seg__glider");
+    var isNew = false;
+    if (!glider) {
+      glider = document.createElement("span");
+      glider.className = "wb-seg__glider";
+      glider.setAttribute("aria-hidden", "true");
+      segEl.insertBefore(glider, segEl.firstChild);
+      segEl.classList.add("has-glider");
+      isNew = true;
+    }
+    var activeBtn = segEl.querySelector(".wb-seg__btn.is-on");
+    if (!activeBtn || segEl.offsetParent === null) return;
+
+    var useInstant = Boolean(instant || isNew || reduceMq.matches);
+    if (useInstant) glider.classList.add("is-instant");
+    glider.style.width = activeBtn.offsetWidth + "px";
+    glider.style.height = activeBtn.offsetHeight + "px";
+    glider.style.transform =
+      "translate3d(" + activeBtn.offsetLeft + "px, " + activeBtn.offsetTop + "px, 0)";
+    glider.style.opacity = "1";
+    if (useInstant) {
+      void glider.offsetWidth;
+      glider.classList.remove("is-instant");
+    }
+  }
+
+  function syncAllSegGliders(instant) {
+    host.querySelectorAll(".wb-seg").forEach(function (segEl) {
+      syncSegGlider(segEl, instant);
+    });
   }
 
   /* ---------- formatters ------------------------------------------- */
@@ -725,7 +767,7 @@
     return { start: start, end: start + visCount - 1, count: visCount };
   }
 
-  /* ---------- render sections -------------------------------------- */
+  /* ---------- persistent workbench shell & sub-sections ------------ */
   function renderSidebar() {
     var items = [
       { id: "general", label: "通用", glyph: '<circle cx="7" cy="7" r="2.2"/><path d="M7 1.6v1.4M7 11v1.4M1.6 7H3M11 7h1.4M3.1 3.1l1 1M9.9 9.9l1 1M10.9 3.1l-1 1M4.1 9.9l-1 1"/>' },
@@ -752,7 +794,7 @@
     );
   }
 
-  function renderToolbar() {
+  function renderToolbarShell() {
     var rangesHtml = TIME_RANGES.map(function (r) {
       var on = state.range === r.key;
       return (
@@ -764,85 +806,335 @@
 
     var dlSvg = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 2v7.2M4.2 6.8 7 9.6l2.8-2.8M2.2 11.8h9.6"/></svg>';
 
-    var noticeHtml = "";
-    if (state.exportNotice) {
-      var n = state.exportNotice;
-      noticeHtml =
-        '<div class="wb-export-bar">' +
-        '<span class="wb-export-bar__msg">✓ 已生成 <code>' + esc(n.filename) + "</code>（" + esc(n.desc) + "）</span>" +
-        '<span class="wb-export-bar__acts">' +
-        '<button type="button" class="wb-link-btn" data-wb-exp-toggle>' + (n.open ? "收起内容 ▴" : "预览文件内容 ▾") + "</button>" +
-        '<button type="button" class="wb-link-btn is-muted" data-wb-exp-close>关闭</button>' +
-        "</span>" +
-        (n.open ? '<pre class="wb-export-pre">' + esc(n.preview) + "</pre>" : "") +
-        "</div>";
-    }
-
     return (
       '<div class="wb-toolbar">' +
-      '<div class="wb-seg" role="group" aria-label="统计时间范围">' + rangesHtml + "</div>" +
+      '<div class="wb-seg" id="wb-range-seg" role="group" aria-label="统计时间范围">' + rangesHtml + "</div>" +
       '<div class="wb-toolbar__right">' +
       '<button type="button" class="wb-btn" data-wb-export="csv">' + dlSvg + "<span>导出 CSV 账单</span></button>" +
       '<button type="button" class="wb-btn" data-wb-export="json">' + dlSvg + "<span>导出 JSON 明细</span></button>" +
       "</div>" +
       "</div>" +
-      noticeHtml
+      '<div class="wb-drawer wb-export-wrap" id="wb-export-wrap"><div class="wb-drawer__inner" id="wb-export-inner"></div></div>'
     );
   }
 
-  function renderKpis(snap) {
+  function updateToolbarRange(instant) {
+    var seg = document.getElementById("wb-range-seg");
+    if (!seg) return;
+    seg.querySelectorAll("[data-wb-range]").forEach(function (b) {
+      var on = b.getAttribute("data-wb-range") === state.range;
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+    syncSegGlider(seg, instant);
+  }
+
+  function updateExportSlot(rebuildContent) {
+    var wrap = document.getElementById("wb-export-wrap");
+    var inner = document.getElementById("wb-export-inner");
+    if (!wrap || !inner) return;
+    if (!state.exportNotice) {
+      wrap.classList.remove("is-open");
+      return;
+    }
+    var n = state.exportNotice;
+    if (rebuildContent || !inner.firstElementChild) {
+      inner.innerHTML =
+        '<div class="wb-export-bar">' +
+        '<span class="wb-export-bar__msg">✓ 已生成 <code id="wb-exp-fn">' + esc(n.filename) + '</code>（<span id="wb-exp-desc">' + esc(n.desc) + "</span>）</span>" +
+        '<span class="wb-export-bar__acts">' +
+        '<button type="button" class="wb-link-btn" data-wb-exp-toggle>' + (n.open ? "收起内容 ▴" : "预览文件内容 ▾") + "</button>" +
+        '<button type="button" class="wb-link-btn is-muted" data-wb-exp-close>关闭</button>' +
+        "</span>" +
+        '<div class="wb-drawer wb-export-drawer' + (n.open ? " is-open" : "") + '" id="wb-export-drawer">' +
+        '<div class="wb-drawer__inner"><pre class="wb-export-pre">' + esc(n.preview) + "</pre></div>" +
+        "</div>" +
+        "</div>";
+    } else {
+      var toggleBtn = inner.querySelector("[data-wb-exp-toggle]");
+      var drawer = document.getElementById("wb-export-drawer");
+      if (toggleBtn) toggleBtn.textContent = n.open ? "收起内容 ▴" : "预览文件内容 ▾";
+      if (drawer) drawer.classList.toggle("is-open", Boolean(n.open));
+    }
+    requestAnimationFrame(function () {
+      wrap.classList.add("is-open");
+    });
+  }
+
+  /* ---------- KPIs with rolling figures ---------------------------- */
+  function updateKpis(snap, animate) {
+    var slot = document.getElementById("wb-kpis-slot");
+    if (!slot) return;
     var k = snap.kpi;
     var unitLabel = state.range === "today" ? "时均" : state.range === "all" ? "月均" : "日均";
     var topAgentText = k.topAgent ? "主力 " + k.topAgent.name + " (" + Math.round(k.topAgent.share) + "%)" : "暂无活跃 Agent";
-    var tiles = [
-      {
-        title: "总 Token",
-        tag: "Σ",
-        color: "#4C9CFF",
-        val: fmtTokensFromM(k.totalTokensM),
-        sub: unitLabel + " " + fmtTokensFromM(k.avgPerBucketM) + " · 输入 " + fmtTokensFromM(k.inputM) + " / 输出 " + fmtTokensFromM(k.outputM),
-      },
-      {
-        title: "费用",
-        tag: "$",
-        color: "#10B981",
-        val: fmtUsd(k.cost),
-        sub: "折合均价 " + fmtUsd(k.avgUsdPerM) + " / 1M",
-      },
-      {
-        title: "缓存收益",
-        tag: "⚡",
-        color: "#F59E0B",
-        val: k.cacheHitRate + "%",
-        sub: '<b class="is-ok">已省 ' + fmtUsd(k.cacheSaved) + "</b> · 读取 " + fmtTokensFromM(k.cacheReadM),
-        rawSub: true,
-      },
-      {
-        title: "活跃 Agent",
-        tag: "◈",
-        color: "#A855F7",
-        val: k.activeCount + " 个",
-        sub: topAgentText,
-      },
-    ];
-    return (
-      '<div class="wb-kpis">' +
-      tiles
-        .map(function (t) {
-          return (
-            '<div class="wb-kpi">' +
-            '<div class="wb-kpi__head"><span>' + t.title + '</span><i class="wb-kpi__ico" style="color:' + t.color + '">' + t.tag + "</i></div>" +
-            '<div class="wb-kpi__val num">' + t.val + "</div>" +
-            '<div class="wb-kpi__sub">' + (t.rawSub ? t.sub : esc(t.sub)) + "</div>" +
-            "</div>"
-          );
+
+    if (!slot.dataset.mounted) {
+      var shells = [
+        ["总 Token", "TOKENS", false],
+        ["费用", "USD", false],
+        ["缓存收益", "已省", true],
+        ["活跃 Agent", "全域", false],
+      ];
+      slot.innerHTML =
+        '<div class="wb-kpis">' +
+        shells
+          .map(function (s, idx) {
+            return (
+              '<div class="wb-kpi" data-kpi-idx="' + idx + '">' +
+              '<div class="wb-kpi__head"><span>' + s[0] + '</span><span class="wb-tag' + (s[2] ? " is-ok" : " is-neutral") + '">' + s[1] + "</span></div>" +
+              '<div class="wb-kpi__val num"></div>' +
+              '<div class="wb-kpi__sub"></div>' +
+              "</div>"
+            );
+          })
+          .join("") +
+        "</div>";
+      slot.dataset.mounted = "1";
+    }
+
+    var vals = slot.querySelectorAll(".wb-kpi__val");
+    var subs = slot.querySelectorAll(".wb-kpi__sub");
+    if (subs[0]) subs[0].textContent = unitLabel + " " + fmtTokensFromM(k.avgPerBucketM) + " · 输入 " + fmtTokensFromM(k.inputM) + " / 输出 " + fmtTokensFromM(k.outputM);
+    if (subs[1]) subs[1].textContent = "折合均价 " + fmtUsd(k.avgUsdPerM) + " / 1M";
+    if (subs[2]) subs[2].innerHTML = '<b class="is-ok">已省 ' + fmtUsd(k.cacheSaved) + "</b> · 读取 " + fmtTokensFromM(k.cacheReadM);
+    if (subs[3]) subs[3].textContent = topAgentText;
+
+    var nextNums = {
+      tokensM: k.totalTokensM,
+      cost: k.cost,
+      hitRate: k.cacheHitRate,
+      activeCount: k.activeCount,
+    };
+
+    function writeVals(cur) {
+      if (vals[0]) vals[0].textContent = fmtTokensFromM(cur.tokensM);
+      if (vals[1]) vals[1].textContent = fmtUsd(cur.cost);
+      if (vals[2]) vals[2].textContent = Math.round(cur.hitRate) + "%";
+      if (vals[3]) vals[3].textContent = Math.round(cur.activeCount) + " 个";
+    }
+
+    if (kpiRaf) cancelAnimationFrame(kpiRaf);
+    if (!animate || !prevKpiNums || reduceMq.matches) {
+      writeVals(nextNums);
+      prevKpiNums = nextNums;
+      return;
+    }
+
+    var fromNums = Object.assign({}, prevKpiNums);
+    prevKpiNums = nextNums;
+    var t0 = performance.now();
+    var dur = 420;
+    function step(now) {
+      var p = Math.min(1, (now - t0) / dur);
+      var eased = 1 - Math.pow(1 - p, 3.2);
+      writeVals({
+        tokensM: fromNums.tokensM + (nextNums.tokensM - fromNums.tokensM) * eased,
+        cost: fromNums.cost + (nextNums.cost - fromNums.cost) * eased,
+        hitRate: fromNums.hitRate + (nextNums.hitRate - fromNums.hitRate) * eased,
+        activeCount: fromNums.activeCount + (nextNums.activeCount - fromNums.activeCount) * eased,
+      });
+      if (p < 1) {
+        kpiRaf = requestAnimationFrame(step);
+      } else {
+        kpiRaf = null;
+      }
+    }
+    kpiRaf = requestAnimationFrame(step);
+  }
+
+  /* ---------- persistent timeline card + 120fps hover -------------- */
+  function ensureTimelineCardMounted() {
+    var slot = document.getElementById("wb-timeline-slot");
+    if (!slot || slot.dataset.mounted) return;
+
+    var chartSeg = [
+      { k: "line", label: "折线" },
+      { k: "area", label: "面积" },
+    ]
+      .map(function (o) {
+        var on = state.chartType === o.k;
+        return '<button type="button" class="wb-seg__btn' + (on ? " is-on" : "") + '" data-wb-ctype="' + o.k + '" aria-pressed="' + on + '">' + o.label + "</button>";
+      })
+      .join("");
+
+    var modeSeg = [
+      { k: "agent", label: "Agent" },
+      { k: "model", label: "模型" },
+      { k: "type", label: "Token 构成" },
+      { k: "cost", label: "费用" },
+    ]
+      .map(function (o) {
+        var on = state.seriesMode === o.k;
+        return '<button type="button" class="wb-seg__btn' + (on ? " is-on" : "") + '" data-wb-smode="' + o.k + '" aria-pressed="' + on + '">' + o.label + "</button>";
+      })
+      .join("");
+
+    slot.innerHTML =
+      '<section class="wb-card">' +
+      '<div class="wb-card__head">' +
+      '<div class="wb-card__titlewrap">' +
+      '<h4 class="wb-card__title">时序趋势</h4>' +
+      '<p class="wb-card__sub" id="wb-tl-sub"></p>' +
+      "</div>" +
+      '<div class="wb-card__ctrls">' +
+      '<div class="wb-zoom-pill" id="wb-zoom-pill" role="group" aria-label="图表缩放"></div>' +
+      '<div class="wb-seg wb-seg--sm" id="wb-ctype-seg">' + chartSeg + "</div>" +
+      '<div class="wb-seg wb-seg--sm" id="wb-smode-seg">' + modeSeg + "</div>" +
+      "</div>" +
+      "</div>" +
+      '<div class="wb-legend" id="wb-legend"></div>' +
+      '<div class="wb-chart-box" id="wb-chart-box">' +
+      '<div class="wb-chart-row">' +
+      '<div class="wb-yaxis" id="wb-yaxis" aria-hidden="true"></div>' +
+      '<div class="wb-plotwrap">' +
+      '<div class="wb-plot" id="wb-plot">' +
+      '<svg class="wb-svg" id="wb-chart-svg" viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label="时序用量趋势图"></svg>' +
+      '<span class="wb-crosshair-v" id="wb-crosshair"></span>' +
+      '<div class="wb-pts-layer" id="wb-pts-layer"></div>' +
+      "</div>" +
+      '<div class="wb-xaxis"><div class="wb-xaxis__track" id="wb-xaxis-track"></div></div>' +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+      '<div class="wb-probe-strip" id="wb-probe-strip"></div>' +
+      "</section>";
+
+    slot.dataset.mounted = "1";
+
+    var plot = document.getElementById("wb-plot");
+    if (plot) {
+      plot.addEventListener("pointermove", function (e) {
+        if (dragInfo || !tlCtx) return;
+        var rect = plot.getBoundingClientRect();
+        if (!rect.width) return;
+        var rel = (e.clientX - rect.left) / rect.width;
+        var idx = null;
+        if (rel >= -0.05 && rel <= 1.05) {
+          var clamped = Math.max(0, Math.min(1, rel));
+          idx = Math.round(clamped * Math.max(0, tlCtx.nPts - 1));
+        }
+        if (idx !== state.hoverIdx) {
+          var wasNull = state.hoverIdx == null;
+          state.hoverIdx = idx;
+          syncTimelineHover(wasNull);
+        }
+      });
+
+      plot.addEventListener("pointerleave", function () {
+        if (dragInfo) return;
+        if (state.hoverIdx != null) {
+          state.hoverIdx = null;
+          syncTimelineHover(false);
+        }
+      });
+
+      plot.addEventListener("dblclick", function () {
+        var snap = getSnapshot();
+        if (snap.labels.length <= 4) return;
+        state.zoom = state.zoom > 1.05 ? 1 : 2.2;
+        state.hoverIdx = null;
+        updateTimelineChart(snap, true);
+      });
+
+      plot.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0 || state.zoom <= 1) return;
+        var rect = plot.getBoundingClientRect();
+        dragInfo = { startX: e.clientX, startPan: state.pan, width: rect.width };
+        window.addEventListener("pointermove", onGlobalPointerMove);
+        window.addEventListener("pointerup", onGlobalPointerUp);
+        window.addEventListener("pointercancel", onGlobalPointerUp);
+      });
+    }
+  }
+
+  function renderProbeStripHtml(ctx, hoverIdx) {
+    if (hoverIdx != null && hoverIdx >= 0 && hoverIdx < ctx.nPts) {
+      var hLbl = ctx.sliceLabels[hoverIdx];
+      var hTotal = ctx.combinedPerIdx[hoverIdx] || 0;
+      var parts = ctx.sliceSeries
+        .map(function (s) {
+          return { name: s.name, color: s.color, v: s.values[hoverIdx] || 0 };
         })
-        .join("") +
-      "</div>"
+        .sort(function (a, b) {
+          return b.v - a.v;
+        })
+        .slice(0, 4);
+      return (
+        '<span class="wb-probe-active"><strong>' + esc(hLbl) + "</strong> · " +
+        parts
+          .map(function (p) {
+            return '<span class="wb-probe-item"><i style="background:' + p.color + '"></i>' + esc(p.name) + " " + ctx.fmtVal(p.v) + "</span>";
+          })
+          .join("") +
+        (ctx.sliceSeries.length > 1 ? '<span class="wb-probe-sum">合计 ' + ctx.fmtVal(hTotal) + "</span>" : "") +
+        "</span>"
+      );
+    }
+    var totalAllPts = ctx.combinedPerIdx.reduce(function (a, b) { return a + b; }, 0);
+    var avgAllPts = ctx.combinedPerIdx.length ? totalAllPts / ctx.combinedPerIdx.length : 0;
+    var peakLbl = ctx.sliceLabels[ctx.peakLocalIdx] || "";
+    return (
+      '<span class="wb-probe-stat"><i style="background:#F59E0B"></i>峰值 <b>' + ctx.fmtVal(Math.max(0, ctx.peakSumVal)) + "</b> (" + esc(peakLbl) + ")</span>" +
+      '<span class="wb-probe-stat"><i style="background:#0B5CBB"></i>均值 <b>' + ctx.fmtVal(avgAllPts) + "</b></span>" +
+      (ctx.isCost ? '<span class="wb-probe-stat">区间累计 <b>' + fmtUsd(totalAllPts) + "</b></span>" : "") +
+      '<span class="wb-probe-hint">悬停读取节点 · 双击或 +/- 缩放</span>'
     );
   }
 
-  function renderTimeline(snap) {
+  function syncTimelineHover(snapPosition) {
+    if (!tlCtx) return;
+    var ch = document.getElementById("wb-crosshair");
+    var ptsLayer = document.getElementById("wb-pts-layer");
+    var probeStrip = document.getElementById("wb-probe-strip");
+    var idx = state.hoverIdx;
+    var active = idx != null && idx >= 0 && idx < tlCtx.nPts;
+
+    if (ch) {
+      if (active) {
+        var hxPct = ((tlCtx.xAt(idx) / tlCtx.W) * 100).toFixed(2) + "%";
+        if (snapPosition || reduceMq.matches) {
+          ch.classList.add("is-snap");
+          ch.style.left = hxPct;
+          void ch.offsetWidth;
+          ch.classList.remove("is-snap");
+        } else {
+          ch.style.left = hxPct;
+        }
+        ch.classList.add("is-on");
+      } else {
+        ch.classList.remove("is-on");
+      }
+    }
+
+    if (ptsLayer) {
+      if (tlCtx.nPts <= 14) {
+        ptsLayer.querySelectorAll(".wb-pt").forEach(function (dot) {
+          var pIdx = parseInt(dot.getAttribute("data-pt-idx"), 10);
+          dot.classList.toggle("is-active", active && pIdx === idx);
+        });
+      } else {
+        var dynDots = ptsLayer.querySelectorAll(".wb-pt--hover");
+        dynDots.forEach(function (dot, sIdx) {
+          var sPts = tlCtx.ptsBySeries[sIdx];
+          if (active && sPts && sPts[idx]) {
+            dot.style.left = ((sPts[idx].x / tlCtx.W) * 100).toFixed(2) + "%";
+            dot.style.top = ((sPts[idx].y / tlCtx.H) * 100).toFixed(2) + "%";
+            dot.style.opacity = "1";
+          } else {
+            dot.style.opacity = "0";
+          }
+        });
+      }
+    }
+
+    if (probeStrip) {
+      probeStrip.innerHTML = renderProbeStripHtml(tlCtx, idx);
+    }
+  }
+
+  function updateTimelineChart(snap, animateCurve, instantSeg) {
+    ensureTimelineCardMounted();
     var metaRange = TIME_RANGES.find(function (r) { return r.key === state.range; }) || TIME_RANGES[1];
     var allSeries = snap.series[state.seriesMode] || [];
     var visibleSeries = allSeries.filter(function (s) {
@@ -862,7 +1154,7 @@
       };
     });
 
-    // 视图内峰值索引与总值（用于 X 轴 🔥 峰值胶囊 + 多系列合集排序）
+    // 视图内峰值索引与总值（用于 X 轴峰值标签与多系列合集排序）
     var combinedPerIdx = sliceLabels.map(function (_, i) {
       return sliceSeries.reduce(function (acc, s) {
         return acc + (s.values[i] || 0);
@@ -930,10 +1222,12 @@
     var defsHtml = "<defs>";
     var pathsHtml = "";
     var dotsHtml = "";
+    var ptsBySeries = [];
     sliceSeries.forEach(function (s, sIdx) {
       var pts = s.values.map(function (v, i) {
         return { x: xAt(i), y: yAt(v) };
       });
+      ptsBySeries.push(pts);
       var geo = catmullRom(pts, baseY);
       var gradId = "wb-grad-" + state.range + "-" + state.seriesMode + "-" + sIdx;
       defsHtml +=
@@ -951,30 +1245,17 @@
         pts.forEach(function (pt, i) {
           var active = state.hoverIdx === i;
           dotsHtml +=
-            '<i class="wb-pt' + (active ? " is-active" : "") + '" style="left:' + ((pt.x / W) * 100).toFixed(2) + "%;top:" + ((pt.y / H) * 100).toFixed(2) + "%;--pt:" + s.color + '"></i>';
+            '<i class="wb-pt' + (active ? " is-active" : "") + '" data-pt-idx="' + i + '" style="left:' + ((pt.x / W) * 100).toFixed(2) + "%;top:" + ((pt.y / H) * 100).toFixed(2) + "%;--pt:" + s.color + '"></i>';
         });
-      } else if (state.hoverIdx != null && pts[state.hoverIdx]) {
-        var hpt = pts[state.hoverIdx];
+      } else {
+        var hpt = state.hoverIdx != null ? pts[state.hoverIdx] : null;
         dotsHtml +=
-          '<i class="wb-pt is-active" style="left:' + ((hpt.x / W) * 100).toFixed(2) + "%;top:" + ((hpt.y / H) * 100).toFixed(2) + "%;--pt:" + s.color + '"></i>';
+          '<i class="wb-pt is-active wb-pt--hover" style="left:' + (hpt ? ((hpt.x / W) * 100).toFixed(2) : 0) + "%;top:" + (hpt ? ((hpt.y / H) * 100).toFixed(2) : 50) + "%;opacity:" + (hpt ? 1 : 0) + ";--pt:" + s.color + '"></i>';
       }
     });
     defsHtml += "</defs>";
 
-    var hoverHtml = "";
-    if (state.hoverIdx != null && state.hoverIdx >= 0 && state.hoverIdx < nPts) {
-      var hxPct = ((xAt(state.hoverIdx) / W) * 100).toFixed(2);
-      hoverHtml = '<span class="wb-crosshair-v" style="left:' + hxPct + '%"></span>';
-    }
-
-    var svgHtml =
-      '<svg class="wb-svg" id="wb-chart-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="时序用量趋势图">' +
-      defsHtml +
-      gridHtml +
-      pathsHtml +
-      "</svg>";
-
-    // X 轴稀疏刻度 + 🔥 峰值胶囊 (S2)；首尾坐标向内贴齐避免窄屏截断
+    // X 轴稀疏刻度 + 峰值标签；首尾坐标向内贴齐避免窄屏截断
     var step = nPts <= 7 ? 1 : nPts <= 16 ? 2 : 5;
     var xAxisHtml = "";
     sliceLabels.forEach(function (lbl, i) {
@@ -987,67 +1268,12 @@
       if (isPeak) {
         xAxisHtml +=
           '<span class="wb-xtick is-peak" style="left:' + pctLeft.toFixed(1) + "%;transform:translateX(" + tx + ");background:" + (peakDomSeries ? peakDomSeries.color : "#0B5CBB") + '">' +
-          "🔥 " + esc(lbl) +
+          "峰值 " + esc(lbl) +
           "</span>";
       } else {
         xAxisHtml += '<span class="wb-xtick" style="left:' + pctLeft.toFixed(1) + "%;transform:translateX(" + tx + ')">' + esc(lbl) + "</span>";
       }
     });
-
-    // 底部探针 / 汇总栏
-    var probeHtml = "";
-    if (state.hoverIdx != null && state.hoverIdx >= 0 && state.hoverIdx < nPts) {
-      var hLbl = sliceLabels[state.hoverIdx];
-      var hTotal = combinedPerIdx[state.hoverIdx] || 0;
-      var parts = sliceSeries
-        .map(function (s) {
-          return { name: s.name, color: s.color, v: s.values[state.hoverIdx] || 0 };
-        })
-        .sort(function (a, b) {
-          return b.v - a.v;
-        })
-        .slice(0, 4);
-      probeHtml =
-        '<span class="wb-probe-active">📍 <strong>' + esc(hLbl) + "</strong> · " +
-        parts
-          .map(function (p) {
-            return '<span class="wb-probe-item"><i style="background:' + p.color + '"></i>' + esc(p.name) + " " + fmtVal(p.v) + "</span>";
-          })
-          .join("") +
-        (sliceSeries.length > 1 ? '<span class="wb-probe-sum">合计 ' + fmtVal(hTotal) + "</span>" : "") +
-        "</span>";
-    } else {
-      var totalAllPts = combinedPerIdx.reduce(function (a, b) { return a + b; }, 0);
-      var avgAllPts = combinedPerIdx.length ? totalAllPts / combinedPerIdx.length : 0;
-      var peakLbl = sliceLabels[peakLocalIdx] || "";
-      probeHtml =
-        '<span class="wb-probe-stat"><i style="background:#F59E0B"></i>峰值 <b>' + fmtVal(Math.max(0, peakSumVal)) + "</b> (" + esc(peakLbl) + ")</span>" +
-        '<span class="wb-probe-stat"><i style="background:#0B5CBB"></i>均值 <b>' + fmtVal(avgAllPts) + "</b></span>" +
-        (isCost ? '<span class="wb-probe-stat">区间累计 <b>' + fmtUsd(totalAllPts) + "</b></span>" : "") +
-        '<span class="wb-probe-hint">悬停读取节点 · 双击或 +/- 缩放</span>';
-    }
-
-    var chartSeg = [
-      { k: "line", label: "折线" },
-      { k: "area", label: "面积" },
-    ]
-      .map(function (o) {
-        var on = state.chartType === o.k;
-        return '<button type="button" class="wb-seg__btn' + (on ? " is-on" : "") + '" data-wb-ctype="' + o.k + '" aria-pressed="' + on + '">' + o.label + "</button>";
-      })
-      .join("");
-
-    var modeSeg = [
-      { k: "agent", label: "Agent" },
-      { k: "model", label: "模型" },
-      { k: "type", label: "Token 构成" },
-      { k: "cost", label: "费用" },
-    ]
-      .map(function (o) {
-        var on = state.seriesMode === o.k;
-        return '<button type="button" class="wb-seg__btn' + (on ? " is-on" : "") + '" data-wb-smode="' + o.k + '" aria-pressed="' + on + '">' + o.label + "</button>";
-      })
-      .join("");
 
     var legendHtml = allSeries
       .map(function (s) {
@@ -1069,42 +1295,86 @@
       })
       .join("");
 
-    return (
-      '<section class="wb-card">' +
-      '<div class="wb-card__head">' +
-      '<div class="wb-card__titlewrap">' +
-      '<h4 class="wb-card__title">时序趋势</h4>' +
-      '<p class="wb-card__sub">' + esc(metaRange.spanText) + "</p>" +
-      "</div>" +
-      '<div class="wb-card__ctrls">' +
-      '<div class="wb-zoom-pill" role="group" aria-label="图表缩放">' +
-      '<button type="button" class="wb-zoom-btn" data-wb-zoom="-" ' + (state.zoom <= 1 ? "disabled" : "") + ' aria-label="缩小">−</button>' +
-      '<span class="wb-zoom-val num">' + state.zoom.toFixed(1) + "x</span>" +
-      '<button type="button" class="wb-zoom-btn" data-wb-zoom="+" ' + (state.zoom >= 4 || totalPts <= 4 ? "disabled" : "") + ' aria-label="放大">+</button>' +
-      (state.zoom > 1 ? '<button type="button" class="wb-zoom-reset" data-wb-zoom="reset">↺ 全景</button>' : "") +
-      "</div>" +
-      '<div class="wb-seg wb-seg--sm">' + chartSeg + "</div>" +
-      '<div class="wb-seg wb-seg--sm">' + modeSeg + "</div>" +
-      "</div>" +
-      "</div>" +
-      '<div class="wb-legend">' + legendHtml + "</div>" +
-      '<div class="wb-chart-box' + (state.zoom > 1 ? " can-pan" : "") + '" id="wb-chart-box">' +
-      '<div class="wb-chart-row">' +
-      '<div class="wb-yaxis" aria-hidden="true">' + yAxisHtml + "</div>" +
-      '<div class="wb-plotwrap">' +
-      '<div class="wb-plot" id="wb-plot">' + svgHtml + hoverHtml + dotsHtml + "</div>" +
-      '<div class="wb-xaxis"><div class="wb-xaxis__track">' + xAxisHtml + "</div></div>" +
-      "</div>" +
-      "</div>" +
-      "</div>" +
-      '<div class="wb-probe-strip">' + probeHtml + "</div>" +
-      "</section>"
-    );
+    tlCtx = {
+      nPts: nPts,
+      W: W,
+      H: H,
+      xAt: xAt,
+      sliceLabels: sliceLabels,
+      sliceSeries: sliceSeries,
+      combinedPerIdx: combinedPerIdx,
+      peakLocalIdx: peakLocalIdx,
+      peakSumVal: peakSumVal,
+      fmtVal: fmtVal,
+      isCost: isCost,
+      ptsBySeries: ptsBySeries,
+    };
+
+    var subEl = document.getElementById("wb-tl-sub");
+    if (subEl) subEl.textContent = metaRange.spanText;
+
+    var zoomPill = document.getElementById("wb-zoom-pill");
+    if (zoomPill) {
+      zoomPill.innerHTML =
+        '<button type="button" class="wb-zoom-btn" data-wb-zoom="-" ' + (state.zoom <= 1 ? "disabled" : "") + ' aria-label="缩小">−</button>' +
+        '<span class="wb-zoom-val num">' + state.zoom.toFixed(1) + "x</span>" +
+        '<button type="button" class="wb-zoom-btn" data-wb-zoom="+" ' + (state.zoom >= 4 || totalPts <= 4 ? "disabled" : "") + ' aria-label="放大">+</button>' +
+        (state.zoom > 1 ? '<button type="button" class="wb-zoom-reset" data-wb-zoom="reset">↺ 全景</button>' : "");
+    }
+
+    var ctypeSeg = document.getElementById("wb-ctype-seg");
+    if (ctypeSeg) {
+      ctypeSeg.querySelectorAll("[data-wb-ctype]").forEach(function (b) {
+        var on = b.getAttribute("data-wb-ctype") === state.chartType;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-pressed", String(on));
+      });
+      syncSegGlider(ctypeSeg, instantSeg);
+    }
+
+    var smodeSeg = document.getElementById("wb-smode-seg");
+    if (smodeSeg) {
+      smodeSeg.querySelectorAll("[data-wb-smode]").forEach(function (b) {
+        var on = b.getAttribute("data-wb-smode") === state.seriesMode;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-pressed", String(on));
+      });
+      syncSegGlider(smodeSeg, instantSeg);
+    }
+
+    var legendEl = document.getElementById("wb-legend");
+    if (legendEl) legendEl.innerHTML = legendHtml;
+
+    var chartBox = document.getElementById("wb-chart-box");
+    if (chartBox) chartBox.classList.toggle("can-pan", state.zoom > 1);
+
+    var yAxisEl = document.getElementById("wb-yaxis");
+    if (yAxisEl) yAxisEl.innerHTML = yAxisHtml;
+
+    var svgEl = document.getElementById("wb-chart-svg");
+    if (svgEl) {
+      svgEl.innerHTML = defsHtml + gridHtml + pathsHtml;
+      if (animateCurve && !reduceMq.matches) {
+        svgEl.classList.remove("is-animating");
+        void svgEl.getBoundingClientRect();
+        svgEl.classList.add("is-animating");
+      }
+    }
+
+    var ptsLayer = document.getElementById("wb-pts-layer");
+    if (ptsLayer) ptsLayer.innerHTML = dotsHtml;
+
+    var xAxisEl = document.getElementById("wb-xaxis-track");
+    if (xAxisEl) xAxisEl.innerHTML = xAxisHtml;
+
+    syncTimelineHover(true);
   }
 
-  function renderModels(snap) {
-    var models = snap.models;
-    var totalSources = snap.rawChannels.length;
+  /* ---------- persistent models card with smooth drawers ----------- */
+  function ensureModelsCardMounted() {
+    var slot = document.getElementById("wb-models-slot");
+    if (!slot || slot.dataset.mounted) return;
+
     var seg = [
       { k: "canonical", label: "合并视图" },
       { k: "raw", label: "原始渠道" },
@@ -1115,6 +1385,39 @@
       })
       .join("");
 
+    slot.innerHTML =
+      '<section class="wb-card">' +
+      '<div class="wb-card__head">' +
+      '<div class="wb-card__titlewrap">' +
+      '<div class="wb-card__titleline"><h4 class="wb-card__title">模型分布</h4><span class="wb-chip" id="wb-models-chip"></span></div>' +
+      '<p class="wb-card__sub">按规范型号跨 Agent 归并算力消费，支持一键透视底层原始渠道</p>' +
+      "</div>" +
+      '<div class="wb-card__ctrls"><div class="wb-seg wb-seg--sm" id="wb-mview-seg">' + seg + "</div></div>" +
+      "</div>" +
+      '<div class="wb-list" id="wb-models-list"></div>' +
+      "</section>";
+
+    slot.dataset.mounted = "1";
+  }
+
+  function updateModelsCard(snap, animateSwitch, instantSeg) {
+    ensureModelsCardMounted();
+    var models = snap.models;
+    var totalSources = snap.rawChannels.length;
+
+    var chip = document.getElementById("wb-models-chip");
+    if (chip) chip.textContent = models.length + " 款主模型 · " + totalSources + " 个渠道";
+
+    var mviewSeg = document.getElementById("wb-mview-seg");
+    if (mviewSeg) {
+      mviewSeg.querySelectorAll("[data-wb-mview]").forEach(function (b) {
+        var on = b.getAttribute("data-wb-mview") === state.modelView;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-pressed", String(on));
+      });
+      syncSegGlider(mviewSeg, instantSeg);
+    }
+
     var bodyHtml = "";
     if (state.modelView === "canonical") {
       bodyHtml = models
@@ -1122,10 +1425,9 @@
           var multi = m.sources.length > 1;
           var exp = multi && Boolean(state.expandedModels[m.key]);
           var barW = Math.max(2, Math.min(100, m.share)).toFixed(1);
-          var treeHtml = "";
-          if (exp) {
-            treeHtml =
-              '<div class="wb-sources">' +
+          var treeHtml = multi
+            ? '<div class="wb-drawer' + (exp ? " is-open" : "") + '" data-wb-model-drawer="' + esc(m.key) + '">' +
+              '<div class="wb-drawer__inner"><div class="wb-sources">' +
               m.sources
                 .map(function (src) {
                   return (
@@ -1140,11 +1442,12 @@
                   );
                 })
                 .join("") +
-              "</div>";
-          }
+              "</div></div></div>"
+            : "";
+
           return (
             '<div class="wb-group">' +
-            '<div class="wb-row">' +
+            '<div class="wb-row' + (multi ? " wb-row--expandable" : "") + '"' + (multi ? ' data-wb-rowmodel="' + esc(m.key) + '"' : "") + ">" +
             brandBadgeHtml({ size: 20, tile: m.tile, mark: m.mark, glyph: m.glyph, color: m.color, mono: m.name[0] }) +
             '<div class="wb-row__meta">' +
             '<div class="wb-row__titleline">' +
@@ -1188,22 +1491,27 @@
         .join("");
     }
 
-    return (
-      '<section class="wb-card">' +
-      '<div class="wb-card__head">' +
-      '<div class="wb-card__titlewrap">' +
-      '<div class="wb-card__titleline"><h4 class="wb-card__title">模型分布</h4><span class="wb-chip">' + models.length + " 款主模型 · " + totalSources + " 个渠道</span></div>" +
-      '<p class="wb-card__sub">按规范型号跨 Agent 归并算力消费，支持一键透视底层原始渠道</p>' +
-      "</div>" +
-      '<div class="wb-card__ctrls"><div class="wb-seg wb-seg--sm">' + seg + "</div></div>" +
-      "</div>" +
-      '<div class="wb-list">' + bodyHtml + "</div>" +
-      "</section>"
-    );
+    var listEl = document.getElementById("wb-models-list");
+    if (listEl) {
+      listEl.innerHTML = bodyHtml;
+      if (!reduceMq.matches) {
+        if (animateSwitch) {
+          listEl.classList.remove("is-switching");
+          void listEl.offsetWidth;
+          listEl.classList.add("is-switching");
+        }
+        listEl.classList.remove("is-bars-in");
+        void listEl.offsetWidth;
+        listEl.classList.add("is-bars-in");
+      }
+    }
   }
 
-  function renderAgents(snap) {
-    var folderLabel = state.range === "today" ? "📁 今日 Top 工程:" : "📁 Top 工程:";
+  /* ---------- agents card with smooth drawers ---------------------- */
+  function updateAgentsCard(snap) {
+    var slot = document.getElementById("wb-agents-slot");
+    if (!slot) return;
+    var folderLabel = state.range === "today" ? "关联工程（今日）" : "关联工程";
     var listHtml = snap.agents
       .map(function (a) {
         var exp = Boolean(state.expandedAgents[a.id]);
@@ -1212,34 +1520,33 @@
         var wOut = Math.max(2, (a.outputM / tot) * 100).toFixed(1);
         var wCache = Math.max(4, 100 - parseFloat(wIn) - parseFloat(wOut)).toFixed(1);
 
-        var detailHtml = "";
-        if (exp) {
-          var projTags = a.topProjects
-            .map(function (p) {
-              return '<span class="wb-flow-tag"><span class="wb-mono-name">' + esc(p.name) + '</span><span class="wb-flow-dim">(' + fmtTokensFromM(p.tokensM) + ")</span></span>";
-            })
-            .join("");
-          var modTags = a.topModels
-            .map(function (m) {
-              var meta = MODELS_META[m.key];
-              return (
-                '<span class="wb-flow-tag">' +
-                brandBadgeHtml({ size: 12, tile: m.color, mark: "#FFFFFF", glyph: meta ? meta.glyph : null, color: m.color, mono: m.name[0] }) +
-                "<span>" + esc(m.name) + '</span><span class="wb-flow-dim">(' + fmtTokensFromM(m.tokensM) + ")</span>" +
-                "</span>"
-              );
-            })
-            .join("");
-          detailHtml =
-            '<div class="wb-agent-detail">' +
-            '<div class="wb-detail-row"><span class="wb-detail-lbl">' + folderLabel + '</span><div class="wb-flow">' + projTags + "</div></div>" +
-            '<div class="wb-detail-row"><span class="wb-detail-lbl">⚡️ 主要消耗模型:</span><div class="wb-flow">' + modTags + "</div></div>" +
-            "</div>";
-        }
+        var projTags = a.topProjects
+          .map(function (p) {
+            return '<span class="wb-flow-tag"><span class="wb-mono-name">' + esc(p.name) + '</span><span class="wb-flow-dim">(' + fmtTokensFromM(p.tokensM) + ")</span></span>";
+          })
+          .join("");
+        var modTags = a.topModels
+          .map(function (m) {
+            var meta = MODELS_META[m.key];
+            return (
+              '<span class="wb-flow-tag">' +
+              brandBadgeHtml({ size: 12, tile: m.color, mark: "#FFFFFF", glyph: meta ? meta.glyph : null, color: m.color, mono: m.name[0] }) +
+              "<span>" + esc(m.name) + '</span><span class="wb-flow-dim">(' + fmtTokensFromM(m.tokensM) + ")</span>" +
+              "</span>"
+            );
+          })
+          .join("");
+
+        var detailHtml =
+          '<div class="wb-drawer' + (exp ? " is-open" : "") + '" data-wb-agent-drawer="' + esc(a.id) + '">' +
+          '<div class="wb-drawer__inner"><div class="wb-agent-detail">' +
+          '<div class="wb-detail-row"><span class="wb-detail-lbl">' + folderLabel + '</span><div class="wb-flow">' + projTags + "</div></div>" +
+          '<div class="wb-detail-row"><span class="wb-detail-lbl">主要模型</span><div class="wb-flow">' + modTags + "</div></div>" +
+          "</div></div></div>";
 
         return (
           '<div class="wb-group">' +
-          '<div class="wb-row">' +
+          '<div class="wb-row wb-row--expandable" data-wb-rowagent="' + esc(a.id) + '">' +
           brandBadgeHtml({ size: 22, tile: a.tile, mark: a.mark, glyph: a.glyph, color: a.color, mono: a.mono }) +
           '<div class="wb-row__meta">' +
           '<div class="wb-row__titleline"><span class="wb-row__name">' + esc(a.name) + '</span><span class="wb-tag' + (a.status === "活跃" ? " is-ok" : "") + '">' + a.status + "</span></div>" +
@@ -1263,7 +1570,7 @@
       })
       .join("");
 
-    return (
+    slot.innerHTML =
       '<section class="wb-card">' +
       '<div class="wb-card__head">' +
       '<div class="wb-card__titlewrap">' +
@@ -1276,96 +1583,152 @@
       '<span><i style="background:#10B981"></i>缓存读</span>' +
       "</div>" +
       "</div>" +
-      '<div class="wb-list">' + listHtml + "</div>" +
-      "</section>"
-    );
+      '<div class="wb-list' + (reduceMq.matches ? "" : " is-bars-in") + '">' + listHtml + "</div>" +
+      "</section>";
   }
 
-  function renderComposition(snap) {
+  /* ---------- composition & 24h density ---------------------------- */
+  function applyHourHighlight(activeH) {
+    var cellsHost = document.getElementById("wb-hour-cells");
+    var pr = document.getElementById("wb-hour-probe");
+    if (!cellsHost) return;
+    if (activeH == null) {
+      if (pr) {
+        pr.textContent = "悬停或点按时段块查看单小时吞吐";
+        pr.className = "wb-hours__probe";
+      }
+      cellsHost.querySelectorAll(".wb-hour.is-hot").forEach(function (el) {
+        el.classList.remove("is-hot");
+      });
+      return;
+    }
+    if (pr) {
+      pr.textContent = (activeH < 10 ? "0" : "") + activeH + ":00 — " + fmtTokensFromM(TODAY_HOUR_M[activeH]) + " tokens";
+      pr.className = "wb-hours__probe is-on";
+    }
+    cellsHost.querySelectorAll(".wb-hour").forEach(function (el) {
+      var eh = parseInt(el.getAttribute("data-wb-hour"), 10);
+      el.classList.toggle("is-hot", eh === activeH);
+    });
+  }
+
+  function updateCompositionCard(snap) {
+    var slot = document.getElementById("wb-comp-slot");
+    if (!slot) return;
     var k = snap.kpi;
     var quadrants = [
-      ["Prompt Input", "用户提示词与工程上下文", fmtTokensFromM(k.inputM), "输入基础", "#4C9CFF"],
-      ["Model Output", "大模型生成与代码产出", fmtTokensFromM(k.outputM), "高单价", "#A855F7"],
-      ["Prompt Cache Read", "命中率 " + k.cacheHitRate + "% · 已省 " + fmtUsd(k.cacheSaved), fmtTokensFromM(k.cacheReadM), "已节省", "#10B981"],
-      ["Cache Creation", "写入提示缓存的上下文", fmtTokensFromM(k.cacheCreateM), "写入", "#F59E0B"],
+      ["Prompt Input", "用户提示词与工程上下文", fmtTokensFromM(k.inputM), "标准输入", false],
+      ["Model Output", "模型代码与推理生成", fmtTokensFromM(k.outputM), "输出生成", false],
+      ["Prompt Cache Read", "命中率 " + k.cacheHitRate + "% · 已省 " + fmtUsd(k.cacheSaved), fmtTokensFromM(k.cacheReadM), "命中节省", true],
+      ["Cache Creation", "按 TTL 档位写入上下文缓存", fmtTokensFromM(k.cacheCreateM), "缓存建表", false],
     ];
 
-    var quadHtml = quadrants
-      .map(function (q) {
+    if (!slot.dataset.mounted) {
+      var peakH = Math.max.apply(null, TODAY_HOUR_M) || 1;
+      var cellsHtml = TODAY_HOUR_M.map(function (val, h) {
+        var lbl = (h < 10 ? "0" : "") + h + ":00";
+        var opacityPct = val > 0 ? (25 + 75 * (val / peakH)).toFixed(1) : 0;
+        var style = val > 0 ? "background:rgba(11,92,187," + (parseFloat(opacityPct) / 100).toFixed(3) + ");" : "";
         return (
-          '<div class="wb-comp-box">' +
-          '<div class="wb-comp-box__head"><span>' + q[0] + '</span><span class="wb-chip" style="color:' + q[4] + ";background:color-mix(in srgb," + q[4] + ' 13%,transparent)">' + q[3] + "</span></div>" +
-          '<div class="wb-comp-box__val num">' + q[2] + "</div>" +
-          '<div class="wb-comp-box__sub">' + esc(q[1]) + "</div>" +
-          "</div>"
+          '<button type="button" class="wb-hour' + (val === 0 ? " is-zero" : "") + '" style="' + style + '" data-wb-hour="' + h + '" aria-label="' + lbl + " 用量 " + fmtTokensFromM(val) + '"></button>'
         );
-      })
-      .join("");
+      }).join("");
 
-    var peakH = Math.max.apply(null, TODAY_HOUR_M) || 1;
-    var cellsHtml = TODAY_HOUR_M.map(function (val, h) {
-      var lbl = (h < 10 ? "0" : "") + h + ":00";
-      var opacityPct = val > 0 ? (25 + 75 * (val / peakH)).toFixed(1) : 0;
-      var style = val > 0 ? "background:rgba(11,92,187," + (parseFloat(opacityPct) / 100).toFixed(3) + ");" : "";
-      var isCur = state.hoveredHour === h;
-      return (
-        '<button type="button" class="wb-hour' + (val === 0 ? " is-zero" : "") + (isCur ? " is-hot" : "") + '" style="' + style + '" data-wb-hour="' + h + '" aria-label="' + lbl + " 用量 " + fmtTokensFromM(val) + '"></button>'
-      );
-    }).join("");
+      slot.innerHTML =
+        '<section class="wb-card">' +
+        '<div class="wb-card__head">' +
+        '<div class="wb-card__titlewrap">' +
+        '<div class="wb-card__titleline"><h4 class="wb-card__title">Token 构成与时段</h4><span class="wb-chip is-ok">Prompt Cache 专项分析</span></div>' +
+        '<p class="wb-card__sub">所选范围的输入、输出与缓存读写结构，以及今日 24 小时活跃分布</p>' +
+        "</div>" +
+        "</div>" +
+        '<div class="wb-comp-grid" id="wb-comp-grid"></div>' +
+        '<div class="wb-divider"></div>' +
+        '<div class="wb-hours">' +
+        '<div class="wb-hours__head"><span>今日 24 小时交互密度 (00:00 - 23:00)</span><span class="wb-hours__probe" id="wb-hour-probe">悬停或点按时段块查看单小时吞吐</span></div>' +
+        '<div class="wb-hour-cells" id="wb-hour-cells">' + cellsHtml + "</div>" +
+        '<div class="wb-hour-ticks"><span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>23:00</span></div>' +
+        "</div>" +
+        "</section>";
 
-    var hourReadout = state.hoveredHour != null
-      ? "📍 " + (state.hoveredHour < 10 ? "0" : "") + state.hoveredHour + ":00 : " + fmtTokensFromM(TODAY_HOUR_M[state.hoveredHour]) + " Tokens"
-      : "鼠标悬停查看单时段用量";
+      slot.dataset.mounted = "1";
 
-    return (
-      '<section class="wb-card">' +
-      '<div class="wb-card__head">' +
-      '<div class="wb-card__titlewrap">' +
-      '<div class="wb-card__titleline"><h4 class="wb-card__title">Token 构成与时段</h4><span class="wb-chip is-ok">Prompt Cache 专项分析</span></div>' +
-      '<p class="wb-card__sub">所选范围的输入、输出与缓存读写结构，以及今日 24 小时活跃分布</p>' +
-      "</div>" +
-      "</div>" +
-      '<div class="wb-comp-grid">' + quadHtml + "</div>" +
-      '<div class="wb-divider"></div>' +
-      '<div class="wb-hours">' +
-      '<div class="wb-hours__head"><span>今日 24 小时交互密度 (00:00 - 23:00)</span><span class="wb-hours__probe' + (state.hoveredHour != null ? " is-on" : "") + '" id="wb-hour-probe">' + esc(hourReadout) + "</span></div>" +
-      '<div class="wb-hour-cells" id="wb-hour-cells">' + cellsHtml + "</div>" +
-      '<div class="wb-hour-ticks"><span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>23:00</span></div>' +
-      "</div>" +
-      "</section>"
-    );
+      var cellsHost = document.getElementById("wb-hour-cells");
+      if (cellsHost) {
+        cellsHost.addEventListener("mouseover", function (e) {
+          var btn = e.target.closest("[data-wb-hour]");
+          if (!btn) return;
+          var h = parseInt(btn.getAttribute("data-wb-hour"), 10);
+          if (state.hoveredHour === h) return;
+          state.hoveredHour = h;
+          applyHourHighlight(h);
+        });
+        cellsHost.addEventListener("mouseleave", function () {
+          state.hoveredHour = null;
+          applyHourHighlight(state.lockedHour != null ? state.lockedHour : null);
+        });
+      }
+    }
+
+    var compGrid = document.getElementById("wb-comp-grid");
+    if (compGrid) {
+      compGrid.innerHTML = quadrants
+        .map(function (q) {
+          return (
+            '<div class="wb-comp-box">' +
+            '<div class="wb-comp-box__head"><span>' + q[0] + '</span><span class="wb-tag' + (q[4] ? " is-ok" : " is-neutral") + '">' + q[3] + "</span></div>" +
+            '<div class="wb-comp-box__val num">' + q[2] + "</div>" +
+            '<div class="wb-comp-box__sub">' + esc(q[1]) + "</div>" +
+            "</div>"
+          );
+        })
+        .join("");
+    }
+    applyHourHighlight(state.lockedHour != null ? state.lockedHour : state.hoveredHour);
   }
 
-  function renderProbeFooter() {
-    var rowsHtml = SESSION_PROBES.map(function (p) {
-      var cls = p.status === "ready" ? "is-ok" : "is-neutral";
-      return (
-        '<div class="wb-probe-row">' +
-        '<div class="wb-probe-row__meta"><span class="wb-probe-row__name">' + esc(p.name) + '</span><span class="wb-probe-row__path wb-mono">' + esc(p.path) + "</span></div>" +
-        '<span class="wb-tag ' + cls + '">' + esc(p.label) + "</span>" +
-        "</div>"
-      );
-    }).join("");
+  /* ---------- probe footer ----------------------------------------- */
+  function updateProbeFooter() {
+    var slot = document.getElementById("wb-probes-slot");
+    if (!slot) return;
+    if (!slot.dataset.mounted) {
+      var rowsHtml = SESSION_PROBES.map(function (p, idx) {
+        var cls = p.status === "ready" ? "is-ok" : "is-neutral";
+        return (
+          '<div class="wb-probe-row" style="--pd:' + (idx * 24) + 'ms">' +
+          '<div class="wb-probe-row__meta"><span class="wb-probe-row__name">' + esc(p.name) + '</span><span class="wb-probe-row__path wb-mono">' + esc(p.path) + "</span></div>" +
+          '<span class="wb-tag ' + cls + '">' + esc(p.label) + "</span>" +
+          "</div>"
+        );
+      }).join("");
 
-    return (
-      '<section class="wb-card">' +
-      '<div class="wb-card__head">' +
-      '<div class="wb-card__titlewrap">' +
-      '<div class="wb-card__titleline"><h4 class="wb-card__title">会话来源与采集探针</h4><span class="wb-tag is-ok">Rust Collector · ' + esc(state.probeNote) + "</span></div>" +
-      '<p class="wb-card__sub">扫描本机各 Agent 只读历史日志目录，支持卸载后保留历史账目</p>' +
-      "</div>" +
-      '<div class="wb-card__ctrls"><button type="button" class="wb-btn' + (state.probing ? " is-spinning" : "") + '" data-wb-reprobe>' +
-      '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>' +
-      "<span>" + (state.probing ? "检查中…" : "重新检查") + "</span>" +
-      "</button></div>" +
-      "</div>" +
-      '<div class="wb-probes-grid">' + rowsHtml + "</div>" +
-      '<div class="wb-privacy-note">' +
-      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3.2" y="7" width="9.6" height="7" rx="1.6"/><path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2"/></svg>' +
-      "<span>所有会话仅在本机分析，绝不上报远程服务器</span>" +
-      "</div>" +
-      "</section>"
-    );
+      slot.innerHTML =
+        '<section class="wb-card">' +
+        '<div class="wb-card__head">' +
+        '<div class="wb-card__titlewrap">' +
+        '<div class="wb-card__titleline"><h4 class="wb-card__title">会话来源与采集探针</h4><span class="wb-tag is-ok" id="wb-probe-badge">Rust Collector · ' + esc(state.probeNote) + "</span></div>" +
+        '<p class="wb-card__sub">扫描本机各 Agent 只读历史日志目录，支持卸载后保留历史账目</p>' +
+        "</div>" +
+        '<div class="wb-card__ctrls"><button type="button" class="wb-btn" id="wb-reprobe-btn" data-wb-reprobe>' +
+        '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>' +
+        '<span id="wb-reprobe-lbl">重新检查</span>' +
+        "</button></div>" +
+        "</div>" +
+        '<div class="wb-probes-grid" id="wb-probes-grid">' + rowsHtml + "</div>" +
+        '<div class="wb-privacy-note">' +
+        '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3.2" y="7" width="9.6" height="7" rx="1.6"/><path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2"/></svg>' +
+        "<span>所有会话仅在本机分析，绝不上报远程服务器</span>" +
+        "</div>" +
+        "</section>";
+      slot.dataset.mounted = "1";
+    }
+
+    var badge = document.getElementById("wb-probe-badge");
+    var btn = document.getElementById("wb-reprobe-btn");
+    var lbl = document.getElementById("wb-reprobe-lbl");
+    if (badge) badge.textContent = "Rust Collector · " + state.probeNote;
+    if (btn) btn.classList.toggle("is-spinning", state.probing);
+    if (lbl) lbl.textContent = state.probing ? "检查中…" : "重新检查";
   }
 
   /* ---------- export helpers --------------------------------------- */
@@ -1443,17 +1806,17 @@
         open: true,
       };
     }
-    render();
+    updateExportSlot(true);
   }
 
-  /* ---------- interaction wiring & render -------------------------- */
+  /* ---------- interaction wiring & persistent render --------------- */
   var dragInfo = null;
 
   function onGlobalPointerMove(e) {
     if (!dragInfo) return;
     var dx = (e.clientX - dragInfo.startX) / Math.max(120, dragInfo.width);
     state.pan = Math.max(0, Math.min(1, dragInfo.startPan - dx));
-    updateTimelineSlot();
+    updateTimelineChart(getSnapshot(), false);
   }
 
   function onGlobalPointerUp() {
@@ -1464,117 +1827,42 @@
     window.removeEventListener("pointercancel", onGlobalPointerUp);
   }
 
-  function bindTimelineControls(container, snap) {
-    container.querySelectorAll("[data-wb-ctype]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        state.chartType = b.getAttribute("data-wb-ctype");
-        updateTimelineSlot();
-      });
-    });
-
-    container.querySelectorAll("[data-wb-smode]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        state.seriesMode = b.getAttribute("data-wb-smode");
-        state.hiddenSeries = {};
-        state.hoverIdx = null;
-        updateTimelineSlot();
-      });
-    });
-
-    container.querySelectorAll("[data-wb-zoom]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var act = b.getAttribute("data-wb-zoom");
-        if (act === "+") state.zoom = Math.min(4, +(state.zoom + 0.6).toFixed(1));
-        else if (act === "-") state.zoom = Math.max(1, +(state.zoom - 0.6).toFixed(1));
-        else { state.zoom = 1; state.pan = 1; }
-        state.hoverIdx = null;
-        updateTimelineSlot();
-      });
-    });
-
-    container.querySelectorAll("[data-wb-series]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var key = b.getAttribute("data-wb-series");
-        var list = snap.series[state.seriesMode] || [];
-        if (state.hiddenSeries[key]) {
-          delete state.hiddenSeries[key];
-        } else {
-          var visibleLeft = list.filter(function (s) {
-            return s.key !== key && !state.hiddenSeries[s.key];
-          }).length;
-          if (visibleLeft === 0) state.hiddenSeries = {};
-          else state.hiddenSeries[key] = true;
-        }
-        updateTimelineSlot();
-      });
-    });
-
-    var box = container.querySelector("#wb-plot");
-    if (!box) return;
-
-    var vp = getViewport(snap.labels.length);
-    var nPts = vp.count;
-
-    function idxFromClientX(clientX) {
-      var rect = box.getBoundingClientRect();
-      if (!rect.width) return null;
-      var rel = (clientX - rect.left) / rect.width;
-      if (rel < -0.05 || rel > 1.05) return null;
-      var clamped = Math.max(0, Math.min(1, rel));
-      return Math.round(clamped * Math.max(0, nPts - 1));
+  function toggleModelExpand(key) {
+    if (!key) return;
+    var nextOpen = !state.expandedModels[key];
+    if (nextOpen) state.expandedModels[key] = true;
+    else delete state.expandedModels[key];
+    var btn = host.querySelector('[data-wb-expmodel="' + key + '"]');
+    var drawer = host.querySelector('[data-wb-model-drawer="' + key + '"]');
+    if (btn) {
+      btn.classList.toggle("is-open", nextOpen);
+      btn.setAttribute("aria-expanded", String(nextOpen));
     }
-
-    box.addEventListener("pointermove", function (e) {
-      if (dragInfo) return;
-      var idx = idxFromClientX(e.clientX);
-      if (idx !== state.hoverIdx) {
-        state.hoverIdx = idx;
-        updateTimelineSlot();
-      }
-    });
-
-    box.addEventListener("pointerleave", function () {
-      if (dragInfo) return;
-      if (state.hoverIdx != null) {
-        state.hoverIdx = null;
-        updateTimelineSlot();
-      }
-    });
-
-    box.addEventListener("dblclick", function () {
-      if (snap.labels.length <= 4) return;
-      state.zoom = state.zoom > 1.05 ? 1 : 2.2;
-      state.hoverIdx = null;
-      updateTimelineSlot();
-    });
-
-    if (state.zoom > 1) {
-      box.addEventListener("pointerdown", function (e) {
-        if (e.button !== 0) return;
-        var rect = box.getBoundingClientRect();
-        dragInfo = { startX: e.clientX, startPan: state.pan, width: rect.width };
-        window.addEventListener("pointermove", onGlobalPointerMove);
-        window.addEventListener("pointerup", onGlobalPointerUp);
-        window.addEventListener("pointercancel", onGlobalPointerUp);
-      });
+    if (drawer) {
+      drawer.classList.toggle("is-open", nextOpen);
     }
   }
 
-  function updateTimelineSlot() {
-    var slot = document.getElementById("wb-timeline-slot");
-    if (!slot) {
-      render();
-      return;
+  function toggleAgentExpand(id) {
+    if (!id) return;
+    var nextOpen = !state.expandedAgents[id];
+    if (nextOpen) state.expandedAgents[id] = true;
+    else delete state.expandedAgents[id];
+    var btn = host.querySelector('[data-wb-expagent="' + id + '"]');
+    var drawer = host.querySelector('[data-wb-agent-drawer="' + id + '"]');
+    if (btn) {
+      btn.classList.toggle("is-open", nextOpen);
+      btn.setAttribute("aria-expanded", String(nextOpen));
     }
-    var snap = getSnapshot();
-    slot.innerHTML = renderTimeline(snap);
-    bindTimelineControls(slot, snap);
+    if (drawer) {
+      drawer.classList.toggle("is-open", nextOpen);
+    }
   }
 
-  function render() {
-    var snap = getSnapshot();
+  function ensureWorkbenchMounted() {
+    if (host.dataset.mounted) return;
 
-    var html =
+    host.innerHTML =
       '<div class="wb-win">' +
       '<div class="wb-titlebar">' +
       '<div class="wb-lights" aria-hidden="true"><i></i><i></i><i></i></div>' +
@@ -1588,143 +1876,193 @@
       '<div><p class="wb-crumb">设置 › 模型用量</p><h3 class="wb-pane__title">模型用量</h3></div>' +
       '<span class="wb-live-pill"><i></i>本机样例数据 · USD 计价</span>' +
       "</div>" +
-      renderToolbar() +
-      renderKpis(snap) +
-      '<div id="wb-timeline-slot">' + renderTimeline(snap) + "</div>" +
-      renderModels(snap) +
-      renderAgents(snap) +
-      renderComposition(snap) +
-      renderProbeFooter() +
+      renderToolbarShell() +
+      '<div id="wb-kpis-slot"></div>' +
+      '<div id="wb-timeline-slot"></div>' +
+      '<div id="wb-models-slot"></div>' +
+      '<div id="wb-agents-slot"></div>' +
+      '<div id="wb-comp-slot"></div>' +
+      '<div id="wb-probes-slot"></div>' +
       "</div>" +
       "</div>" +
       "</div>";
 
-    host.innerHTML = html;
+    host.dataset.mounted = "1";
 
-    host.querySelectorAll("[data-wb-range]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var r = b.getAttribute("data-wb-range");
+    /* Event delegation across the persistent workbench */
+    host.addEventListener("click", function (e) {
+      var rangeBtn = e.target.closest("[data-wb-range]");
+      if (rangeBtn) {
+        var r = rangeBtn.getAttribute("data-wb-range");
         if (!r || r === state.range) return;
         state.range = r;
         state.zoom = 1;
         state.pan = 1;
         state.hoverIdx = null;
         state.exportNotice = null;
-        render();
-      });
-    });
+        renderRangeChange();
+        return;
+      }
 
-    host.querySelectorAll("[data-wb-mview]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        state.modelView = b.getAttribute("data-wb-mview");
-        render();
-      });
-    });
+      var ctypeBtn = e.target.closest("[data-wb-ctype]");
+      if (ctypeBtn) {
+        var ct = ctypeBtn.getAttribute("data-wb-ctype");
+        if (!ct || ct === state.chartType) return;
+        state.chartType = ct;
+        updateTimelineChart(getSnapshot(), true, false);
+        return;
+      }
 
-    host.querySelectorAll("[data-wb-expmodel]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var k = b.getAttribute("data-wb-expmodel");
-        if (state.expandedModels[k]) delete state.expandedModels[k];
-        else state.expandedModels[k] = true;
-        render();
-      });
-    });
+      var smodeBtn = e.target.closest("[data-wb-smode]");
+      if (smodeBtn) {
+        var sm = smodeBtn.getAttribute("data-wb-smode");
+        if (!sm || sm === state.seriesMode) return;
+        state.seriesMode = sm;
+        state.hiddenSeries = {};
+        state.hoverIdx = null;
+        updateTimelineChart(getSnapshot(), true, false);
+        return;
+      }
 
-    host.querySelectorAll("[data-wb-expagent]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var id = b.getAttribute("data-wb-expagent");
-        if (state.expandedAgents[id]) delete state.expandedAgents[id];
-        else state.expandedAgents[id] = true;
-        render();
-      });
-    });
+      var zoomBtn = e.target.closest("[data-wb-zoom]");
+      if (zoomBtn && !zoomBtn.disabled) {
+        var act = zoomBtn.getAttribute("data-wb-zoom");
+        if (act === "+") state.zoom = Math.min(4, +(state.zoom + 0.6).toFixed(1));
+        else if (act === "-") state.zoom = Math.max(1, +(state.zoom - 0.6).toFixed(1));
+        else { state.zoom = 1; state.pan = 1; }
+        state.hoverIdx = null;
+        updateTimelineChart(getSnapshot(), true, false);
+        return;
+      }
 
-    host.querySelectorAll("[data-wb-export]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        handleExport(b.getAttribute("data-wb-export"));
-      });
-    });
+      var seriesBtn = e.target.closest("[data-wb-series]");
+      if (seriesBtn) {
+        var key = seriesBtn.getAttribute("data-wb-series");
+        var snap = getSnapshot();
+        var list = snap.series[state.seriesMode] || [];
+        if (state.hiddenSeries[key]) {
+          delete state.hiddenSeries[key];
+        } else {
+          var visibleLeft = list.filter(function (s) {
+            return s.key !== key && !state.hiddenSeries[s.key];
+          }).length;
+          if (visibleLeft === 0) state.hiddenSeries = {};
+          else state.hiddenSeries[key] = true;
+        }
+        updateTimelineChart(snap, true, false);
+        return;
+      }
 
-    var expToggle = host.querySelector("[data-wb-exp-toggle]");
-    if (expToggle) {
-      expToggle.addEventListener("click", function () {
+      var mviewBtn = e.target.closest("[data-wb-mview]");
+      if (mviewBtn) {
+        var mv = mviewBtn.getAttribute("data-wb-mview");
+        if (!mv || mv === state.modelView) return;
+        state.modelView = mv;
+        updateModelsCard(getSnapshot(), true, false);
+        return;
+      }
+
+      var expModelBtn = e.target.closest("[data-wb-expmodel]");
+      if (expModelBtn) {
+        toggleModelExpand(expModelBtn.getAttribute("data-wb-expmodel"));
+        return;
+      }
+      var rowModel = e.target.closest("[data-wb-rowmodel]");
+      if (rowModel) {
+        toggleModelExpand(rowModel.getAttribute("data-wb-rowmodel"));
+        return;
+      }
+
+      var expAgentBtn = e.target.closest("[data-wb-expagent]");
+      if (expAgentBtn) {
+        toggleAgentExpand(expAgentBtn.getAttribute("data-wb-expagent"));
+        return;
+      }
+      var rowAgent = e.target.closest("[data-wb-rowagent]");
+      if (rowAgent) {
+        toggleAgentExpand(rowAgent.getAttribute("data-wb-rowagent"));
+        return;
+      }
+
+      var exportBtn = e.target.closest("[data-wb-export]");
+      if (exportBtn) {
+        handleExport(exportBtn.getAttribute("data-wb-export"));
+        return;
+      }
+
+      if (e.target.closest("[data-wb-exp-toggle]")) {
         if (state.exportNotice) {
           state.exportNotice.open = !state.exportNotice.open;
-          render();
+          updateExportSlot(false);
         }
-      });
-    }
+        return;
+      }
 
-    var expClose = host.querySelector("[data-wb-exp-close]");
-    if (expClose) {
-      expClose.addEventListener("click", function () {
+      if (e.target.closest("[data-wb-exp-close]")) {
         state.exportNotice = null;
-        render();
-      });
-    }
+        updateExportSlot(false);
+        return;
+      }
 
-    var reprobeBtn = host.querySelector("[data-wb-reprobe]");
-    if (reprobeBtn && !state.probing) {
-      reprobeBtn.addEventListener("click", function () {
+      var hourBtn = e.target.closest("[data-wb-hour]");
+      if (hourBtn) {
+        var h = parseInt(hourBtn.getAttribute("data-wb-hour"), 10);
+        state.lockedHour = state.lockedHour === h ? null : h;
+        applyHourHighlight(state.lockedHour != null ? state.lockedHour : state.hoveredHour);
+        return;
+      }
+
+      var reprobeBtn = e.target.closest("[data-wb-reprobe]");
+      if (reprobeBtn && !state.probing) {
         state.probing = true;
-        render();
+        updateProbeFooter();
+        var grid = document.getElementById("wb-probes-grid");
+        if (grid && !reduceMq.matches) {
+          grid.classList.remove("is-pulsing");
+          void grid.offsetWidth;
+          grid.classList.add("is-pulsing");
+        }
         window.setTimeout(function () {
           state.probing = false;
           state.probeNote = "可用 · 刚刚已复检 (38ms)";
-          render();
+          updateProbeFooter();
         }, 420);
-      });
-    }
-
-    var cellsHost = document.getElementById("wb-hour-cells");
-    if (cellsHost) {
-      function applyHourHighlight(activeH) {
-        var pr = document.getElementById("wb-hour-probe");
-        if (activeH == null) {
-          if (pr) {
-            pr.textContent = "鼠标悬停查看单时段用量";
-            pr.className = "wb-hours__probe";
-          }
-          cellsHost.querySelectorAll(".wb-hour.is-hot").forEach(function (el) {
-            el.classList.remove("is-hot");
-          });
-          return;
-        }
-        if (pr) {
-          pr.textContent = "📍 " + (activeH < 10 ? "0" : "") + activeH + ":00 : " + fmtTokensFromM(TODAY_HOUR_M[activeH]) + " Tokens";
-          pr.className = "wb-hours__probe is-on";
-        }
-        cellsHost.querySelectorAll(".wb-hour").forEach(function (el) {
-          var eh = parseInt(el.getAttribute("data-wb-hour"), 10);
-          el.classList.toggle("is-hot", eh === activeH);
-        });
       }
+    });
+  }
 
-      if (state.lockedHour != null) applyHourHighlight(state.lockedHour);
+  function renderRangeChange() {
+    var snap = getSnapshot();
+    updateToolbarRange(false);
+    updateExportSlot(false);
+    updateKpis(snap, true);
+    updateTimelineChart(snap, true, false);
+    updateModelsCard(snap, false, false);
+    updateAgentsCard(snap);
+    updateCompositionCard(snap);
+  }
 
-      cellsHost.addEventListener("mouseover", function (e) {
-        var btn = e.target.closest("[data-wb-hour]");
-        if (!btn) return;
-        var h = parseInt(btn.getAttribute("data-wb-hour"), 10);
-        if (state.hoveredHour === h) return;
-        state.hoveredHour = h;
-        applyHourHighlight(h);
-      });
-      cellsHost.addEventListener("mouseleave", function () {
-        state.hoveredHour = null;
-        applyHourHighlight(state.lockedHour != null ? state.lockedHour : null);
-      });
-      cellsHost.querySelectorAll("[data-wb-hour]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var h = parseInt(btn.getAttribute("data-wb-hour"), 10);
-          state.lockedHour = state.lockedHour === h ? null : h;
-          applyHourHighlight(state.lockedHour != null ? state.lockedHour : state.hoveredHour);
-        });
-      });
-    }
+  function renderInitial() {
+    ensureWorkbenchMounted();
+    var snap = getSnapshot();
+    updateToolbarRange(true);
+    updateExportSlot(true);
+    updateKpis(snap, false);
+    updateTimelineChart(snap, false, true);
+    updateModelsCard(snap, false, true);
+    updateAgentsCard(snap);
+    updateCompositionCard(snap);
+    updateProbeFooter();
+  }
 
-    var tSlot = document.getElementById("wb-timeline-slot");
-    if (tSlot) bindTimelineControls(tSlot, snap);
+  window.addEventListener("resize", function () {
+    syncAllSegGliders(true);
+  });
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      syncAllSegGliders(true);
+    });
   }
 
   // 若 preview-fallback.js 在异步 fetch 到根 VERSION 后替换了页眉版本文本，同步更新设置侧栏底部版本号
@@ -1737,5 +2075,5 @@
     obs.observe(verNode, { childList: true, characterData: true, subtree: true });
   }
 
-  render();
+  renderInitial();
 })();

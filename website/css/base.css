@@ -1,69 +1,78 @@
 /* ============================================================
    BRUCE — official site
-   base.css : tokens, type system, grid, primitives
-   Single typeface: Times New Roman. Paper, ink, one green.
+   base.css : design tokens, typography hierarchy, primitives
+   Editorial serif for headlines & leads; crisp system sans for
+   technical annotations, spec ledgers, and native UI chrome.
    ============================================================ */
 
 :root {
   /* ---- paper & ink ------------------------------------------------ */
-  --paper:        #f1efe9;
-  --paper-raise:  #f8f6f1;
-  --paper-deep:   #e7e3d9;
-  --paper-warm:   #ece7dc;
+  --paper:        #f2efe8;
+  --paper-raise:  #f9f7f2;
+  --paper-deep:   #e6e1d6;
+  --paper-warm:   #ebe6db;
 
-  --ink:          #17160f;
-  --ink-90:       rgba(23, 22, 15, 0.90);
-  --ink-70:       rgba(23, 22, 15, 0.70);
-  --ink-52:       rgba(23, 22, 15, 0.52);
-  --ink-38:       rgba(23, 22, 15, 0.38);
-  --ink-24:       rgba(23, 22, 15, 0.24);
+  --ink:          #16150f;
+  --ink-90:       rgba(22, 21, 15, 0.90);
+  --ink-72:       rgba(22, 21, 15, 0.72);
+  --ink-70:       rgba(22, 21, 15, 0.70);
+  --ink-54:       rgba(22, 21, 15, 0.54);
+  --ink-52:       rgba(22, 21, 15, 0.52);
+  --ink-38:       rgba(22, 21, 15, 0.38);
+  --ink-24:       rgba(22, 21, 15, 0.24);
 
-  --rule:         rgba(23, 22, 15, 0.14);
-  --rule-strong:  rgba(23, 22, 15, 0.34);
+  --rule:         rgba(22, 21, 15, 0.13);
+  --rule-strong:  rgba(22, 21, 15, 0.30);
 
-  /* ---- the one accent --------------------------------------------- */
-  --green:        #4d7a52;
-  --green-deep:   #2f5138;
-  --green-wash:   rgba(77, 122, 82, 0.12);
+  /* ---- botanical forest accent ------------------------------------ */
+  --green:        #3f6a45;
+  --green-deep:   #26442d;
+  --green-wash:   rgba(63, 106, 69, 0.09);
 
-  /* ---- night plate (privacy section) ------------------------------ */
-  --night:        #15140f;
-  --night-raise:  #1d1c16;
-  --night-ink:    #ece8dd;
-  --night-ink-70: rgba(236, 232, 221, 0.70);
-  --night-ink-45: rgba(236, 232, 221, 0.45);
-  --night-rule:   rgba(236, 232, 221, 0.16);
-  --night-green:  #8fb894;
+  /* ---- night plate (section 04 egress) ---------------------------- */
+  --night:        #141410;
+  --night-raise:  #1c1c17;
+  --night-ink:    #efece3;
+  --night-ink-70: rgba(239, 236, 227, 0.74);
+  --night-ink-45: rgba(239, 236, 227, 0.46);
+  --night-rule:   rgba(239, 236, 227, 0.14);
+  --night-green:  #8ec094;
 
-  /* ---- type ------------------------------------------------------- */
-  --serif: "Times New Roman", Times, "Songti SC", "Noto Serif SC", serif;
-  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* ---- typography ------------------------------------------------- */
+  --serif: "Iowan Old Style", "Palatino", "Times New Roman", "Songti SC", "STSong",
+    "Noto Serif CJK SC", "Noto Serif SC", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 
-  --t-display: clamp(3.6rem, 11.6vw, 11.5rem);
-  --t-h2:      clamp(2.1rem, 5.6vw, 4.4rem);
-  --t-h3:      clamp(1.45rem, 2.4vw, 2.05rem);
-  --t-lede:    clamp(1.08rem, 1.55vw, 1.42rem);
-  --t-body:    clamp(0.98rem, 1.02vw, 1.09rem);
-  --t-small:   clamp(0.78rem, 0.86vw, 0.86rem);
-  --t-micro:   0.6875rem;
+  --t-display: clamp(2.35rem, 5.1vw, 4.95rem);
+  --t-h2:      clamp(1.7rem, 3.55vw, 3.05rem);
+  --t-h3:      clamp(1.2rem, 1.85vw, 1.56rem);
+  --t-lede:    clamp(0.98rem, 1.12vw, 1.08rem);
+  --t-body:    clamp(0.92rem, 0.98vw, 0.99rem);
+  --t-small:   clamp(0.81rem, 0.86vw, 0.875rem);
+  --t-micro:   0.75rem;
 
-  /* ---- space ------------------------------------------------------ */
-  --gutter: clamp(20px, 5.2vw, 92px);
-  --gap:    clamp(14px, 2vw, 28px);
-  --section: clamp(84px, 12.5vh, 178px);
+  /* ---- layout spacing --------------------------------------------- */
+  --gutter:   clamp(20px, 5vw, 88px);
+  --gap:      clamp(16px, 2vw, 28px);
+  --section:  clamp(76px, 10.5vh, 144px);
   --hairline: 1px;
+  --max-w:    1360px;
 
   /* ---- motion ----------------------------------------------------- */
-  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 720ms;
+  --ease:       cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-silk:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-morph: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* ---------------------------------------------------------------- reset */
 *,
 *::before,
-*::after { box-sizing: border-box; }
+*::after {
+  box-sizing: border-box;
+}
 
 html {
   overflow-x: clip;
@@ -75,18 +84,23 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: var(--t-body);
-  line-height: 1.58;
+  line-height: 1.76;
+  letter-spacing: 0.006em;
   font-kerning: normal;
-  font-variant-ligatures: common-ligatures;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
 }
 
-img, svg, canvas { display: block; max-width: 100%; }
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
 
 a {
   color: inherit;
@@ -108,146 +122,149 @@ button {
 }
 
 :focus-visible {
-  outline: 1px solid var(--green-deep);
+  outline: 1.5px solid var(--green-deep);
   outline-offset: 3px;
 }
 
 /* ---------------------------------------------------------------- shell */
 .shell {
   width: 100%;
+  max-width: calc(var(--max-w) + var(--gutter) * 2);
+  margin-inline: auto;
   padding-inline: var(--gutter);
 }
 
-.grid-12 {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  column-gap: var(--gap);
-}
-
 /* ---------------------------------------------------------------- type */
-.display {
+.display,
+.h2,
+.h3 {
   font-family: var(--serif);
   font-weight: 400;
-  font-size: var(--t-display);
-  line-height: 0.86;
-  letter-spacing: -0.038em;
   margin: 0;
+  color: var(--ink);
+}
+
+.display {
+  font-size: var(--t-display);
+  line-height: 1.12;
+  letter-spacing: 0.008em;
   text-wrap: balance;
 }
 
 .h2 {
-  font-family: var(--serif);
-  font-weight: 400;
   font-size: var(--t-h2);
-  line-height: 0.96;
-  letter-spacing: -0.028em;
-  margin: 0;
+  line-height: 1.2;
+  letter-spacing: 0.006em;
   text-wrap: balance;
 }
 
 .h3 {
-  font-family: var(--serif);
-  font-weight: 400;
   font-size: var(--t-h3);
-  line-height: 1.12;
-  letter-spacing: -0.014em;
-  margin: 0;
+  line-height: 1.38;
+  letter-spacing: 0.004em;
   text-wrap: pretty;
 }
 
-em, .it { font-style: italic; }
+.hl {
+  font-weight: 700;
+  letter-spacing: 0.002em;
+}
 
-.lede {
-  font-size: var(--t-lede);
-  line-height: 1.46;
-  letter-spacing: -0.008em;
-  color: var(--ink-90);
-  max-width: 34ch;
-  margin: 0;
-  text-wrap: pretty;
+em {
+  font-style: italic;
 }
 
 .body-copy {
-  max-width: 52ch;
-  color: var(--ink-70);
+  margin: 0;
+  max-width: 34em;
+  font-size: var(--t-body);
+  line-height: 1.8;
+  color: var(--ink-72);
   text-wrap: pretty;
 }
 
-.body-copy + .body-copy { margin-top: 0.9em; }
-
-/* small caps labels — letterspaced Times, the editorial tic */
-.label {
-  font-family: var(--serif);
-  font-size: var(--t-micro);
-  letter-spacing: 0.24em;
-  text-transform: none;
-  color: var(--ink-52);
-  font-variant-numeric: lining-nums;
+.body-copy + .body-copy {
+  margin-top: 0.85em;
 }
-
-.label--ink { color: var(--ink); }
-.label--night { color: var(--night-ink-45); }
 
 .num {
   font-variant-numeric: lining-nums tabular-nums;
-  font-feature-settings: "lnum" 1;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
-.rule {
-  height: var(--hairline);
-  background: var(--rule);
-  border: 0;
-  margin: 0;
-}
-
-/* ---------------------------------------------------------------- links */
+/* ---------------------------------------------------------------- links & buttons */
 .link {
   position: relative;
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.5em;
-  font-size: var(--t-body);
-  color: var(--ink);
-  padding-bottom: 2px;
-  background-image: linear-gradient(currentColor, currentColor);
-  background-size: 100% 1px;
-  background-position: 0 100%;
-  background-repeat: no-repeat;
-  transition: background-size 520ms var(--ease), color 240ms var(--ease);
+  align-items: center;
+  gap: 0.35em;
+  font-size: var(--t-small);
+  font-weight: 500;
+  color: var(--ink-90);
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--rule-strong);
+  transition: color 200ms var(--ease), border-color 200ms var(--ease);
 }
 
-.link:hover { background-size: 0% 1px; color: var(--green-deep); }
+.link:hover {
+  color: var(--green-deep);
+  border-bottom-color: var(--green);
+}
 
 .cta {
   display: inline-flex;
   align-items: center;
-  gap: 0.85em;
-  font-size: var(--t-lede);
-  letter-spacing: -0.01em;
-  padding: 0.62em 1.15em 0.66em;
-  border: var(--hairline) solid var(--ink);
+  gap: 0.65em;
+  font-family: var(--sans);
+  font-size: 0.94rem;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  padding: 0.68em 1.15em;
+  border-radius: 6px;
+  border: 1px solid var(--ink);
   color: var(--ink);
-  background: transparent;
-  transition: background-color 340ms var(--ease), color 340ms var(--ease);
+  background: var(--paper-raise);
+  transition: background-color 220ms var(--ease), border-color 220ms var(--ease),
+    color 220ms var(--ease), transform 180ms var(--ease);
 }
 
-.cta:hover {
+.cta--primary {
   background: var(--ink);
-  color: var(--paper);
+  border-color: var(--ink);
+  color: var(--paper-raise);
+  box-shadow: 0 8px 20px -10px rgba(22, 21, 15, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.cta--primary:hover {
+  background: var(--green-deep);
+  border-color: var(--green-deep);
+  color: #ffffff;
+}
+
+.cta__size {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  padding: 0.14em 0.48em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(249, 247, 242, 0.88);
 }
 
 .cta__arrow {
   display: inline-block;
-  transition: transform 460ms var(--ease-out);
+  transition: transform 280ms var(--ease-out);
 }
 
-.cta:hover .cta__arrow { transform: translateX(4px); }
+.cta--primary:hover .cta__arrow {
+  transform: translateX(3px);
+}
 
 /* ---------------------------------------------------------------- reveal */
 [data-reveal] {
   opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 900ms var(--ease-out), transform 1100ms var(--ease-out);
+  transform: translateY(14px);
+  transition: opacity 720ms var(--ease-out), transform 840ms var(--ease-out);
   transition-delay: var(--reveal-delay, 0ms);
 }
 
@@ -257,8 +274,14 @@ em, .it { font-style: italic; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  [data-reveal] { opacity: 1; transform: none; transition: none; }
+  html {
+    scroll-behavior: auto;
+  }
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
   *,
   *::before,
   *::after {
@@ -283,72 +306,24 @@ em, .it { font-style: italic; }
 
 .skip-link {
   position: fixed;
-  top: 8px;
-  left: 8px;
-  z-index: 100;
-  padding: 8px 14px;
+  top: 10px;
+  left: 12px;
+  z-index: 200;
+  padding: 7px 14px;
+  border-radius: 5px;
   background: var(--ink);
-  color: var(--paper);
+  color: var(--paper-raise);
   font-size: var(--t-small);
-  transform: translateY(-160%);
-  transition: transform 200ms var(--ease);
+  font-weight: 500;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-140%);
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
 }
 
-.skip-link:focus { transform: none; }
-
-/* ================================================================
-   CJK TYPOGRAPHY — 中文主语言
-   西文排 Times New Roman，汉字回落宋体；强调用字重，不用斜体。
-   ================================================================ */
-:root {
-  --serif: "Times New Roman", "Songti SC", "STSong", "Noto Serif CJK SC", "Noto Serif SC", serif;
-
-  --t-display: clamp(2.35rem, 8.1vw, 8rem);
-  --t-h2:      clamp(1.65rem, 4.05vw, 3.35rem);
-  --t-h3:      clamp(1.12rem, 1.75vw, 1.5rem);
-  --t-lede:    clamp(1rem, 1.28vw, 1.18rem);
-  --t-body:    clamp(0.95rem, 0.99vw, 1.02rem);
-  --t-small:   clamp(0.8rem, 0.86vw, 0.87rem);
-  --t-micro:   0.7rem;
-}
-
-body {
-  line-height: 1.85;
-  letter-spacing: 0.012em;
-}
-
-/* 中文大标题：行高不能用拉丁的 0.86，字距也不能为负 */
-.display,
-.h2,
-.h3 { letter-spacing: 0.008em; }
-
-.display { line-height: 1.07; }
-.h2 { line-height: 1.18; }
-.h3 { line-height: 1.45; }
-
-/* 强调：宋体真粗体，替代英文的斜体 */
-.hl {
-  font-weight: 700;
-  letter-spacing: 0.004em;
-}
-
-.lede {
-  line-height: 1.82;
-  max-width: 24em;
-}
-
-.body-copy {
-  max-width: 31em;
-  line-height: 1.85;
-}
-
-.label {
-  letter-spacing: 0.3em;
-  font-size: 0.7rem;
-}
-
-/* 拉丁字串里的斜体（路径、代码）仍保留 */
-em {
-  font-style: italic;
-  letter-spacing: 0.01em;
+.skip-link:focus,
+.skip-link:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bruce — 每一枚 token，都记在账上</title>
-<meta name="description" content="Bruce 是一个 macOS 菜单栏 / Windows 托盘应用，替你记下本机每个 AI&nbsp;Agent 的 token 用量、费用与订阅额度。全部在本机完成，没有账号，没有服务端。" />
+<title>Bruce — 常驻菜单栏的本机 AI 用量与订阅账本</title>
+<meta name="description" content="Bruce 常驻 macOS 菜单栏与 Windows 托盘，本机只读扫描十类 AI Agent 会话，拆分核算输入与缓存成本，实时跟进十家云端订阅窗口额度。无账号、无服务端。" />
 <meta name="theme-color" content="#f1efe9" />
 <link rel="icon" href="assets/bruce-icon.png" />
 <link rel="stylesheet" href="css/base.css" />
@@ -12,17 +12,17 @@
 <link rel="stylesheet" href="css/panel.css" />
 </head>
 <body>
-<a class="skip-link" href="#panel">跳到看板</a>
+<a class="skip-link" href="#panel">跳至正文</a>
 
 <!-- ============================================================
-     页眉
+     顶栏
      ============================================================ -->
 <header class="masthead" id="masthead">
-  <a class="masthead__mark" href="#top" aria-label="Bruce，回到首页">
-    <img class="mark__icon" src="assets/bruce-icon.png" width="26" height="26" alt="" />
+  <a class="masthead__mark" href="#top" aria-label="Bruce，回到顶部">
+    <img class="mark__icon" src="assets/bruce-icon.png" width="24" height="24" alt="" />
     <span class="mark__word">Bruce</span>
   </a>
-  <nav class="masthead__nav" aria-label="章节">
+  <nav class="masthead__nav" aria-label="页面章节">
     <a href="#panel"><span class="n">01</span>看板</a>
     <a href="#sources"><span class="n">02</span>数据源</a>
     <a href="#record"><span class="n">03</span>账目</a>
@@ -44,9 +44,8 @@
     <div class="hero__grid">
       <div class="hero__left">
         <div class="hero__eyebrow">
-          <span class="label">macOS · Windows</span>
-          <span class="bar" aria-hidden="true"></span>
-          <span class="label">本地优先</span>
+          <div class="menubar-specimen" id="hero-menubar" role="img" aria-label="macOS 菜单栏 22pt 状态项：剩余配额 62%，今日 586.6M token，折算 $46.41"></div>
+          <span class="hero__badge-note">macOS 14+ · 本地只读</span>
         </div>
 
         <h1 class="hero__title" id="hero-title">
@@ -55,39 +54,41 @@
           <span><b class="hl">都记在账上</b></span>
         </h1>
 
-        <p class="hero__lede">Bruce 待在 Mac 的菜单栏、Windows 的托盘里，替你记下这台电脑上每个 AI&nbsp;Agent 的用量：进出多少 token、按你自己的价目折算成多少钱、十家订阅各还剩多少。全部在本机完成。</p>
+        <p class="hero__lede">常驻 Mac 菜单栏与 Windows 托盘的本地 AI 账本。只读扫描本机十类编码 Agent 会话，按模型价卡拆算输入与缓存开销，顺带盯住十家云端订阅的窗口余量。不设账号，数据留在硬盘上。</p>
 
         <div class="hero__action">
           <div class="hero__dl">
-            <a class="cta" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce-{{VERSION}}.dmg" rel="noopener">
+            <a class="cta cta--primary" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce-{{VERSION}}.dmg" aria-label="下载 macOS 版 Bruce-{{VERSION}}.dmg（{{DMG_SIZE}}）" rel="noopener">
               <svg class="cta__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
-              <span class="visually-hidden">下载 </span>macOS 版 <span class="cta__arrow" aria-hidden="true">→</span>
+              <span>下载 macOS 版</span>
+              <span class="cta__size num">{{DMG_SIZE}}</span>
+              <span class="cta__arrow" aria-hidden="true">→</span>
             </a>
             <span class="cta-stack">
               <button class="cta cta--disabled" type="button" disabled aria-disabled="true">
                 <svg class="cta__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449 9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                Windows 版
+                <span>Windows 版</span>
               </button>
-              <span class="cta-note">coming soon</span>
+              <span class="cta-note">NSIS 安装包筹备中</span>
             </span>
           </div>
-          <span class="aside">免费、MIT 开源。macOS 版 .dmg {{DMG_SIZE}}，未签名预览版；Windows 版即将推出。</span>
+          <p class="aside">MIT 开源 · Universal 2（Apple Silicon &amp; Intel）· 未签名预览版首次启动需在「系统设置 › 隐私与安全性」放行。</p>
         </div>
 
         <dl class="hero__spec">
-          <div><dt>版本</dt><dd>{{VERSION}}</dd></div>
-          <div><dt>系统</dt><dd>macOS 14+</dd></div>
-          <div><dt>架构</dt><dd>Universal 2 · x64</dd></div>
-          <div><dt>服务端</dt><dd>无</dd></div>
+          <div><dt>当前版本</dt><dd>v{{VERSION}}</dd></div>
+          <div><dt>系统要求</dt><dd>macOS 14+</dd></div>
+          <div><dt>二进制</dt><dd>Universal 2 · x64</dd></div>
+          <div><dt>自有服务端</dt><dd>无（100% 本机）</dd></div>
         </dl>
       </div>
 
       <div class="hero__right">
         <div class="deck-host" id="panel-stage">
-          <div class="deck" id="panel-deck" role="group" aria-label="三种主题的菜单栏面板重建">
+          <div class="deck" id="panel-deck" role="group" aria-label="三种原生材质的菜单栏面板样张">
             <div class="deck__item" data-theme="nothing" style="--i:0">
               <button class="deck__peek" type="button" data-deck-theme="nothing" aria-expanded="false" aria-controls="panel-nothing-sheet">
-                <span class="deck__peek-k">Nothing</span>
+                <span class="deck__peek-k">Nothing 点阵</span>
                 <span class="deck__peek-v"></span>
               </button>
               <div class="deck__sheet" id="panel-nothing-sheet">
@@ -105,7 +106,7 @@
             </div>
             <div class="deck__item" data-theme="classic" style="--i:2">
               <button class="deck__peek" type="button" data-deck-theme="classic" aria-expanded="false" aria-controls="panel-classic-sheet">
-                <span class="deck__peek-k">经典</span>
+                <span class="deck__peek-k">经典材质</span>
                 <span class="deck__peek-v"></span>
               </button>
               <div class="deck__sheet" id="panel-classic-sheet">
@@ -113,6 +114,19 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="deck-switcher" id="deck-switcher" role="group" aria-label="切换前景展示的面板材质">
+          <button type="button" class="deck-switcher__btn" data-focus-theme="nothing">
+            <span class="k">Nothing</span><span class="v">Token 用量</span>
+          </button>
+          <button type="button" class="deck-switcher__btn" data-focus-theme="liquid">
+            <span class="k">液态玻璃</span><span class="v">Agent 用量</span>
+          </button>
+          <button type="button" class="deck-switcher__btn is-active" data-focus-theme="classic">
+            <span class="k">经典材质</span><span class="v">订阅用量</span>
+          </button>
+          <span class="deck-switcher__hint">点击任意面板或标签提至前景 · 样例数据</span>
         </div>
       </div>
 
@@ -125,50 +139,64 @@
   <section class="section panel-section" id="panel" aria-labelledby="panel-title">
     <div class="shell">
       <div class="section__head">
-        <p class="section__eyebrow"><span class="dot" aria-hidden="true"></span><span class="idx">01</span><span class="name">看板</span></p>
+        <div class="section__folio">
+          <span class="section__eyebrow"><span class="idx">01</span><span class="sep">/</span><span class="name">菜单栏面板</span></span>
+          <span class="section__meta">440pt 定宽 · 无内部滚动条 · 3 套原生材质</span>
+        </div>
         <div class="section__title">
-          <h2 class="h2" id="panel-title">一张卡，<b class="hl">只说一件事</b></h2>
+          <h2 class="h2" id="panel-title">收在菜单栏里，点开就是<b class="hl">整本实况账</b></h2>
         </div>
       </div>
 
       <div class="anatomy">
         <div class="anatomy__copy">
-          <p class="body-copy">它常驻菜单栏：一枚单环配额弧，右侧最多三项实时指标；点开才是这张面板。</p>
-          <p class="body-copy">弹出面板的高度，就是它要说的话的高度——没有滚动条，没有二级页面，也没有需要关掉的提示。</p>
-          <p class="body-copy">卡片可以折叠、可以拖拽排序，面板会记住。首屏那三块只是静态样张，不动。</p>
-          <p class="panel-hint">点标题切换卡片：三张分别以 Nothing、经典、液态玻璃呈现；桌面上标题在左、卡片在右，窄屏时卡片排到下方。按 App 自己的布局常量在 HTML 里重建，不是截图；数字是样例数据。</p>
+          <p class="body-copy">平时收在屏幕右上角，只占一枚 22pt 单环配额轨与最多三项实时读数；点开即落下 440pt 宽的无边框原生面板，窗口高度随卡片展开自动贴合，不藏二级深页。</p>
+          <p class="body-copy">三张卡片支持单独收起与拖拽排布。点击下方卡片条目或右侧面板顶栏图标，可切换查看各卡片在对应原生材质下的真实排版。</p>
+          <p class="panel-hint">注：右侧界面按 SwiftUI 源码尺寸与色值在网页中 1:1 绘制，数值为本机样例快照。</p>
         </div>
 
-        <div class="anatomy__tabs" role="tablist" aria-orientation="vertical" aria-label="看板的三张卡">
+        <div class="anatomy__tabs" role="tablist" aria-orientation="vertical" aria-label="菜单栏面板卡片切换">
           <button class="anatomy-tab is-current" type="button" role="tab" id="anatomy-tab-token"
                   aria-selected="true" aria-controls="anatomy-stage" data-anatomy-card="token">
             <span class="i">01</span>
             <span class="anatomy-tab__body">
-              <span class="n">Token 用量</span>
-              <span class="d">累计总量与估算成本，四格细分，按月聚合，再加一张 26 周热力图。</span>
+              <span class="anatomy-tab__top">
+                <span class="n">Token 用量</span>
+                <span class="anatomy-tab__skin">Nothing 点阵</span>
+              </span>
+              <span class="d">当日累计吞吐与人民币折算费用，输入/输出/缓存四栏拆分，近 6 个月月度对比及 26 周热力图。</span>
             </span>
           </button>
           <button class="anatomy-tab" type="button" role="tab" id="anatomy-tab-quota"
                   aria-selected="false" aria-controls="anatomy-stage" data-anatomy-card="quota">
             <span class="i">02</span>
             <span class="anatomy-tab__body">
-              <span class="n">订阅用量</span>
-              <span class="d">每家服务商的窗口量条与重置倒计时；余额型服务商换成双槽对照。</span>
+              <span class="anatomy-tab__top">
+                <span class="n">订阅用量</span>
+                <span class="anatomy-tab__skin">经典材质</span>
+              </span>
+              <span class="d">各服务商 5 小时、周、月计费窗口进度与重置时刻；支持多账号折叠子卡与余额型双槽视图。</span>
             </span>
           </button>
           <button class="anatomy-tab" type="button" role="tab" id="anatomy-tab-hourly"
                   aria-selected="false" aria-controls="anatomy-stage" data-anatomy-card="hourly">
             <span class="i">03</span>
             <span class="anatomy-tab__body">
-              <span class="n">Agent 用量</span>
-              <span class="d">14 日按 Agent 堆叠的柱状图与逐小时折线，可逐层下钻到模型和项目。</span>
+              <span class="anatomy-tab__top">
+                <span class="n">Agent 用量</span>
+                <span class="anatomy-tab__skin">液态玻璃</span>
+              </span>
+              <span class="d">近 14 日多 Agent 堆叠柱状分布与今日 0–23 时活跃曲线，展开可核对模型占比。</span>
             </span>
           </button>
         </div>
 
         <div class="anatomy__stage" id="anatomy-stage" role="tabpanel" aria-labelledby="anatomy-tab-token">
-          <div class="anatomy__panelbox" id="anatomy-panelbox">
-            <div class="bruce-panel" id="anatomy-panel"></div>
+          <div class="anatomy__chrome">
+            <div class="menubar-bar" id="anatomy-menubar" aria-label="macOS 菜单栏状态项实时联动预览"></div>
+            <div class="anatomy__panelbox" id="anatomy-panelbox">
+              <div class="bruce-panel" id="anatomy-panel"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -181,9 +209,12 @@
   <section class="section" id="sources" aria-labelledby="sources-title">
     <div class="shell">
       <div class="section__head">
-        <p class="section__eyebrow"><span class="dot" aria-hidden="true"></span><span class="idx">02</span><span class="name">数据源</span></p>
+        <div class="section__folio">
+          <span class="section__eyebrow"><span class="idx">02</span><span class="sep">/</span><span class="name">数据源与隐私边界</span></span>
+          <span class="section__meta">SQLite mode=ro · POSIX 0600 · 无自有云端</span>
+        </div>
         <div class="section__title">
-          <h2 class="h2" id="sources-title">十个 Agent，<b class="hl">十家订阅</b></h2>
+          <h2 class="h2" id="sources-title"><b class="hl">十类本地会话</b>与十家云端订阅</h2>
         </div>
       </div>
 
@@ -195,27 +226,47 @@
         </div>
       </div>
 
+      <div class="source-directory" aria-label="支持的数据源完整名录">
+        <div class="source-col">
+          <div class="source-col__head">
+            <h3>本机会话只读扫描</h3>
+            <span class="source-col__count num">10 类客户端</span>
+          </div>
+          <p class="source-col__desc">Rust 采集器直接扫描本地会话日志或只读挂载数据库，无需安装插件或配置 API 反代。</p>
+          <ul class="source-list" id="source-agents-list"></ul>
+        </div>
+
+        <div class="source-col">
+          <div class="source-col__head">
+            <h3>云端订阅窗口查询</h3>
+            <span class="source-col__count num">10 家服务商</span>
+          </div>
+          <p class="source-col__desc">按需启用；仅在统一授权生效后直连各厂商官方配额端点，读取滑动窗口百分比或账户余额。</p>
+          <ul class="source-list" id="source-providers-list"></ul>
+        </div>
+      </div>
+
       <div class="local-notes">
         <ol class="local-notes__list">
           <li>
-            <span class="i">01</span>
-            <h3>快照留在硬盘上</h3>
-            <p>每次刷新在 <em>~/Library/Application Support/Bruce</em> 写一份 artifact，上一份好的就放在旁边。</p>
+            <span class="i">01 · ARTIFACT</span>
+            <h3>双份快照容错</h3>
+            <p>每次刷新向 <em>~/Library/Application Support/Bruce</em> 原子写入标准 JSON 快照，同目录保留上一份有效副本，异常时自动回退。</p>
           </li>
           <li>
-            <span class="i">02</span>
-            <h3>凭证 0600</h3>
-            <p>用的时候才读，走 stdin 传进去，原子写入。不进命令行参数，也不进日志。</p>
+            <span class="i">02 · CHMOD 0600</span>
+            <h3>告别钥匙串弹窗</h3>
+            <p>订阅凭据落盘于仅当前系统用户可读写的 <em>0600</em> 权限文件，采集时走子进程 stdin 管道注入，不进命令行参数与日志。</p>
           </li>
           <li>
-            <span class="i">03</span>
-            <h3>只读是写死的</h3>
-            <p>别的应用的数据库一律以 <em>mode=ro</em> 打开，Bruce 没有一条写入路径。</p>
+            <span class="i">03 · MODE=RO</span>
+            <h3>外部数据库只读锁死</h3>
+            <p>读取 OpenCode、CC Switch 等外部 SQLite 库时强制附加 <em>mode=ro</em> 只读参数，在驱动层阻断任何写入或表结构变更。</p>
           </li>
           <li>
-            <span class="i">04</span>
-            <h3>没有账号，也没有遥测</h3>
-            <p>没有自己的服务端，没有埋点，不需要登录。联网只有三类：你授权的额度查询、更新检查与价格表同步。</p>
+            <span class="i">04 · ZERO TELEMETRY</span>
+            <h3>明确的三类出站请求</h3>
+            <p>无账号体系、无行为埋点。应用仅在你开启对应能力后发起三类联网：订阅查额、GitHub 价格表同步与版本更新检查。</p>
           </li>
         </ol>
       </div>
@@ -228,44 +279,65 @@
   <section class="section section--plate" id="record" aria-labelledby="record-title">
     <div class="shell">
       <div class="section__head">
-        <p class="section__eyebrow"><span class="dot" aria-hidden="true"></span><span class="idx">03</span><span class="name">账目</span></p>
+        <div class="section__folio">
+          <span class="section__eyebrow"><span class="idx">03</span><span class="sep">/</span><span class="name">计费与历史台账</span></span>
+          <span class="section__meta">内置 86 款模型价卡 · 增量游标 · 卸载不丢账</span>
+        </div>
         <div class="section__title">
-          <h2 class="h2" id="record-title">这本账，<b class="hl">按天写</b></h2>
+          <h2 class="h2" id="record-title">把缓存复用拆开计价，<b class="hl">历史按天落盘</b></h2>
         </div>
       </div>
 
       <div class="record-grid">
         <div class="record-heat">
-          <div class="heatmap" id="heatmap">
-            <div class="heatmap__months" id="heatmap-months" aria-hidden="true"></div>
-            <div class="heatmap__grid" id="heatmap-grid" role="img"
-                 aria-label="26 周的每日 token 用量"></div>
-            <div class="heatmap__foot">
-              <span id="heatmap-range">5 月 11 日 — 11 月 4 日</span>
-              <span class="heatmap__legend">
-                少
-                <i style="background:rgba(23,22,15,.07)"></i>
-                <i style="background:rgba(77,122,82,.24)"></i>
-                <i style="background:rgba(77,122,82,.43)"></i>
-                <i style="background:rgba(77,122,82,.62)"></i>
-                <i style="background:rgba(60,100,66,.82)"></i>
-                <i style="background:#2f5138"></i>
-                多
-              </span>
+          <div class="heatmap-card">
+            <div class="heatmap-card__head">
+              <span class="heatmap-card__title">近 26 周每日吞吐台账</span>
+              <span class="heatmap-card__readout num" id="heatmap-readout">11 月 4 日 · 400M 以上（当日峰值 586.6M）</span>
             </div>
-            <p class="heatmap__note">每一格是一天。颜色越深，用量越大；最后四格是还没有发生的日子。把鼠标停在上面可以读它。</p>
+            <div class="heatmap" id="heatmap">
+              <div class="heatmap__months" id="heatmap-months" aria-hidden="true"></div>
+              <div class="heatmap__grid" id="heatmap-grid" role="img"
+                   aria-label="26 周每日 token 用量热力图"></div>
+              <div class="heatmap__foot">
+                <span id="heatmap-range">5 月 11 日 — 11 月 4 日 · 178 天 · 峰值 586.6M</span>
+                <span class="heatmap__legend">
+                  少
+                  <i style="background:rgba(23,22,15,.07)"></i>
+                  <i style="background:rgba(63,106,69,.22)"></i>
+                  <i style="background:rgba(63,106,69,.42)"></i>
+                  <i style="background:rgba(63,106,69,.62)"></i>
+                  <i style="background:rgba(47,81,56,.82)"></i>
+                  <i style="background:#26442d"></i>
+                  多
+                </span>
+              </div>
+            </div>
+            <p class="heatmap__note">采集端将每日聚合结果写入本机独立 SQLite 台账：即便外部 Agent 自动清理早期日志或被卸载，过往每日记录依然保留。悬停或点按方格可查看单日档位。</p>
           </div>
         </div>
 
         <div class="record-copy">
-          <h3 class="h3">四个数字，<br />各自说得清。</h3>
-          <p class="body-copy">一次刷新只重读变化的部分。缓存读取和缓存命中分开记：前者是你付过钱的流量，后者是你没有重复付的钱。</p>
-          <p class="body-copy">价格表内置 86 款模型，也可以人工校准；Agent 卸载或清理后，历史账仍留在本机。</p>
-          <ul class="stat-list">
-            <li><span class="k">输入</span><span class="v num">18.4M</span></li>
-            <li><span class="k">输出</span><span class="v num">1.7M</span></li>
-            <li><span class="k">缓存读取</span><span class="v num">566.5M</span></li>
-            <li><span class="k">缓存命中率</span><span class="v num">97%</span></li>
+          <h3 class="h3">把占九成流量的缓存复用单独记清</h3>
+          <p class="body-copy">在长会话编码场景下，Prompt Cache 命中往往占总吞吐的 90% 以上。如果笼统按输入单价相乘，账面金额会虚高数倍。Bruce 按输入、输出、按 TTL 分档的缓存写入与缓存读取四项分别计价。</p>
+          <p class="body-copy">内置 86 款主流模型单价并支持从 GitHub 静默同步，你也可以在「设置 › 模型计费」对任意模型手工校准覆盖单价。</p>
+          <ul class="stat-list" aria-label="单日样例拆分明细">
+            <li>
+              <div class="stat-list__meta"><span class="k">输入（Prompt Input）</span><span class="s">标准输入上下文</span></div>
+              <span class="v num">18.4M</span>
+            </li>
+            <li>
+              <div class="stat-list__meta"><span class="k">输出（Model Output）</span><span class="s">代码与推理生成</span></div>
+              <span class="v num">1.7M</span>
+            </li>
+            <li>
+              <div class="stat-list__meta"><span class="k">缓存读取（Cache Read）</span><span class="s">低单价上下文复用</span></div>
+              <span class="v num">566.5M</span>
+            </li>
+            <li>
+              <div class="stat-list__meta"><span class="k">缓存命中率</span><span class="s">当日折算 ≈ ¥334.15</span></div>
+              <span class="v stat-list__hl num">97%</span>
+            </li>
           </ul>
         </div>
       </div>
@@ -278,9 +350,12 @@
   <section class="section night" id="egress" aria-labelledby="egress-title">
     <div class="shell">
       <div class="section__head">
-        <p class="section__eyebrow section__eyebrow--night"><span class="dot" aria-hidden="true"></span><span class="idx">04</span><span class="name">网络出口保护</span></p>
+        <div class="section__folio section__folio--night">
+          <span class="section__eyebrow section__eyebrow--night"><span class="idx">04</span><span class="sep">/</span><span class="name">网络出口国家校验</span></span>
+          <span class="section__meta section__meta--night">Cloudflare Trace · 端口级隔离 · 拦截保快照</span>
+        </div>
         <div class="section__title">
-          <h2 class="h2" id="egress-title">先核验出口国家，<b class="hl">再查订阅余额。</b></h2>
+          <h2 class="h2" id="egress-title">先过出口国家校验，再发<b class="hl">订阅查额请求</b></h2>
         </div>
       </div>
 
@@ -289,27 +364,27 @@
         <div class="eg-band__grid eg-band__grid--effect">
           <div class="eg-copy">
             <div>
-              <span class="eg-kicker">01 / 运行时拦截</span>
-              <h3 class="eg-h3">节点不对，<em>就停在快照上。</em></h3>
+              <span class="eg-kicker">01 · 运行时熔断</span>
+              <h3 class="eg-h3">出口国家不符时中止请求，<em>原样保留上次快照</em></h3>
               <p class="eg-prose">
-                代理漂移或误走直连时，受保护的订阅会在查询前被即时拦截，原有额度快照与配色原样保留。
+                跨区或多账号订阅最怕代理规则漂移、意外直连导致异地请求风控。一旦实测出口国家与绑定通道不一致，Bruce 在发出查额请求前直接熔断。
               </p>
             </div>
 
             <ul class="eg-notes">
               <li>
                 <span class="eg-notes__idx">01</span>
-                <div><strong>保留上次有效快照</strong>仅中止本轮查额请求，不清空已有百分比进度、重置时间与阈值配色。</div>
+                <div><strong>保留上一轮有效读数</strong>仅跳过本轮云端查询，已有百分比量条、重置时刻与预警色阶保持不变。</div>
               </li>
               <li>
                 <span class="eg-notes__idx">02</span>
-                <div><strong>卡片内嵌单行告警</strong>在受影响服务商标题下提示出口异常，可直接点「去设置」或「重测」就地恢复。</div>
+                <div><strong>面板内嵌告警与就地重测</strong>在受影响服务下方展示出口异常提示，修复节点后可直接在卡片上点「重测」恢复。</div>
               </li>
             </ul>
           </div>
 
           <div>
-            <div class="eg-spec" id="eg-specimen" role="group" aria-label="ChatGPT 与 Claude 订阅卡片叠放出口保护交互样张"></div>
+            <div class="eg-spec" id="eg-specimen" role="group" aria-label="ChatGPT 与 Claude 订阅卡片出口保护交互样张"></div>
           </div>
         </div>
       </div>
@@ -318,36 +393,36 @@
       <div class="eg-band eg-band--divided" id="egress-config">
         <div class="eg-band__grid eg-band__grid--config">
           <div>
-            <div id="eg-settings" role="group" aria-label="Bruce 设置出口IP检查交互样张"></div>
+            <div id="eg-settings" role="group" aria-label="Bruce 设置 出口IP检查交互样张"></div>
           </div>
 
           <div class="eg-copy">
             <div>
-              <span class="eg-kicker">02 / 检测方法</span>
-              <h3 class="eg-h3">经专用端口探 Trace，<br /><em>国家一致才放行。</em></h3>
+              <span class="eg-kicker">02 · 通道校验机制</span>
+              <h3 class="eg-h3">绑定本地固定端口探测 Trace，<br /><em>不接管日常对话流量</em></h3>
               <p class="eg-prose">
-                仅在请求订阅额度前核验出口国家，不代理对话流量、不改写代理配置；未入组服务保持原样放行。
+                仅在后台刷新订阅额度前对受保护通道做一次轻量国家码核验，不改写系统代理，未分配通道的服务保持原路径放行。
               </p>
             </div>
 
             <ul class="eg-notes">
               <li>
                 <span class="eg-notes__idx">01</span>
-                <div><strong>Cloudflare Trace 端口探测</strong>查额前强制经该组绑定端口（如 <code>127.0.0.1:18081</code>）请求 <code>cdn-cgi/trace</code>，严校证书、禁重定向且超时 <code>2.5–3s</code>，解析 <code>loc</code> 国家码与脱敏 IP，绝不回退直连。</div>
+                <div><strong>指定端口直探信标</strong>强制经通道绑定的本地端口（如 <code>127.0.0.1:18081</code>）访问 <code>cdn-cgi/trace</code>，校验证书、禁止重定向、超时控制在 <code>2.5–3s</code>，失败绝不回退直连。</div>
               </li>
               <li>
                 <span class="eg-notes__idx">02</span>
-                <div><strong>两级判定与同轮合并</strong>先做 <code>CN</code> 出口快速熔断，再精确比对目标国家码；超时、未知或错区一律拦截并保留快照。同端口下多个订阅同轮次仅探测 <code>1</code> 次。</div>
+                <div><strong>国内出口熔断与同轮合并</strong>优先拦截 <code>CN</code> 直连泄漏，再精确核对目标国家码；同一端口挂载多个服务时，单轮刷新仅探测 <code>1</code> 次。</div>
               </li>
               <li>
                 <span class="eg-notes__idx">03</span>
-                <div><strong>静态节点 Listener 前提</strong>探测仅验证当前连接出口；动态选路与按域分流端口无法保证查额同路，需在代理客户端为该端口锁定固定国家节点。</div>
+                <div><strong>需配合静态节点端口</strong>请在 Clash / Mihomo 等客户端为该端口绑定固定国家 Listener，避免按域名分流导致探测与实际查额走不同线路。</div>
               </li>
             </ul>
 
             <div class="eg-sync-note" id="eg-sync-note" hidden>
-              <span>✓ <b>JP 通道已匹配</b>（203.104.***.***），上方拦截已解除。</span>
-              <a href="#egress-effect" class="eg-link-up">↑ 查看效果</a>
+              <span>✓ <b>JP 通道校验已通过</b>（203.104.***.***），上方订阅卡片拦截已同步解除。</span>
+              <a href="#egress-effect" class="eg-link-up">↑ 查看卡片恢复状态</a>
             </div>
           </div>
         </div>
@@ -361,11 +436,14 @@
   <section class="section" id="analysis" aria-labelledby="analysis-title">
     <div class="shell">
       <div class="section__head wb-head">
-        <p class="section__eyebrow"><span class="dot" aria-hidden="true"></span><span class="idx">05</span><span class="name">用量分析</span></p>
-        <div class="section__title">
-          <h2 class="h2" id="analysis-title">总量之外，<b class="hl">还能往下翻</b></h2>
+        <div class="section__folio">
+          <span class="section__eyebrow"><span class="idx">05</span><span class="sep">/</span><span class="name">用量分析工作台</span></span>
+          <span class="section__meta">跨渠道型号归并 · 五档跨度 · CSV / JSON 账单导出</span>
         </div>
-        <p class="wb-intro">以下完整还原了 Bruce「设置 › 模型用量」工作台——从五档时间跨度、交互式时序趋势到跨渠道规范模型归并、Agent 工程下钻、Prompt Cache 四象限与 24 小时交互密度，全部基于本机只读探针实时核算。</p>
+        <div class="section__title">
+          <h2 class="h2" id="analysis-title">跨渠道同名模型自动归并，直探<b class="hl">工程级消耗</b></h2>
+        </div>
+        <p class="wb-intro">「设置 › 模型用量」把不同 Agent 与接入渠道下的同一模型自动归并核算（例如官方 CLI、OpenCode 与 Bedrock 下的 Claude Sonnet），支持五档时间跨度切换、趋势图缩放拖拽、工程级构成透视及本地账单导出。下方为可交互工作台样张。</p>
       </div>
 
       <div class="wb-stage" id="analysis-workbench" role="region" aria-label="Bruce 设置 模型用量工作台交互还原"></div>
@@ -380,79 +458,82 @@
 <footer class="colophon shell">
   <div class="colophon__download">
     <div class="colophon__download-copy">
-      <p class="label">下载与验证</p>
-      <p class="colophon__download-note">macOS 版为未签名预览版，首次启动需在系统设置里确认。更新由应用内完成，替换前校验 SHA-256，失败回滚。Windows 版即将推出。</p>
+      <p class="colophon__kicker">安装与完整性校验</p>
+      <h2 class="colophon__heading">获取 Bruce v{{VERSION}}</h2>
+      <p class="colophon__download-note">macOS 预览版暂未附带 Apple Developer ID 公证签名，首次打开请在系统设置中确认放行。应用内升级会在覆盖前自动核验安装包 SHA-256 与版本号，异常即回滚。</p>
     </div>
     <div class="colophon__download-lines">
-      <a class="dl-line" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce-{{VERSION}}.dmg" rel="noopener">
-        <span class="dl-line__os">macOS</span>
+      <a class="dl-line" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce-{{VERSION}}.dmg" aria-label="下载 macOS 安装包 Bruce-{{VERSION}}.dmg，大小 {{DMG_SIZE}}" rel="noopener">
+        <span class="dl-line__os">macOS 14+</span>
         <span class="dl-line__file">Bruce-{{VERSION}}.dmg</span>
         <span class="dl-line__meta">Universal 2 · {{DMG_SIZE}}</span>
         <span class="dl-line__go" aria-hidden="true">→</span>
       </a>
       <span class="dl-line dl-line--soon" aria-disabled="true">
-        <span class="dl-line__os">Windows</span>
-        <span class="dl-line__file">即将推出</span>
-        <span class="dl-line__meta">coming soon</span>
+        <span class="dl-line__os">Windows 10+</span>
+        <span class="dl-line__file">NSIS 安装包准备中</span>
+        <span class="dl-line__meta">x64 · 即将推出</span>
       </span>
       <!-- Windows x64 安装包 {{EXE_SIZE}} 随发布启用 -->
-    </div>
-    <div class="colophon__download-foot">
-      <span>macOS 14+ · Windows 即将推出 · Universal 2 · x64 · 液态玻璃需 macOS 26 · MIT</span>
-      <span>
-        <a class="foot-link" href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">全部版本与 SHA256 ↗</a>
-        &nbsp;·&nbsp;
-        <a class="foot-link" href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">读源码 ↗</a>
-      </span>
+      <div class="colophon__download-foot">
+        <span>液态玻璃材质需 macOS 26+（低版本自动回落经典材质）· MIT 许可证</span>
+        <span>
+          <a class="foot-link" href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">历史版本与 SHA-256 清单 ↗</a>
+          &nbsp;·&nbsp;
+          <a class="foot-link" href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">浏览源码 ↗</a>
+        </span>
+      </div>
     </div>
   </div>
 
   <div class="colophon__top">
     <div class="colophon__note">
-      <p>macOS 菜单栏应用，与即将推出的 Windows 托盘版共用一套账本。<br />它记账，你管钥匙。</p>
+      <div class="colophon__brand">
+        <img class="colophon__icon" src="assets/bruce-icon.png" width="28" height="28" alt="" />
+        <span class="colophon__word">Bruce</span>
+      </div>
+      <p>常驻 macOS 菜单栏与 Windows 托盘的本地 AI 用量与订阅额度看板。不设服务端，所有会话统计与凭据均留在你的机器上。</p>
       <p>
         由 <a class="foot-link" href="https://github.com/4everSivan" target="_blank" rel="noopener">sivan</a>
-        制作，感谢 <a class="foot-link" href="https://linux.do/" target="_blank" rel="noopener">LINUX DO</a>。
+        开发维护，致谢 <a class="foot-link" href="https://linux.do/" target="_blank" rel="noopener">LINUX DO</a> 社区。
       </p>
     </div>
 
-    <nav class="foot-nav foot-nav--site" aria-label="目录">
-      <h4>目录</h4>
+    <nav class="foot-nav foot-nav--site" aria-label="页面章节导航">
+      <h4>章节</h4>
       <ul>
-        <li><a href="#panel">01 — 看板</a></li>
-        <li><a href="#sources">02 — 数据源</a></li>
-        <li><a href="#record">03 — 账目</a></li>
-        <li><a href="#egress">04 — 出口保护</a></li>
-        <li><a href="#analysis">05 — 用量分析</a></li>
+        <li><a href="#panel">01 · 菜单栏面板</a></li>
+        <li><a href="#sources">02 · 数据源与隐私</a></li>
+        <li><a href="#record">03 · 计费与历史台账</a></li>
+        <li><a href="#egress">04 · 网络出口保护</a></li>
+        <li><a href="#analysis">05 · 用量分析工作台</a></li>
       </ul>
     </nav>
 
-    <nav class="foot-nav foot-nav--project" aria-label="项目">
+    <nav class="foot-nav foot-nav--project" aria-label="仓库链接">
       <h4>项目</h4>
       <ul>
-        <li><a href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">源码 ↗</a></li>
-        <li><a href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">发布 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce" target="_blank" rel="noopener">GitHub 仓库 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">版本发布 ↗</a></li>
         <li><a href="https://github.com/4everSivan/Bruce/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志 ↗</a></li>
-        <li><a href="https://github.com/4everSivan/Bruce/blob/main/LICENSE" target="_blank" rel="noopener">许可证 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/blob/main/LICENSE" target="_blank" rel="noopener">MIT 许可证 ↗</a></li>
       </ul>
     </nav>
 
-    <nav class="foot-nav foot-nav--elsewhere" aria-label="别处">
-      <h4>别处</h4>
+    <nav class="foot-nav foot-nav--elsewhere" aria-label="文档与反馈">
+      <h4>文档与反馈</h4>
       <ul>
-        <li><a href="https://github.com/4everSivan/Bruce/tree/main/docs" target="_blank" rel="noopener">文档 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/tree/main/docs" target="_blank" rel="noopener">架构与部署文档 ↗</a></li>
+        <li><a href="https://github.com/4everSivan/Bruce/issues" target="_blank" rel="noopener">提交 Issue ↗</a></li>
         <li><a href="https://linux.do/" target="_blank" rel="noopener">LINUX DO ↗</a></li>
-        <li><a href="https://github.com/4everSivan/Bruce/issues" target="_blank" rel="noopener">报告问题 ↗</a></li>
       </ul>
     </nav>
   </div>
 
-  <div class="wordmark-wrap" aria-hidden="true"><p class="wordmark">Bruce</p></div>
-
   <div class="colophon__bottom">
-    <span>© 2026 Bruce · MIT</span>
-    <span class="set">正文宋体，西文 Times New Roman，纸色 #f1efe9。</span>
-    <span>v{{VERSION}}</span>
+    <span>© 2026 Bruce · MIT License</span>
+    <span>本地优先 · 无遥测 · 数据存于本机</span>
+    <span class="num">v{{VERSION}}</span>
   </div>
 </footer>
 
