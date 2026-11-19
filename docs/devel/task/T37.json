@@ -1,0 +1,115 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T37",
+  "title": "请求日志 Bridge 查询模块",
+  "version": "0.19.0",
+  "milestone": "M18-Agent请求日志与Antigravity接入",
+  "status": "in_progress",
+  "branch": "feat/T34-T38-request-log-antigravity",
+  "depends_on": [
+    "T35"
+  ],
+  "target": {
+    "module": "core/collector/crates/collector-bridge",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "goal": "Bridge 增加 module=request-log 只读查询：校验时间范围/Agent/模型/状态/分页，读取独立请求日志库并返回 total/page/entries；不扫描会话、不写库、不携带凭据。",
+  "precheck": {
+    "description": "确认 Bridge 目前只接受 agent-usage 模块",
+    "command": "git grep -n \"BRIDGE_UNKNOWN_MODULE\\|module == \\\"agent-usage\\\"\" -- core/collector || true",
+    "expected": "仅 agent-usage；无 request-log 分支",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 依赖 T35 已合入本批次分支"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-bridge -p collector-request-log",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T37 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T37-1",
+      "title": "模块与 context 白名单",
+      "capability": "允许 module=request-log；context 增加 operation/start/end/agentIds/model/status/page/pageSize；拒绝未知字段与凭据注入。",
+      "done": true
+    },
+    {
+      "id": "T37-2",
+      "title": "参数校验",
+      "capability": "page 0–1000、pageSize 1–200、时间范围 ≤31 天、agentIds 只接受已知 Agent、model ≤128 字符、status 100–599；非法请求返回协议诊断且不执行 SQL。",
+      "done": true
+    },
+    {
+      "id": "T37-3",
+      "title": "只读查询与响应",
+      "capability": "按 home 固定解析 request-log-v1.sqlite，只读打开；返回 schemaVersion/module/generatedAt/total/page/pageSize/entries；条目字段与设计一致。",
+      "done": true
+    },
+    {
+      "id": "T37-4",
+      "title": "失败降级",
+      "capability": "库不存在返回空页 + notice；库损坏/版本未知返回协议错误但不删除库；查询不阻塞 artifact 链路。",
+      "done": true
+    },
+    {
+      "id": "T37-5",
+      "title": "契约测试",
+      "capability": "覆盖正常查询、分页边界、非法参数、缺失库、损坏库、倒序与过滤；新增 request-log schema 或 bridge fixture 对拍。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": "passed",
+    "run_id": "local-20261119-04",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "只读与边界",
+        "true_if": "查询只读打开固定路径数据库，不扫会话、不写库、不读凭据",
+        "false_if": "接受任意路径、扫描会话或产生写入",
+        "evidence": [
+          "只读与边界",
+          "query_request_log_artifact 固定 home 解析路径；RequestLogStore::open_read_only 只读打开；不扫会话、不写库、不读凭据。"
+        ],
+        "result": true
+      },
+      {
+        "item": "协议正确",
+        "true_if": "合法请求返回分页结果；非法参数返回协议错误且不执行 SQL",
+        "false_if": "SQL 注入、越界分页或错误参数落库",
+        "evidence": [
+          "协议正确",
+          "bridge 单测覆盖空库空页与非法分页；参数化 SQL；31 天/分页/Agent 校验通过。"
+        ],
+        "result": true
+      },
+      {
+        "item": "故障可见",
+        "true_if": "缺失库返回空页说明；损坏库返回可解释错误且不删除数据",
+        "false_if": "静默空页、崩溃或自动重建损坏库",
+        "evidence": [
+          "故障可见",
+          "缺失库返回空页 notice；损坏/未知版本返回 REQUEST_LOG_UNAVAILABLE/QUERY_FAILED，不删除库。"
+        ],
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

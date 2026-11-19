@@ -15,7 +15,7 @@ use crate::jsonl_cache::{
 };
 use crate::ScanStats;
 use collector_domain::{
-    CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
+    CollectionWindow, RequestRecord, UsageContribution, UsageContributionBuilder, UsageSample,
 };
 use collector_runtime::CancellationToken;
 use serde_json::Value;
@@ -68,15 +68,34 @@ impl ObservationAggregator {
 impl JsonlAggregator for ObservationAggregator {
     fn absorb(&mut self, payload: &CachedFilePayload) {
         self.absorbed = true;
+        let project = payload.project.as_deref();
         for observation in &payload.observations {
-            let _ = self
-                .builder
-                .record(observation.sample(payload.project.as_deref()));
+            let _ = self.builder.record(observation.sample(project));
+            if let Some(key) = observation.dedupe_key {
+                self.builder.record_request(RequestRecord {
+                    key: format!("{key:032x}"),
+                    timestamp_millis: observation.timestamp_millis,
+                    model: observation.model.clone(),
+                    raw_model: observation.model.clone(),
+                    project: project.map(str::to_owned),
+                    input: observation.input,
+                    output: observation.output,
+                    cache_read: observation.cache_read,
+                    cache_creation: observation.cache_creation,
+                    cache_creation_1h: observation.cache_creation_1h,
+                    fidelity: "exact".to_owned(),
+                });
+            }
         }
     }
 
-    fn finish(self) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
-        Ok((self.builder.contribution(), self.absorbed, None))
+    fn finish(
+        mut self,
+    ) -> Result<(UsageContribution, Vec<RequestRecord>, bool, Option<String>), SourceScanError>
+    {
+        let contribution = self.builder.contribution();
+        let requests = self.builder.take_requests();
+        Ok((contribution, requests, self.absorbed, None))
     }
 }
 
@@ -212,9 +231,40 @@ impl JsonlAggregator for DedupedAggregator {
         }
     }
 
-    fn finish(self) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    fn finish(
+        self,
+    ) -> Result<(UsageContribution, Vec<RequestRecord>, bool, Option<String>), SourceScanError>
+    {
         let mut builder = UsageContributionBuilder::new(self.window);
-        for usage in self.best.into_values().chain(self.direct) {
+        for (key, usage) in self.best {
+            let model = self.names.name(usage.model);
+            let project = self.names.name(usage.project);
+            let sample = UsageSample {
+                timestamp_millis: usage.timestamp_millis,
+                model,
+                input: usage.input,
+                output: usage.output,
+                cache_read: usage.cache_read,
+                cache_creation: usage.cache_creation,
+                cache_creation_1h: usage.cache_creation_1h,
+                project,
+            };
+            let _ = builder.record(sample);
+            builder.record_request(RequestRecord {
+                key: format!("{key:032x}"),
+                timestamp_millis: usage.timestamp_millis,
+                model: model.map(str::to_owned),
+                raw_model: model.map(str::to_owned),
+                project: project.map(str::to_owned),
+                input: usage.input,
+                output: usage.output,
+                cache_read: usage.cache_read,
+                cache_creation: usage.cache_creation,
+                cache_creation_1h: usage.cache_creation_1h,
+                fidelity: "exact".to_owned(),
+            });
+        }
+        for usage in self.direct {
             let _ = builder.record(UsageSample {
                 timestamp_millis: usage.timestamp_millis,
                 model: self.names.name(usage.model),
@@ -226,7 +276,9 @@ impl JsonlAggregator for DedupedAggregator {
                 project: self.names.name(usage.project),
             });
         }
-        Ok((builder.contribution(), self.absorbed, None))
+        let contribution = builder.contribution();
+        let requests = builder.take_requests();
+        Ok((contribution, requests, self.absorbed, None))
     }
 }
 
@@ -742,6 +794,7 @@ pub fn scan_grok_cached(
     Ok(SourceScan {
         found,
         contribution: builder.contribution(),
+        requests: Vec::new(),
         stats,
         diagnostic,
         notice,

@@ -11,5 +11,6 @@ collector-domain = { path = "../collector-domain" }
 collector-history = { path = "../collector-history" }
 collector-local = { path = "../collector-local" }
 collector-provider = { path = "../collector-provider" }
+collector-request-log = { path = "../collector-request-log" }
 collector-runtime = { path = "../collector-runtime" }
 serde_json.workspace = true

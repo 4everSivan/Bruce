@@ -23,10 +23,10 @@
 
 ## Agent / 模型身份图形 (C161)
 
-Agent 与模型厂商的品牌徽章复用同一套图形数据，另加三份官方 App 位图：
+Agent 与模型厂商的品牌徽章复用同一套图形数据，另加四份官方 App 位图：
 
-- 源文件：`agent-icons/agent-zcode.png`、`agent-icons/agent-codex.png`、`agent-icons/agent-codebuddy.png`
-  （分别取自本机 ZCode.app、ChatGPT.app、@tencent-ai/codebuddy-code 的内置图标）；
+- 源文件：`agent-icons/agent-zcode.png`、`agent-icons/agent-codex.png`、`agent-icons/agent-codebuddy.png`、`agent-icons/agent-antigravity.png`
+  （分别取自本机 ZCode.app、ChatGPT.app、@tencent-ai/codebuddy-code、Antigravity.app 的内置图标）；
 - 生成期由 `scripts/gen-provider-glyphs.mjs` 原样投放到
   `apps/macos/Assets/AgentIcons/` 与 `apps/win/src/assets/agent-icons/`，
   `--check` 逐字节比对，请勿直接改投放副本；

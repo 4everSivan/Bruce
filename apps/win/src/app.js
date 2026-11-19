@@ -86,6 +86,8 @@ const NOTHING_AGENT_TIER = {
   "codebuddy": 2, "kimi-work": 4, grok: 2, pi: 4,
   // dsh (DeepSeek Harness, C189) 固定 1 档, 与 mac 同档位。
   "dsh": 1,
+  // Antigravity 与 zcode 共用 3 档, 与 mac 同档位。
+  "antigravity": 3,
 };
 function nothingRampHex(agentID) {
   const known = NOTHING_AGENT_TIER[agentID];

@@ -1,6 +1,6 @@
 # 系统设计中心 (design/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-06 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-19 ｜ **status**: active
 
 ## 1. 简介
 
@@ -23,7 +23,7 @@
 | 文档名称 | 对应 Topic | 文档 ID | 核心职责概述 | 状态 | 最后更新 |
 |---|---|---|---|---|---|
 | [00-系统总体设计.md](00-系统总体设计.md) | `SystemOverview` | `DESIGN-SYS` | 系统宏观架构全景、分层定义与功能矩阵 | 现行基线 | 2026-11-06 |
-| [01-数据采集与多模型计费引擎.md](01-数据采集与多模型计费引擎.md) | `TokenUsage` | `DESIGN-COLLECTOR` | 10 个 Agent 扫描（含 dsh zstd 会话源）、增量缓存、43 款模型定价与 Token 费用核算 | 现行基线 | 2026-11-06 |
+| [01-数据采集与多模型计费引擎.md](01-数据采集与多模型计费引擎.md) | `TokenUsage` | `DESIGN-COLLECTOR` | 11 个 Agent 扫描（含 dsh zstd 与 Antigravity 双根会话源）、增量缓存、43 款模型定价与 Token 费用核算 | 现行基线 | 2026-11-19 |
 | [02-订阅额度与凭据安全存储.md](02-订阅额度与凭据安全存储.md) | `SubscriptionQuota` | `DESIGN-SUBSCRIPTION` | 10 家 Provider 额度适配、POSIX 0600 凭据存储、原子落盘与防扰 | 现行基线 | 2026-11-06 |
 | [03-菜单栏状态与多风格原生渲染.md](03-菜单栏状态与多风格原生渲染.md) | `MenuBarIndicator` | `DESIGN-DASHBOARD` | 赛博精密环形仪表、纯图标模式、液态玻璃与 Nothing 风格点阵控制台 | 现行基线 | 2026-11-06 |
 | [04-设置中心与价格校准交互.md](04-设置中心与价格校准交互.md) | `PricingEngine` | `DESIGN-SETTINGS` | 菜单栏实时预览条、卡片排序拖拽、全模型价格表与自定义覆盖校准 | 现行基线 | 2026-10-26 |
@@ -36,6 +36,8 @@
 | [11-网络出口国家校验.md](11-网络出口国家校验.md) | `NetworkEgressCountry` | `DESIGN-EGRESS-COUNTRY` | 订阅额度查询前本机网络出口校验：设置页双卡分立、Cloudflare Trace 两级检测（含国内 IP 快速熔断）、仪表盘 30pt 单行出口问题卡片与快照保护 | 现行基线 | 2026-11-03 |
 | [12-开机自启动.md](12-开机自启动.md) | `LaunchAtLogin` | `DESIGN-LAUNCH-AT-LOGIN` | macOS 原生开机自启动（SMAppService API）、设置中心「通用」面板开关、首次启动向导可选联动与系统权限拦截引导 | 现行基线 | 2026-11-03 |
 | [13-官方网站.md](13-官方网站.md) | `OfficialWebsite` | `DESIGN-WEBSITE` | 官网单页落地主仓：宋体 + Times 的时装画册版式、三主题面板牌堆与设置窗口高保真重建、VERSION 注入构建、站点同步门禁与 Pages 独立发布 | 现行基线 | 2026-11-05 |
+| [14-Agent请求日志.md](14-Agent请求日志.md) | `RequestLog` | `DESIGN-REQUESTLOG` | 请求粒度用量台账：独立 SQLite、复用观测去重键、30 天明细、Bridge 查询模块；前端为侧栏分类 + 摘要条 + 表格 + 居中 Sheet | 现行基线 | 2026-11-19 |
+| [15-Antigravity接入.md](15-Antigravity接入.md) | `AntigravityUsage` | `DESIGN-ANTIGRAVITY` | 第 11 个本机源：Antigravity CLI/IDE 双根、step 合并、Token 口径、模型继承与请求日志联动（额度 P3 另议） | 现行基线 | 2026-11-19 |
 
 ### 待评审草稿
 

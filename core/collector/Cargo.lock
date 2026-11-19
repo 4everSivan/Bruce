@@ -156,6 +156,7 @@ dependencies = [
  "collector-history",
  "collector-local",
  "collector-provider",
+ "collector-request-log",
  "collector-runtime",
  "serde_json",
 ]
@@ -242,6 +243,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "ureq",
+]
+
+[[package]]
+name = "collector-request-log"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
 ]
 
 [[package]]

@@ -49,6 +49,11 @@ let package = Package(
             path: "Tests/Harnesses/ArtifactStoreHarness"
         ),
         .executableTarget(
+            name: "BruceRequestLogHarness",
+            dependencies: ["BruceAppCore", "BruceOnboardingCore"],
+            path: "Tests/Harnesses/RequestLogHarness"
+        ),
+        .executableTarget(
             name: "CollectorRunnerHarness",
             dependencies: ["BruceAppCore", "BruceOnboardingCore"],
             path: "Tests/Harnesses/CollectorRunnerHarness"

@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
-  "phase": "Phase 3 - 订阅额度预警架构重构",
-  "updated_at": "2026-11-18",
+  "phase": "Phase 4 - Agent 请求日志与 Antigravity 接入",
+  "updated_at": "2026-11-19",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -137,6 +137,17 @@
       "tasks": [
         "T33"
       ]
+    },
+    "M18-Agent请求日志与Antigravity接入": {
+      "title": "请求粒度用量台账与 Antigravity 本机源：独立 SQLite、30 天明细、Bridge 查询模块与设置侧栏请求日志页（mac 先行）",
+      "design_doc": "docs/devel/design/14-Agent请求日志.md",
+      "tasks": [
+        "T34",
+        "T35",
+        "T36",
+        "T37",
+        "T38"
+      ]
     }
   },
   "topics": {
@@ -184,6 +195,21 @@
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
       "tasks": []
+    },
+    "AntigravityUsage": {
+      "design_doc": "docs/devel/design/15-Antigravity接入.md",
+      "tasks": [
+        "T34"
+      ]
+    },
+    "RequestLog": {
+      "design_doc": "docs/devel/design/14-Agent请求日志.md",
+      "tasks": [
+        "T35",
+        "T36",
+        "T37",
+        "T38"
+      ]
     }
   },
   "tasks": {
@@ -240,6 +266,60 @@
       ],
       "file": "docs/devel/task/T04.json",
       "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+    },
+    "T34": {
+      "title": "Antigravity 本机用量源接入",
+      "status": "in_progress",
+      "branch": "feat/T34-T38-request-log-antigravity",
+      "topic": "AntigravityUsage",
+      "milestone": "M18-Agent请求日志与Antigravity接入",
+      "depends_on": [],
+      "file": "docs/devel/task/T34.json"
+    },
+    "T35": {
+      "title": "请求日志独立存储与 30 天保留",
+      "status": "in_progress",
+      "branch": "feat/T34-T38-request-log-antigravity",
+      "topic": "RequestLog",
+      "milestone": "M18-Agent请求日志与Antigravity接入",
+      "depends_on": [],
+      "file": "docs/devel/task/T35.json"
+    },
+    "T36": {
+      "title": "Claude/Codex/Antigravity 请求行采集与幂等",
+      "status": "in_progress",
+      "branch": "feat/T34-T38-request-log-antigravity",
+      "topic": "RequestLog",
+      "milestone": "M18-Agent请求日志与Antigravity接入",
+      "depends_on": [
+        "T34",
+        "T35"
+      ],
+      "file": "docs/devel/task/T36.json"
+    },
+    "T37": {
+      "title": "请求日志 Bridge 查询模块",
+      "status": "in_progress",
+      "branch": "feat/T34-T38-request-log-antigravity",
+      "topic": "RequestLog",
+      "milestone": "M18-Agent请求日志与Antigravity接入",
+      "depends_on": [
+        "T35"
+      ],
+      "file": "docs/devel/task/T37.json"
+    },
+    "T38": {
+      "title": "Mac 请求日志页与详情 Sheet",
+      "status": "in_progress",
+      "branch": "feat/T34-T38-request-log-antigravity",
+      "topic": "RequestLog",
+      "milestone": "M18-Agent请求日志与Antigravity接入",
+      "depends_on": [
+        "T34",
+        "T36",
+        "T37"
+      ],
+      "file": "docs/devel/task/T38.json"
     }
   }
 }

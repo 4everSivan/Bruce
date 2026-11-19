@@ -259,6 +259,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                 return Ok(SourceScan {
                     found: entry.found,
                     contribution,
+                    requests: Vec::new(),
                     stats,
                     diagnostic: entry.diagnostic.clone(),
                     notice: database_drift_notice(&entry.usage_probe),
@@ -337,6 +338,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                     return Ok(SourceScan {
                         found,
                         contribution,
+                        requests: Vec::new(),
                         stats,
                         diagnostic: delta.diagnostic,
                         notice: database_drift_notice(&probe),
@@ -400,6 +402,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
     Ok(SourceScan {
         found: result.found,
         contribution,
+        requests: Vec::new(),
         stats,
         diagnostic: result.diagnostic,
         notice: database_drift_notice(&result.probe),

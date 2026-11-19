@@ -5,6 +5,7 @@
 //! Claude, Codex, Grok, Pi, OpenCode, and ZCode. Submodules under `sources/`
 //! split individual adapters and test suites by responsibility (C053).
 
+mod antigravity;
 mod codebuddy;
 mod codex;
 mod dsh;
@@ -25,6 +26,7 @@ mod tests_race;
 #[cfg(test)]
 mod tests_sources;
 
+pub use antigravity::scan_antigravity_cached;
 pub use codex::scan_codex_cached_with_cancellation;
 pub use dsh::scan_dsh_cached;
 pub use jsonl_adapters::{
@@ -68,6 +70,8 @@ use std::time::UNIX_EPOCH;
 pub struct SourceScan {
     pub found: bool,
     pub contribution: UsageContribution,
+    /// Request-granularity rows emitted beside the aggregate sample (design/14).
+    pub requests: Vec<collector_domain::RequestRecord>,
     pub stats: ScanStats,
     /// 真实 schema / 读取故障 (artifact 中 agent 置 error, 诊断码
     /// `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`, envelope Partial)。
@@ -100,6 +104,7 @@ impl SourceScan {
         Self {
             found: false,
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
+            requests: Vec::new(),
             stats: ScanStats::default(),
             diagnostic: None,
             notice: None,
@@ -109,13 +114,16 @@ impl SourceScan {
 
 pub(super) fn finish(
     _window: &CollectionWindow,
-    builder: UsageContributionBuilder,
+    mut builder: UsageContributionBuilder,
     stats: ScanStats,
     found: bool,
 ) -> SourceScan {
+    let contribution = builder.contribution();
+    let requests = builder.take_requests();
     SourceScan {
         found,
-        contribution: builder.contribution(),
+        contribution,
+        requests,
         stats,
         diagnostic: None,
         notice: None,

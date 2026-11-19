@@ -524,4 +524,22 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// Antigravity CLI / IDE 两个 brain 根都进入环境探测; 缺一个不影响另一个。
+    static func standardPathsIncludeAntigravityBrains() throws {
+        let home = URL(fileURLWithPath: "/Users/example")
+        let paths = LocalDependencyScanPaths.standard(home: home)
+        let cli = paths.sessionDirectories.first { $0.displayName == "Antigravity CLI" }
+        let ide = paths.sessionDirectories.first { $0.displayName == "Antigravity IDE" }
+        try coreExpect(cli != nil, "standard paths 应包含 Antigravity CLI brain")
+        try coreExpect(ide != nil, "standard paths 应包含 Antigravity IDE brain")
+        try coreExpect(
+            cli?.url.path == "/Users/example/.gemini/antigravity-cli/brain",
+            "Antigravity CLI brain URL 错误: \(String(describing: cli?.url))"
+        )
+        try coreExpect(
+            ide?.url.path == "/Users/example/.gemini/antigravity/brain",
+            "Antigravity IDE brain URL 错误: \(String(describing: ide?.url))"
+        )
+    }
+
 }

@@ -321,6 +321,7 @@ struct SettingsView: View {
         switch category {
         case .general: generalPane
         case .agentUsage: agentUsagePane
+        case .requestLog: RequestLogView(collectorURL: model.collectorExecutableURL)
         case .modelPricing: modelPricingPane
         case .subscription: subscriptionPane
         case .consent: consentPane

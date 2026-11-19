@@ -22,6 +22,8 @@
     pi: { tile: "", mark: "", mono: "π" },
     // DSH (DeepSeek Harness, C189): 无官方位图, 复用 deepseek 矢量图形与品牌蓝。
     dsh: { glyph: "deepseek", tile: "#FFFFFF", mark: "#4D6BFE", mono: "D" },
+    // Antigravity: 官方 App 图标 (白底彩色 A); 位图缺失时退深色字标。
+    antigravity: { image: "agent-antigravity", tile: "#FFFFFF", mark: "#1B1B1B", mono: "A" },
   };
 
   // 模型厂商: 按规范键/显示名子串匹配, 顺序与 mac AgentBrandPalette 一致

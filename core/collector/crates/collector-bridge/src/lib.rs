@@ -6,11 +6,13 @@ mod metrics;
 
 use chrono::{SecondsFormat, Utc};
 use collector_application::{
-    collect_agent_usage, validate_credential_outputs, CollectionFailure, CollectionMetrics,
-    CollectionOutput, CollectionScanStats, SourcePerformanceMetric,
+    collect_agent_usage, query_request_log_artifact, validate_credential_outputs,
+    CollectionFailure, CollectionMetrics, CollectionOutput, CollectionScanStats,
+    SourcePerformanceMetric,
 };
 use collector_domain::{
-    response_status, BridgeRequest, BridgeResponse, Diagnostic, BRIDGE_SCHEMA_VERSION,
+    response_status, BridgeRequest, BridgeResponse, Diagnostic, ResponseStatus,
+    BRIDGE_SCHEMA_VERSION,
 };
 use std::io::{self, Read};
 use std::time::Instant;
@@ -34,6 +36,15 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "egressRules",
     "pricingOverrides",
     "pricingCatalog",
+    // request-log 只读查询 (design/14)
+    "operation",
+    "start",
+    "end",
+    "agentIds",
+    "model",
+    "status",
+    "page",
+    "pageSize",
 ];
 
 /// C123: `localPricing` 已移除 —— 计价恒随本机统计执行, 该能力从未被 collector 读取。
@@ -126,48 +137,75 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
             }
         };
         match validate_request(&request) {
-            Ok(()) => match collect_agent_usage(&request) {
-                Ok(CollectionOutput {
-                    artifact,
-                    diagnostics,
-                    generated_at,
-                    scan_stats,
-                    metrics,
-                    source_metrics,
-                    credential_updates,
-                    credential_challenges,
-                }) => {
-                    let response = BridgeResponse {
-                        schema_version: BRIDGE_SCHEMA_VERSION,
-                        run_id: request.run_id.clone(),
-                        generated_at,
-                        status: response_status(true, &diagnostics),
-                        artifact: Some(artifact),
-                        credential_updates,
-                        credential_challenges,
-                        diagnostics,
+            Ok(()) => {
+                if request.module == "request-log" {
+                    let generated = generated_at();
+                    let response = match query_request_log_artifact(&request, &generated) {
+                        Ok(artifact) => BridgeResponse {
+                            schema_version: BRIDGE_SCHEMA_VERSION,
+                            run_id: request.run_id.clone(),
+                            generated_at: generated,
+                            status: ResponseStatus::Success,
+                            artifact: Some(artifact),
+                            credential_updates: Vec::new(),
+                            credential_challenges: Vec::new(),
+                            diagnostics: Vec::new(),
+                        },
+                        Err(diagnostic) => {
+                            BridgeResponse::error(request.run_id.clone(), generated, diagnostic)
+                        }
                     };
-                    match validate_response_credentials(response) {
-                        Ok(response) => (response, scan_stats, metrics, source_metrics),
-                        Err(diagnostic) => (
-                            BridgeResponse::error(
-                                request.run_id,
-                                crate::generated_at(),
-                                diagnostic,
-                            ),
+                    (
+                        response,
+                        CollectionScanStats::default(),
+                        CollectionMetrics::default(),
+                        Vec::new(),
+                    )
+                } else {
+                    match collect_agent_usage(&request) {
+                        Ok(CollectionOutput {
+                            artifact,
+                            diagnostics,
+                            generated_at,
+                            scan_stats,
+                            metrics,
+                            source_metrics,
+                            credential_updates,
+                            credential_challenges,
+                        }) => {
+                            let response = BridgeResponse {
+                                schema_version: BRIDGE_SCHEMA_VERSION,
+                                run_id: request.run_id.clone(),
+                                generated_at,
+                                status: response_status(true, &diagnostics),
+                                artifact: Some(artifact),
+                                credential_updates,
+                                credential_challenges,
+                                diagnostics,
+                            };
+                            match validate_response_credentials(response) {
+                                Ok(response) => (response, scan_stats, metrics, source_metrics),
+                                Err(diagnostic) => (
+                                    BridgeResponse::error(
+                                        request.run_id,
+                                        crate::generated_at(),
+                                        diagnostic,
+                                    ),
+                                    CollectionScanStats::default(),
+                                    CollectionMetrics::default(),
+                                    Vec::new(),
+                                ),
+                            }
+                        }
+                        Err(failure) => (
+                            failure_response(request.run_id, failure),
                             CollectionScanStats::default(),
                             CollectionMetrics::default(),
                             Vec::new(),
                         ),
                     }
                 }
-                Err(failure) => (
-                    failure_response(request.run_id, failure),
-                    CollectionScanStats::default(),
-                    CollectionMetrics::default(),
-                    Vec::new(),
-                ),
-            },
+            }
             Err(diagnostic) => (
                 BridgeResponse::error(request.run_id, generated_at(), diagnostic),
                 CollectionScanStats::default(),
@@ -254,7 +292,7 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
             "不支持的 Bridge schema 版本",
         ));
     }
-    if request.module != "agent-usage" {
+    if request.module != "agent-usage" && request.module != "request-log" {
         return Err(protocol_error("BRIDGE_UNKNOWN_MODULE", "不支持的采集模块"));
     }
     if Uuid::parse_str(&request.run_id).is_err() {
@@ -573,6 +611,58 @@ mod tests {
         assert!(!id.is_empty());
         let again = run_id_of(b"not json");
         assert_ne!(id, again, "非法输入应回退为新的随机 runId");
+    }
+
+    #[test]
+    fn request_log_module_returns_an_empty_page_before_the_database_exists() {
+        let home =
+            std::env::temp_dir().join(format!("bruce-bridge-request-log-{}", std::process::id()));
+        let input = serde_json::json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "request-log",
+            "timeouts": {"externalRequestSeconds": 1, "moduleSeconds": 10},
+            "context": {
+                "home": home.to_string_lossy(),
+                "start": 0,
+                "end": 1_000,
+                "agentIds": ["claude-code"],
+                "page": 0,
+                "pageSize": 50
+            },
+            "credentials": {}
+        })
+        .to_string();
+        let response = run_bytes(input.as_bytes());
+        assert_eq!(response.status, ResponseStatus::Success);
+        let artifact = response.artifact.expect("request-log artifact");
+        assert_eq!(artifact["module"], "request-log");
+        assert_eq!(artifact["total"], 0);
+        assert_eq!(artifact["notice"], "请求日志库尚未生成");
+        assert_eq!(artifact["entries"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn request_log_module_rejects_invalid_pagination() {
+        let input = serde_json::json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "request-log",
+            "timeouts": {"externalRequestSeconds": 1, "moduleSeconds": 10},
+            "context": {
+                "home": "/tmp",
+                "start": 0,
+                "end": 1_000,
+                "page": 0,
+                "pageSize": 500
+            },
+            "credentials": {}
+        })
+        .to_string();
+        let response = run_bytes(input.as_bytes());
+        assert_eq!(response.status, ResponseStatus::Error);
+        assert_eq!(response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST");
+        assert!(response.artifact.is_none());
     }
 
     /// C124: 只授予 localSessions 的请求 (无订阅 / 未授权云端额度) 是完整成功的本机统计,

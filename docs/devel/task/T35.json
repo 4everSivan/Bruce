@@ -1,0 +1,119 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T35",
+  "title": "请求日志独立存储与 30 天保留",
+  "version": "0.19.0",
+  "milestone": "M18-Agent请求日志与Antigravity接入",
+  "status": "in_progress",
+  "branch": "feat/T34-T38-request-log-antigravity",
+  "depends_on": [],
+  "target": {
+    "module": "core/collector/crates/collector-request-log",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "goal": "建立独立于 usage-history 的请求日志 SQLite：schema v1、30 天保留、幂等 upsert、费用落库、筛选分页查询与损坏降级；只存派生数值，不存正文/路径/凭据。",
+  "precheck": {
+    "description": "确认尚无请求日志 crate 与 request-log-v1.sqlite",
+    "command": "git grep -n \"request-log-v1\\|collector-request-log\" -- core/collector || true",
+    "expected": "无既有实现；命中项逐条核对",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 批次分支已创建：feat/T34-T38-request-log-antigravity"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-request-log",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T35 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T35-1",
+      "title": "crate 与领域类型",
+      "capability": "新增 collector-request-log crate：RequestLogEntry、RequestLogFilter、RequestLogPage、错误类型；不依赖 apps。",
+      "done": true
+    },
+    {
+      "id": "T35-2",
+      "title": "schema 与打开策略",
+      "capability": "PRAGMA user_version=1；request_log 表与时间/Agent/模型/状态索引；WAL、busy_timeout=3s；目录 0700、文件 0600；未知版本 fail-closed。",
+      "done": true
+    },
+    {
+      "id": "T35-3",
+      "title": "幂等写入与 30 天保留",
+      "capability": "ON CONFLICT 只在 Token 变大、费用补全或状态转终态时更新；禁止 Token 改小；写入后按 occurred_at 删除 30 天前明细；单事务。",
+      "done": true
+    },
+    {
+      "id": "T35-4",
+      "title": "查询与分页",
+      "capability": "按 start/end、agentIds、model、status 过滤；按 occurred_at DESC 分页；返回 total/page/pageSize；SQL 全参数化。",
+      "done": true
+    },
+    {
+      "id": "T35-5",
+      "title": "路径与权限",
+      "capability": "collector-application paths 新增 resolve_request_log_path(home)：macOS Application Support/Bruce，Windows LOCALAPPDATA/Bruce；创建权限收紧尽力而为。",
+      "done": true
+    },
+    {
+      "id": "T35-6",
+      "title": "测试",
+      "capability": "覆盖幂等、流式增大、费用补全、禁止改小、30 天清理、筛选分页、损坏版本 fail-closed、无正文落库。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": "passed",
+    "run_id": "local-20261119-02",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "存储隔离",
+        "true_if": "请求日志使用独立 request-log-v1.sqlite，不读写 usage-history-v1.sqlite 的表结构",
+        "false_if": "请求表混入历史台账或依赖其 schema",
+        "evidence": [
+          "存储隔离",
+          "request-log-v1.sqlite 独立 crate 与 schema；未读写 usage-history 表结构（collector-request-log/src/lib.rs）。"
+        ],
+        "result": true
+      },
+      {
+        "item": "幂等与保留",
+        "true_if": "同一请求重复写入行数不变；Token 不被改小；30 天前明细被清理",
+        "false_if": "重复行、Token 回退或过期明细残留",
+        "evidence": [
+          "幂等与保留",
+          "5 项单测覆盖重复写入、Token 不回退、费用补全、30 天清理、筛选分页；cargo test -p collector-request-log 全绿。"
+        ],
+        "result": true
+      },
+      {
+        "item": "隐私边界",
+        "true_if": "库内只有派生数值、hash 请求键与 basename 工程名",
+        "false_if": "出现对话正文、完整路径、session id 或凭据",
+        "evidence": [
+          "隐私边界",
+          "schema 仅含派生数值、hash 请求键与 basename 工程名；无正文/路径/session id 字段。"
+        ],
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

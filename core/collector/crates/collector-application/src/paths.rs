@@ -223,6 +223,17 @@ pub fn resolve_dsh_sessions_path(home: &Path) -> PathBuf {
     resolve_dsh_home_path(home).join("sessions")
 }
 
+/// Resolve Antigravity CLI and IDE `brain` roots.
+///
+/// Both products share the same transcript layout under `~/.gemini`; the agent
+/// is counted once even when a conversation appears in both roots.
+pub fn resolve_antigravity_brain_roots(home: &Path) -> [PathBuf; 2] {
+    [
+        home.join(".gemini").join("antigravity-cli").join("brain"),
+        home.join(".gemini").join("antigravity").join("brain"),
+    ]
+}
+
 /// Resolve the collector-owned usage history SQLite ledger (T26).
 ///
 /// macOS/Linux keep the `~/Library/Application Support` layout; Windows uses
@@ -244,6 +255,30 @@ pub fn resolve_usage_history_path(home: &Path) -> PathBuf {
             .join("Application Support")
             .join("Bruce")
             .join("usage-history-v1.sqlite")
+    }
+}
+
+/// Resolve the regenerable request log SQLite database.
+///
+/// Kept separate from `usage-history-v1.sqlite`: the history ledger is a
+/// non-regenerable asset, while request detail is rebuildable and pruned after
+/// 30 days.
+pub fn resolve_request_log_path(home: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let local_app_data = env_non_empty("LOCALAPPDATA");
+        let root = match local_app_data {
+            Some(value) => PathBuf::from(value).join("Bruce"),
+            None => home.join("AppData").join("Local").join("Bruce"),
+        };
+        root.join("request-log-v1.sqlite")
+    }
+    #[cfg(not(windows))]
+    {
+        home.join("Library")
+            .join("Application Support")
+            .join("Bruce")
+            .join("request-log-v1.sqlite")
     }
 }
 
@@ -287,6 +322,18 @@ mod tests {
         assert_eq!(
             resolve_codebuddy_projects_path(home),
             PathBuf::from("/custom/home/.codebuddy/projects")
+        );
+        assert_eq!(
+            resolve_antigravity_brain_roots(home),
+            [
+                PathBuf::from("/custom/home/.gemini/antigravity-cli/brain"),
+                PathBuf::from("/custom/home/.gemini/antigravity/brain"),
+            ]
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            resolve_request_log_path(home),
+            PathBuf::from("/custom/home/Library/Application Support/Bruce/request-log-v1.sqlite")
         );
     }
 

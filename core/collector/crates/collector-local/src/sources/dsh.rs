@@ -275,11 +275,12 @@ fn scan_dsh(
     }
     cancellation.check()?;
 
-    let (contribution, _absorbed, diagnostic) = aggregator.finish()?;
+    let (contribution, requests, _absorbed, diagnostic) = aggregator.finish()?;
     cancellation.check()?;
     Ok(SourceScan {
         found: stats.files_scanned > 0,
         contribution,
+        requests,
         stats,
         diagnostic,
         notice: join_notices(

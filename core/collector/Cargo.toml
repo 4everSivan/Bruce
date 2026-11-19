@@ -3,6 +3,7 @@ members = [
     "crates/collector-domain",
     "crates/collector-history",
     "crates/collector-local",
+    "crates/collector-request-log",
     "crates/collector-aggregate",
     "crates/collector-runtime",
     "crates/collector-provider",

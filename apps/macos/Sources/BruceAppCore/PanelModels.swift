@@ -28,6 +28,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     case orange
     /// DSH (DeepSeek Harness) — 品牌蓝 (第 10 个已知 agent; 取 DeepSeek 官方 #4D6BFE)
     case azure
+    /// Antigravity — Google 蓝 (第 11 个已知 agent; 取品牌图标主色)
+    case sky
 
     package var hex: String {
         switch self {
@@ -51,6 +53,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return "#ff9f0a"
         case .azure:
             return "#4d6bfe"
+        case .sky:
+            return "#4285f4"
         }
     }
 
@@ -86,6 +90,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .orange
         case "dsh":
             return .azure
+        case "antigravity":
+            return .sky
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
@@ -120,6 +126,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return ["#ff9f0a", "#ffb340", "#ffcc7a", "#ffe5b3"]
         case .azure:
             return ["#4d6bfe", "#7089ff", "#9aabff", "#c3ccff"]
+        case .sky:
+            return ["#4285f4", "#6ba1f7", "#94befa", "#bddafc"]
         }
     }
 
@@ -148,6 +156,9 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
         case "dsh":
             // 与 claude-code 共用第 1 档: 两者同现概率低, 分段上色场景必须可读.
             index = 1
+        case "antigravity":
+            // 与 zcode 共用第 3 档: 11 个已知 agent 超出 5 档上限, 取低频同现.
+            index = 3
         case "kimi-work":
             // 与 kimi-code-cli 高频同现, 从 0 档移到 4 档避免撞色;
             // 与 opencode 共档是可接受取舍 (同现概率低), 分段上色场景必须可读.

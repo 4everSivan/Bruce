@@ -1,0 +1,123 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T38",
+  "title": "Mac 请求日志页与详情 Sheet",
+  "version": "0.19.0",
+  "milestone": "M18-Agent请求日志与Antigravity接入",
+  "status": "in_progress",
+  "branch": "feat/T34-T38-request-log-antigravity",
+  "depends_on": [
+    "T34",
+    "T36",
+    "T37"
+  ],
+  "target": {
+    "module": "apps/macos",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "goal": "在 Mac 设置中心增加「请求日志」一级分类：复用高保真 demo 的摘要条 + 全宽表格 + 居中详情 Sheet；查询走 Bridge module=request-log；Agent 列使用 AgentBrandBadge（含 Antigravity 图标）。",
+  "precheck": {
+    "description": "确认设置侧栏尚无 requestLog 分类、无 RequestLogClient",
+    "command": "git grep -n \"RequestLogClient\\|case requestLog\" -- apps/macos || true",
+    "expected": "无既有 RequestLogClient 与 requestLog 分类",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 依赖 T34/T36/T37 已合入本批次分支"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "swift run --package-path apps/macos BruceRequestLogHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T38 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T38-1",
+      "title": "RequestLogClient 与模型",
+      "capability": "新增 Codable 请求/响应模型与 RequestLogClient；spawn Bruce-collector module=request-log；超时、取消、错误映射与空页处理；不走 RefreshScheduler。",
+      "done": true
+    },
+    {
+      "id": "T38-2",
+      "title": "侧栏分类与导航",
+      "capability": "SettingsCategory 增加 requestLog，顺序在模型用量与模型计费之间；标题/图标/深链；Windows 暂不同批。",
+      "done": true
+    },
+    {
+      "id": "T38-3",
+      "title": "请求日志页",
+      "capability": "今日/7天/30天分段、Agent 多选、模型下拉、刷新；四格摘要条；表格 8 列（Agent 18px 品牌徽章）；分页 50/100/200；空/加载/错误/不支持态。",
+      "done": true
+    },
+    {
+      "id": "T38-4",
+      "title": "详情 Sheet",
+      "capability": "点击行打开居中 Sheet：身份、模型、四象限 Token、费用、request id 复制、数据来源/保真度；Esc/遮罩关闭；Sheet 打开时不强跳页。",
+      "done": true
+    },
+    {
+      "id": "T38-5",
+      "title": "Antigravity 身份素材",
+      "capability": "AgentBrandPalette/agent-brand 增加 Antigravity 官方 App 图标、tile/mark/monogram；assets/provider-icons 与 SOURCES.json 登记；表 18px、菜单 16px、Sheet 18px。",
+      "done": true
+    },
+    {
+      "id": "T38-6",
+      "title": "Harness 与视觉自检",
+      "capability": "新增 BruceRequestLogHarness：模型解码、过滤/分页参数、错误映射、空页；Chrome/Swift 截图对照 demo，无裁切与拥挤。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": "passed",
+    "run_id": "local-20261119-05",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "前端骨架一致",
+        "true_if": "侧栏分类、摘要条、8 列表格、居中 Sheet、浅/深色与 demo 定稿一致；徽章尺寸 18/16/18",
+        "false_if": "入口/详情形态偏离定稿，或出现色点而非品牌徽章",
+        "evidence": [
+          "前端骨架一致",
+          "设置侧栏新增 requestLog（模型用量与模型计费之间）；RequestLogView 为摘要条 + 8 列表格 + 居中 Sheet；Agent 徽章 18/16/18；Swift build 与 demo 对照通过。"
+        ],
+        "result": true
+      },
+      {
+        "item": "查询边界",
+        "true_if": "页面只经 module=request-log 查询；分页/筛选参数正确；失败内联提示且保留上次结果",
+        "false_if": "直接读 collector 库、整表加载或错误时清空页面",
+        "evidence": [
+          "查询边界",
+          "页面只经 module=request-log 查询；分页/筛选参数由 RequestLogClient 组装；错误内联且保留上次数据（未清空）。"
+        ],
+        "result": true
+      },
+      {
+        "item": "隐私与文案",
+        "true_if": "无正文/完整路径展示；常驻「基于本机会话日志，不包含未落盘的失败请求」",
+        "false_if": "展示会话正文、路径或把请求日志描述为完整 API 日志",
+        "evidence": [
+          "隐私与文案",
+          "scopeLine 常驻“基于本机会话日志，不包含未落盘的失败请求”；无正文/完整路径展示；详情只展示派生字段。"
+        ],
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

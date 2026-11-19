@@ -52,6 +52,7 @@ const ICONS = {
 // 生成期原样投放到两端运行时目录 —— mac 走 .app Resources/AgentIcons,
 // win 走前端静态 assets/agent-icons; --check 逐字节比对。
 const AGENT_ICON_FILES = {
+  antigravity: "agent-antigravity.png",
   codebuddy: "agent-codebuddy.png",
   codex: "agent-codex.png",
   zcode: "agent-zcode.png",

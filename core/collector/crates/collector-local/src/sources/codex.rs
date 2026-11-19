@@ -14,7 +14,7 @@ const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count", b"token_usage
 /// 头尾指纹只读的定长块 (C117): 与 jsonl 缓存的头部/尾部段大小一致。
 const CODEX_FINGERPRINT_CHUNK_BYTES: u64 = 64 * 1024;
 use crate::{ScanStats, MAX_DIRECTORY_SCAN_DEPTH};
-use collector_domain::{CollectionWindow, UsageContributionBuilder};
+use collector_domain::{CollectionWindow, RequestRecord, UsageContributionBuilder};
 use collector_runtime::CancellationToken;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -395,6 +395,29 @@ fn observation_dedupe_key(observation: &CachedUsageObservation) -> Cow<'_, str> 
             observation.output,
         )),
     }
+}
+
+fn codex_request(observation: &CachedUsageObservation) -> Option<RequestRecord> {
+    let key = observation.dedupe_key.as_deref()?;
+    let mut hasher = Sha256::new();
+    hasher.update(b"codex-request:");
+    hasher.update(key.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    Some(RequestRecord {
+        key: format!("{:032x}", u128::from_be_bytes(bytes)),
+        timestamp_millis: observation.timestamp_millis,
+        model: observation.model.clone(),
+        raw_model: observation.model.clone(),
+        project: observation.project.clone(),
+        input: observation.input,
+        output: observation.output,
+        cache_read: observation.cache_read,
+        cache_creation: observation.cache_creation,
+        cache_creation_1h: observation.cache_creation_1h,
+        fidelity: "exact".to_owned(),
+    })
 }
 
 /// 同一会话各副本的观测按单次响应去重键取并集 (C190)。副本的共享前缀逐字节相同, 同一次
@@ -900,6 +923,9 @@ fn scan_selected_codex(
         }
         for observation in merged {
             let _ = builder.record(observation.sample());
+            if let Some(request) = codex_request(observation) {
+                builder.record_request(request);
+            }
         }
     }
     Ok(())
@@ -1043,6 +1069,9 @@ pub fn scan_codex_cached_with_cancellation(
         }
         for observation in merged {
             let _ = builder.record(observation.sample());
+            if let Some(request) = codex_request(observation) {
+                builder.record_request(request);
+            }
         }
         files.extend(entries);
     }

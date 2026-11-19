@@ -76,6 +76,7 @@ struct BruceOnboardingCoreHarness {
         try standardPathsIncludeZcodeDatabase()
         try standardPathsIncludeCodeBuddyProjects()
         try standardPathsIncludeDshSessions()
+        try standardPathsIncludeAntigravityBrains()
         try firstLaunchDecisionFlow()
         try configStoreLoadsV1WithSubscriptionDefaults()
         try configStoreRejectsNewerSchemaV4()

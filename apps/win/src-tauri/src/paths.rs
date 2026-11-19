@@ -24,7 +24,7 @@ pub fn collector_cache_root() -> PathBuf {
 /// 欢迎向导 Step 1 本机只读环境扫描 (T22, 对齐 mac `LocalDependencyScanPaths.standard`)。
 /// 仅执行本地目录/文件存在性检查, 零写入、零网络请求。
 pub fn probe_local_agents(home: &std::path::Path) -> Vec<serde_json::Value> {
-    let items: [(&str, &str, &str, bool); 10] = [
+    let items: [(&str, &str, &str, bool); 11] = [
         (
             "claude",
             "Claude Code",
@@ -102,6 +102,21 @@ pub fn probe_local_agents(home: &std::path::Path) -> Vec<serde_json::Value> {
             "~/.dsh/sessions",
             home.join(".dsh").join("sessions").is_dir(),
         ),
+        // Antigravity CLI + IDE: 两个 brain 根任一存在即可用, 与 collector 双根扫描一致。
+        (
+            "antigravity",
+            "Antigravity",
+            "~/.gemini/antigravity-cli/brain | ~/.gemini/antigravity/brain",
+            home.join(".gemini")
+                .join("antigravity-cli")
+                .join("brain")
+                .is_dir()
+                || home
+                    .join(".gemini")
+                    .join("antigravity")
+                    .join("brain")
+                    .is_dir(),
+        ),
         (
             "ccSwitch",
             "CC Switch",
@@ -136,15 +151,15 @@ mod tests {
     }
 
     #[test]
-    fn probe_local_agents_lists_ten_sources_including_dsh() {
-        // C189: 本机探测清单 9→10, dsh (DeepSeek Harness) 落在 codebuddy 与 ccSwitch 之间。
+    fn probe_local_agents_lists_eleven_sources_including_antigravity() {
+        // C189: dsh 第 10 项; 本批新增 antigravity 第 11 项, 均在 ccSwitch 之前。
         let home = temp_home("dsh-missing");
         let probes = probe_local_agents(&home);
         let ids: Vec<&str> = probes
             .iter()
             .map(|item| item["id"].as_str().unwrap())
             .collect();
-        assert_eq!(ids.len(), 10, "本机探测共 10 项");
+        assert_eq!(ids.len(), 11, "本机探测共 11 项");
         assert_eq!(
             ids,
             [
@@ -157,6 +172,7 @@ mod tests {
                 "zcode",
                 "codebuddy",
                 "dsh",
+                "antigravity",
                 "ccSwitch",
             ]
         );
@@ -175,6 +191,20 @@ mod tests {
         let probes = probe_local_agents(&home);
         let dsh = probes.iter().find(|item| item["id"] == "dsh").unwrap();
         assert_eq!(dsh["status"], "available");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn probe_local_agents_marks_antigravity_available_when_either_brain_exists() {
+        let home = temp_home("antigravity-ready");
+        fs::create_dir_all(home.join(".gemini").join("antigravity").join("brain")).unwrap();
+        let probes = probe_local_agents(&home);
+        let antigravity = probes
+            .iter()
+            .find(|item| item["id"] == "antigravity")
+            .unwrap();
+        assert_eq!(antigravity["status"], "available");
+        assert_eq!(antigravity["name"], "Antigravity");
         let _ = fs::remove_dir_all(&home);
     }
 }

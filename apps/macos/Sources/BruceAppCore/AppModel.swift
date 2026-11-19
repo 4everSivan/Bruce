@@ -141,6 +141,9 @@ package enum CodexMigrationDisplayStatus: Equatable, Sendable {
 @MainActor
 package final class AppModel: ObservableObject {
     @Published package var selectedModule: DashboardModule = .agentUsage
+    /// Rust collector executable resolved at launch; request-log queries spawn it
+    /// outside the refresh scheduler (design/14).
+    package var collectorExecutableURL: URL?
     @Published package private(set) var moduleStatuses: [DashboardModule: ModuleStatus]
     @Published package private(set) var moduleArtifacts: [DashboardModule: JSONValue] = [:]
     /// 最近一次就绪评估结果, 来源是 OnboardingCoordinator 的扫描和验证.

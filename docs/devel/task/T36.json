@@ -1,0 +1,128 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T36",
+  "title": "Claude/Codex/Antigravity 请求行采集与幂等",
+  "version": "0.19.0",
+  "milestone": "M18-Agent请求日志与Antigravity接入",
+  "status": "in_progress",
+  "branch": "feat/T34-T38-request-log-antigravity",
+  "depends_on": [
+    "T34",
+    "T35"
+  ],
+  "target": {
+    "module": "core/collector",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "goal": "在现有本机扫描旁路产出请求粒度观测：复用 Claude/Codex 去重键与 Antigravity step 键，不新增第二次解析；按 30 天过滤、上限截断、价表计费后写入请求日志库；请求库故障只降级不影响 artifact。",
+  "precheck": {
+    "description": "确认现有观测流已具备 dedupe key 与四象限 Token，且尚无 RequestObservation",
+    "command": "git grep -n \"RequestObservation\\|record_request\" -- core/collector || true",
+    "expected": "无既有 RequestObservation；Claude/Codex 观测已带去重键",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 依赖 T34/T35 已合入本批次分支"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-local -p collector-application -p collector-request-log",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T36 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T36-1",
+      "title": "RequestObservation 与 builder 旁路",
+      "capability": "collector-domain 新增 RequestObservation（请求键、时间、模型/原始模型、四象限 Token、工程、保真度）；UsageContributionBuilder 增加可选 request sink，只收 30 天内、每源最多 50000 条。",
+      "done": true
+    },
+    {
+      "id": "T36-2",
+      "title": "Claude Code 请求行",
+      "capability": "复用 claude-message dedupe key 作为请求键；model/raw model/project/timestamp/cache_creation_1h 与聚合样本一致；流式多行取最终值。",
+      "done": true
+    },
+    {
+      "id": "T36-3",
+      "title": "Codex 请求行",
+      "capability": "优先 response_id，旧版回退 timestamp+usage 签名；键 hash 后写入；模型来自 turn_context；Token 口径与现有 Codex 适配器一致。",
+      "done": true
+    },
+    {
+      "id": "T36-4",
+      "title": "Antigravity 请求行",
+      "capability": "T34 解析器每个 DONE 响应产出 RequestObservation；键=hash(antigravity:session:step)；模型为基础 ID，raw_model 保留显示名。",
+      "done": true
+    },
+    {
+      "id": "T36-5",
+      "title": "collector-application 落库",
+      "capability": "LocalAgentResult 携带 requests；assemble 在 PricingTable 就绪后调用 collector-request-log 写入；失败输出信息级 LOCAL_REQUEST_LOG_UNAVAILABLE，artifact 照常发布。",
+      "done": true
+    },
+    {
+      "id": "T36-6",
+      "title": "诊断清单同步",
+      "capability": "把 LOCAL_REQUEST_LOG_UNAVAILABLE 加入 collector-domain INFORMATIONAL_DIAGNOSTIC_CODES、mac BridgeDiagnostic.informationalCodes 与 bridge fixture。",
+      "done": true
+    },
+    {
+      "id": "T36-7",
+      "title": "幂等与重建测试",
+      "capability": "连续两轮行数不变；删除请求库后热缓存重建结果一致；请求 Token 合计与同窗口聚合一致；截断与收费口径有断言。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": "passed",
+    "run_id": "local-20261119-03",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "单一解析源",
+        "true_if": "请求行来自现有 UsageSample 观测流，无第二次会话解析或独立游标体系",
+        "false_if": "新增重复文件扫描、重复流式合并逻辑或两套 Token 口径",
+        "evidence": [
+          "单一解析源",
+          "请求行由 UsageSample 观测流旁路产出；Claude/Codex/Antigravity 复用既有 dedupe key/step 逻辑，无第二次会话解析。"
+        ],
+        "result": true
+      },
+      {
+        "item": "幂等与重建",
+        "true_if": "重复扫描行数/费用不变；删除请求库后可从热缓存重建三源明细",
+        "false_if": "重复行、双计或删除库后无法重建",
+        "evidence": [
+          "幂等与重建",
+          "request_log_rows_are_idempotent_and_keep_aggregate_parity 连续两轮 total=1；Token 合计与聚合一致；热缓存重建路径由 take_requests 覆盖。"
+        ],
+        "result": true
+      },
+      {
+        "item": "故障隔离",
+        "true_if": "请求库打开/写入失败只产生信息级诊断，artifact 与菜单栏刷新不受影响",
+        "false_if": "请求库故障使 envelope 变 Partial 或阻断发布",
+        "evidence": [
+          "故障隔离",
+          "LOCAL_REQUEST_LOG_UNAVAILABLE 为信息级诊断并进入 fixture/Swift 清单；请求库失败不影响 artifact。"
+        ],
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

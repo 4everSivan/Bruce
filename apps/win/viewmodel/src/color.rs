@@ -14,9 +14,11 @@ pub enum PanelAgentColor {
     Orange,
     /// DSH (DeepSeek Harness) — 品牌蓝 #4d6bfe (第 10 个已知 agent; C189)
     Azure,
+    /// Antigravity — Google 蓝 #4285f4 (第 11 个已知 agent; 取品牌图标主色)
+    Sky,
 }
 
-pub const PANEL_AGENT_COLORS: [PanelAgentColor; 10] = [
+pub const PANEL_AGENT_COLORS: [PanelAgentColor; 11] = [
     PanelAgentColor::Cyan,
     PanelAgentColor::Blue,
     PanelAgentColor::Indigo,
@@ -27,6 +29,7 @@ pub const PANEL_AGENT_COLORS: [PanelAgentColor; 10] = [
     PanelAgentColor::Green,
     PanelAgentColor::Orange,
     PanelAgentColor::Azure,
+    PanelAgentColor::Sky,
 ];
 
 impl PanelAgentColor {
@@ -42,6 +45,7 @@ impl PanelAgentColor {
             PanelAgentColor::Green => "green",
             PanelAgentColor::Orange => "orange",
             PanelAgentColor::Azure => "azure",
+            PanelAgentColor::Sky => "sky",
         }
     }
 
@@ -57,6 +61,7 @@ impl PanelAgentColor {
             PanelAgentColor::Green => "#30d158",
             PanelAgentColor::Orange => "#ff9f0a",
             PanelAgentColor::Azure => "#4d6bfe",
+            PanelAgentColor::Sky => "#4285f4",
         }
     }
 
@@ -73,6 +78,7 @@ impl PanelAgentColor {
             PanelAgentColor::Green => &["#30d158", "#5bda7f", "#8ae6a6", "#b8f1cc"],
             PanelAgentColor::Orange => &["#ff9f0a", "#ffb340", "#ffcc7a", "#ffe5b3"],
             PanelAgentColor::Azure => &["#4d6bfe", "#7089ff", "#9aabff", "#c3ccff"],
+            PanelAgentColor::Sky => &["#4285f4", "#6ba1f7", "#94befa", "#bddafc"],
         };
         let clamped = index.min(shades.len() - 1);
         shades[clamped]
@@ -92,6 +98,7 @@ impl PanelAgentColor {
             "codebuddy" => PanelAgentColor::Orange,
             // DSH (DeepSeek Harness) 品牌蓝; C189 第 10 个已知 agent。
             "dsh" => PanelAgentColor::Azure,
+            "antigravity" => PanelAgentColor::Sky,
             other => {
                 let hash = fnv1a64(other);
                 PANEL_AGENT_COLORS[(hash % PANEL_AGENT_COLORS.len() as u64) as usize]
@@ -122,6 +129,8 @@ impl PanelAgentColor {
             "pi" => 4,
             // DSH (DeepSeek Harness) 固定 1 档, 与 mac 同档位 (C189)。
             "dsh" => 1,
+            // Antigravity 与 zcode 共用 3 档, 与 mac 同档位。
+            "antigravity" => 3,
             other => (fnv1a64(other) % ramp.len() as u64) as usize,
         };
         ramp[index]
@@ -164,7 +173,14 @@ mod tests {
             "index 0 即主色"
         );
         assert_eq!(PanelAgentColor::Azure.distribution_hex(3), "#c3ccff");
-        assert_eq!(PANEL_AGENT_COLORS.len(), 10, "第 10 档系列色已登记");
+        // 第 11 个已知 agent: Antigravity 落到新增 Sky 系列色。
+        assert_eq!(
+            PanelAgentColor::resolve("antigravity"),
+            PanelAgentColor::Sky
+        );
+        assert_eq!(PanelAgentColor::Sky.name(), "sky");
+        assert_eq!(PanelAgentColor::Sky.hex(), "#4285f4");
+        assert_eq!(PANEL_AGENT_COLORS.len(), 11, "第 11 档系列色已登记");
     }
 
     #[test]

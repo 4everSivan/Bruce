@@ -27,17 +27,19 @@ use collector_aggregate::UsageAccumulator;
 use collector_credential::{validate_credential_challenges, validate_credential_updates};
 use collector_domain::{
     AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
-    ModelPricingOverride, PricingTable, WindowError, AGENT_USAGE_MODULE,
-    AGENT_USAGE_SCHEMA_VERSION, LOCAL_HISTORY_STORE_UNAVAILABLE, LOCAL_SOURCE_NOTICE,
+    ModelPricingOverride, PricingTable, RequestRecord, TokenBucket, UsageSample, WindowError,
+    AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION, LOCAL_HISTORY_STORE_UNAVAILABLE,
+    LOCAL_REQUEST_LOG_UNAVAILABLE, LOCAL_SOURCE_NOTICE, REQUEST_LOG_RETENTION_DAYS,
 };
 use collector_history::HistoryStore;
 use collector_local::{
-    default_cache_root, remove_legacy_kimi_cache, scan_claude_cached, scan_codebuddy_cached,
-    scan_codex_cached_with_cancellation, scan_dsh_cached, scan_grok_cached, scan_kimi_cli_cached,
-    scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached, scan_zcode_cached, ScanStats,
-    SourceScan, SourceScanError,
+    default_cache_root, remove_legacy_kimi_cache, scan_antigravity_cached, scan_claude_cached,
+    scan_codebuddy_cached, scan_codex_cached_with_cancellation, scan_dsh_cached, scan_grok_cached,
+    scan_kimi_cli_cached, scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached,
+    scan_zcode_cached, ScanStats, SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
+use collector_request_log::{RequestLogEntry, RequestLogFilter, RequestLogStore};
 use collector_runtime::{RuntimeError, RuntimeLimits};
 use context::RunContext;
 use execution::{execute_quota_accounts, QuotaExecution};
@@ -231,6 +233,7 @@ fn assemble(context: &RunContext<'_>, gathered: Gathered) -> Result<Assembled, C
     cancellation_fence(context, &quota.credential_updates)?;
     let mut diagnostics = local.diagnostics;
     let pricing_table = resolve_pricing_table(context.request);
+    persist_request_logs(context, &local.agents, &pricing_table, &mut diagnostics);
     let agents = build_agents(context, &local.agents, &pricing_table);
     // C124: 未授予 externalQuotas (无订阅凭证 / 未同意授权) 或本轮只做本地统计时,
     // 额度 worker 不会启动, quota 为空: 不输出占位 service, 也不消费/产生额度诊断。
@@ -329,8 +332,256 @@ fn resolve_pricing_table(request: &BridgeRequest) -> PricingTable {
     }
 }
 
+/// Persist request-granularity rows after the aggregate scan and pricing table
+/// are ready. Failure is informational: the request log is a rebuildable
+/// side-channel and must never fail the artifact.
+fn persist_request_logs(
+    context: &RunContext<'_>,
+    agents: &BTreeMap<String, LocalAgentResult>,
+    pricing: &PricingTable,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(home) = context.request.context.get("home").and_then(Value::as_str) else {
+        return;
+    };
+    let path = source_path(
+        context,
+        "request_log_db",
+        paths::resolve_request_log_path(Path::new(home)),
+    );
+    let cutoff = context
+        .window
+        .now
+        .timestamp_millis()
+        .saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    let mut entries = Vec::new();
+    for (agent_id, result) in agents {
+        for request in &result.requests {
+            let (cost_usd, pricing_model) = request_cost(pricing, request);
+            entries.push(RequestLogEntry {
+                agent_id: agent_id.clone(),
+                request_key: request.key.clone(),
+                occurred_at: request.timestamp_millis,
+                model: request.model.clone(),
+                raw_model: request.raw_model.clone(),
+                project: request.project.clone(),
+                input: request.input,
+                output: request.output,
+                cache_read: request.cache_read,
+                cache_creation: request.cache_creation,
+                cache_creation_1h: request.cache_creation_1h,
+                cost_usd,
+                pricing_model,
+                status_code: 200,
+                fidelity: request.fidelity.clone(),
+                latency_ms: None,
+                first_token_ms: None,
+            });
+        }
+    }
+    if entries.is_empty() {
+        return;
+    }
+    let result = RequestLogStore::open(&path).and_then(|mut store| store.merge(&entries, cutoff));
+    if let Err(error) = result {
+        diagnostics.push(Diagnostic::new(
+            LOCAL_REQUEST_LOG_UNAVAILABLE,
+            "local",
+            "request-log",
+            format!("请求日志写入失败, 已跳过本轮明细: {error}"),
+            true,
+        ));
+    }
+}
+
+/// Read-only request-log page for the `request-log` Bridge module.
+pub fn query_request_log_artifact(
+    request: &BridgeRequest,
+    generated_at: &str,
+) -> Result<Value, Diagnostic> {
+    let context = &request.context;
+    let home = context
+        .get("home")
+        .and_then(Value::as_str)
+        .filter(|home| !home.is_empty())
+        .ok_or_else(|| invalid_request("请求日志查询需要 home"))?;
+    let start = context
+        .get("start")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid_request("请求日志查询需要 start"))?;
+    let end = context
+        .get("end")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid_request("请求日志查询需要 end"))?;
+    if end < start || end.saturating_sub(start) > 31 * 24 * 60 * 60 * 1000 {
+        return Err(invalid_request("请求日志时间范围无效或超过 31 天"));
+    }
+    let page = context.get("page").and_then(Value::as_u64).unwrap_or(0);
+    let page_size = context
+        .get("pageSize")
+        .and_then(Value::as_u64)
+        .unwrap_or(50);
+    if page > 1000 || page_size == 0 || page_size > 200 {
+        return Err(invalid_request("请求日志分页参数无效"));
+    }
+    let agent_ids = match context.get("agentIds") {
+        None => Vec::new(),
+        Some(Value::Array(values)) if values.len() <= 32 => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned)
+                    .ok_or_else(|| invalid_request("请求日志 agentIds 无效"))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        Some(_) => return Err(invalid_request("请求日志 agentIds 无效")),
+    };
+    let model = context
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|model| !model.is_empty())
+        .map(str::to_owned);
+    if model.as_ref().is_some_and(|model| model.len() > 128) {
+        return Err(invalid_request("请求日志 model 过长"));
+    }
+    let status = match context.get("status") {
+        None => None,
+        Some(value) => {
+            let value = value
+                .as_u64()
+                .and_then(|value| u16::try_from(value).ok())
+                .filter(|value| (100..=599).contains(value))
+                .ok_or_else(|| invalid_request("请求日志 status 无效"))?;
+            Some(value)
+        }
+    };
+    let path = context
+        .get("paths")
+        .and_then(Value::as_object)
+        .and_then(|paths| paths.get("request_log_db"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| paths::resolve_request_log_path(Path::new(home)));
+    if !path.is_file() {
+        return Ok(json!({
+            "schemaVersion": 1,
+            "module": "request-log",
+            "generatedAt": generated_at,
+            "total": 0,
+            "page": page,
+            "pageSize": page_size,
+            "entries": [],
+            "notice": "请求日志库尚未生成"
+        }));
+    }
+    let store = RequestLogStore::open_read_only(&path).map_err(|error| {
+        Diagnostic::new(
+            "REQUEST_LOG_UNAVAILABLE",
+            "local",
+            "request-log",
+            format!("请求日志库不可用: {error}"),
+            true,
+        )
+    })?;
+    let result = store
+        .query(&RequestLogFilter {
+            start,
+            end,
+            agent_ids,
+            model,
+            status,
+            page: page as u32,
+            page_size: page_size as u32,
+        })
+        .map_err(|error| {
+            Diagnostic::new(
+                "REQUEST_LOG_QUERY_FAILED",
+                "local",
+                "request-log",
+                format!("请求日志查询失败: {error}"),
+                true,
+            )
+        })?;
+    let entries = result
+        .entries
+        .into_iter()
+        .map(|entry| {
+            json!({
+                "requestId": entry.request_key,
+                "agentId": entry.agent_id,
+                "model": entry.model,
+                "rawModel": entry.raw_model,
+                "occurredAt": entry.occurred_at,
+                "input": entry.input,
+                "output": entry.output,
+                "cacheRead": entry.cache_read,
+                "cacheCreation": entry.cache_creation,
+                "cacheCreation1h": entry.cache_creation_1h,
+                "costUsd": entry.cost_usd,
+                "statusCode": entry.status_code,
+                "project": entry.project,
+                "fidelity": entry.fidelity
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "schemaVersion": 1,
+        "module": "request-log",
+        "generatedAt": generated_at,
+        "total": result.total,
+        "page": page,
+        "pageSize": page_size,
+        "summary": {
+            "tokens": result.tokens,
+            "costUsd": result.cost_usd,
+            "avgTokens": result.avg_tokens
+        },
+        "models": result.models,
+        "entries": entries
+    }))
+}
+
+fn invalid_request(message: &str) -> Diagnostic {
+    Diagnostic::new(
+        "BRIDGE_INVALID_REQUEST",
+        "protocol",
+        "request",
+        message,
+        false,
+    )
+}
+
+fn request_cost(pricing: &PricingTable, request: &RequestRecord) -> (Option<f64>, Option<String>) {
+    let Some(model) = request.model.as_deref().filter(|model| !model.is_empty()) else {
+        return (None, None);
+    };
+    let Some(price) = pricing.resolve(model) else {
+        return (None, None);
+    };
+    let sample = UsageSample {
+        timestamp_millis: request.timestamp_millis,
+        model: Some(model),
+        input: request.input,
+        output: request.output,
+        cache_read: request.cache_read,
+        cache_creation: request.cache_creation,
+        cache_creation_1h: request.cache_creation_1h,
+        project: request.project.as_deref(),
+    };
+    let rate_class =
+        collector_domain::pricing::rate_class_for(model, request.timestamp_millis, request.input);
+    let mut bucket = TokenBucket::default();
+    bucket.add_sample_classified(&sample, rate_class);
+    (
+        Some(pricing.calculate_cost(&bucket, &price)),
+        Some(model.to_owned()),
+    )
+}
+
 /// 输出的 agent 行 (固定顺序): id, 展示名, 有数据时的 note, 未发现会话时的 note。
-const AGENT_SPECS: [(&str, &str, &str, &str); 10] = [
+const AGENT_SPECS: [(&str, &str, &str, &str); 11] = [
     (
         "kimi-work",
         "Kimi Work",
@@ -366,6 +617,12 @@ const AGENT_SPECS: [(&str, &str, &str, &str); 10] = [
     ("codebuddy", "CodeBuddy", "本机会话聚合", "未发现会话记录"),
     ("opencode", "OpenCode", "本机会话聚合", "未发现会话记录"),
     ("dsh", "DSH", "本机会话聚合", "未发现会话记录"),
+    (
+        "antigravity",
+        "Antigravity",
+        "Antigravity CLI/IDE 本机会话聚合",
+        "未发现会话记录",
+    ),
 ];
 
 /// 每个已知 agent 输出一行: 有本机结果时 finalize, 否则输出占位行。
@@ -422,6 +679,8 @@ struct LocalCollection {
 struct LocalAgentResult {
     found: bool,
     contribution: collector_domain::UsageContribution,
+    /// Request rows emitted by this source during the scan (design/14).
+    requests: Vec<RequestRecord>,
     diagnostic: Option<String>,
     /// 来源信息级说明 (C198): 附在 note 后, 不改变 status。
     notice: Option<String>,
@@ -530,6 +789,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             LocalAgentResult {
                 found: source.found,
                 contribution: source.contribution,
+                requests: source.requests,
                 diagnostic: source.diagnostic,
                 notice: source.notice,
                 history_note: None,
@@ -661,6 +921,11 @@ fn local_source_jobs<'a>(
         "dsh_sessions",
         paths::resolve_dsh_sessions_path(home),
     );
+    let [antigravity_cli_default, antigravity_ide_default] =
+        paths::resolve_antigravity_brain_roots(home);
+    let antigravity_cli = source_path(context, "antigravity_cli_brain", antigravity_cli_default);
+    let antigravity_ide = source_path(context, "antigravity_ide_brain", antigravity_ide_default);
+    let antigravity_roots = [antigravity_cli, antigravity_ide];
     vec![
         LocalSourceJob {
             source_id: "kimi-code-cli",
@@ -711,6 +976,12 @@ fn local_source_jobs<'a>(
         LocalSourceJob {
             source_id: "dsh",
             scan: Box::new(move || scan_dsh_cached(&dsh, window, cache_root, cancellation)),
+        },
+        LocalSourceJob {
+            source_id: "antigravity",
+            scan: Box::new(move || {
+                scan_antigravity_cached(&antigravity_roots, window, cache_root, cancellation)
+            }),
         },
     ]
 }

@@ -29,14 +29,16 @@ pub const AGGREGATION_VERSION: u32 = 4;
 pub fn source_derivation_version(source_id: &str) -> u32 {
     match source_id {
         "grok" => 2,
+        "antigravity" => 1,
         _ => 1,
     }
 }
 
 pub use sources::{
-    scan_claude_cached, scan_codebuddy_cached, scan_codex_cached_with_cancellation,
-    scan_dsh_cached, scan_grok_cached, scan_kimi_cli_cached, scan_kimi_tree_cached,
-    scan_opencode_cached, scan_pi_cached, scan_zcode_cached, SourceScan, SourceScanError,
+    scan_antigravity_cached, scan_claude_cached, scan_codebuddy_cached,
+    scan_codex_cached_with_cancellation, scan_dsh_cached, scan_grok_cached, scan_kimi_cli_cached,
+    scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached, scan_zcode_cached, SourceScan,
+    SourceScanError,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

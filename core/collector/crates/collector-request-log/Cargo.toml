@@ -1,0 +1,9 @@
+[package]
+name = "collector-request-log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }

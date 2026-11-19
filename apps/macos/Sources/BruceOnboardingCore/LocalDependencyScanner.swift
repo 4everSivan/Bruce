@@ -87,6 +87,15 @@ public struct LocalDependencyScanPaths: Sendable {
                     displayName: "DSH",
                     url: home.appendingPathComponent(".dsh/sessions")
                 ),
+                // Antigravity CLI / IDE 双根 (同一 Agent 统一计量, 两个 root 都可缺省)
+                SessionDirectory(
+                    displayName: "Antigravity CLI",
+                    url: home.appendingPathComponent(".gemini/antigravity-cli/brain")
+                ),
+                SessionDirectory(
+                    displayName: "Antigravity IDE",
+                    url: home.appendingPathComponent(".gemini/antigravity/brain")
+                ),
             ],
             sqliteDatabases: [
                 SQLiteDatabase(

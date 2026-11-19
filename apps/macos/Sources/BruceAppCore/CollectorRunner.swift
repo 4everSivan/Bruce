@@ -115,6 +115,7 @@ extension BridgeDiagnostic {
     package static let informationalCodes: Set<String> = [
         "LOCAL_HISTORY_STORE_UNAVAILABLE",
         "LOCAL_SOURCE_NOTICE",
+        "LOCAL_REQUEST_LOG_UNAVAILABLE",
     ]
 
     package var isInformational: Bool { Self.informationalCodes.contains(code) }

@@ -400,8 +400,18 @@ pub(crate) struct JsonlCacheConfig {
 pub(crate) trait JsonlAggregator {
     fn absorb(&mut self, payload: &CachedFilePayload);
 
-    /// 返回 (贡献, 是否并入过任何文件, 诊断)。
-    fn finish(self) -> Result<(UsageContribution, bool, Option<String>), SourceScanError>;
+    /// 返回 (贡献, 请求行, 是否并入过任何文件, 诊断)。
+    fn finish(
+        self,
+    ) -> Result<
+        (
+            UsageContribution,
+            Vec<collector_domain::RequestRecord>,
+            bool,
+            Option<String>,
+        ),
+        SourceScanError,
+    >;
 }
 
 pub(crate) trait JsonlCacheAdapter {
@@ -543,7 +553,7 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
     cancellation.check()?;
     reconcile_deleted_cache(root, &mut state)?;
     cancellation.check()?;
-    let (contribution, adapter_found, diagnostic) = aggregator.finish()?;
+    let (contribution, requests, adapter_found, diagnostic) = aggregator.finish()?;
     cancellation.check()?;
     if let Err(error) = write_manifest(root, &state) {
         record_cache_write_error(error, &mut state.stats)?;
@@ -553,6 +563,7 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
     Ok(SourceScan {
         found,
         contribution,
+        requests,
         stats: state.stats,
         diagnostic,
         // C193 / C195: 口径哨兵与超长疑似用量行走信息级通道 (C198), 不把 agent 置 error。

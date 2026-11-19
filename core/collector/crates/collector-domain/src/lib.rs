@@ -392,6 +392,29 @@ pub struct UsageSample<'a> {
     pub project: Option<&'a str>,
 }
 
+/// Request detail retention (design/14). Older rows are pruned, not rolled up:
+/// the aggregate history ledger already covers periods beyond this window.
+pub const REQUEST_LOG_RETENTION_DAYS: i64 = 30;
+/// Per-source safety cap for request rows emitted from one scan.
+pub const REQUEST_LOG_MAX_PER_SOURCE: usize = 50_000;
+const REQUEST_LOG_HARD_CAP: usize = REQUEST_LOG_MAX_PER_SOURCE * 2;
+
+/// One request-granularity row emitted alongside the aggregate sample.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestRecord {
+    pub key: String,
+    pub timestamp_millis: i64,
+    pub model: Option<String>,
+    pub raw_model: Option<String>,
+    pub project: Option<String>,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub cache_creation_1h: u64,
+    pub fidelity: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelDelta {
@@ -444,10 +467,16 @@ pub struct UsageContributionBuilder {
     hours: [u64; 24],
     models_by_day: BTreeMap<String, BTreeMap<String, TokenBucket>>,
     hour_models_today: BTreeMap<u8, BTreeMap<String, TokenBucket>>,
+    requests: Vec<RequestRecord>,
+    request_cutoff_millis: i64,
 }
 
 impl UsageContributionBuilder {
     pub fn new(window: CollectionWindow) -> Self {
+        let request_cutoff_millis = window
+            .now
+            .timestamp_millis()
+            .saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
         Self {
             window,
             by_day: HashMap::new(),
@@ -459,7 +488,37 @@ impl UsageContributionBuilder {
             hours: [0; 24],
             models_by_day: BTreeMap::new(),
             hour_models_today: BTreeMap::new(),
+            requests: Vec::new(),
+            request_cutoff_millis,
         }
+    }
+
+    /// Collect one request row beside the aggregate sample.
+    ///
+    /// Rows older than [`REQUEST_LOG_RETENTION_DAYS`] are dropped here, so the
+    /// request store never needs a second retention filter before insert. The
+    /// hard cap prevents a pathological cold scan from growing without bound;
+    /// [`Self::take_requests`] sorts and truncates to the design cap.
+    pub fn record_request(&mut self, request: RequestRecord) {
+        if request.timestamp_millis < self.request_cutoff_millis {
+            return;
+        }
+        if self.requests.len() < REQUEST_LOG_HARD_CAP {
+            self.requests.push(request);
+        }
+    }
+
+    /// Take request rows, newest first, capped at [`REQUEST_LOG_MAX_PER_SOURCE`].
+    pub fn take_requests(&mut self) -> Vec<RequestRecord> {
+        let mut requests = std::mem::take(&mut self.requests);
+        requests.sort_by(|left, right| {
+            right
+                .timestamp_millis
+                .cmp(&left.timestamp_millis)
+                .then_with(|| left.key.cmp(&right.key))
+        });
+        requests.truncate(REQUEST_LOG_MAX_PER_SOURCE);
+        requests
     }
 
     pub fn record(&mut self, sample: UsageSample<'_>) -> bool {
@@ -777,10 +836,17 @@ pub const LOCAL_HISTORY_STORE_UNAVAILABLE: &str = "LOCAL_HISTORY_STORE_UNAVAILAB
 /// 真实 schema/读取故障仍为 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`。
 pub const LOCAL_SOURCE_NOTICE: &str = "LOCAL_SOURCE_NOTICE";
 
+/// 信息级诊断码 (design/14): 请求日志库打开/写入失败只跳过明细, 不影响聚合
+/// artifact 与菜单栏刷新。
+pub const LOCAL_REQUEST_LOG_UNAVAILABLE: &str = "LOCAL_REQUEST_LOG_UNAVAILABLE";
+
 /// 全部信息级诊断码 (C200): 宿主 (mac `BridgeDiagnostic.informationalCodes`) 取 partial 状态说明时
 /// 跳过这些码; 两侧清单由 `tests/fixtures/bridge/informational-diagnostics.json` 锁定。
-pub const INFORMATIONAL_DIAGNOSTIC_CODES: &[&str] =
-    &[LOCAL_HISTORY_STORE_UNAVAILABLE, LOCAL_SOURCE_NOTICE];
+pub const INFORMATIONAL_DIAGNOSTIC_CODES: &[&str] = &[
+    LOCAL_HISTORY_STORE_UNAVAILABLE,
+    LOCAL_SOURCE_NOTICE,
+    LOCAL_REQUEST_LOG_UNAVAILABLE,
+];
 
 fn is_informational_diagnostic(code: &str) -> bool {
     INFORMATIONAL_DIAGNOSTIC_CODES.contains(&code)

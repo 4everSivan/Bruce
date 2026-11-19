@@ -64,7 +64,10 @@ pub(crate) fn history_request(
         "zcode_db": home.join("zcode.db").to_string_lossy(),
         "codebuddy_projects": home.join("codebuddy").to_string_lossy(),
         "dsh_sessions": home.join("dsh").to_string_lossy(),
+        "antigravity_cli_brain": home.join("antigravity-cli/brain").to_string_lossy(),
+        "antigravity_ide_brain": home.join("antigravity/brain").to_string_lossy(),
         "history_db": history_db.to_string_lossy(),
+        "request_log_db": home.join("request-log.sqlite").to_string_lossy(),
     });
     let mut request = request(&["localSessions"]);
     for (key, value) in [

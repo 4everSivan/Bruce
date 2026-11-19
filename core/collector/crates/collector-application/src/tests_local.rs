@@ -50,6 +50,7 @@ fn local_agent_merge_failure_is_visible_not_silent() {
     let source = LocalAgentResult {
         found: true,
         contribution: invalid,
+        requests: Vec::new(),
         diagnostic: None,
         notice: None,
         history_note: None,
@@ -118,6 +119,7 @@ fn source_metrics_follow_the_stable_local_source_order() {
             "pi",
             "zcode",
             "dsh",
+            "antigravity",
         ]
     );
     assert!(output.artifact.get("sources").is_none());
@@ -547,6 +549,7 @@ fn finalize_local_agent_with_dynamic_catalog_and_overrides() {
     let local_result = LocalAgentResult {
         found: true,
         contribution,
+        requests: Vec::new(),
         diagnostic: None,
         notice: None,
         history_note: None,
@@ -750,6 +753,7 @@ fn finalize_local_agent_appends_notice_without_changing_status() {
         let source = LocalAgentResult {
             found: history_note.is_none(),
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
+            requests: Vec::new(),
             diagnostic: diagnostic.map(str::to_owned),
             notice: Some("缓存已重建".to_owned()),
             history_note: history_note.map(str::to_owned),
@@ -791,6 +795,57 @@ fn empty_sources_keep_placeholder_status() {
     assert_eq!(agent["status"], "not_found");
     assert_eq!(agent["note"], "未发现会话记录");
     assert_eq!(daily_total(agent), 0);
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// design/14: Claude 请求行写入独立库, 连续两轮幂等且不影响 artifact。
+#[test]
+fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
+    use collector_request_log::{RequestLogFilter, RequestLogStore};
+
+    let home = history_test_home("request-log-rows");
+    let claude = home.join("claude").join("project");
+    std::fs::create_dir_all(&claude).unwrap();
+    std::fs::write(
+        claude.join("session.jsonl"),
+        concat!(
+            r#"{"type":"assistant","message":{"id":"msg_request_1","#,
+            r#""model":"claude-opus-5-5","stop_reason":"end_turn","#,
+            r#""usage":{"input_tokens":10,"output_tokens":2,"#,
+            r#""cache_read_input_tokens":3,"cache_creation_input_tokens":4}},"#,
+            r#""timestamp":"2026-07-28T03:00:00Z","sessionId":"session-1"}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    let history_db = home.join("usage-history.sqlite");
+    let request = history_request(&home, &history_db);
+
+    let first = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    let second = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert_eq!(first.artifact["agents"], second.artifact["agents"]);
+    assert_eq!(claude_agent(&first.artifact)["today"]["total"], 19);
+
+    let store = RequestLogStore::open(&home.join("request-log.sqlite")).unwrap();
+    let page = store
+        .query(&RequestLogFilter {
+            start: 0,
+            end: i64::MAX,
+            agent_ids: vec!["claude-code".to_owned()],
+            page: 0,
+            page_size: 50,
+            ..RequestLogFilter::default()
+        })
+        .unwrap();
+    assert_eq!(page.total, 1, "重复运行不得重复插入");
+    let entry = &page.entries[0];
+    assert_eq!(entry.input, 10);
+    assert_eq!(entry.output, 2);
+    assert_eq!(entry.cache_read, 3);
+    assert_eq!(entry.cache_creation, 4);
+    assert_eq!(entry.model.as_deref(), Some("claude-opus-5-5"));
+    assert!(entry.cost_usd.is_some(), "claude-opus-5-5 应命中内置价卡");
 
     std::fs::remove_dir_all(&home).ok();
 }

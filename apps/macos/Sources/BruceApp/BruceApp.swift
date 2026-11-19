@@ -96,6 +96,7 @@ struct BruceApp: App {
 
         // 单一 AppModel: UI 和 Coordinator 共享同一实例
         let model = AppModel()
+        model.collectorExecutableURL = rustURL
         let runtime = AppRuntime()
         self.runtime = runtime
         _model = StateObject(wrappedValue: model)

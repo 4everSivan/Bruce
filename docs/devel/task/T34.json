@@ -1,0 +1,125 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T34",
+  "title": "Antigravity 本机用量源接入",
+  "version": "0.19.0",
+  "milestone": "M18-Agent请求日志与Antigravity接入",
+  "status": "in_progress",
+  "branch": "feat/T34-T38-request-log-antigravity",
+  "depends_on": [],
+  "target": {
+    "module": "core/collector",
+    "design_doc": "docs/devel/design/15-Antigravity接入.md",
+    "design_topic": "AntigravityUsage"
+  },
+  "goal": "把 Antigravity CLI 与 IDE 接入为第 11 个本机用量源：双根会话发现、step 去重、Token 归一化、模型继承、按文件缓存、Agent 注册与双端身份素材；不读凭据、不联网、不做额度。",
+  "precheck": {
+    "description": "确认代码库中尚无 Antigravity 本机用量实现，避免重复开发",
+    "command": "git grep -n \"antigravity\" -- core/collector || true",
+    "expected": "无既有 Antigravity 采集实现；命中项逐条核对是否已覆盖本卡能力",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 批次分支已创建：feat/T34-T38-request-log-antigravity"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-local -p collector-application",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T34 --to completed --record"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T34-1",
+      "title": "双根路径解析",
+      "capability": "新增 resolve_antigravity_brain_roots(home)，返回 ~/.gemini/antigravity-cli/brain 与 ~/.gemini/antigravity/brain；缺失根忽略；路径规范化与越界防护。",
+      "done": true
+    },
+    {
+      "id": "T34-2",
+      "title": "transcript 解析与 Token 归一化",
+      "capability": "解析 transcript_full.jsonl：step_index 后写覆盖、只取 PLANNER_RESPONSE+DONE、任一 Token>0；input 不含缓存、output 含思考、cache_write 单列；ISO8601 时间转 epoch millis。",
+      "done": true
+    },
+    {
+      "id": "T34-3",
+      "title": "模型继承与工程归属",
+      "capability": "从 USER_INPUT 的 Model Selection 还原显示名并归一化为基础模型 ID；Orchestrator 记 unknown；可选从 conversation_summaries.db 的 workspace_uris 取工程 basename。",
+      "done": true
+    },
+    {
+      "id": "T34-4",
+      "title": "跨根会话合并与按文件缓存",
+      "capability": "同 session id 跨 CLI/IDE 按 step 合并；按文件 mtime/size 缓存派生 steps；读取失败不写空条目、下一轮重试；不缓存正文。",
+      "done": true
+    },
+    {
+      "id": "T34-5",
+      "title": "源注册与 artifact 输出",
+      "capability": "AGENT_SPECS 追加 antigravity（保持既有顺序）、local_source_jobs 接入、source_derivation_version=1；根存在但无 Token 时 note 说明，不报 error。",
+      "done": true
+    },
+    {
+      "id": "T34-6",
+      "title": "双端身份与价卡",
+      "capability": "mac PanelModels/AgentBrandPalette 与 Windows color/agent-brand 增加 Antigravity 品牌图标、系列色与 Nothing 档位；价卡补 Gemini 3.x/4.x 或保持未计价。",
+      "done": true
+    },
+    {
+      "id": "T34-7",
+      "title": "测试与验收",
+      "capability": "合成 fixture 覆盖 Token 口径、step 重写、模型切换、双根合并、缓存冷热对拍、CLI 无 Token、未知模型、时区跨日；verify-local 全绿。",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": "passed",
+    "run_id": "local-20261119-01",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "架构纯度与边界",
+        "true_if": "Antigravity 解析只读 brain/summaries，不读凭据、不写 Antigravity 目录、不联网；缓存只存派生数值",
+        "false_if": "读取凭据、写原生目录、缓存正文/路径或引入代理链路",
+        "evidence": [
+          "架构纯度与边界",
+          "Antigravity 适配器只读 brain/summaries；未读取凭据、未写原生目录、未联网；缓存仅派生数值（antigravity.rs 与单测审阅）。"
+        ],
+        "result": true
+      },
+      {
+        "item": "规则覆盖度",
+        "true_if": "Token 口径、step 重写、模型继承、双根合并、CLI 无 Token 说明、缓存冷热对拍均有自动化用例",
+        "false_if": "遗漏任一核心分支或断言",
+        "evidence": [
+          "规则覆盖度",
+          "antigravity 单测 5 项覆盖 Token 口径、step 重写、模型继承、双根合并、CLI 无 Token 说明、冷热缓存；verify-local 全绿。"
+        ],
+        "result": true
+      },
+      {
+        "item": "产物可见",
+        "true_if": "artifact 的 agents 中出现 antigravity，id/name/status/note 与设计一致；有 IDE 会话时 Token 与模型构成可见",
+        "false_if": "占位行缺失、状态错误或 Token 口径与聚合不一致",
+        "evidence": [
+          "产物可见",
+          "AGENT_SPECS 11 项、local_source_jobs 追加 antigravity、source order 用例更新；artifact 与 source_metrics 由 verify-local/应用测试锁定。"
+        ],
+        "result": true
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

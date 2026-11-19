@@ -1,6 +1,6 @@
 {
   "$comment": "订阅 Provider 品牌图形来源与许可证登记 (C026). 图形仅用于指示性识别 (徽章旁恒有服务名文字), 商标权归各自权利人.",
-  "fetched_at": "2026-10-15",
+  "fetched_at": "2026-11-19",
   "icons": {
     "kimi": {
       "file": "kimi.svg",
@@ -88,6 +88,12 @@
       "library": "ZCode.app 内置 Resources/icon.png",
       "license": "品牌官方资源, 用于指示性识别",
       "url": "https://zcode.z.ai/"
+    },
+    "antigravity": {
+      "file": "agent-icons/agent-antigravity.png",
+      "library": "Antigravity.app 内置 Resources/icon.icns",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://antigravity.google/"
     }
   }
 }

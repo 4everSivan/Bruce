@@ -63,6 +63,8 @@ fn resolve_maps_all_known_agent_ids() {
         ("codebuddy", PanelAgentColor::Orange),
         // C189: 第 10 个已知 agent dsh (DeepSeek Harness) —— 品牌蓝 azure。
         ("dsh", PanelAgentColor::Azure),
+        // 第 11 个已知 agent Antigravity —— Google 蓝 sky。
+        ("antigravity", PanelAgentColor::Sky),
     ];
     for (id, color) in expected {
         assert_eq!(PanelAgentColor::resolve(id), color, "{id}");
@@ -109,6 +111,11 @@ fn nothing_ramp_covers_known_agents_and_modes() {
     // dsh 固定 1 档 (C189), 与 mac 同档位。
     assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", true), "#5FAF6E");
     assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", false), "#35854A");
+    // Antigravity 固定 3 档, 与 mac 同档位。
+    assert_eq!(
+        PanelAgentColor::nothing_ramp_hex("antigravity", true),
+        "#35854A"
+    );
     // 未知 agent 稳定落档。
     let a = PanelAgentColor::nothing_ramp_hex("mystery", true);
     assert_eq!(PanelAgentColor::nothing_ramp_hex("mystery", true), a);
@@ -127,6 +134,7 @@ fn azure_series_color_matches_mac_dsh_spec() {
         ],
         ["#4d6bfe", "#7089ff", "#9aabff", "#c3ccff"]
     );
-    assert_eq!(PANEL_AGENT_COLORS.len(), 10);
+    assert_eq!(PANEL_AGENT_COLORS.len(), 11);
     assert_eq!(PANEL_AGENT_COLORS[9], PanelAgentColor::Azure);
+    assert_eq!(PANEL_AGENT_COLORS[10], PanelAgentColor::Sky);
 }

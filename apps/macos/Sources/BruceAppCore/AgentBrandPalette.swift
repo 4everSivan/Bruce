@@ -51,6 +51,12 @@ package enum AgentBrandPalette {
                 imageName: "agent-zcode", glyphID: "zcode",
                 tileHex: "#0A0A0A", markHex: "#FFFFFF", monogram: "Z"
             )
+        case "antigravity":
+            // 官方 App 图标 (白底彩色 A); 位图缺失时退深色字标, 不借用近似图形.
+            return AgentBrandAsset(
+                imageName: "agent-antigravity",
+                tileHex: "#FFFFFF", markHex: "#1B1B1B", monogram: "A"
+            )
         case "claude-code":
             // CLI 无桌面 App: 官方 clay 标记 + 奶油底 (与 Claude App 图标同观感)。
             return AgentBrandAsset(

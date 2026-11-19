@@ -124,6 +124,8 @@
     { id: "codebuddy", name: "CodeBuddy", sub: "本机会话目录" },
     // DSH (DeepSeek Harness, C189): zstd JSONL 会话目录。
     { id: "dsh", name: "DSH", sub: "本机会话目录 (~/.dsh/sessions)" },
+    // Antigravity CLI + IDE: 两个 brain 根共用一个 Agent 行。
+    { id: "antigravity", name: "Antigravity", sub: "本机会话目录 (~/.gemini/antigravity*/brain)" },
   ];
 
   // 界面风格 (Fluent / Nothing) 只作用于看板: mac SettingsView 恒用 SettingsDemoTokens
