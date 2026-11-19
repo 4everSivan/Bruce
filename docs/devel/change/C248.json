@@ -64,9 +64,9 @@
     },
     {
       "scope": "未计价模型标签",
-      "before": "归一化模型为空（Antigravity Orchestrator 行）时，表格与详情直接显示 unknown。",
-      "after": "模型展示优先归一化模型，失败回退 raw_model 原始标签（如 Orchestrator (Neon)），两者皆缺才显示 unknown；Orchestrator 行仍按设计 15 不猜测映射、不计价。",
-      "impact": "纯展示层调整，不改采集、归一化与计费口径。"
+      "before": "归一化模型为空（Antigravity Orchestrator 行）时，请求日志显示 unknown；模型用量聚合键也落到 unknown。",
+      "after": "Antigravity 模型键在归一化失败时回退原始显示名（如 Orchestrator (Neon)）；模型用量与请求日志统一展示原标签，无任何标签的聚合键显示「未标注模型」。Orchestrator 行仍不猜测映射、不计价。",
+      "impact": "纯展示与聚合键调整，不改 Token 口径与计费；Antigravity 缓存版本 +1 触发重建。"
     }
   ],
   "design": {
@@ -80,7 +80,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "local-20261119-10",
+    "run_id": "local-20261119-13",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -135,9 +135,9 @@
       },
       {
         "item": "未计价模型标签",
-        "true_if": "Orchestrator 行模型列显示原始标签而非 unknown；raw_model 也缺失的行仍显示 unknown",
+        "true_if": "模型用量与请求日志的 Orchestrator 行均显示原始标签；无任何模型标签的行显示「未标注模型」，不再出现 unknown",
         "false_if": "仍显示 unknown 或空标签",
-        "evidence": "安装版实机截图：Antigravity 行模型列显示 `Orchestrator (Neon)` 原标签，页面无 unknown 行（raw_model 也缺失的历史行才会保留 unknown）；RequestLogHarness displayModel 回退用例通过。",
+        "evidence": "安装版模型用量「模型分布」显示 `Orchestrator (Neon)`（保留原始大小写）与「未标注模型」，规范键列为「未标注」，页面无 unknown；请求日志同标签。PanelViewModelHarness 覆盖 unknown→未标注模型、原始标签大小写保留；collector-local 覆盖 Orchestrator 聚合键不落 unknown。",
         "result": true
       }
     ]
@@ -146,7 +146,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "64e73b5",
+    "commit": "dc7728c",
     "tag": ""
   },
   "gate": {
