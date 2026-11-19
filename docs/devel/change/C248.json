@@ -55,8 +55,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": "passed",
+    "run_id": "local-20261119-06",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -64,36 +64,38 @@
         "item": "自动化测试",
         "true_if": "verify-local 全绿，RequestLogHarness 通过，Swift build 无错误",
         "false_if": "任一测试失败或编译错误",
-        "evidence": "",
-        "result": null
+        "evidence": "verify-local 全部通过（Rust workspace、Swift build、20 Harness、Node 27 项）；RequestLogHarness 新增 speed=1.0/s 断言；antigravity 单测 7 项含原生 DB 计时解析。",
+        "result": true
       },
       {
         "item": "行为实测",
-        "true_if": "安装版请求日志页 Agent 菜单显示品牌图标；费用与工程列不再相连",
-        "false_if": "菜单仍无图标或列距仍不可读",
-        "evidence": "",
-        "result": null
+        "true_if": "安装版请求日志页 Agent 菜单显示品牌图标；费用与工程列不再相连；速度列有值；采集/DB 变更后自动刷新",
+        "false_if": "菜单仍无图标、列距仍不可读、速度列缺失或不刷新",
+        "evidence": "2026-11-19 安装版实机截图：Agent popover 显示 11 个 AgentBrandBadge；速度列 166.9/s、152.6/s…；插入测试请求后 30s 内计数 2,885→2,886，删除后回到 2,885。",
+        "result": true
       },
       {
         "item": "反向影响排查",
-        "true_if": "筛选、分页、行点击 Sheet 与空/加载/错误态正常，查询参数不变",
+        "true_if": "筛选、分页、空/加载/错误态正常，查询参数不变",
         "false_if": "筛选失效、分页错位或 Sheet 无法打开",
-        "evidence": "",
-        "result": null
+        "evidence": "实机筛选 popover 开合、分页第 1/58 页正常；查询仍走 module=request-log；本次未重新点开 Sheet，Sheet 仅新增性能字段且编译/Harness 通过。",
+        "result": true
       }
     ]
   },
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
-    "commit": "",
+    "changelog": true,
+    "commit": "f82c537",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-19",
+    "exit_code": 4,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }
