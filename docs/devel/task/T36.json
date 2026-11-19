@@ -4,7 +4,7 @@
   "title": "Claude/Codex/Antigravity 请求行采集与幂等",
   "version": "0.19.0",
   "milestone": "M18-Agent请求日志与Antigravity接入",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T34-T38-request-log-antigravity",
   "depends_on": [
     "T34",
@@ -81,37 +81,28 @@
   "acceptance": {
     "result": "passed",
     "run_id": "local-20261119-03",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "单一解析源",
         "true_if": "请求行来自现有 UsageSample 观测流，无第二次会话解析或独立游标体系",
         "false_if": "新增重复文件扫描、重复流式合并逻辑或两套 Token 口径",
-        "evidence": [
-          "单一解析源",
-          "请求行由 UsageSample 观测流旁路产出；Claude/Codex/Antigravity 复用既有 dedupe key/step 逻辑，无第二次会话解析。"
-        ],
+        "evidence": "请求行由 UsageSample 观测流旁路产出；Claude/Codex/Antigravity 复用既有 dedupe key/step 逻辑，无第二次会话解析。",
         "result": true
       },
       {
         "item": "幂等与重建",
         "true_if": "重复扫描行数/费用不变；删除请求库后可从热缓存重建三源明细",
         "false_if": "重复行、双计或删除库后无法重建",
-        "evidence": [
-          "幂等与重建",
-          "request_log_rows_are_idempotent_and_keep_aggregate_parity 连续两轮 total=1；Token 合计与聚合一致；热缓存重建路径由 take_requests 覆盖。"
-        ],
+        "evidence": "request_log_rows_are_idempotent_and_keep_aggregate_parity 连续两轮 total=1；Token 合计与聚合一致；热缓存重建路径由 take_requests 覆盖。",
         "result": true
       },
       {
         "item": "故障隔离",
         "true_if": "请求库打开/写入失败只产生信息级诊断，artifact 与菜单栏刷新不受影响",
         "false_if": "请求库故障使 envelope 变 Partial 或阻断发布",
-        "evidence": [
-          "故障隔离",
-          "LOCAL_REQUEST_LOG_UNAVAILABLE 为信息级诊断并进入 fixture/Swift 清单；请求库失败不影响 artifact。"
-        ],
+        "evidence": "LOCAL_REQUEST_LOG_UNAVAILABLE 为信息级诊断并进入 fixture/Swift 清单；请求库失败不影响 artifact。",
         "result": true
       }
     ]
@@ -125,7 +116,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-19",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

@@ -269,7 +269,7 @@
     },
     "T34": {
       "title": "Antigravity 本机用量源接入",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T34-T38-request-log-antigravity",
       "topic": "AntigravityUsage",
       "milestone": "M18-Agent请求日志与Antigravity接入",
@@ -278,7 +278,7 @@
     },
     "T35": {
       "title": "请求日志独立存储与 30 天保留",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T34-T38-request-log-antigravity",
       "topic": "RequestLog",
       "milestone": "M18-Agent请求日志与Antigravity接入",
@@ -287,7 +287,7 @@
     },
     "T36": {
       "title": "Claude/Codex/Antigravity 请求行采集与幂等",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T34-T38-request-log-antigravity",
       "topic": "RequestLog",
       "milestone": "M18-Agent请求日志与Antigravity接入",
@@ -299,7 +299,7 @@
     },
     "T37": {
       "title": "请求日志 Bridge 查询模块",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T34-T38-request-log-antigravity",
       "topic": "RequestLog",
       "milestone": "M18-Agent请求日志与Antigravity接入",
@@ -310,7 +310,7 @@
     },
     "T38": {
       "title": "Mac 请求日志页与详情 Sheet",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T34-T38-request-log-antigravity",
       "topic": "RequestLog",
       "milestone": "M18-Agent请求日志与Antigravity接入",

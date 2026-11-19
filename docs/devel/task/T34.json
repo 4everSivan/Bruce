@@ -4,7 +4,7 @@
   "title": "Antigravity 本机用量源接入",
   "version": "0.19.0",
   "milestone": "M18-Agent请求日志与Antigravity接入",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T34-T38-request-log-antigravity",
   "depends_on": [],
   "target": {
@@ -78,37 +78,28 @@
   "acceptance": {
     "result": "passed",
     "run_id": "local-20261119-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "架构纯度与边界",
         "true_if": "Antigravity 解析只读 brain/summaries，不读凭据、不写 Antigravity 目录、不联网；缓存只存派生数值",
         "false_if": "读取凭据、写原生目录、缓存正文/路径或引入代理链路",
-        "evidence": [
-          "架构纯度与边界",
-          "Antigravity 适配器只读 brain/summaries；未读取凭据、未写原生目录、未联网；缓存仅派生数值（antigravity.rs 与单测审阅）。"
-        ],
+        "evidence": "Antigravity 适配器只读 brain/summaries；未读取凭据、未写原生目录、未联网；缓存仅派生数值（antigravity.rs 与单测审阅）。",
         "result": true
       },
       {
         "item": "规则覆盖度",
         "true_if": "Token 口径、step 重写、模型继承、双根合并、CLI 无 Token 说明、缓存冷热对拍均有自动化用例",
         "false_if": "遗漏任一核心分支或断言",
-        "evidence": [
-          "规则覆盖度",
-          "antigravity 单测 5 项覆盖 Token 口径、step 重写、模型继承、双根合并、CLI 无 Token 说明、冷热缓存；verify-local 全绿。"
-        ],
+        "evidence": "antigravity 单测 5 项覆盖 Token 口径、step 重写、模型继承、双根合并、CLI 无 Token 说明、冷热缓存；verify-local 全绿。",
         "result": true
       },
       {
         "item": "产物可见",
         "true_if": "artifact 的 agents 中出现 antigravity，id/name/status/note 与设计一致；有 IDE 会话时 Token 与模型构成可见",
         "false_if": "占位行缺失、状态错误或 Token 口径与聚合不一致",
-        "evidence": [
-          "产物可见",
-          "AGENT_SPECS 11 项、local_source_jobs 追加 antigravity、source order 用例更新；artifact 与 source_metrics 由 verify-local/应用测试锁定。"
-        ],
+        "evidence": "AGENT_SPECS 11 项、local_source_jobs 追加 antigravity、source order 用例更新；artifact 与 source_metrics 由 verify-local/应用测试锁定。",
         "result": true
       }
     ]
@@ -122,7 +113,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-19",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

@@ -4,7 +4,7 @@
   "title": "请求日志 Bridge 查询模块",
   "version": "0.19.0",
   "milestone": "M18-Agent请求日志与Antigravity接入",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T34-T38-request-log-antigravity",
   "depends_on": [
     "T35"
@@ -68,37 +68,28 @@
   "acceptance": {
     "result": "passed",
     "run_id": "local-20261119-04",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "只读与边界",
         "true_if": "查询只读打开固定路径数据库，不扫会话、不写库、不读凭据",
         "false_if": "接受任意路径、扫描会话或产生写入",
-        "evidence": [
-          "只读与边界",
-          "query_request_log_artifact 固定 home 解析路径；RequestLogStore::open_read_only 只读打开；不扫会话、不写库、不读凭据。"
-        ],
+        "evidence": "query_request_log_artifact 固定 home 解析路径；RequestLogStore::open_read_only 只读打开；不扫会话、不写库、不读凭据。",
         "result": true
       },
       {
         "item": "协议正确",
         "true_if": "合法请求返回分页结果；非法参数返回协议错误且不执行 SQL",
         "false_if": "SQL 注入、越界分页或错误参数落库",
-        "evidence": [
-          "协议正确",
-          "bridge 单测覆盖空库空页与非法分页；参数化 SQL；31 天/分页/Agent 校验通过。"
-        ],
+        "evidence": "bridge 单测覆盖空库空页与非法分页；参数化 SQL；31 天/分页/Agent 校验通过。",
         "result": true
       },
       {
         "item": "故障可见",
         "true_if": "缺失库返回空页说明；损坏库返回可解释错误且不删除数据",
         "false_if": "静默空页、崩溃或自动重建损坏库",
-        "evidence": [
-          "故障可见",
-          "缺失库返回空页 notice；损坏/未知版本返回 REQUEST_LOG_UNAVAILABLE/QUERY_FAILED，不删除库。"
-        ],
+        "evidence": "缺失库返回空页 notice；损坏/未知版本返回 REQUEST_LOG_UNAVAILABLE/QUERY_FAILED，不删除库。",
         "result": true
       }
     ]
@@ -112,7 +103,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-19",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

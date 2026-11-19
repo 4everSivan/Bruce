@@ -4,7 +4,7 @@
   "title": "请求日志独立存储与 30 天保留",
   "version": "0.19.0",
   "milestone": "M18-Agent请求日志与Antigravity接入",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T34-T38-request-log-antigravity",
   "depends_on": [],
   "target": {
@@ -72,37 +72,28 @@
   "acceptance": {
     "result": "passed",
     "run_id": "local-20261119-02",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "存储隔离",
         "true_if": "请求日志使用独立 request-log-v1.sqlite，不读写 usage-history-v1.sqlite 的表结构",
         "false_if": "请求表混入历史台账或依赖其 schema",
-        "evidence": [
-          "存储隔离",
-          "request-log-v1.sqlite 独立 crate 与 schema；未读写 usage-history 表结构（collector-request-log/src/lib.rs）。"
-        ],
+        "evidence": "request-log-v1.sqlite 独立 crate 与 schema；未读写 usage-history 表结构（collector-request-log/src/lib.rs）。",
         "result": true
       },
       {
         "item": "幂等与保留",
         "true_if": "同一请求重复写入行数不变；Token 不被改小；30 天前明细被清理",
         "false_if": "重复行、Token 回退或过期明细残留",
-        "evidence": [
-          "幂等与保留",
-          "5 项单测覆盖重复写入、Token 不回退、费用补全、30 天清理、筛选分页；cargo test -p collector-request-log 全绿。"
-        ],
+        "evidence": "5 项单测覆盖重复写入、Token 不回退、费用补全、30 天清理、筛选分页；cargo test -p collector-request-log 全绿。",
         "result": true
       },
       {
         "item": "隐私边界",
         "true_if": "库内只有派生数值、hash 请求键与 basename 工程名",
         "false_if": "出现对话正文、完整路径、session id 或凭据",
-        "evidence": [
-          "隐私边界",
-          "schema 仅含派生数值、hash 请求键与 basename 工程名；无正文/路径/session id 字段。"
-        ],
+        "evidence": "schema 仅含派生数值、hash 请求键与 basename 工程名；无正文/路径/session id 字段。",
         "result": true
       }
     ]
@@ -116,7 +107,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-19",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

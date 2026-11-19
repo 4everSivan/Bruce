@@ -4,7 +4,7 @@
   "title": "Mac 请求日志页与详情 Sheet",
   "version": "0.19.0",
   "milestone": "M18-Agent请求日志与Antigravity接入",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T34-T38-request-log-antigravity",
   "depends_on": [
     "T34",
@@ -76,37 +76,28 @@
   "acceptance": {
     "result": "passed",
     "run_id": "local-20261119-05",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "前端骨架一致",
         "true_if": "侧栏分类、摘要条、8 列表格、居中 Sheet、浅/深色与 demo 定稿一致；徽章尺寸 18/16/18",
         "false_if": "入口/详情形态偏离定稿，或出现色点而非品牌徽章",
-        "evidence": [
-          "前端骨架一致",
-          "设置侧栏新增 requestLog（模型用量与模型计费之间）；RequestLogView 为摘要条 + 8 列表格 + 居中 Sheet；Agent 徽章 18/16/18；Swift build 与 demo 对照通过。"
-        ],
+        "evidence": "设置侧栏新增 requestLog（模型用量与模型计费之间）；RequestLogView 为摘要条 + 8 列表格 + 居中 Sheet；Agent 徽章 18/16/18；Swift build 与 demo 对照通过。",
         "result": true
       },
       {
         "item": "查询边界",
         "true_if": "页面只经 module=request-log 查询；分页/筛选参数正确；失败内联提示且保留上次结果",
         "false_if": "直接读 collector 库、整表加载或错误时清空页面",
-        "evidence": [
-          "查询边界",
-          "页面只经 module=request-log 查询；分页/筛选参数由 RequestLogClient 组装；错误内联且保留上次数据（未清空）。"
-        ],
+        "evidence": "页面只经 module=request-log 查询；分页/筛选参数由 RequestLogClient 组装；错误内联且保留上次数据（未清空）。",
         "result": true
       },
       {
         "item": "隐私与文案",
         "true_if": "无正文/完整路径展示；常驻「基于本机会话日志，不包含未落盘的失败请求」",
         "false_if": "展示会话正文、路径或把请求日志描述为完整 API 日志",
-        "evidence": [
-          "隐私与文案",
-          "scopeLine 常驻“基于本机会话日志，不包含未落盘的失败请求”；无正文/完整路径展示；详情只展示派生字段。"
-        ],
+        "evidence": "scopeLine 常驻“基于本机会话日志，不包含未落盘的失败请求”；无正文/完整路径展示；详情只展示派生字段。",
         "result": true
       }
     ]
@@ -120,7 +111,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-19",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }
