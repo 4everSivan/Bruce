@@ -1,7 +1,7 @@
 {
   "$comment": "Bruce 模型基准价格表唯一事实源: 支持编译期内置与运行期从 GitHub 在线同步更新。单位: 美元 / 百万 token。",
   "schemaVersion": 1,
-  "updatedAt": "2026-11-19.1",
+  "updatedAt": "2026-11-19.2",
   "models": [
     {
       "model": "k3-agent",
@@ -582,6 +582,15 @@
       "output": 7.5,
       "cacheRead": 0.075,
       "note": "Orchestrator 步骤执行模型"
+    },
+    {
+      "model": "gemini-4-neon",
+      "displayName": "Gemini 4 Neon",
+      "vendor": "Google",
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.15,
+      "note": "2026-11 新增 · 标准档"
     },
     {
       "model": "gemini-3.8-flash",

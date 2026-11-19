@@ -12,7 +12,7 @@
   },
   "catalog_path": "config/pricing-catalog.json",
   "expected_schema_version": 1,
-  "expected_model_count": 106,
+  "expected_model_count": 107,
   "required_model_fields": [
     "model",
     "displayName",

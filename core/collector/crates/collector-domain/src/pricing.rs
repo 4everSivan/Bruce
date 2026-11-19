@@ -793,6 +793,7 @@ mod tests {
             ("gemini-4-argon", 2.0, 10.0, 0.10),
             ("gemini-4-carbon", 2.0, 10.0, 0.10),
             ("gemini-4-hydrogen", 1.5, 7.5, 0.075),
+            ("gemini-4-neon", 3.0, 15.0, 0.15),
             ("gemini-3.8-flash", 0.75, 3.75, 0.075),
             ("gemini-3.5-flash", 1.5, 9.0, 0.15),
             ("gemini-3.5-flash-lite", 0.3, 2.5, 0.03),

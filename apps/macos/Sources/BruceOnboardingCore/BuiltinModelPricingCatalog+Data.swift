@@ -4,7 +4,7 @@
 
 extension BuiltinModelPricingCatalog {
     public static let builtinSchemaVersion: Int = 1
-    public static let builtinUpdatedAt: String = "2026-11-19.1"
+    public static let builtinUpdatedAt: String = "2026-11-19.2"
     public static let builtinModels: [BuiltinModelPricing] = [
         BuiltinModelPricing(
             modelName: "k3-agent",
@@ -464,6 +464,15 @@ extension BuiltinModelPricingCatalog {
             outputPricePerMillion: 7.5,
             cacheReadPricePerMillion: 0.075,
             defaultNote: "Orchestrator 步骤执行模型"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-4-neon",
+            displayName: "Gemini 4 Neon",
+            vendor: "Google",
+            inputPricePerMillion: 3.0,
+            outputPricePerMillion: 15.0,
+            cacheReadPricePerMillion: 0.15,
+            defaultNote: "2026-11 新增 · 标准档"
         ),
         BuiltinModelPricing(
             modelName: "gemini-3.8-flash",
