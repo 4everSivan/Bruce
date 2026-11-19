@@ -23,7 +23,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const ANTIGRAVITY_CACHE_VERSION: u32 = 1;
+const ANTIGRAVITY_CACHE_VERSION: u32 = 2;
 const TRANSCRIPT_RELATIVE: &str = ".system_generated/logs/transcript_full.jsonl";
 const KIND_USER: u8 = 1;
 const KIND_PLANNER: u8 = 2;
@@ -272,10 +272,13 @@ pub fn scan_antigravity_cached(
                         continue;
                     };
                     let raw_model = step.model.clone().or_else(|| current_raw_model.clone());
+                    // Orchestrator 等无公开模型 ID 的标签保留原始显示名：不猜测
+                    // 映射、不参与计价，但模型用量与请求日志都不再落到 unknown。
                     let model = raw_model
                         .as_deref()
                         .and_then(normalize_model)
-                        .or_else(|| current_model.clone());
+                        .or_else(|| current_model.clone())
+                        .or_else(|| raw_model.clone());
                     let sample = UsageSample {
                         timestamp_millis: timestamp,
                         model: model.as_deref(),
@@ -947,6 +950,48 @@ mod tests {
         assert_eq!(
             (request.input, request.output, request.cache_read),
             (100, 5, 20)
+        );
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(cache);
+    }
+
+    #[test]
+    fn orchestrator_rows_keep_raw_label_without_pricing_guess() {
+        let root = temp_dir("orchestrator-label");
+        let cache = temp_dir("orchestrator-label-cache");
+        write_transcript(
+            &root,
+            "session-o",
+            &[
+                json!({
+                    "step_index": 0,
+                    "type": "USER_INPUT",
+                    "status": "DONE",
+                    "created_at": "2026-11-19T09:59:00Z",
+                    "content": "Model Selection` from None to Orchestrator (Neon)."
+                }),
+                planner(1, 100, 5, 0),
+            ],
+        );
+        let scan = scan_antigravity_cached(
+            std::slice::from_ref(&root),
+            &window(),
+            &cache,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            scan.contribution.models_today[0].model, "Orchestrator (Neon)",
+            "模型用量不得落回 unknown"
+        );
+        assert_eq!(scan.requests.len(), 1);
+        assert_eq!(
+            scan.requests[0].model.as_deref(),
+            Some("Orchestrator (Neon)")
+        );
+        assert_eq!(
+            scan.requests[0].raw_model.as_deref(),
+            Some("Orchestrator (Neon)")
         );
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(cache);

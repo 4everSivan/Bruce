@@ -51,7 +51,7 @@ Bruce 在此批之前支持 10 个本机 Agent，没有 Antigravity。2026-11-19
 | G1 | 本机存在 Antigravity CLI 或 IDE 会话时，产出该 Agent 的日/月/模型/小时/工程聚合 |
 | G2 | 正确处理 transcript 的 step 重写与流式追加，不重复计数 |
 | G3 | Token 口径与 Bruce 归一化桶一致：input 不含缓存、output 含思考 |
-| G4 | 可从 `Model Selection` 事件还原每次响应使用的模型；无法确定时记 `unknown` |
+| G4 | 可从 `Model Selection` 事件还原每次响应使用的模型；无法归一化时保留原始显示名（如 `Orchestrator (Neon)`），不猜测映射、不参与计价 |
 | G5 | 缓存命中时不重复解析；文件变更时只重读变更文件 |
 | G6 | 同一会话同时存在于 CLI 与 IDE 根时按 step 合并，只计一次 |
 | G7 | 请求日志可复用同一解析结果，产出逐响应明细 |
@@ -72,7 +72,7 @@ Bruce 在此批之前支持 10 个本机 Agent，没有 Antigravity。2026-11-19
 | R1 | 路径发现 | 同时发现 CLI 与 IDE 两个 `brain` 根；缺失的根忽略 |
 | R2 | 会话发现 | 只接受合法 session id；transcript 路径必须位于根内 |
 | R3 | 解析 | 只统计 `PLANNER_RESPONSE` + `DONE` + 任一 Token > 0 |
-| R4 | 模型 | `Model Selection` 继承；显示名归一化；未知记 `unknown` |
+| R4 | 模型 | `Model Selection` 继承；显示名归一化；Orchestrator 等无公开 ID 的标签保留原始显示名，不猜测、不计价 |
 | R5 | 去重 | 同 session 跨根按 step 合并；同 step 后写覆盖 |
 | R6 | 缓存 | 按文件 mtime/size 失效；缓存只存派生数值 |
 | R7 | 工程 | 可选从 `conversation_summaries.db.workspace_uris` 取 basename |
@@ -230,11 +230,11 @@ Model Selection` from None to Gemini 3.6 Flash (High).
    - `Gemini 4 Pro (Low)` → `gemini-4-pro`
    - 无空格的值视为已经是 ID；
 5. 档位后缀 `-high/-medium/-low/-trial/-n/-tiered` 不进入聚合 `model`，只保留在 `raw_model`；
-6. `Orchestrator Carbon/Argon` 是模式，不是具体模型：
-   - P1：`model = unknown`，不猜测；
+6. `Orchestrator Carbon/Argon/Neon` 是模式，不是可计价的公开模型：
+   - P1：模型键回退到原始显示名（如 `Orchestrator (Neon)`），保留在模型用量与请求日志中，不猜测映射、不参与计价；
    - P2：从 `conversations/<id>.db` 的 `gen_metadata` 解析真实模型（protobuf 字段 20/3、1/19/21）；
 7. `gemini-api` 是入口标签，不是模型，忽略；
-8. 未知模型计入 `unknown`，参与 Token 总量，不参与计价。
+8. 无任何模型标签的旧版会话计入「未标注模型」聚合键 (`unknown`)，参与 Token 总量，不参与计价。
 
 #### 4.2.6 工程归属
 

@@ -17,7 +17,7 @@ struct CanonicalModelAnalyticsCard: View {
         for model in canonicalModels {
             if model.sources.isEmpty {
                 list.append(ModelSourceContribution(
-                    rawModelName: model.canonicalKey,
+                    rawModelName: model.canonicalKey == "unknown" ? "未标注模型" : model.canonicalKey,
                     agentID: "",
                     agentDisplayName: "通用",
                     tokens: model.totalTokens,
@@ -140,7 +140,7 @@ struct CanonicalModelAnalyticsCard: View {
                         }
                     }
 
-                    Text("规范键: \(model.canonicalKey)")
+                    Text("规范键: \(model.canonicalKey == "unknown" ? "未标注" : model.canonicalKey)")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(SettingsDemoTokens.text3)
                 }

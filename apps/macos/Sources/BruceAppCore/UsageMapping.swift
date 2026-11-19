@@ -239,6 +239,11 @@ extension PanelViewModelMapper {
 
     // MARK: 模型用量
 
+    /// 模型用量展示名: 缺少模型标签的聚合键不直接暴露 `unknown`。
+    static func modelDisplayName(_ model: String) -> String {
+        model == "unknown" ? "未标注模型" : model
+    }
+
     /// 模型名 -> 颜色的稳定调色板 (跨周期一致; 按名称排序取色, 模型数量超出后循环).
     private static let modelPalette = [
         "#0a84ff", "#ff9f0a", "#bf5af2", "#64d2ff", "#ff375f", "#30d158", "#ffcf7a", "#8e8e93",
@@ -280,7 +285,7 @@ extension PanelViewModelMapper {
                     let share = Double(total) / Double(grand)
                     let pct = Int((share * 100).rounded())
                     return UsageModelRow(
-                        name: model,
+                        name: Self.modelDisplayName(model),
                         totalText: PanelFormat.tokenCount(total),
                         pctText: "\(pct)%",
                         share: share,

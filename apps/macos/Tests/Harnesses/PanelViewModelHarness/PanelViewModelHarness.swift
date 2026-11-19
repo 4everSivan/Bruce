@@ -286,6 +286,7 @@ struct PanelViewModelHarness {
         try hourlyRowsSortByTodayTotalDesc()
         try hourlyDetailAggregatesTopAndOther()
         try modelUsageBuildsTiersMonthsAndColors()
+        try modelUsageLabelsUnknownAsUnlabeled()
         try modelUsageHiddenWithoutMonthData()
         try nothingRampStableAndDistinctForTopAgents()
         try resetTextVariants()
@@ -330,7 +331,7 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatePolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 72")
+        print("PanelViewModel tests passed: 73")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -2302,6 +2303,21 @@ struct PanelViewModelHarness {
         )
     }
 
+    /// 缺少模型标签的聚合键在模型用量中显示中文占位, 不暴露 unknown.
+    private static func modelUsageLabelsUnknownAsUnlabeled() throws {
+        let agent = makeAgent(
+            id: "antigravity",
+            name: "Antigravity",
+            modelMonths: ["2026-08": ["unknown": 100, "Orchestrator (Neon)": 50]]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
+        let models = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses).usage?.models
+        let names = models?.tiers.first?.rows.map(\.name) ?? []
+        try expect(names.contains("未标注模型"), "unknown 应显示为未标注模型: \(names)")
+        try expect(names.contains("Orchestrator (Neon)"), "原始标签应保留: \(names)")
+        try expect(!names.contains("unknown"), "不得暴露 unknown: \(names)")
+    }
+
     /// 旧版 artifact (无 modelMonths): 模型区块为 nil, 按月/热力图不受影响.
     private static func modelUsageHiddenWithoutMonthData() throws {
         let agent = makeAgent(
@@ -2657,6 +2673,18 @@ struct PanelViewModelHarness {
         try expect(ModelNormalizer.canonicalKey(for: "gpt-4o-latest") == "gpt-4o", "-latest 必须剔除")
         try expect(ModelNormalizer.canonicalKey(for: "deepseek-r1[thinking]") == "deepseek-r1", "[thinking] 必须剥离")
         try expect(ModelNormalizer.canonicalKey(for: "  ") == "unknown", "空名归为 unknown")
+        try expect(
+            WorkbenchAnalytics.modelDisplayName(for: "unknown") == "未标注模型",
+            "unknown 在模型分布中显示为未标注模型"
+        )
+        try expect(
+            WorkbenchAnalytics.modelDisplayName(for: "orchestrator (neon)", rawModel: "Orchestrator (Neon)") == "Orchestrator (Neon)",
+            "自定义模型保留原始大小写标签"
+        )
+        try expect(
+            WorkbenchAnalytics.modelDisplayName(for: "gpt-6.1-sol", rawModel: "gpt-6.1-sol") == ModelNormalizer.displayName(for: "gpt-6.1-sol"),
+            "目录模型仍使用策展显示名"
+        )
 
         // 3. 不做跨型号别名: 不同型号单价不同, 合并即混算
         for raw in ["deepseek-flash", "glm-4.5", "gpt-5.4-preview", "claude-opus-4-1", "deepseek-chat"] {

@@ -267,7 +267,7 @@ struct RequestLogHarness {
                 """.utf8
             )
         )
-        try expect(bare.displayModel == "unknown", "both missing keeps unknown")
+        try expect(bare.displayModel == "未标注模型", "both missing uses unlabeled placeholder")
     }
 
     private static func expectUnwrap<T>(_ value: T?, _ message: String) throws -> T {

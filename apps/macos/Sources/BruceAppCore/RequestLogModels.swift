@@ -142,11 +142,11 @@ package struct RequestLogEntryModel: Codable, Identifiable, Equatable, Sendable 
     }
 
     /// 表格/详情展示用模型名：优先归一化模型；归一化失败（如 Antigravity
-    /// Orchestrator 模式）回退原始标签；两者皆缺才显示 `unknown`。
+    /// Orchestrator 模式）回退原始标签；两者皆缺才显示「未标注模型」。
     package var displayModel: String {
         if let model, !model.isEmpty { return model }
         if let rawModel, !rawModel.isEmpty { return rawModel }
-        return "unknown"
+        return "未标注模型"
     }
 
     package var totalTokens: UInt64 {

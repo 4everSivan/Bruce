@@ -220,6 +220,17 @@ package enum WorkbenchAnalytics {
     // MARK: - 模型归并
 
     /// 按规范键归并; 来源按 (原始模型名, Agent) 区分. 次序: token 降序 → 规范键 / 原始名 → Agent 下标.
+    /// 模型分布展示名: 缺少模型标签的聚合键不直接暴露 `unknown`；
+    /// 无策展显示名的自定义模型优先保留原始大小写标签。
+    static func modelDisplayName(for model: String, rawModel: String? = nil) -> String {
+        if model == "unknown" { return "未标注模型" }
+        let curated = ModelNormalizer.displayName(for: model)
+        if curated == model, let rawModel, !rawModel.isEmpty {
+            return rawModel
+        }
+        return curated
+    }
+
     private static func canonicalModels(entries: [Entry], agents: [AgentUsageItem]) -> [CanonicalModelSummary] {
         struct SourceKey: Hashable {
             let raw: String
@@ -253,7 +264,7 @@ package enum WorkbenchAnalytics {
                 .map { sourceKey, source in
                     let agent = agents[sourceKey.agentIndex]
                     return ModelSourceContribution(
-                        rawModelName: sourceKey.raw,
+                        rawModelName: sourceKey.raw == "unknown" ? "未标注模型" : sourceKey.raw,
                         agentID: agent.id,
                         agentDisplayName: agent.name,
                         tokens: source.tokens,
@@ -267,7 +278,7 @@ package enum WorkbenchAnalytics {
             let cost: Double? = priced.isEmpty ? nil : priced.reduce(0, +)
             return CanonicalModelSummary(
                 canonicalKey: key,
-                displayName: ModelNormalizer.displayName(for: key),
+                displayName: Self.modelDisplayName(for: key, rawModel: contributions.first?.rawModelName),
                 vendor: ModelNormalizer.vendor(for: key),
                 colorHex: ModelNormalizer.colorHex(for: key),
                 totalTokens: total,
