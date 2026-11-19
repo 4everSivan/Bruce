@@ -4,7 +4,7 @@
 
 extension BuiltinModelPricingCatalog {
     public static let builtinSchemaVersion: Int = 1
-    public static let builtinUpdatedAt: String = "2026-10-31.1"
+    public static let builtinUpdatedAt: String = "2026-11-19.1"
     public static let builtinModels: [BuiltinModelPricing] = [
         BuiltinModelPricing(
             modelName: "k3-agent",
@@ -59,6 +59,33 @@ extension BuiltinModelPricingCatalog {
             outputPricePerMillion: 15.0,
             cacheReadPricePerMillion: 0.3,
             defaultNote: "ClinePass 渠道包"
+        ),
+        BuiltinModelPricing(
+            modelName: "gpt-6.2-sol",
+            displayName: "GPT-6.2 Sol",
+            vendor: "OpenAI / Codex",
+            inputPricePerMillion: 2.0,
+            outputPricePerMillion: 10.0,
+            cacheReadPricePerMillion: 0.1,
+            defaultNote: "2026-11-17 发布 · Standard 短上下文价"
+        ),
+        BuiltinModelPricing(
+            modelName: "gpt-6.2-astra",
+            displayName: "GPT-6.2 Astra",
+            vendor: "OpenAI / Codex",
+            inputPricePerMillion: 8.0,
+            outputPricePerMillion: 40.0,
+            cacheReadPricePerMillion: 0.4,
+            defaultNote: "2026-11-17 发布 · 旗舰高阶推理模型"
+        ),
+        BuiltinModelPricing(
+            modelName: "gpt-6-astra",
+            displayName: "GPT-6 Astra",
+            vendor: "OpenAI / Codex",
+            inputPricePerMillion: 10.0,
+            outputPricePerMillion: 50.0,
+            cacheReadPricePerMillion: 1.0,
+            defaultNote: "旗舰通用模型"
         ),
         BuiltinModelPricing(
             modelName: "gpt-6.1-sol",
@@ -410,6 +437,78 @@ extension BuiltinModelPricingCatalog {
             outputPricePerMillion: 75.0,
             cacheReadPricePerMillion: 1.5,
             defaultNote: "复杂推理与系统分析"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-4-argon",
+            displayName: "Gemini 4 Argon",
+            vendor: "Google",
+            inputPricePerMillion: 2.0,
+            outputPricePerMillion: 10.0,
+            cacheReadPricePerMillion: 0.1,
+            defaultNote: "介绍价，2026-11-30 到期后恢复 4/20/0.2"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-4-carbon",
+            displayName: "Gemini 4 Carbon",
+            vendor: "Google",
+            inputPricePerMillion: 2.0,
+            outputPricePerMillion: 10.0,
+            cacheReadPricePerMillion: 0.1,
+            defaultNote: "介绍价，2026-11-30 到期后恢复 4/20/0.2"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-4-hydrogen",
+            displayName: "Gemini 4 Hydrogen",
+            vendor: "Google",
+            inputPricePerMillion: 1.5,
+            outputPricePerMillion: 7.5,
+            cacheReadPricePerMillion: 0.075,
+            defaultNote: "Orchestrator 步骤执行模型"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-3.8-flash",
+            displayName: "Gemini 3.8 Flash",
+            vendor: "Google",
+            inputPricePerMillion: 0.75,
+            outputPricePerMillion: 3.75,
+            cacheReadPricePerMillion: 0.075,
+            defaultNote: "介绍价，2026-12-31 到期"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-3.7-flash",
+            displayName: "Gemini 3.7 Flash",
+            vendor: "Google",
+            inputPricePerMillion: 0.75,
+            outputPricePerMillion: 3.75,
+            cacheReadPricePerMillion: 0.075,
+            defaultNote: "介绍价，2026-12-31 到期"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-3.6-flash",
+            displayName: "Gemini 3.6 Flash",
+            vendor: "Google",
+            inputPricePerMillion: 0.75,
+            outputPricePerMillion: 3.75,
+            cacheReadPricePerMillion: 0.075,
+            defaultNote: "介绍价，2026-12-31 到期"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-3.5-flash",
+            displayName: "Gemini 3.5 Flash",
+            vendor: "Google",
+            inputPricePerMillion: 1.5,
+            outputPricePerMillion: 9.0,
+            cacheReadPricePerMillion: 0.15,
+            defaultNote: "高吞吐多模态模型"
+        ),
+        BuiltinModelPricing(
+            modelName: "gemini-3.5-flash-lite",
+            displayName: "Gemini 3.5 Flash Lite",
+            vendor: "Google",
+            inputPricePerMillion: 0.3,
+            outputPricePerMillion: 2.5,
+            cacheReadPricePerMillion: 0.03,
+            defaultNote: "轻量低成本模型"
         ),
         BuiltinModelPricing(
             modelName: "gemini-2.0-flash",

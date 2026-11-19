@@ -23,7 +23,7 @@
 - **预期结果与断言（Then）**：
   1. `schemaVersion === 1`
   2. `updatedAt` 为非空字符串
-  3. `models` 为数组且长度等于夹具期望数（95）
+  3. `models` 为数组且长度等于夹具期望数（106）
 
 ### UT-pricing_catalog-002: 模型 ID 全局唯一
 

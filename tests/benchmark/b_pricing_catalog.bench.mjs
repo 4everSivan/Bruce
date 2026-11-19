@@ -41,7 +41,7 @@ export function bench_bm_pricing_catalog_001_parse_validate() {
   return {
     id: "BM-pricing_catalog-001",
     module: "pricing_catalog",
-    workload: "95 models / 22 KB catalog",
+    workload: "106 models / 25 KB catalog",
     iterations,
     total_ms: Number(totalMs.toFixed(3)),
     avg_us: Number(((totalMs * 1000) / iterations).toFixed(3)),

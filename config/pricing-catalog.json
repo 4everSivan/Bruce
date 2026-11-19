@@ -1,7 +1,7 @@
 {
   "$comment": "Bruce 模型基准价格表唯一事实源: 支持编译期内置与运行期从 GitHub 在线同步更新。单位: 美元 / 百万 token。",
   "schemaVersion": 1,
-  "updatedAt": "2026-10-31.1",
+  "updatedAt": "2026-11-19.1",
   "models": [
     {
       "model": "k3-agent",
@@ -56,6 +56,45 @@
       "output": 15,
       "cacheRead": 0.3,
       "note": "ClinePass 渠道包"
+    },
+    {
+      "model": "gpt-6.2-sol",
+      "displayName": "GPT-6.2 Sol",
+      "vendor": "OpenAI / Codex",
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "cacheWrite": [
+        1.25,
+        2
+      ],
+      "note": "2026-11-17 发布 · Standard 短上下文价"
+    },
+    {
+      "model": "gpt-6.2-astra",
+      "displayName": "GPT-6.2 Astra",
+      "vendor": "OpenAI / Codex",
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.4,
+      "cacheWrite": [
+        1.25,
+        2
+      ],
+      "note": "2026-11-17 发布 · 旗舰高阶推理模型"
+    },
+    {
+      "model": "gpt-6-astra",
+      "displayName": "GPT-6 Astra",
+      "vendor": "OpenAI / Codex",
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheWrite": [
+        1.25,
+        2
+      ],
+      "note": "旗舰通用模型"
     },
     {
       "model": "gpt-6.1-sol",
@@ -516,6 +555,78 @@
         2
       ],
       "note": "复杂推理与系统分析"
+    },
+    {
+      "model": "gemini-4-argon",
+      "displayName": "Gemini 4 Argon",
+      "vendor": "Google",
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "note": "介绍价，2026-11-30 到期后恢复 4/20/0.2"
+    },
+    {
+      "model": "gemini-4-carbon",
+      "displayName": "Gemini 4 Carbon",
+      "vendor": "Google",
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "note": "介绍价，2026-11-30 到期后恢复 4/20/0.2"
+    },
+    {
+      "model": "gemini-4-hydrogen",
+      "displayName": "Gemini 4 Hydrogen",
+      "vendor": "Google",
+      "input": 1.5,
+      "output": 7.5,
+      "cacheRead": 0.075,
+      "note": "Orchestrator 步骤执行模型"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "displayName": "Gemini 3.8 Flash",
+      "vendor": "Google",
+      "input": 0.75,
+      "output": 3.75,
+      "cacheRead": 0.075,
+      "note": "介绍价，2026-12-31 到期"
+    },
+    {
+      "model": "gemini-3.7-flash",
+      "displayName": "Gemini 3.7 Flash",
+      "vendor": "Google",
+      "input": 0.75,
+      "output": 3.75,
+      "cacheRead": 0.075,
+      "note": "介绍价，2026-12-31 到期"
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "displayName": "Gemini 3.6 Flash",
+      "vendor": "Google",
+      "input": 0.75,
+      "output": 3.75,
+      "cacheRead": 0.075,
+      "note": "介绍价，2026-12-31 到期"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "displayName": "Gemini 3.5 Flash",
+      "vendor": "Google",
+      "input": 1.5,
+      "output": 9,
+      "cacheRead": 0.15,
+      "note": "高吞吐多模态模型"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "displayName": "Gemini 3.5 Flash Lite",
+      "vendor": "Google",
+      "input": 0.3,
+      "output": 2.5,
+      "cacheRead": 0.03,
+      "note": "轻量低成本模型"
     },
     {
       "model": "gemini-2.0-flash",

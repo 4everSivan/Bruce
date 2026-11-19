@@ -783,6 +783,44 @@ mod tests {
         assert!((cost - 4.65).abs() < 1e-6);
     }
 
+    /// C248: 2026-11 新增 Gemini 3.5–4 / GPT-6.2 必须随内置价卡可解析并按新价计费。
+    #[test]
+    fn builtin_pricing_includes_2026_11_models() {
+        let table = PricingTable::default();
+        let cases = [
+            ("gpt-6.2-sol", 2.0, 10.0, 0.10),
+            ("gpt-6.2-astra", 8.0, 40.0, 0.40),
+            ("gemini-4-argon", 2.0, 10.0, 0.10),
+            ("gemini-4-carbon", 2.0, 10.0, 0.10),
+            ("gemini-4-hydrogen", 1.5, 7.5, 0.075),
+            ("gemini-3.8-flash", 0.75, 3.75, 0.075),
+            ("gemini-3.5-flash", 1.5, 9.0, 0.15),
+            ("gemini-3.5-flash-lite", 0.3, 2.5, 0.03),
+        ];
+        for (model, input, output, cache_read) in cases {
+            let rule = table
+                .resolve(model)
+                .unwrap_or_else(|| panic!("{model} 应存在于内置价卡"));
+            assert_eq!(rule.input_price_per_million, input, "{model} input");
+            assert_eq!(rule.output_price_per_million, output, "{model} output");
+            assert_eq!(
+                rule.cache_read_price_per_million,
+                Some(cache_read),
+                "{model} cache read"
+            );
+        }
+
+        let rule = table.resolve("gemini-4-argon").unwrap();
+        let mut bucket = TokenBucket::default();
+        bucket.add(1_000_000, 1_000_000, 0, 0);
+        // input 1M * 2.0 + output 1M * 10.0
+        assert!((table.calculate_cost(&bucket, &rule) - 12.0).abs() < 1e-9);
+
+        let gpt = table.resolve("gpt-6.2-sol").unwrap();
+        assert_eq!(gpt.cache_write_multiplier, Some(1.25));
+        assert_eq!(gpt.cache_write_1h_multiplier, Some(2.0));
+    }
+
     #[test]
     fn pricing_overrides_take_precedence() {
         let mut overrides = HashMap::new();

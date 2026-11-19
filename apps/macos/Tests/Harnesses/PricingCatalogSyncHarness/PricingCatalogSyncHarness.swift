@@ -273,7 +273,7 @@ struct PricingCatalogSyncHarness {
         let newRemoteJSON = """
         {
           "schemaVersion": 1,
-          "updatedAt": "2026-11-05",
+          "updatedAt": "2099-01-01",
           "models": [
             {"model": "k3-agent", "displayName": "Kimi K3 (Agent)", "vendor": "Moonshot Kimi", "input": 99.0, "output": 15.0, "listed": true},
             {"model": "brand-new-model", "displayName": "Brand New", "vendor": "NewVendor", "input": 5.0, "output": 25.0, "listed": true}
@@ -298,7 +298,7 @@ struct PricingCatalogSyncHarness {
         guard case .updated(let updatedAt, let count, let added, let adjusted) = service.stage else {
             throw HarnessFailure(message: "Expected updated stage, got \(service.stage)")
         }
-        try expectEqual(updatedAt, "2026-11-05")
+        try expectEqual(updatedAt, "2099-01-01")
         try expectEqual(count, 2)
         try expectEqual(added, 1)
         try expectEqual(adjusted, 1)
@@ -311,7 +311,7 @@ struct PricingCatalogSyncHarness {
 
         // 内存态已热生效
         try expectEqual(BuiltinModelPricingCatalog.currentSource, .synced)
-        try expectEqual(BuiltinModelPricingCatalog.currentUpdatedAt, "2026-11-05")
+        try expectEqual(BuiltinModelPricingCatalog.currentUpdatedAt, "2099-01-01")
         try expect(BuiltinModelPricingCatalog.allModels.contains(where: { $0.modelName == "brand-new-model" }))
     }
 
@@ -322,11 +322,11 @@ struct PricingCatalogSyncHarness {
 
         let fileURL = tempDir.appendingPathComponent("pricing-catalog.json")
 
-        // Active catalog already set to 2026-11-05 from previous test
+        // Active catalog already set to 2099-01-01 from previous test
         let sameRemoteJSON = """
         {
           "schemaVersion": 1,
-          "updatedAt": "2026-11-05",
+          "updatedAt": "2099-01-01",
           "models": [
             {"model": "k3-agent", "displayName": "Kimi K3 (Agent)", "vendor": "Moonshot Kimi", "input": 99.0, "output": 15.0, "listed": true},
             {"model": "brand-new-model", "displayName": "Brand New", "vendor": "NewVendor", "input": 5.0, "output": 25.0, "listed": true}
@@ -346,7 +346,7 @@ struct PricingCatalogSyncHarness {
         guard case .upToDate(let updatedAt, let count) = service.stage else {
             throw HarnessFailure(message: "Expected upToDate stage, got \(service.stage)")
         }
-        try expectEqual(updatedAt, "2026-11-05")
+        try expectEqual(updatedAt, "2099-01-01")
         try expectEqual(count, 2)
     }
 
@@ -440,7 +440,7 @@ struct PricingCatalogSyncHarness {
         let okJSON = """
         {
           "schemaVersion": 1,
-          "updatedAt": "2026-11-10",
+          "updatedAt": "2099-02-01",
           "models": [
             {"model": "k3-agent", "displayName": "K3", "vendor": "Kimi", "input": 3, "output": 15, "listed": true}
           ]
