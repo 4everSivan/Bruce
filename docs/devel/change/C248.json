@@ -59,7 +59,7 @@
     {
       "scope": "模型价卡",
       "before": "价卡缺少 Gemini 3.5/3.6/3.7/3.8/4 与 GPT-6.2 系列。",
-      "after": "按 cc-switch 2026-11 价表补入 Gemini 4 Argon/Carbon/Hydrogen、Gemini 3.5–3.8 Flash、GPT-6.2 Sol/Astra 与 GPT-6 Astra；mac 内置价卡重新生成。",
+      "after": "按 cc-switch 2026-11 价表与 Google 官方价页补入 Gemini 4 Argon/Carbon/Hydrogen/Neon、Gemini 3.5–3.8 Flash、GPT-6.2 Sol/Astra 与 GPT-6 Astra；mac 内置价卡重新生成。",
       "impact": "新模型可计价并出现在设置页；旧模型价格不变。"
     }
   ],
@@ -74,7 +74,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "local-20261119-08",
+    "run_id": "local-20261119-09",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -82,7 +82,7 @@
         "item": "自动化测试",
         "true_if": "verify-local 全绿，RequestLogHarness 通过，Swift build 无错误",
         "false_if": "任一测试失败或编译错误",
-        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项）；RequestLogHarness 速度断言 600 tokens / 2500ms → ≈240/s，并新增 Agent 筛选策略用例；collector-local 新增 ZCode 请求行归一化/缓存重放用例；collector-domain 新增 2026-11 新模型价卡计费用例；PricingCatalogSyncHarness 12 项通过。",
+        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项，日志 local/verify-C248-r3.log）；RequestLogHarness 速度断言 600 tokens / 2500ms → ≈240/s，并含 Agent 筛选策略用例（连续全选第二次 no-op）；collector-local 新增 ZCode 请求行归一化/缓存重放用例；collector-domain `builtin_pricing_includes_2026_11_models` 覆盖含 gemini-4-neon（3/15/0.15）的新模型；PricingCatalogSyncHarness 12 项通过。",
         "result": true
       },
       {
@@ -117,14 +117,14 @@
         "item": "默认筛选与全选",
         "true_if": "首次进入默认只勾选今日有用量的 Agent；手动改选后不再自动覆盖；连续点「全部 Agent」保持全选",
         "false_if": "默认全选、自动覆盖用户选择或全选被反选",
-        "evidence": "安装版首次进入勾选 4 个受支持 Agent（本机今日四源均有请求：antigravity 333 / claude-code 177 / codex 57 / zcode 1170），popover 显示「全部 Agent」勾选；重复触发全选后标签仍为「全部 Agent」且四行保持勾选。筛选策略 Harness 覆盖仅选今日活跃项、用户改选后不被默认覆盖、连续全选幂等。",
+        "evidence": "安装版首次进入勾选 4 个受支持 Agent（本机今日四源均有请求：antigravity 333 / claude-code 177 / codex 57 / zcode 1170），popover 显示「全部 Agent」勾选；重复触发全选后标签仍为「全部 Agent」且四行保持勾选。筛选策略 Harness 覆盖仅选今日活跃项、用户改选后不被默认覆盖、连续全选幂等（第二次返回 no-op、选择保持 4 项）。",
         "result": true
       },
       {
         "item": "模型价卡",
         "true_if": "Gemini 3.5–4 与 GPT-6.2 型号可在设置页价卡看到并按新价计费",
         "false_if": "新模型缺失或价卡生成不一致",
-        "evidence": "安装版请求日志模型下拉可见 gemini-3.8-flash、gemini-4-argon / carbon / hydrogen、gpt-6.2-sol；模型计费页显示「全部 (99)」；config 106 行、生成 99 行，`gen-pricing-catalog --check` 与 4 项 Node 单测通过，`builtin_pricing_includes_2026_11_models` 通过。",
+        "evidence": "安装版请求日志模型下拉可见 gemini-3.8-flash、gemini-4-argon / carbon / hydrogen、gpt-6.2-sol；模型计费页显示「全部 (100)」；config 107 行、生成 100 行，`gen-pricing-catalog --check` 与 4 项 Node 单测通过，`builtin_pricing_includes_2026_11_models` 覆盖含 gemini-4-neon（3/15/0.15）在内的 2026-11 新模型。",
         "result": true
       }
     ]
@@ -133,7 +133,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "7058220",
+    "commit": "715e173",
     "tag": ""
   },
   "gate": {
