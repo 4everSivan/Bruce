@@ -1,0 +1,99 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C248",
+  "title": "请求日志 UI 列距、Agent 图标、速度列与自动刷新",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C248-request-log-ui",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "RequestLogView",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "why": "实机验收发现四处与 cc-switch / design 定稿不一致：Agent 筛选使用原生 Menu，只能显示勾选与文字、未带品牌图标；表格单元格无内边距，「费用」「工程」等相邻表头相连；缺少速度列；页面只在进入/手动刷新时查询，不随采集结果自动更新。",
+  "precheck": {
+    "description": "复现实机 UI 缺陷并确认当前实现位置",
+    "command": "实际安装 /Applications/Bruce.app 后截图检查请求日志页",
+    "expected": "Agent 菜单无图标；费用与工程列距不足；无速度列；采集完成后页面不自动刷新",
+    "is_completed": false,
+    "evidence": "2026-11-19 实机截图：Agent 菜单仅勾选+文字；表头「费用工程」相连；首版表格无速度列；手动 seed 请求库后页面数字不变。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C248-request-log-ui"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C248 --to closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "交互与视觉",
+      "before": "Agent 筛选用原生 Menu，无法承载 AgentBrandBadge；表格 HStack 间距为 0；无速度列。",
+      "after": "Agent 筛选改为自定义 popover（勾选态 + AgentBrandBadge 16px + 名称）；表格增加 6px 列距并把 8 列收窄为可读宽度，新增「速度」列（output / 生成耗时，耗时来自 Antigravity 原生库）；详情 Sheet 增加性能段。",
+      "impact": "仅请求日志页；查询参数、筛选语义与数据链路不变。"
+    },
+    {
+      "scope": "实时刷新",
+      "before": "请求日志页只在进入页面与手动点刷新时查询，collector 新一轮扫描完成后不会更新。",
+      "after": "请求页监听 agent-usage artifact 更新（250ms 防抖）并在可见期间每 30s 兜底查询；保留当前筛选与页码，总量收缩时回退一页。",
+      "impact": "请求日志页查询频率增加；不触发额外采集，不改变 collector 调度。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/14-Agent请求日志.md",
+    "topic": "RequestLog",
+    "modified": true,
+    "rule_diff": {
+      "before": "表格 8 列（无速度列）；刷新仅进入页面/手动；详情 Sheet 无性能段。",
+      "after": "表格增加速度列与 6px 列距；artifact 更新 250ms 防抖 + 30s 兜底自动刷新；详情 Sheet 增加速度/总耗时/首字。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local 全绿，RequestLogHarness 通过，Swift build 无错误",
+        "false_if": "任一测试失败或编译错误",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "安装版请求日志页 Agent 菜单显示品牌图标；费用与工程列不再相连",
+        "false_if": "菜单仍无图标或列距仍不可读",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "筛选、分页、行点击 Sheet 与空/加载/错误态正常，查询参数不变",
+        "false_if": "筛选失效、分页错位或 Sheet 无法打开",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

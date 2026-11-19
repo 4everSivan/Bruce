@@ -84,6 +84,8 @@ impl JsonlAggregator for ObservationAggregator {
                     cache_creation: observation.cache_creation,
                     cache_creation_1h: observation.cache_creation_1h,
                     fidelity: "exact".to_owned(),
+                    latency_ms: None,
+                    first_token_ms: None,
                 });
             }
         }
@@ -262,6 +264,8 @@ impl JsonlAggregator for DedupedAggregator {
                 cache_creation: usage.cache_creation,
                 cache_creation_1h: usage.cache_creation_1h,
                 fidelity: "exact".to_owned(),
+                latency_ms: None,
+                first_token_ms: None,
             });
         }
         for usage in self.direct {

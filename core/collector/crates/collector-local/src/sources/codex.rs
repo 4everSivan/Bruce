@@ -417,6 +417,8 @@ fn codex_request(observation: &CachedUsageObservation) -> Option<RequestRecord> 
         cache_creation: observation.cache_creation,
         cache_creation_1h: observation.cache_creation_1h,
         fidelity: "exact".to_owned(),
+        latency_ms: None,
+        first_token_ms: None,
     })
 }
 

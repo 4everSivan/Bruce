@@ -13,7 +13,7 @@ use super::{finish, SourceScan, SourceScanError};
 use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
 use collector_domain::{CollectionWindow, RequestRecord, UsageContributionBuilder, UsageSample};
 use collector_runtime::CancellationToken;
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -71,8 +71,15 @@ struct MergedStep {
 struct SessionData {
     steps: BTreeMap<u64, MergedStep>,
     project: Option<String>,
+    native_db: Option<PathBuf>,
     copies: usize,
     conflict: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NativeTiming {
+    first_token_ms: i64,
+    latency_ms: i64,
 }
 
 /// Scan Antigravity CLI and IDE brain roots as one agent.
@@ -158,14 +165,22 @@ pub fn scan_antigravity_cached(
                 }
             };
             let project = projects.get(&session_id).cloned();
+            let native_db = root
+                .parent()
+                .map(|app| app.join("conversations").join(format!("{session_id}.db")))
+                .filter(|path| path.is_file());
             let session = sessions.entry(session_id).or_insert_with(|| SessionData {
                 steps: BTreeMap::new(),
                 project: project.clone(),
+                native_db: native_db.clone(),
                 copies: 0,
                 conflict: false,
             });
             if session.project.is_none() {
                 session.project = project;
+            }
+            if session.native_db.is_none() {
+                session.native_db = native_db;
             }
             session.copies = session.copies.saturating_add(1);
             for step in steps {
@@ -209,6 +224,25 @@ pub fn scan_antigravity_cached(
             conflicting_sessions = conflicting_sessions.saturating_add(1);
             stats.conflict_session_groups = stats.conflict_session_groups.saturating_add(1);
         }
+        let wanted_steps: Vec<u64> = session
+            .steps
+            .values()
+            .filter_map(|merged| {
+                let step = &merged.step;
+                let total = step
+                    .input
+                    .saturating_add(step.output)
+                    .saturating_add(step.cache_read)
+                    .saturating_add(step.cache_creation);
+                (step.kind == KIND_PLANNER && step.status.as_deref() == Some("DONE") && total > 0)
+                    .then_some(step.step)
+            })
+            .collect();
+        let timings = session
+            .native_db
+            .as_deref()
+            .map(|path| read_native_timing(path, &wanted_steps))
+            .unwrap_or_default();
         let mut current_model: Option<String> = None;
         let mut current_raw_model: Option<String> = None;
         for merged in session.steps.values() {
@@ -255,6 +289,7 @@ pub fn scan_antigravity_cached(
                     if builder.record(sample) {
                         stats.usage_records = stats.usage_records.saturating_add(1);
                     }
+                    let timing = timings.get(&step.step);
                     builder.record_request(RequestRecord {
                         key: antigravity_request_key(session_id, step.step),
                         timestamp_millis: timestamp,
@@ -267,6 +302,8 @@ pub fn scan_antigravity_cached(
                         cache_creation: step.cache_creation,
                         cache_creation_1h: 0,
                         fidelity: "exact".to_owned(),
+                        latency_ms: timing.map(|value| value.latency_ms),
+                        first_token_ms: timing.map(|value| value.first_token_ms),
                     });
                 }
                 _ => {}
@@ -320,6 +357,181 @@ fn antigravity_request_key(session_id: &str, step: u64) -> String {
     let mut bytes = [0u8; 16];
     bytes.copy_from_slice(&digest[..16]);
     format!("{:032x}", u128::from_be_bytes(bytes))
+}
+
+/// Read exact first-token / total latency from Antigravity's native conversation
+/// database when it is available. Missing or locked native stores are ignored:
+/// the request still imports with token counters and a `—` speed.
+fn read_native_timing(path: &Path, wanted_steps: &[u64]) -> HashMap<u64, NativeTiming> {
+    let mut result = HashMap::new();
+    if wanted_steps.is_empty() || !path.is_file() {
+        return result;
+    }
+    let Ok(connection) = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ) else {
+        return result;
+    };
+    let _ = connection.busy_timeout(Duration::from_millis(300));
+    let wanted: std::collections::HashSet<u64> = wanted_steps.iter().copied().collect();
+    let mut generations = HashMap::new();
+    if let Ok(mut statement) = connection.prepare("SELECT idx, metadata FROM steps") {
+        if let Ok(rows) = statement.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Option<Vec<u8>>>(1)?))
+        }) {
+            for row in rows.flatten() {
+                let Ok(step) = u64::try_from(row.0) else {
+                    continue;
+                };
+                if !wanted.contains(&step) {
+                    continue;
+                }
+                if let Some(metadata) = row.1.as_deref() {
+                    if let Some(generation) = step_generation(metadata) {
+                        generations.insert(step, generation);
+                    }
+                }
+            }
+        }
+    }
+    if generations.is_empty() {
+        return result;
+    }
+    let mut generation_ids: Vec<u64> = generations.values().copied().collect();
+    generation_ids.sort_unstable();
+    generation_ids.dedup();
+    let mut timings = HashMap::new();
+    for chunk in generation_ids.chunks(400) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let values: Vec<SqlValue> = chunk
+            .iter()
+            .map(|value| SqlValue::Integer(*value as i64))
+            .collect();
+        let sql = format!("SELECT idx, data FROM gen_metadata WHERE idx IN ({placeholders})");
+        let Ok(mut statement) = connection.prepare(&sql) else {
+            continue;
+        };
+        let Ok(rows) = statement.query_map(params_from_iter(values.iter()), |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Option<Vec<u8>>>(1)?))
+        }) else {
+            continue;
+        };
+        for row in rows.flatten() {
+            let Ok(index) = u64::try_from(row.0) else {
+                continue;
+            };
+            if let Some(data) = row.1.as_deref() {
+                if let Some(timing) = timing_from_generation(data) {
+                    timings.insert(index, timing);
+                }
+            }
+        }
+    }
+    for (step, generation) in generations {
+        if let Some(timing) = timings.get(&generation) {
+            result.insert(step, *timing);
+        }
+    }
+    result
+}
+
+/// `steps.metadata` -> field 20 (generation reference) -> field 3 index.
+fn step_generation(metadata: &[u8]) -> Option<u64> {
+    let reference = message_field(metadata, 20)?;
+    Some(varint_field(reference, 3).unwrap_or(0))
+}
+
+/// `gen_metadata.data` -> field 1 (response) -> field 11 / 12 durations.
+fn timing_from_generation(data: &[u8]) -> Option<NativeTiming> {
+    let response = message_field(data, 1)?;
+    let first_token_ms = duration_millis(message_field(response, 11)?)?;
+    let streaming_ms = duration_millis(message_field(response, 12)?)?;
+    let latency_ms = first_token_ms.checked_add(streaming_ms)?;
+    (latency_ms > 0).then_some(NativeTiming {
+        first_token_ms,
+        latency_ms,
+    })
+}
+
+fn duration_millis(data: &[u8]) -> Option<i64> {
+    let seconds = i64::try_from(varint_field(data, 1).unwrap_or(0)).ok()?;
+    let nanos = i64::try_from(varint_field(data, 2).unwrap_or(0)).ok()?;
+    seconds
+        .checked_mul(1000)?
+        .checked_add(nanos / 1_000_000)
+        .filter(|value| *value >= 0)
+}
+
+fn message_field(bytes: &[u8], target: u64) -> Option<&[u8]> {
+    let mut position = 0;
+    while position < bytes.len() {
+        let (field, wire) = next_key(bytes, &mut position)?;
+        match wire {
+            0 => {
+                read_varint(bytes, &mut position)?;
+            }
+            1 => position = position.checked_add(8)?,
+            2 => {
+                let length = usize::try_from(read_varint(bytes, &mut position)?).ok()?;
+                let end = position.checked_add(length)?;
+                if end > bytes.len() {
+                    return None;
+                }
+                if field == target {
+                    return Some(&bytes[position..end]);
+                }
+                position = end;
+            }
+            5 => position = position.checked_add(4)?,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn varint_field(bytes: &[u8], target: u64) -> Option<u64> {
+    let mut position = 0;
+    while position < bytes.len() {
+        let (field, wire) = next_key(bytes, &mut position)?;
+        if wire == 0 {
+            let value = read_varint(bytes, &mut position)?;
+            if field == target {
+                return Some(value);
+            }
+            continue;
+        }
+        match wire {
+            1 => position = position.checked_add(8)?,
+            2 => {
+                let length = usize::try_from(read_varint(bytes, &mut position)?).ok()?;
+                position = position.checked_add(length)?;
+            }
+            5 => position = position.checked_add(4)?,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn next_key(bytes: &[u8], position: &mut usize) -> Option<(u64, u8)> {
+    let key = read_varint(bytes, position)?;
+    Some((key >> 3, (key & 7) as u8))
+}
+
+fn read_varint(bytes: &[u8], position: &mut usize) -> Option<u64> {
+    let mut value = 0u64;
+    let mut shift = 0u32;
+    while *position < bytes.len() && shift < 64 {
+        let byte = bytes[*position];
+        *position += 1;
+        value |= u64::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            return Some(value);
+        }
+        shift += 7;
+    }
+    None
 }
 
 fn load_steps(
@@ -860,6 +1072,86 @@ mod tests {
         let _ = fs::remove_dir_all(cli);
         let _ = fs::remove_dir_all(ide);
         let _ = fs::remove_dir_all(cache);
+    }
+
+    fn encode_varint(mut value: u64) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        loop {
+            let byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value == 0 {
+                bytes.push(byte);
+                return bytes;
+            }
+            bytes.push(byte | 0x80);
+        }
+    }
+
+    fn encode_varint_field(field: u64, value: u64) -> Vec<u8> {
+        let mut bytes = encode_varint(field << 3);
+        bytes.extend(encode_varint(value));
+        bytes
+    }
+
+    fn encode_bytes_field(field: u64, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = encode_varint((field << 3) | 2);
+        bytes.extend(encode_varint(payload.len() as u64));
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    fn duration(seconds: u64, nanos: u64) -> Vec<u8> {
+        let mut bytes = encode_varint_field(1, seconds);
+        bytes.extend(encode_varint_field(2, nanos));
+        bytes
+    }
+
+    #[test]
+    fn native_timing_decodes_duration_fields() {
+        let mut response = encode_bytes_field(11, &duration(1, 0));
+        response.extend(encode_bytes_field(12, &duration(1, 500_000_000)));
+        let generation = encode_bytes_field(1, &response);
+        let timing = timing_from_generation(&generation).unwrap();
+        assert_eq!(timing.first_token_ms, 1_000);
+        assert_eq!(timing.latency_ms, 2_500);
+        let metadata = encode_bytes_field(20, &encode_varint_field(3, 7));
+        assert_eq!(step_generation(&metadata), Some(7));
+    }
+
+    #[test]
+    fn native_timing_reads_the_session_database() {
+        let dir = temp_dir("native-timing");
+        let path = dir.join("session.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE steps (idx INTEGER PRIMARY KEY, metadata BLOB);
+                 CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);",
+            )
+            .unwrap();
+        let metadata = encode_bytes_field(20, &encode_varint_field(3, 7));
+        let mut response = encode_bytes_field(11, &duration(0, 800_000_000));
+        response.extend(encode_bytes_field(12, &duration(1, 200_000_000)));
+        let data = encode_bytes_field(1, &response);
+        connection
+            .execute(
+                "INSERT INTO steps (idx, metadata) VALUES (5, ?1)",
+                rusqlite::params![metadata],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO gen_metadata (idx, data) VALUES (7, ?1)",
+                rusqlite::params![data],
+            )
+            .unwrap();
+        drop(connection);
+        let timings = read_native_timing(&path, &[5, 6]);
+        assert_eq!(timings.len(), 1);
+        let timing = timings.get(&5).unwrap();
+        assert_eq!(timing.first_token_ms, 800);
+        assert_eq!(timing.latency_ms, 2_000);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

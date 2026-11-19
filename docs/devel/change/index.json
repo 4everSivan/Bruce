@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-11-18",
+  "updated_at": "2026-11-19",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -58,7 +58,21 @@
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
       "changes": []
+    },
+    "RequestLog": {
+      "design_doc": "docs/devel/design/14-Agent请求日志.md",
+      "changes": [
+        "C248"
+      ]
     }
   },
-  "cards": {}
+  "cards": {
+    "C248": {
+      "title": "请求日志 UI 列距、Agent 图标、速度列与自动刷新",
+      "status": "in_progress",
+      "branch": "fix/C248-request-log-ui",
+      "topic": "RequestLog",
+      "file": "docs/devel/change/C248.json"
+    }
+  }
 }

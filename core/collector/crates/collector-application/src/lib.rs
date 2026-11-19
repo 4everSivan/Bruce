@@ -374,8 +374,8 @@ fn persist_request_logs(
                 pricing_model,
                 status_code: 200,
                 fidelity: request.fidelity.clone(),
-                latency_ms: None,
-                first_token_ms: None,
+                latency_ms: request.latency_ms,
+                first_token_ms: request.first_token_ms,
             });
         }
     }
@@ -522,7 +522,9 @@ pub fn query_request_log_artifact(
                 "costUsd": entry.cost_usd,
                 "statusCode": entry.status_code,
                 "project": entry.project,
-                "fidelity": entry.fidelity
+                "fidelity": entry.fidelity,
+                "latencyMs": entry.latency_ms,
+                "firstTokenMs": entry.first_token_ms
             })
         })
         .collect::<Vec<_>>();

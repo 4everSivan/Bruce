@@ -320,17 +320,17 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 - **页面**：标题「请求日志」→ 筛选条 → 摘要条 → 表格 → 分页。
 - **筛选条**：今日 / 近 7 天 / 近 30 天分段；Agent 多选；模型下拉；刷新按钮；列设置（首版可后置）。
 - **摘要条**：请求数、Token 合计、已计价费用、平均每请求 Token；标注「仅本机会话记录」。
-- **表格列**：时间、Agent（品牌徽章，不使用色点）、模型、新鲜输入、输出、缓存读、费用、工程；缓存写 / 耗时 / 状态默认隐藏（首版会话行均为 200，状态列无信息量）。
+- **表格列**：时间、Agent（品牌徽章，不使用色点）、模型、新鲜输入、输出、缓存读、费用、速度、工程；缓存写 / 耗时 / 状态默认隐藏（首版会话行均为 200，状态列无信息量）。速度 = output tokens ÷ 生成耗时（总耗时减首字），无原生计时显示「—」。
 - **Agent 徽章**：沿用 `AgentBrandBadge` 口径（品牌底/位图 + 系列色环），筛选菜单、表格、详情 Sheet 三处一致；Antigravity 使用官方 App 图标（指示性识别），缺素材时回退字标。
-- **详情 Sheet**：request id（可复制）、原始模型、计价模型、四象限 Token、费用、工程、时间、数据来源、保真度。
+- **详情 Sheet**：request id（可复制）、原始模型、计价模型、四象限 Token、费用、工程、时间、数据来源、保真度、速度 / 总耗时 / 首字。
 - **空态**：区分「还没有请求」「筛选无结果」「该 Agent 暂不支持逐请求明细」「请求库不可用」。
-- **刷新**：进入分类查询一次；artifact 更新后 200 ms 防抖重查；手动刷新执行「同步后查询」；详情 Sheet 打开时保留当前页，只显示「有新请求」提示，不强行跳页。
+- **刷新**：进入分类查询一次；artifact 更新后 250 ms 防抖重查；页面可见期间每 30 s 兜底查询；手动刷新执行「同步后查询」；保留当前筛选与页码，总量收缩时回退一页；详情 Sheet 打开时不强行跳页。
 - **深链**：概览页后续可从模型 / Agent 行跳到已筛选的请求日志分类（二期）。
 - **文案边界**：「基于本机会话日志，不包含未落盘的失败请求」必须常驻或出现在页脚。
 
 首版范围：不做列设置与导出；Windows UI 后续批次对齐；状态列等二期错误状态出现后再显示。
 
-**高保真 demo 先行**：已产出 `local/designs/request-log-demo/index.html`（`local/` 未跟踪，不进入仓库），支持 `?theme=dark`、`?state=empty|loading|error`、`?sheet=1`、`?agent=antigravity`、`?menu=agent` 直接预览各状态；Agent 列已按 `AgentBrandBadge` 口径接入 Claude / Codex / Antigravity / ZCode / OpenCode 图标。待评审确认后再建卡实施项目代码。
+**高保真 demo 先行**：已产出 `local/designs/request-log-demo/index.html`（`local/` 未跟踪，不进入仓库），支持 `?theme=dark`、`?state=empty|loading|error`、`?sheet=1`、`?agent=antigravity`、`?menu=agent` 直接预览各状态；Agent 列已按 `AgentBrandBadge` 口径接入 Claude / Codex / Antigravity / ZCode / OpenCode 图标。页面已由 T35–T38 实施；C248 按实机验收补齐速度列、筛选图标与自动刷新。
 
 #### 4.2.9 隐私与安全
 

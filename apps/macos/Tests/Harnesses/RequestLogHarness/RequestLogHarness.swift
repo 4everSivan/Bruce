@@ -93,7 +93,9 @@ struct RequestLogHarness {
                   "costUsd": 0.01,
                   "statusCode": 200,
                   "project": "Bruce",
-                  "fidelity": "exact"
+                  "fidelity": "exact",
+                  "latencyMs": 2500,
+                  "firstTokenMs": 500
                 }]
               },
               "credentialUpdates": [],
@@ -119,6 +121,8 @@ struct RequestLogHarness {
         try expect(page.entries.count == 1, "entries")
         try expect(page.entries[0].input == 10, "input")
         try expect(page.entries[0].costUsd == 0.01, "cost")
+        try expect(page.entries[0].speedTokensPerSecond != nil, "speed")
+        try expect(page.entries[0].speedText == "1.0/s", "speed text")
         try expect(page.effectiveSummary.tokens == 19, "summary tokens")
         try expect(page.models == ["claude-opus-5-5"], "models")
 

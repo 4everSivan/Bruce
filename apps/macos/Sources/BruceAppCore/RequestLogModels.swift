@@ -76,8 +76,27 @@ package struct RequestLogEntryModel: Codable, Identifiable, Equatable, Sendable 
     package let statusCode: Int
     package let project: String?
     package let fidelity: String
+    package let latencyMs: Int64?
+    package let firstTokenMs: Int64?
 
     package var id: String { requestId }
+
+    /// Output tokens per second over the generation phase (total latency minus
+    /// first-token time). `nil` when the source did not record timing.
+    package var speedTokensPerSecond: Double? {
+        guard output > 0, let latencyMs, latencyMs > 0 else { return nil }
+        let generationMillis = latencyMs - (firstTokenMs ?? 0)
+        guard generationMillis > 0 else { return nil }
+        return Double(output) / (Double(generationMillis) / 1000)
+    }
+
+    package var speedText: String {
+        guard let speedTokensPerSecond else { return "—" }
+        if speedTokensPerSecond >= 1000 {
+            return String(format: "%.1fK/s", speedTokensPerSecond / 1000)
+        }
+        return String(format: "%.1f/s", speedTokensPerSecond)
+    }
 
     package var totalTokens: UInt64 {
         input + output + cacheRead + cacheCreation

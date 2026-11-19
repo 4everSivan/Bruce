@@ -4,7 +4,9 @@ import SwiftUI
 
 /// 设置中心「请求日志」页 (design/14): 摘要条 + 全宽表格 + 居中详情 Sheet。
 struct RequestLogView: View {
+    @EnvironmentObject private var appModel: AppModel
     @StateObject private var model: RequestLogViewModel
+    @State private var showsAgentFilter = false
 
     init(collectorURL: URL?) {
         _model = StateObject(wrappedValue: RequestLogViewModel(collectorURL: collectorURL))
@@ -17,9 +19,23 @@ struct RequestLogView: View {
             scopeLine
             tableCard
         }
-        .task { await model.loadIfNeeded() }
+        .task {
+            await model.loadIfNeeded()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                await model.refreshInPlace()
+            }
+        }
         .onChange(of: model.range) { _, _ in
             Task { await model.reloadForFilterChange() }
+        }
+        // Collector 在刷新末尾写入请求库；artifact 更新即代表本轮明细已落盘。
+        .onChange(of: appModel.moduleArtifacts[.agentUsage]) { _, _ in
+            Task {
+                try? await Task.sleep(for: .milliseconds(250))
+                await model.refreshInPlace()
+            }
         }
         .sheet(item: $model.selectedEntry) { entry in
             RequestLogDetailSheet(entry: entry)
@@ -33,20 +49,15 @@ struct RequestLogView: View {
                 selection: $model.range
             )
 
-            Menu {
-                Button("全部 Agent") { model.selectAllAgents() }
-                Divider()
-                ForEach(RequestLogViewModel.agents) { agent in
-                    Toggle(agent.name, isOn: Binding(
-                        get: { model.selectedAgentIDs.contains(agent.id) },
-                        set: { model.setAgent(agent.id, selected: $0) }
-                    ))
-                }
+            Button {
+                showsAgentFilter.toggle()
             } label: {
                 filterLabel(model.agentLabel)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .buttonStyle(.plain)
+            .popover(isPresented: $showsAgentFilter, arrowEdge: .bottom) {
+                agentFilterPopover
+            }
 
             Menu {
                 Button("全部模型") { model.setModel(nil) }
@@ -78,6 +89,64 @@ struct RequestLogView: View {
             .disabled(model.isLoading)
             .help("同步并刷新")
         }
+    }
+
+    private var agentFilterPopover: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button {
+                model.selectAllAgents()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: model.selectedAgentIDs.count == RequestLogViewModel.agents.count
+                        ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 12))
+                        .foregroundStyle(
+                            model.selectedAgentIDs.count == RequestLogViewModel.agents.count
+                                ? SettingsDemoTokens.accent : SettingsDemoTokens.text3
+                        )
+                    Text("全部 Agent")
+                        .font(.system(size: 11.5, weight: .medium))
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Divider().overlay(SettingsDemoTokens.separator)
+
+            ForEach(RequestLogViewModel.agents) { agent in
+                let selected = model.selectedAgentIDs.contains(agent.id)
+                Button {
+                    model.setAgent(agent.id, selected: !selected)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: selected ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 12))
+                            .foregroundStyle(
+                                selected ? SettingsDemoTokens.accent : SettingsDemoTokens.text3
+                            )
+                        AgentBrandBadge(
+                            asset: AgentBrandPalette.asset(forAgent: agent.id),
+                            seriesHex: PanelAgentColor.resolve(agentID: agent.id).hex,
+                            size: 16,
+                            followsTheme: false
+                        )
+                        Text(agent.name)
+                            .font(.system(size: 11.5))
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .frame(width: 220)
     }
 
     private func filterLabel(_ text: String) -> some View {
@@ -183,14 +252,15 @@ struct RequestLogView: View {
     }
 
     private var tableHeader: some View {
-        HStack(spacing: 0) {
-            headerCell("时间", width: 104)
-            headerCell("Agent", width: 116)
-            headerCell("模型", width: 150)
-            headerCell("新鲜输入", width: 68, alignment: .trailing)
-            headerCell("输出", width: 60, alignment: .trailing)
-            headerCell("缓存读", width: 78, alignment: .trailing)
-            headerCell("费用", width: 74, alignment: .trailing)
+        HStack(spacing: 6) {
+            headerCell("时间", width: 92)
+            headerCell("Agent", width: 104)
+            headerCell("模型", width: 128)
+            headerCell("新鲜输入", width: 60, alignment: .trailing)
+            headerCell("输出", width: 52, alignment: .trailing)
+            headerCell("缓存读", width: 66, alignment: .trailing)
+            headerCell("费用", width: 62, alignment: .trailing)
+            headerCell("速度", width: 58, alignment: .trailing)
             headerCell("工程", width: nil)
         }
         .padding(.horizontal, 14)
@@ -210,11 +280,11 @@ struct RequestLogView: View {
     }
 
     private func tableRow(_ entry: RequestLogEntryModel) -> some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             Text(RequestLogFormat.time(entry.occurredAt))
                 .font(.system(size: 10.5, design: .monospaced))
                 .foregroundStyle(SettingsDemoTokens.text2)
-                .frame(width: 104, alignment: .leading)
+                .frame(width: 92, alignment: .leading)
             HStack(spacing: 8) {
                 AgentBrandBadge(
                     asset: AgentBrandPalette.asset(forAgent: entry.agentId),
@@ -227,20 +297,26 @@ struct RequestLogView: View {
                     .font(.system(size: 11.5))
                     .lineLimit(1)
             }
-            .frame(width: 116, alignment: .leading)
+            .frame(width: 104, alignment: .leading)
             Text(entry.model ?? "unknown")
                 .font(.system(size: 10.6, design: .monospaced))
                 .foregroundStyle(SettingsDemoTokens.text)
                 .lineLimit(1)
-                .frame(width: 150, alignment: .leading)
-            numberCell(entry.input, width: 68)
-            numberCell(entry.output, width: 60)
-            numberCell(entry.cacheRead, width: 78)
+                .frame(width: 128, alignment: .leading)
+            numberCell(entry.input, width: 60)
+            numberCell(entry.output, width: 52)
+            numberCell(entry.cacheRead, width: 66)
             Text(RequestLogFormat.rowCost(entry.costUsd))
                 .font(.system(size: 10.6, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(entry.costUsd == nil ? SettingsDemoTokens.text3 : SettingsDemoTokens.text)
-                .frame(width: 74, alignment: .trailing)
+                .frame(width: 62, alignment: .trailing)
+            Text(entry.speedText)
+                .font(.system(size: 10.4, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(entry.speedTokensPerSecond == nil ? SettingsDemoTokens.text3 : SettingsDemoTokens.text2)
+                .lineLimit(1)
+                .frame(width: 58, alignment: .trailing)
             Text(entry.project ?? "—")
                 .font(.system(size: 10))
                 .foregroundStyle(SettingsDemoTokens.text2)
@@ -453,6 +529,18 @@ final class RequestLogViewModel: ObservableObject {
         }
     }
 
+    /// 自动刷新入口：保留当前筛选与页码；若本轮总量收缩到当前页之外，再回退一页。
+    func refreshInPlace() async {
+        let previousPage = page
+        await refresh()
+        if page >= pageCount {
+            page = max(0, pageCount - 1)
+            if page != previousPage {
+                await refresh()
+            }
+        }
+    }
+
     func selectAllAgents() {
         selectedAgentIDs = Set(Self.agents.map(\.id))
         Task { await reloadForFilterChange() }
@@ -522,6 +610,14 @@ private struct RequestLogDetailSheet: View {
                             .font(.system(size: 10))
                             .foregroundStyle(SettingsDemoTokens.text3)
                             .padding(.top, 8)
+                    }
+                    section("性能") {
+                        detailGrid([
+                            ("速度", entry.speedText, false),
+                            ("总耗时", RequestLogFormat.duration(entry.latencyMs), false),
+                            ("首字", RequestLogFormat.duration(entry.firstTokenMs), false),
+                            ("来源", entry.latencyMs == nil ? "会话日志未记录" : "原生计时", false),
+                        ])
                     }
                     section("费用") {
                         detailGrid([
@@ -703,6 +799,14 @@ enum RequestLogFormat {
 
     static func costSummary(_ value: Double) -> String {
         String(format: "$%.2f", value)
+    }
+
+    static func duration(_ millis: Int64?) -> String {
+        guard let millis, millis > 0 else { return "—" }
+        if millis >= 1000 {
+            return String(format: "%.2fs", Double(millis) / 1000)
+        }
+        return "\(millis)ms"
     }
 }
 

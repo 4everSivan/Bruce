@@ -413,6 +413,10 @@ pub struct RequestRecord {
     pub cache_creation: u64,
     pub cache_creation_1h: u64,
     pub fidelity: String,
+    /// Total request latency when the source records it; `None` otherwise.
+    pub latency_ms: Option<i64>,
+    /// Time to first token when the source records it; `None` otherwise.
+    pub first_token_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
