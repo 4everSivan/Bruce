@@ -7,7 +7,7 @@
 
 ### Added
 - **Antigravity 本机用量源接入（第 11 个 Agent，T34）**：collector 新增 `antigravity` 源，统一扫描 CLI `~/.gemini/antigravity-cli/brain` 与 IDE `~/.gemini/antigravity/brain`；同 session 跨根按 `step_index` 合并、同 step 后写覆盖；`PLANNER_RESPONSE + DONE + 任一 Token>0` 才计量，input 不含缓存、output 已含思考、cache_write 单列；从 `Model Selection` 事件继承模型并归一化为基础 ID，Orchestrator/未知模型记 `unknown`；新增按文件 mtime/size 缓存与「CLI 旧版无 Token」可见说明；mac/Windows 增加品牌图标（官方 App 图标，指示性识别）、Sky 系列色与 Nothing 档位，欢迎向导探测双根。
-- **请求日志页补齐速度列与自动刷新（C248）**：实机验收后新增「速度」列（output ÷ 生成耗时；Antigravity 原生库提供首字/总耗时，Claude/Codex 无计时显示「—」），详情 Sheet 增加性能段；Agent 筛选改为自定义 popover 并显示 11 个 AgentBrandBadge；表格列距调整为 6px，费用与工程不再相连；页面监听 agent-usage artifact 更新（250ms 防抖）并每 30s 兜底查询，保留筛选与页码。
+- **请求日志页补齐速度列与自动刷新（C248）**：实机验收后新增「速度」列（output ÷ 生成耗时；Antigravity 原生库提供首字/总耗时，Claude/Codex 无计时显示「—」），详情 Sheet 增加性能段；Agent 筛选改为自定义 popover 并显示 11 个 AgentBrandBadge；表格列距调整为 6px，费用与工程不再相连；页面监听 agent-usage artifact 更新（250ms 防抖）并每 30s 兜底查询；后台刷新不清空/重建整表，只对新增请求行做强调色高亮并在 1.8s 后淡出，仅第 1 页自动刷新，保留筛选与页码。
 - **请求粒度用量台账（T35–T38）**：新增独立 `request-log-v1.sqlite` 与 `collector-request-log` crate（schema v1、30 天保留、幂等 upsert、费用落库、筛选分页与 distinct models），不混入不可再生的 usage-history 台账；Claude Code / Codex / Antigravity 在现有观测流旁路产出 `RequestRecord`，复用原 dedupe key/step 键，无第二次会话解析；Bridge 新增 `module=request-log` 只读查询（31 天范围、分页/Agent/模型/状态校验），请求库故障仅输出信息级 `LOCAL_REQUEST_LOG_UNAVAILABLE`；mac 设置侧栏新增「请求日志」一级分类，落地摘要条 + 8 列表格 + 居中详情 Sheet（Agent 18px 品牌徽章、菜单 16px、Sheet 18px，含复制 request id、空/加载/错误态）。
 
 ## [0.18.0] - 2026-11-18
