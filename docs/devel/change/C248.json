@@ -4,7 +4,7 @@
   "title": "请求日志 ZCode 请求行、速度口径、默认筛选与模型价卡更新",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C248-request-log-ui",
   "is_hotfix": false,
   "target": {
@@ -81,14 +81,14 @@
   "verification": {
     "result": "passed",
     "run_id": "local-20261119-13",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "verify-local 全绿，RequestLogHarness 通过，Swift build 无错误",
         "false_if": "任一测试失败或编译错误",
-        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项，日志 local/verify-C248-r4.log）；RequestLogHarness 覆盖速度断言（600/2500ms → ≈240/s）、Agent 筛选策略（连续全选第二次 no-op）与 displayModel 回退（model=null、rawModel=\"Orchestrator (Neon)\" → 原标签，双缺 → unknown）；collector-local ZCode 请求行用例；collector-domain 含 gemini-4-neon 的新模型计费用例。",
+        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项，日志 local/verify-C248-r9.log）；RequestLogHarness 覆盖速度断言（600/2500ms → ≈240/s）、Agent 筛选策略（连续全选第二次 no-op）与 displayModel 回退（双缺 → 「未标注模型」）；PanelViewModelHarness 覆盖 unknown→「未标注模型」、Orchestrator 原始大小写保留；collector-local ZCode 请求行与 Orchestrator 聚合标签用例；collector-domain 含 gemini-4-neon 的新模型计费用例。",
         "result": true
       },
       {
@@ -153,6 +153,10 @@
     "tool": "adflow-verify",
     "version": "1.8.0",
     "ran_at": "2026-11-19",
-    "exit_code": 0
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
   }
 }

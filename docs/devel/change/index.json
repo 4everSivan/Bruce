@@ -68,8 +68,8 @@
   },
   "cards": {
     "C248": {
-      "title": "请求日志 UI 列距、Agent 图标、速度列与自动刷新",
-      "status": "in_progress",
+      "title": "请求日志 ZCode 请求行、速度口径、默认筛选与模型价卡更新",
+      "status": "closed",
       "branch": "fix/C248-request-log-ui",
       "topic": "RequestLog",
       "file": "docs/devel/change/C248.json"
