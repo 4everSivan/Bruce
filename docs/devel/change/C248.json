@@ -140,8 +140,6 @@
     "tool": "adflow-verify",
     "version": "1.8.0",
     "ran_at": "2026-11-19",
-    "exit_code": 4,
-    "from_status": "verified",
-    "target_status": "verified"
+    "exit_code": 0
   }
 }
