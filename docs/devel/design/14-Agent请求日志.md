@@ -193,14 +193,14 @@ CREATE INDEX idx_request_log_status_time ON request_log(status_code, occurred_at
 | Claude Code | `DedupeKey` = hash(`claude-message`, `message.id`) 的 128bit | ✓ | 同一 message 多行流式写入，取最终值 |
 | Codex | `r:<response_id>`；旧版无 response_id 时用 `t:<timestamp>:<usage>` 签名 | ✓ | 与现有 Codex 副本合并共用同一键 |
 | Antigravity | hash(`antigravity`, `session_id:step_index`) | ✓ | transcript 同 step 后写覆盖 |
-| ZCode | `model_usage` 行身份（session + started_at + model + tokens） | 二期 | SQLite 缓存当前只存聚合，需要单独补观测 |
+| ZCode | hash(`zcode-request`, `model_usage.rowid`) | ✓ | 聚合缓存只存总量，请求行在每次扫描时直接只读查询本机 `model_usage` 近 30 天；无原生耗时 |
 | OpenCode | `message` 表 id / time + model | 二期 | 同上 |
 | CodeBuddy | `DedupeKey` = hash(codebuddy 需跨文件键) | 二期 | JSONL 观测已具备 |
 | DSH | 现有消息 id / 去重键 | 二期 | 需确认 dsh 观测是否带稳定键 |
 | Kimi Code / Kimi Work / Pi | 当前 `dedupe_key = None` | 二期 | 需合成启发式键，或明确不支持 |
 | Grok | 时间戳 + 估算用量 | 二期 | `fidelity = estimated`，UI 标注估算 |
 
-首版只承诺三源。其余来源在 UI 显示「该 Agent 暂无逐请求明细」，不伪造空行。
+首版只承诺四源（Claude Code / Codex / Antigravity / ZCode）。其余来源在 UI 显示「该 Agent 暂无逐请求明细」，不伪造空行。
 
 #### 4.2.3 采集与写入
 
@@ -318,9 +318,9 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 
 - **侧栏分类**：新增 `SettingsCategory.requestLog`，标题「请求日志」，图标 `list.bullet.rectangle`（或等价）。
 - **页面**：标题「请求日志」→ 筛选条 → 摘要条 → 表格 → 分页。
-- **筛选条**：今日 / 近 7 天 / 近 30 天分段；Agent 多选；模型下拉；刷新按钮；列设置（首版可后置）。
+- **筛选条**：今日 / 近 7 天 / 近 30 天分段；Agent 多选（默认勾选今日有 Token 用量的受支持 Agent，用户手动改选后不再自动覆盖；「全部 Agent」重复点击保持全选）；模型下拉；刷新按钮；列设置（首版可后置）。
 - **摘要条**：请求数、Token 合计、已计价费用、平均每请求 Token；标注「仅本机会话记录」。
-- **表格列**：时间、Agent（品牌徽章，不使用色点）、模型、新鲜输入、输出、缓存读、费用、速度、工程；缓存写 / 耗时 / 状态默认隐藏（首版会话行均为 200，状态列无信息量）。速度 = output tokens ÷ 生成耗时（总耗时减首字），无原生计时显示「—」。
+- **表格列**：时间、Agent（品牌徽章，不使用色点）、模型、新鲜输入、输出、缓存读、费用、速度、工程；缓存写 / 耗时 / 状态默认隐藏（首版会话行均为 200，状态列无信息量）。速度按 cc-switch 会话日志估算口径：`output ÷ 总耗时`，仅 `output ≥ 200` 且 `总耗时 ≥ 1000ms` 时展示，前缀 `≈`；无原生计时显示「—」。
 - **Agent 徽章**：沿用 `AgentBrandBadge` 口径（品牌底/位图 + 系列色环），筛选菜单、表格、详情 Sheet 三处一致；Antigravity 使用官方 App 图标（指示性识别），缺素材时回退字标。
 - **详情 Sheet**：request id（可复制）、原始模型、计价模型、四象限 Token、费用、工程、时间、数据来源、保真度、速度 / 总耗时 / 首字。
 - **空态**：区分「还没有请求」「筛选无结果」「该 Agent 暂不支持逐请求明细」「请求库不可用」。
@@ -330,7 +330,7 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 
 首版范围：不做列设置与导出；Windows UI 后续批次对齐；状态列等二期错误状态出现后再显示。
 
-**高保真 demo 先行**：已产出 `local/designs/request-log-demo/index.html`（`local/` 未跟踪，不进入仓库），支持 `?theme=dark`、`?state=empty|loading|error`、`?sheet=1`、`?agent=antigravity`、`?menu=agent` 直接预览各状态；Agent 列已按 `AgentBrandBadge` 口径接入 Claude / Codex / Antigravity / ZCode / OpenCode 图标。页面已由 T35–T38 实施；C248 按实机验收补齐速度列、筛选图标与自动刷新。
+**高保真 demo 先行**：已产出 `local/designs/request-log-demo/index.html`（`local/` 未跟踪，不进入仓库），支持 `?theme=dark`、`?state=empty|loading|error`、`?sheet=1`、`?agent=antigravity`、`?menu=agent` 直接预览各状态；Agent 列已按 `AgentBrandBadge` 口径接入 Claude / Codex / Antigravity / ZCode / OpenCode 图标。页面已由 T35–T38 实施；C248 按实机验收补齐速度列、筛选图标、自动刷新、ZCode 请求行与默认勾选。
 
 #### 4.2.9 隐私与安全
 

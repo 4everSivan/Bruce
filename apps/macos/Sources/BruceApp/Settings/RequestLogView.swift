@@ -20,6 +20,7 @@ struct RequestLogView: View {
             tableCard
         }
         .task {
+            model.applyDefaultAgents(activeAgentIDs)
             await model.loadIfNeeded()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -32,14 +33,28 @@ struct RequestLogView: View {
         }
         // Collector 在刷新末尾写入请求库；artifact 更新即代表本轮明细已落盘。
         .onChange(of: appModel.moduleArtifacts[.agentUsage]) { _, _ in
+            let agentsChanged = model.applyDefaultAgents(activeAgentIDs)
             Task {
                 try? await Task.sleep(for: .milliseconds(250))
-                await model.refreshInPlace()
+                if agentsChanged {
+                    await model.reloadForFilterChange()
+                } else {
+                    await model.refreshInPlace()
+                }
             }
         }
         .sheet(item: $model.selectedEntry) { entry in
             RequestLogDetailSheet(entry: entry)
         }
+    }
+
+    /// 今日有 Token 用量的受支持 Agent；首次进入的默认勾选来源。
+    private var activeAgentIDs: Set<String> {
+        Set(
+            appModel.analyticsSnapshot(range: .today).agents
+                .filter { $0.totalTokens > 0 }
+                .map(\.agentID)
+        )
     }
 
     private var toolbar: some View {
@@ -97,11 +112,11 @@ struct RequestLogView: View {
                 model.selectAllAgents()
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: model.selectedAgentIDs.count == RequestLogViewModel.agents.count
+                    Image(systemName: model.selectedAgentIDs.count == RequestLogViewModel.supportedAgentIDs.count
                         ? "checkmark.square.fill" : "square")
                         .font(.system(size: 12))
                         .foregroundStyle(
-                            model.selectedAgentIDs.count == RequestLogViewModel.agents.count
+                            model.selectedAgentIDs.count == RequestLogViewModel.supportedAgentIDs.count
                                 ? SettingsDemoTokens.accent : SettingsDemoTokens.text3
                         )
                     Text("全部 Agent")
@@ -116,7 +131,7 @@ struct RequestLogView: View {
 
             Divider().overlay(SettingsDemoTokens.separator)
 
-            ForEach(RequestLogViewModel.agents) { agent in
+            ForEach(RequestLogViewModel.agents.filter { RequestLogViewModel.supportedAgentIDs.contains($0.id) }) { agent in
                 let selected = model.selectedAgentIDs.contains(agent.id)
                 Button {
                     model.setAgent(agent.id, selected: !selected)
@@ -210,7 +225,7 @@ struct RequestLogView: View {
         HStack(spacing: 6) {
             Image(systemName: "info.circle")
                 .font(.system(size: 10))
-            Text("基于本机会话日志，不包含未落盘的失败请求；明细保留 30 天。首版支持 Claude Code / Codex / Antigravity。")
+            Text("基于本机会话日志，不包含未落盘的失败请求；明细保留 30 天。首版支持 Claude Code / Codex / Antigravity / ZCode。")
                 .font(.system(size: 10.5))
         }
         .foregroundStyle(SettingsDemoTokens.text2)
@@ -450,12 +465,15 @@ final class RequestLogViewModel: ObservableObject {
         .init(id: "dsh", name: "DSH"),
     ]
 
+    static let supportedAgentIDs = RequestLogAgentFilter.supportedAgentIDs
+
     static func agentName(_ id: String) -> String {
         agents.first(where: { $0.id == id })?.name ?? id
     }
 
     @Published var range: RequestLogRange = .sevenDays
-    @Published private(set) var selectedAgentIDs: Set<String> = Set(agents.map(\.id))
+    @Published private(set) var agentFilter = RequestLogAgentFilter()
+    var selectedAgentIDs: Set<String> { agentFilter.selectedIDs }
     @Published private(set) var selectedModel: String?
     @Published var pageSize: Int = 50
     @Published private(set) var page: Int = 0
@@ -488,7 +506,7 @@ final class RequestLogViewModel: ObservableObject {
 
     var agentLabel: String {
         let count = selectedAgentIDs.count
-        if count == RequestLogViewModel.agents.count { return "全部 Agent" }
+        if count == RequestLogViewModel.supportedAgentIDs.count { return "全部 Agent" }
         if count == 0 { return "未选 Agent" }
         if count == 1, let id = selectedAgentIDs.first { return Self.agentName(id) }
         return "\(count) 个 Agent"
@@ -575,14 +593,21 @@ final class RequestLogViewModel: ObservableObject {
         }
     }
 
+    /// 首次进入/artifact 更新时，默认勾选“今日有使用量”的受支持 Agent。
+    @discardableResult
+    func applyDefaultAgents(_ ids: Set<String>) -> Bool {
+        guard agentFilter.applyDefault(activeIDs: ids) else { return false }
+        page = 0
+        return true
+    }
+
     func selectAllAgents() {
-        selectedAgentIDs = Set(Self.agents.map(\.id))
+        guard agentFilter.selectAll() else { return }
         Task { await reloadForFilterChange() }
     }
 
     func setAgent(_ id: String, selected: Bool) {
-        if selected { selectedAgentIDs.insert(id) }
-        else { selectedAgentIDs.remove(id) }
+        guard agentFilter.set(id, selected: selected) else { return }
         Task { await reloadForFilterChange() }
     }
 

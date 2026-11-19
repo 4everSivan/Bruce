@@ -1529,3 +1529,70 @@ fn v2_jsonl_cache_entries_rebuild_once_without_counting_corruption() {
     assert_eq!(warm.stats.cache_rebuilds, 0);
     fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn zcode_request_rows_normalize_tokens_and_survive_cache_hits() {
+    use rusqlite::Connection;
+
+    let root = temp_root("zcode-request-rows");
+    let db_path = root.join("zcode.db");
+    let cache_root = root.join("cache");
+    let base = 1_785_211_200_000_i64; // 2026-07-28T12:00+08, 与 window() 锚点一致
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE session (id text primary key, directory text, task_type text);
+                 CREATE TABLE model_usage (
+                    started_at integer not null, model_id text,
+                    input_tokens integer, output_tokens integer, reasoning_tokens integer,
+                    cache_creation_input_tokens integer, cache_read_input_tokens integer,
+                    session_id text
+                 );",
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO session (id, directory, task_type) VALUES ('s1', '/work/Bruce', 'subagent_child')",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens, \
+                 reasoning_tokens, cache_creation_input_tokens, cache_read_input_tokens, session_id) \
+                 VALUES (?1, 'glm-5.3', 1000, 300, 50, 40, 200, 's1')",
+            [base - 60_000],
+        )
+        .unwrap();
+    // 30 天保留边界之外的行不得进入请求库。
+    connection
+        .execute(
+            "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens, session_id) \
+                 VALUES (?1, 'glm-5.3', 10, 10, 's1')",
+            [base - 31 * 86_400_000],
+        )
+        .unwrap();
+    drop(connection);
+
+    let scan =
+        scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert_eq!(scan.requests.len(), 1, "只保留 30 天内的请求行");
+    let request = &scan.requests[0];
+    assert_eq!(request.model.as_deref(), Some("glm-5.3"));
+    assert_eq!(
+        request.input, 760,
+        "新鲜输入 = input - cache read - cache creation"
+    );
+    assert_eq!(request.output, 350, "输出含 reasoning");
+    assert_eq!(request.cache_read, 200);
+    assert_eq!(request.cache_creation, 40);
+    assert_eq!(request.project.as_deref(), Some("Bruce ·子代理"));
+    assert_eq!(request.fidelity, "exact");
+    assert_eq!(request.timestamp_millis, base - 60_000);
+
+    let again =
+        scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert_eq!(again.requests.len(), 1, "缓存命中仍应重放请求行");
+    assert_eq!(again.requests[0].key, request.key, "rowid 键必须稳定");
+    fs::remove_dir_all(root).ok();
+}

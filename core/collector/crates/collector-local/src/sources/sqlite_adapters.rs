@@ -8,10 +8,12 @@ use crate::sqlite_cache::{
     scan_sqlite_cached, SqliteCacheConfig, SqliteCursor, SqliteIncrementalAdapter, SqliteReadResult,
 };
 use crate::ScanStats;
-use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
+use collector_domain::{
+    CollectionWindow, RequestRecord, UsageContribution, UsageContributionBuilder,
+    REQUEST_LOG_RETENTION_DAYS,
+};
 use collector_runtime::CancellationToken;
 use rusqlite::Connection;
-#[cfg(test)]
 use rusqlite::OpenFlags;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -701,12 +703,114 @@ pub fn scan_zcode_cached(
     cache_root: &Path,
     cancellation: &CancellationToken,
 ) -> Result<SourceScan, SourceScanError> {
-    scan_sqlite_cached(
+    let mut scan = scan_sqlite_cached(
         path,
         &zcode_cache_config(cache_root, window),
         &ZCodeSqliteAdapter,
         cancellation,
+    )?;
+    // Request rows are a side-channel: the aggregate cache stays the source of
+    // truth for usage; a failed request read only removes ZCode detail rows.
+    match scan_zcode_requests(path, window, cancellation) {
+        Ok(requests) => scan.requests = requests,
+        Err(_) => {
+            let notice = scan.notice.take().unwrap_or_default();
+            scan.notice = Some(if notice.is_empty() {
+                "ZCode 请求日志读取失败，本轮仅保留聚合用量".to_owned()
+            } else {
+                format!("{notice}；ZCode 请求日志读取失败，本轮仅保留聚合用量")
+            });
+        }
+    }
+    Ok(scan)
+}
+
+fn scan_zcode_requests(
+    path: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<Vec<RequestRecord>, SourceScanError> {
+    if !path.is_file() {
+        return Ok(Vec::new());
+    }
+    let connection = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
+    .map_err(|_| sqlite_query_error("zcode request log open failed"))?;
+    let cutoff = window
+        .now
+        .timestamp_millis()
+        .saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    let mut statement = connection
+        .prepare(
+            "SELECT m.rowid, m.started_at, m.model_id, m.input_tokens, m.output_tokens, \
+         m.reasoning_tokens, m.cache_creation_input_tokens, m.cache_read_input_tokens, \
+         s.directory, s.task_type \
+         FROM model_usage m LEFT JOIN session s ON s.id = m.session_id \
+         WHERE m.started_at >= ?1 ORDER BY m.rowid DESC LIMIT 100000",
+        )
+        .map_err(|_| sqlite_schema_error("zcode request log schema is incompatible"))?;
+    let rows = statement
+        .query_map([cutoff], |row| {
+            Ok(ZCodeRow {
+                rowid: Some(row.get(0)?),
+                started_at: row.get(1)?,
+                model: row.get(2)?,
+                input: row.get(3)?,
+                output: row.get(4)?,
+                reasoning: row.get(5)?,
+                cache_creation: row.get(6)?,
+                cache_read: row.get(7)?,
+                directory: row.get(8)?,
+                task_type: row.get(9)?,
+            })
+        })
+        .map_err(|_| sqlite_query_error("zcode request log query failed"))?;
+    let mut requests = Vec::new();
+    for row in rows {
+        cancellation.check()?;
+        let row = row.map_err(|_| sqlite_query_error("zcode request log row read failed"))?;
+        let input = u64::try_from(row.input.unwrap_or(0)).unwrap_or(0);
+        let output = u64::try_from(row.output.unwrap_or(0)).unwrap_or(0);
+        let reasoning = u64::try_from(row.reasoning.unwrap_or(0)).unwrap_or(0);
+        let cache_creation = u64::try_from(row.cache_creation.unwrap_or(0)).unwrap_or(0);
+        let cache_read = u64::try_from(row.cache_read.unwrap_or(0)).unwrap_or(0);
+        if input == 0 && output == 0 && reasoning == 0 && cache_creation == 0 && cache_read == 0 {
+            continue;
+        }
+        let Some(rowid) = row.rowid else {
+            continue;
+        };
+        requests.push(RequestRecord {
+            key: zcode_request_key(rowid),
+            timestamp_millis: row.started_at,
+            model: row.model.clone(),
+            raw_model: row.model.clone(),
+            project: project_from_zcode(row.directory.clone(), row.task_type.clone()),
+            input: input
+                .saturating_sub(cache_read)
+                .saturating_sub(cache_creation),
+            output: output.saturating_add(reasoning),
+            cache_read,
+            cache_creation,
+            cache_creation_1h: 0,
+            fidelity: "exact".to_owned(),
+            latency_ms: None,
+            first_token_ms: None,
+        });
+    }
+    Ok(requests)
+}
+
+fn zcode_request_key(rowid: i64) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"zcode-request:");
+    hasher.update(rowid.to_string().as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    format!("{:032x}", u128::from_be_bytes(bytes))
 }
 
 #[cfg(test)]

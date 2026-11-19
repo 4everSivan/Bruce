@@ -57,6 +57,7 @@ struct RequestLogHarness {
         try await clientMapsCollectorError()
         try await missingExecutableFailsClosed()
         try modelDecodingIsTolerantToOptionalNotice()
+        try agentFilterDefaultsAndSelectAllAreIdempotent()
         print("BruceRequestLogHarness: all checks passed")
     }
 
@@ -78,7 +79,7 @@ struct RequestLogHarness {
                 "total": 1,
                 "page": 0,
                 "pageSize": 50,
-                "summary": {"tokens": 19, "costUsd": 0.01, "avgTokens": 19},
+                "summary": {"tokens": 617, "costUsd": 0.01, "avgTokens": 617},
                 "models": ["claude-opus-5-5"],
                 "entries": [{
                   "requestId": "abc",
@@ -87,7 +88,7 @@ struct RequestLogHarness {
                   "rawModel": "claude-opus-5-5",
                   "occurredAt": 1795057200000,
                   "input": 10,
-                  "output": 2,
+                  "output": 600,
                   "cacheRead": 3,
                   "cacheCreation": 4,
                   "costUsd": 0.01,
@@ -121,9 +122,9 @@ struct RequestLogHarness {
         try expect(page.entries.count == 1, "entries")
         try expect(page.entries[0].input == 10, "input")
         try expect(page.entries[0].costUsd == 0.01, "cost")
-        try expect(page.entries[0].speedTokensPerSecond != nil, "speed")
-        try expect(page.entries[0].speedText == "1.0/s", "speed text")
-        try expect(page.effectiveSummary.tokens == 19, "summary tokens")
+        try expect(page.entries[0].speedTokensPerSecond == 240, "speed estimated from total latency")
+        try expect(page.entries[0].speedText == "≈240/s", "speed text")
+        try expect(page.effectiveSummary.tokens == 617, "summary tokens")
         try expect(page.models == ["claude-opus-5-5"], "models")
 
         let input = try expectUnwrap(launcher.lastInput, "request input")
@@ -198,6 +199,26 @@ struct RequestLogHarness {
         try expect(page.total == 0, "total")
         try expect(page.notice == nil, "notice")
         try expect(page.effectiveSummary.tokens == 0, "summary")
+    }
+
+    /// 默认只勾选今日有用量的受支持 Agent；用户改选后不再被覆盖；全选幂等。
+    private static func agentFilterDefaultsAndSelectAllAreIdempotent() throws {
+        var filter = RequestLogAgentFilter()
+        let active: Set<String> = ["claude-code", "codex", "opencode"]
+        try expect(filter.applyDefault(activeIDs: active), "defaults should change empty selection")
+        try expect(filter.selectedIDs == ["claude-code", "codex"], "only supported active agents")
+        try expect(filter.applyDefault(activeIDs: ["antigravity"]), "defaults follow today's active set")
+        try expect(filter.selectedIDs == ["antigravity"], "defaults switch to the new active set")
+
+        try expect(filter.selectAll(), "first select all changes selection")
+        try expect(filter.selectedIDs == ["claude-code", "codex", "antigravity", "zcode"], "select all")
+        try expect(!filter.selectAll(), "second select all is a no-op")
+        try expect(filter.selectedIDs.count == 4, "select all never clears")
+
+        try expect(filter.set("claude-code", selected: false), "manual uncheck changes selection")
+        try expect(!filter.applyDefault(activeIDs: ["claude-code"]), "manual choice wins over defaults")
+        try expect(!filter.selectedIDs.contains("claude-code"), "manual uncheck retained")
+        try expect(!filter.set("opencode", selected: true), "unsupported agent is ignored")
     }
 
     private static func expectUnwrap<T>(_ value: T?, _ message: String) throws -> T {

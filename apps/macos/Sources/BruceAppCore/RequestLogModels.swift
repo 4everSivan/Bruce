@@ -53,6 +53,49 @@ package struct RequestLogQuery: Equatable, Sendable {
     }
 }
 
+/// Request-log Agent 筛选策略 (design/14 §4.2.8):
+/// 首次默认只勾选今日有 Token 用量的受支持来源；用户手动改选后不再自动覆盖；
+/// 「全部 Agent」是幂等全选，重复点击不会清空。
+package struct RequestLogAgentFilter: Equatable, Sendable {
+    package static let supportedAgentIDs: Set<String> = [
+        "claude-code", "codex", "antigravity", "zcode",
+    ]
+
+    package private(set) var selectedIDs: Set<String> = []
+    package private(set) var hasUserChosen = false
+
+    package init() {}
+
+    /// 返回是否实际改变了选择。
+    @discardableResult
+    package mutating func applyDefault(activeIDs: Set<String>) -> Bool {
+        guard !hasUserChosen else { return false }
+        let next = activeIDs.intersection(Self.supportedAgentIDs)
+        guard next != selectedIDs else { return false }
+        selectedIDs = next
+        return true
+    }
+
+    /// 重复点击保持全选；返回是否实际改变了选择。
+    @discardableResult
+    package mutating func selectAll() -> Bool {
+        hasUserChosen = true
+        guard selectedIDs != Self.supportedAgentIDs else { return false }
+        selectedIDs = Self.supportedAgentIDs
+        return true
+    }
+
+    @discardableResult
+    package mutating func set(_ id: String, selected: Bool) -> Bool {
+        guard Self.supportedAgentIDs.contains(id) else { return false }
+        hasUserChosen = true
+        if selected {
+            return selectedIDs.insert(id).inserted
+        }
+        return selectedIDs.remove(id) != nil
+    }
+}
+
 package struct RequestLogSummaryModel: Codable, Equatable, Sendable {
     package let tokens: UInt64
     package let costUsd: Double
@@ -81,21 +124,21 @@ package struct RequestLogEntryModel: Codable, Identifiable, Equatable, Sendable 
 
     package var id: String { requestId }
 
-    /// Output tokens per second over the generation phase (total latency minus
-    /// first-token time). `nil` when the source did not record timing.
+    /// Estimated output speed for session-log rows (cc-switch 同口径):
+    /// output ÷ total latency (first-token wait included), only when output ≥ 200
+    /// and latency ≥ 1s. The UI prefixes it with `≈`.
     package var speedTokensPerSecond: Double? {
-        guard output > 0, let latencyMs, latencyMs > 0 else { return nil }
-        let generationMillis = latencyMs - (firstTokenMs ?? 0)
-        guard generationMillis > 0 else { return nil }
-        return Double(output) / (Double(generationMillis) / 1000)
+        guard output >= 200, let latencyMs, latencyMs >= 1_000 else { return nil }
+        let speed = Double(output) / (Double(latencyMs) / 1000)
+        return speed.isFinite && speed > 0 ? speed : nil
     }
 
     package var speedText: String {
         guard let speedTokensPerSecond else { return "—" }
-        if speedTokensPerSecond >= 1000 {
-            return String(format: "%.1fK/s", speedTokensPerSecond / 1000)
-        }
-        return String(format: "%.1f/s", speedTokensPerSecond)
+        let value = speedTokensPerSecond >= 1
+            ? String(Int(speedTokensPerSecond.rounded()))
+            : String(format: "%.1f", speedTokensPerSecond)
+        return "≈\(value)/s"
     }
 
     package var totalTokens: UInt64 {
