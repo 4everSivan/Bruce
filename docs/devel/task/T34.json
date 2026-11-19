@@ -114,7 +114,10 @@
     ]
   },
   "sync": {
-    "commit": ""
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "d4abc78e9624e67f68daaec1db76e6660603971b",
+    "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
