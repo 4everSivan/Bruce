@@ -61,6 +61,12 @@
       "before": "价卡缺少 Gemini 3.5/3.6/3.7/3.8/4 与 GPT-6.2 系列。",
       "after": "按 cc-switch 2026-11 价表与 Google 官方价页补入 Gemini 4 Argon/Carbon/Hydrogen/Neon、Gemini 3.5–3.8 Flash、GPT-6.2 Sol/Astra 与 GPT-6 Astra；mac 内置价卡重新生成。",
       "impact": "新模型可计价并出现在设置页；旧模型价格不变。"
+    },
+    {
+      "scope": "未计价模型标签",
+      "before": "归一化模型为空（Antigravity Orchestrator 行）时，表格与详情直接显示 unknown。",
+      "after": "模型展示优先归一化模型，失败回退 raw_model 原始标签（如 Orchestrator (Neon)），两者皆缺才显示 unknown；Orchestrator 行仍按设计 15 不猜测映射、不计价。",
+      "impact": "纯展示层调整，不改采集、归一化与计费口径。"
     }
   ],
   "design": {
@@ -74,7 +80,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "local-20261119-09",
+    "run_id": "local-20261119-10",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -82,14 +88,14 @@
         "item": "自动化测试",
         "true_if": "verify-local 全绿，RequestLogHarness 通过，Swift build 无错误",
         "false_if": "任一测试失败或编译错误",
-        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项，日志 local/verify-C248-r3.log）；RequestLogHarness 速度断言 600 tokens / 2500ms → ≈240/s，并含 Agent 筛选策略用例（连续全选第二次 no-op）；collector-local 新增 ZCode 请求行归一化/缓存重放用例；collector-domain `builtin_pricing_includes_2026_11_models` 覆盖含 gemini-4-neon（3/15/0.15）的新模型；PricingCatalogSyncHarness 12 项通过。",
+        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项，日志 local/verify-C248-r4.log）；RequestLogHarness 覆盖速度断言（600/2500ms → ≈240/s）、Agent 筛选策略（连续全选第二次 no-op）与 displayModel 回退（model=null、rawModel=\"Orchestrator (Neon)\" → 原标签，双缺 → unknown）；collector-local ZCode 请求行用例；collector-domain 含 gemini-4-neon 的新模型计费用例。",
         "result": true
       },
       {
         "item": "行为实测",
         "true_if": "安装版请求日志页 Agent 菜单显示品牌图标；费用与工程列不再相连；速度列有值；采集/DB 变更后自动刷新",
         "false_if": "菜单仍无图标、列距仍不可读、速度列缺失或不刷新",
-        "evidence": "2026-11-19 安装版实机：请求日志页可见 ZCode 逐请求行（deepseek-v4.1-flash / glm-5.3，工程 Bruce / fexops，含费用）；新增行后台刷新呈蓝色行底 + 左侧强调条，表格未切换加载态；速度列显示 ≈64/s、≈137/s、≈235/s 并保持稳定。",
+        "evidence": "2026-11-19 安装版实机：请求日志页可见 ZCode 逐请求行与 Antigravity 原始模型标签（Orchestrator (Neon)，不再显示 unknown）；新增行后台刷新呈蓝色行底 + 左侧强调条，表格未切换加载态；速度列显示 ≈64/s、≈137/s、≈235/s 并保持稳定。",
         "result": true
       },
       {
@@ -126,6 +132,13 @@
         "false_if": "新模型缺失或价卡生成不一致",
         "evidence": "安装版请求日志模型下拉可见 gemini-3.8-flash、gemini-4-argon / carbon / hydrogen、gpt-6.2-sol；模型计费页显示「全部 (100)」；config 107 行、生成 100 行，`gen-pricing-catalog --check` 与 4 项 Node 单测通过，`builtin_pricing_includes_2026_11_models` 覆盖含 gemini-4-neon（3/15/0.15）在内的 2026-11 新模型。",
         "result": true
+      },
+      {
+        "item": "未计价模型标签",
+        "true_if": "Orchestrator 行模型列显示原始标签而非 unknown；raw_model 也缺失的行仍显示 unknown",
+        "false_if": "仍显示 unknown 或空标签",
+        "evidence": "安装版实机截图：Antigravity 行模型列显示 `Orchestrator (Neon)` 原标签，页面无 unknown 行（raw_model 也缺失的历史行才会保留 unknown）；RequestLogHarness displayModel 回退用例通过。",
+        "result": true
       }
     ]
   },
@@ -133,7 +146,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "715e173",
+    "commit": "64e73b5",
     "tag": ""
   },
   "gate": {
