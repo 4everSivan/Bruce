@@ -313,7 +313,7 @@ struct RequestLogView: View {
                     .lineLimit(1)
             }
             .frame(width: 104, alignment: .leading)
-            Text(entry.model ?? "unknown")
+            Text(entry.displayModel)
                 .font(.system(size: 10.6, design: .monospaced))
                 .foregroundStyle(SettingsDemoTokens.text)
                 .lineLimit(1)
@@ -652,7 +652,7 @@ private struct RequestLogDetailSheet: View {
                     }
                     section("模型") {
                         detailGrid([
-                            ("模型", entry.model ?? "unknown", true),
+                            ("模型", entry.displayModel, true),
                             ("原始模型名", entry.rawModel ?? entry.model ?? "—", true),
                             ("计价模型", entry.model ?? "—", true),
                             ("保真度", entry.fidelity == "exact" ? "精确（来源给出 Token 计数）" : "估算", false),

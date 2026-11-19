@@ -58,6 +58,7 @@ struct RequestLogHarness {
         try await missingExecutableFailsClosed()
         try modelDecodingIsTolerantToOptionalNotice()
         try agentFilterDefaultsAndSelectAllAreIdempotent()
+        try displayModelFallsBackToRawLabel()
         print("BruceRequestLogHarness: all checks passed")
     }
 
@@ -219,6 +220,54 @@ struct RequestLogHarness {
         try expect(!filter.applyDefault(activeIDs: ["claude-code"]), "manual choice wins over defaults")
         try expect(!filter.selectedIDs.contains("claude-code"), "manual uncheck retained")
         try expect(!filter.set("opencode", selected: true), "unsupported agent is ignored")
+    }
+
+
+    /// 归一化模型缺失时展示原始标签（Antigravity Orchestrator 行不再显示 unknown）。
+    private static func displayModelFallsBackToRawLabel() throws {
+        let orchestrator = try JSONDecoder().decode(
+            RequestLogEntryModel.self,
+            from: Data(
+                """
+                {
+                  "requestId": "agy-1",
+                  "agentId": "antigravity",
+                  "model": null,
+                  "rawModel": "Orchestrator (Neon)",
+                  "occurredAt": 1795057200000,
+                  "input": 10,
+                  "output": 600,
+                  "cacheRead": 0,
+                  "cacheCreation": 0,
+                  "statusCode": 200,
+                  "fidelity": "exact"
+                }
+                """.utf8
+            )
+        )
+        try expect(orchestrator.displayModel == "Orchestrator (Neon)", "raw label wins over unknown")
+
+        let bare = try JSONDecoder().decode(
+            RequestLogEntryModel.self,
+            from: Data(
+                """
+                {
+                  "requestId": "agy-2",
+                  "agentId": "antigravity",
+                  "model": null,
+                  "rawModel": null,
+                  "occurredAt": 1795057200000,
+                  "input": 10,
+                  "output": 600,
+                  "cacheRead": 0,
+                  "cacheCreation": 0,
+                  "statusCode": 200,
+                  "fidelity": "exact"
+                }
+                """.utf8
+            )
+        )
+        try expect(bare.displayModel == "unknown", "both missing keeps unknown")
     }
 
     private static func expectUnwrap<T>(_ value: T?, _ message: String) throws -> T {
