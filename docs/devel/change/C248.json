@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C248",
-  "title": "请求日志 UI 列距、Agent 图标、速度列与自动刷新",
+  "title": "请求日志 ZCode 请求行、速度口径、默认筛选与模型价卡更新",
   "version": "0.19.0",
   "type": "BugFix",
   "status": "in_progress",
@@ -13,7 +13,7 @@
     "design_doc": "docs/devel/design/14-Agent请求日志.md",
     "design_topic": "RequestLog"
   },
-  "why": "实机验收发现五处与 cc-switch / design 定稿不一致：Agent 筛选使用原生 Menu，只能显示勾选与文字、未带品牌图标；表格单元格无内边距，「费用」「工程」等相邻表头相连；缺少速度列；页面只在进入/手动刷新时查询；后台刷新把整表切到加载态并重建数据，界面整体抖动闪屏，而 cc-switch 是新增行高亮后淡出。",
+  "why": "实机验收发现五处与 cc-switch / design 定稿不一致：Agent 筛选使用原生 Menu，只能显示勾选与文字、未带品牌图标；表格单元格无内边距，「费用」「工程」等相邻表头相连；缺少速度列；页面只在进入/手动刷新时查询；后台刷新把整表切到加载态并重建数据，界面整体抖动闪屏，而 cc-switch 是新增行高亮后淡出。 第二轮实机反馈：ZCode 无逐请求行；速度按生成耗时计算与 cc-switch 会话日志口径不一致；Agent 默认全选而非只选今日有用量者；「全部 Agent」重复点击会取消全选；价卡缺少 2026-11 新增的 Gemini 3.5–4 / GPT-6.2 模型。",
   "precheck": {
     "description": "复现实机 UI 缺陷并确认当前实现位置",
     "command": "实际安装 /Applications/Bruce.app 后截图检查请求日志页",
@@ -35,7 +35,7 @@
     {
       "scope": "交互与视觉",
       "before": "Agent 筛选用原生 Menu，无法承载 AgentBrandBadge；表格 HStack 间距为 0；无速度列。",
-      "after": "Agent 筛选改为自定义 popover（勾选态 + AgentBrandBadge 16px + 名称）；表格增加 6px 列距并把 8 列收窄为可读宽度，新增「速度」列（output / 生成耗时，耗时来自 Antigravity 原生库）；详情 Sheet 增加性能段。",
+      "after": "Agent 筛选改为自定义 popover（勾选态 + AgentBrandBadge 16px + 名称）；表格增加 6px 列距并把 8 列收窄为可读宽度，新增「速度」列（output ÷ 总耗时，cc-switch 会话估算口径，展示 ≈N/s；耗时来自 Antigravity 原生库）；详情 Sheet 增加性能段。",
       "impact": "仅请求日志页；查询参数、筛选语义与数据链路不变。"
     },
     {
@@ -43,6 +43,24 @@
       "before": "请求日志页只在进入页面与手动点刷新时查询；后台刷新会切换整表加载态并替换数据，造成界面整体抖动闪屏。",
       "after": "请求页监听 agent-usage artifact 更新（250ms 防抖）并在第 1 页每 30s 兜底查询；后台刷新保持表格与上次数据，只对新出现的请求行加强调色高亮并在 1.8s 后淡出；失败保留旧数据；翻页时不做自动刷新。",
       "impact": "仅请求日志页查询频率与行级高亮变化；不触发额外采集，不改变 collector 调度。"
+    },
+    {
+      "scope": "ZCode 请求行",
+      "before": "ZCode 只有聚合用量，请求日志页无 ZCode 明细。",
+      "after": "ZCode 扫描时旁路只读查询本机 `model_usage` 近 30 天，按 rowid 生成稳定请求键，归一化输入/输出并投影工程；请求读取失败只丢明细、保留聚合。",
+      "impact": "新增 ZCode 请求明细；不改 ZCode 聚合缓存与计费口径。"
+    },
+    {
+      "scope": "速度与筛选",
+      "before": "速度 = output ÷（总耗时 − 首字）；Agent 默认全选；「全部 Agent」再次点击会清空选择。",
+      "after": "速度改为 cc-switch 会话日志估算口径 `output ÷ 总耗时`（output ≥ 200 且总耗时 ≥ 1s），显示 `≈N/s`；筛选菜单只列四个受支持来源，首次进入/artifact 更新时默认勾选今日有 Token 用量的 Agent，用户改选后不再覆盖；全选按钮重复点击保持全选。",
+      "impact": "仅请求日志页展示与默认筛选；不影响其他页面。"
+    },
+    {
+      "scope": "模型价卡",
+      "before": "价卡缺少 Gemini 3.5/3.6/3.7/3.8/4 与 GPT-6.2 系列。",
+      "after": "按 cc-switch 2026-11 价表补入 Gemini 4 Argon/Carbon/Hydrogen、Gemini 3.5–3.8 Flash、GPT-6.2 Sol/Astra 与 GPT-6 Astra；mac 内置价卡重新生成。",
+      "impact": "新模型可计价并出现在设置页；旧模型价格不变。"
     }
   ],
   "design": {
@@ -51,12 +69,12 @@
     "modified": true,
     "rule_diff": {
       "before": "表格 8 列（无速度列）；刷新仅进入页面/手动；后台刷新整表重载；详情 Sheet 无性能段。",
-      "after": "表格增加速度列与 6px 列距；artifact 更新 250ms 防抖 + 30s 兜底自动刷新；后台刷新不清表，新行高亮 1.8s 后淡出；仅第 1 页自动刷新；详情 Sheet 增加速度/总耗时/首字。"
+      "after": "表格增加速度列与 6px 列距；速度按 cc-switch 会话口径 output÷总耗时（≥200 tokens、≥1s，显示 ≈）；artifact 更新 250ms 防抖 + 30s 兜底自动刷新；后台刷新不清表，新行高亮 1.8s 后淡出；仅第 1 页自动刷新；详情 Sheet 增加速度/总耗时/首字；Agent 默认只勾选今日有用量的受支持来源。"
     }
   },
   "verification": {
     "result": "passed",
-    "run_id": "local-20261119-06",
+    "run_id": "local-20261119-08",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -64,21 +82,49 @@
         "item": "自动化测试",
         "true_if": "verify-local 全绿，RequestLogHarness 通过，Swift build 无错误",
         "false_if": "任一测试失败或编译错误",
-        "evidence": "verify-local 全部通过（Rust workspace、Swift build、20 Harness、Node 27 项）；RequestLogHarness 新增 speed=1.0/s 断言；antigravity 单测 7 项含原生 DB 计时解析。",
+        "evidence": "verify-local 全绿（Rust workspace、Swift build、20 Harness、Node 27 项）；RequestLogHarness 速度断言 600 tokens / 2500ms → ≈240/s，并新增 Agent 筛选策略用例；collector-local 新增 ZCode 请求行归一化/缓存重放用例；collector-domain 新增 2026-11 新模型价卡计费用例；PricingCatalogSyncHarness 12 项通过。",
         "result": true
       },
       {
         "item": "行为实测",
         "true_if": "安装版请求日志页 Agent 菜单显示品牌图标；费用与工程列不再相连；速度列有值；采集/DB 变更后自动刷新",
         "false_if": "菜单仍无图标、列距仍不可读、速度列缺失或不刷新",
-        "evidence": "2026-11-19 安装版实机截图：Agent popover 显示 11 个 AgentBrandBadge；速度列 166.9/s、152.6/s…；插入测试请求并触发刷新后，新行出现蓝色底 + 左侧强调条，计数 2,213→2,214，刷新期间表格保持原列表、未切加载态/未整体替换；高亮按 1.8s 计时后清除。删除测试行后计数回落。",
+        "evidence": "2026-11-19 安装版实机：请求日志页可见 ZCode 逐请求行（deepseek-v4.1-flash / glm-5.3，工程 Bruce / fexops，含费用）；新增行后台刷新呈蓝色行底 + 左侧强调条，表格未切换加载态；速度列显示 ≈64/s、≈137/s、≈235/s 并保持稳定。",
         "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "筛选、分页、空/加载/错误态正常，查询参数不变",
         "false_if": "筛选失效、分页错位或 Sheet 无法打开",
-        "evidence": "实机筛选 popover 开合、分页第 1/58 页正常；查询仍走 module=request-log；本次未重新点开 Sheet，Sheet 仅新增性能字段且编译/Harness 通过。",
+        "evidence": "实机筛选 popover、分页（1/207）、摘要条与自动刷新正常；查询仍走 module=request-log；后台刷新后页码与筛选保持不变。",
+        "result": true
+      },
+      {
+        "item": "ZCode 请求明细",
+        "true_if": "安装版请求日志筛选 ZCode 可见逐请求行，Token/模型/工程字段有值",
+        "false_if": "ZCode 仍无明细或字段为空",
+        "evidence": "安装版请求日志页显示 ZCode 行（2026-11-19 15:11，deepseek-v4.1-flash / glm-5.3，工程 Bruce / fexops，费用 $0.0013–$0.0025）；本机库 44,649 行、13.66B Token、$529.83；`zcode_request_rows_normalize_tokens_and_survive_cache_hits` 通过。",
+        "result": true
+      },
+      {
+        "item": "速度口径",
+        "true_if": "速度列显示 `≈N/s`，数值等于 output ÷ 总耗时；output<200 或耗时<1s 显示 —",
+        "false_if": "仍按扣减首字计算或无阈值",
+        "evidence": "安装版 Antigravity 行 output=4149、latency=17659ms（含首字 3414ms），显示 ≈235/s；4149÷17.659=235.0，符合 cc-switch 会话估算口径（output÷总耗时，≥200 且 ≥1s）。RequestLogHarness 600/2500ms → ≈240/s。",
+        "result": true
+      },
+      {
+        "item": "默认筛选与全选",
+        "true_if": "首次进入默认只勾选今日有用量的 Agent；手动改选后不再自动覆盖；连续点「全部 Agent」保持全选",
+        "false_if": "默认全选、自动覆盖用户选择或全选被反选",
+        "evidence": "安装版首次进入勾选 4 个受支持 Agent（本机今日四源均有请求：antigravity 333 / claude-code 177 / codex 57 / zcode 1170），popover 显示「全部 Agent」勾选；重复触发全选后标签仍为「全部 Agent」且四行保持勾选。筛选策略 Harness 覆盖仅选今日活跃项、用户改选后不被默认覆盖、连续全选幂等。",
+        "result": true
+      },
+      {
+        "item": "模型价卡",
+        "true_if": "Gemini 3.5–4 与 GPT-6.2 型号可在设置页价卡看到并按新价计费",
+        "false_if": "新模型缺失或价卡生成不一致",
+        "evidence": "安装版请求日志模型下拉可见 gemini-3.8-flash、gemini-4-argon / carbon / hydrogen、gpt-6.2-sol；模型计费页显示「全部 (99)」；config 106 行、生成 99 行，`gen-pricing-catalog --check` 与 4 项 Node 单测通过，`builtin_pricing_includes_2026_11_models` 通过。",
         "result": true
       }
     ]
@@ -87,7 +133,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "e9feb02",
+    "commit": "7058220",
     "tag": ""
   },
   "gate": {
