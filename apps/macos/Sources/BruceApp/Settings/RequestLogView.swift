@@ -221,10 +221,10 @@ struct RequestLogView: View {
         VStack(spacing: 0) {
             tableHeader
             Divider().overlay(SettingsDemoTokens.separator)
-            if model.isLoading {
+            if model.isLoading && model.data.entries.isEmpty {
                 ProgressView("正在加载…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = model.errorMessage {
+            } else if let error = model.errorMessage, model.data.entries.isEmpty {
                 tableError(error)
             } else if model.data.entries.isEmpty {
                 tableEmpty
@@ -327,8 +327,7 @@ struct RequestLogView: View {
         .frame(height: 34)
         .contentShape(Rectangle())
         .onTapGesture { model.selectedEntry = entry }
-        .background(Color.clear)
-        .hoverHighlight()
+        .hoverHighlight(highlighted: model.highlightedEntryIDs.contains(entry.id))
     }
 
     private func numberCell(_ value: UInt64, width: CGFloat) -> some View {
@@ -464,9 +463,12 @@ final class RequestLogViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
     @Published var selectedEntry: RequestLogEntryModel?
+    /// New request IDs from a background refresh; the row tint fades out after 1.8s.
+    @Published private(set) var highlightedEntryIDs: Set<String> = []
 
     private let client: RequestLogClient
     private var loaded = false
+    private var highlightClearTask: Task<Void, Never>?
 
     init(collectorURL: URL?) {
         client = RequestLogClient(executableURL: collectorURL)
@@ -495,21 +497,27 @@ final class RequestLogViewModel: ObservableObject {
     func loadIfNeeded() async {
         guard !loaded else { return }
         loaded = true
-        await refresh()
+        await refresh(highlightNew: false)
     }
 
     func reloadForFilterChange() async {
         page = 0
-        await refresh()
+        highlightedEntryIDs = []
+        await refresh(highlightNew: false)
     }
 
-    func refresh() async {
+    /// `silent`: background refresh — keep the table and last data on failure.
+    /// `highlightNew`: briefly tint rows that were not in the previous page.
+    func refresh(silent: Bool = false, highlightNew: Bool = true) async {
         guard !isLoading else { return }
         if selectedAgentIDs.isEmpty {
             data = .empty
             errorMessage = nil
+            highlightedEntryIDs = []
             return
         }
+        let previousIDs = Set(data.entries.map(\.id))
+        let hadData = !previousIDs.isEmpty
         isLoading = true
         defer { isLoading = false }
         let now = Date()
@@ -522,21 +530,47 @@ final class RequestLogViewModel: ObservableObject {
             pageSize: pageSize
         )
         do {
-            data = try await client.query(query)
+            let next = try await client.query(query)
+            if next == data {
+                errorMessage = nil
+                return
+            }
+            let newIDs = Set(next.entries.map(\.id)).subtracting(previousIDs)
+            data = next
             errorMessage = nil
+            if highlightNew, hadData, !newIDs.isEmpty {
+                highlightedEntryIDs.formUnion(newIDs)
+                scheduleHighlightClear()
+            }
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            // 后台刷新失败保留上一次结果，不把整张表替换成错误态。
+            if !silent {
+                errorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            }
         }
     }
 
-    /// 自动刷新入口：保留当前筛选与页码；若本轮总量收缩到当前页之外，再回退一页。
+    /// 自动刷新入口：只刷新第 1 页；保留筛选与页码，不整表重载。
     func refreshInPlace() async {
+        guard page == 0 else { return }
         let previousPage = page
-        await refresh()
+        await refresh(silent: true, highlightNew: true)
         if page >= pageCount {
             page = max(0, pageCount - 1)
             if page != previousPage {
-                await refresh()
+                await refresh(silent: true, highlightNew: false)
+            }
+        }
+    }
+
+    private func scheduleHighlightClear() {
+        highlightClearTask?.cancel()
+        highlightClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(.easeOut(duration: 0.8)) {
+                self.highlightedEntryIDs.removeAll()
             }
         }
     }
@@ -813,17 +847,32 @@ enum RequestLogFormat {
 // MARK: - Row hover
 
 private struct RequestLogRowHover: ViewModifier {
+    let highlighted: Bool
     @State private var hovering = false
 
     func body(content: Content) -> some View {
         content
-            .background(hovering ? SettingsDemoTokens.surfaceHover : Color.clear)
+            .background(
+                hovering
+                    ? SettingsDemoTokens.surfaceHover
+                    : (highlighted ? SettingsDemoTokens.accent.opacity(0.16) : Color.clear)
+            )
+            .overlay(alignment: .leading) {
+                if highlighted {
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(SettingsDemoTokens.accent)
+                        .frame(width: 2)
+                        .padding(.vertical, 4)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.easeOut(duration: 0.8), value: highlighted)
             .onHover { hovering = $0 }
     }
 }
 
 private extension View {
-    func hoverHighlight() -> some View {
-        modifier(RequestLogRowHover())
+    func hoverHighlight(highlighted: Bool = false) -> some View {
+        modifier(RequestLogRowHover(highlighted: highlighted))
     }
 }
