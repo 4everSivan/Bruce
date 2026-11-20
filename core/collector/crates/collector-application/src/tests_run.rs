@@ -187,7 +187,11 @@ fn local_or_skipped_request(context_extra: serde_json::Value) -> BridgeRequest {
         .insert("home".to_owned(), json!(home.to_string_lossy()));
     request.context.insert(
         "paths".to_owned(),
-        json!({"history_db": home.join("usage-history.sqlite").to_string_lossy()}),
+        json!({
+            "history_db": home.join("usage-history.sqlite").to_string_lossy(),
+            // C250: Windows 请求库路径不跟随 home, 不注入会写进开发机/CI 的真实库。
+            "request_log_db": home.join("request-log.sqlite").to_string_lossy()
+        }),
     );
     request.credentials.insert(
         "claudeQuotaAccounts".to_owned(),
@@ -303,6 +307,11 @@ fn cancelled_local_run_returns_existing_diagnostic_without_artifact() {
     request.context.insert(
         "home".to_owned(),
         serde_json::Value::String(home.to_string_lossy().into_owned()),
+    );
+    // C250: Windows 请求库路径不跟随 home, 取消轮也不得触碰真实库。
+    request.context.insert(
+        "paths".to_owned(),
+        json!({"request_log_db": home.join("request-log.sqlite")}),
     );
     request.timeouts.module_seconds = 0.0;
 

@@ -63,7 +63,8 @@
       "design_doc": "docs/devel/design/14-Agent请求日志.md",
       "changes": [
         "C248",
-        "C249"
+        "C249",
+        "C250"
       ]
     }
   },
@@ -81,6 +82,13 @@
       "branch": "fix/C249-request-log-review",
       "topic": "RequestLog",
       "file": "docs/devel/change/C249.json"
+    },
+    "C250": {
+      "title": "请求日志测试隔离：Windows 采集用例注入请求库路径并封闭 bridge 空库用例",
+      "status": "in_progress",
+      "branch": "fix/C250-request-log-test-isolation",
+      "topic": "RequestLog",
+      "file": "docs/devel/change/C250.json"
     }
   }
 }

@@ -22,6 +22,7 @@
   - **空闲清理**：本轮没有首批来源请求行时，已存在的请求库照常清理 30 天前明细（不存在则不创建）。
   - **计价**：`pricing_model` 改记实际命中的价卡键（新增 `PricingTable::resolve_with_key`，与 `resolve` 同一匹配）并经 `pricingModel` 回传，详情 Sheet「计价模型」显示命中键、未命中显示「未计价」；重放行覆盖库内 Token 时费用随当前价卡重算（涨价、降价、改为未计价都跟随），与聚合 artifact 同口径，取代原「价格变更不回改历史行」。
   - **设计回写**：design/14 修正首批来源、合并与计价细则、查询路径、`models` 语义与可观测口径，§4.3 改为已实现并列出残余说明。
+- **Windows CI 请求日志测试隔离（[C250](docs/devel/change/C250.json)）**：Windows 上 `resolve_request_log_path` 固定解析到 `%LOCALAPPDATA%\Bruce`，采集用例与 bridge 空库用例此前未注入 `paths.request_log_db`，`cargo test` 会把夹具请求行写进 runner/开发机的真实请求库，并使空库用例随后读到已存在的库而断言 `notice` 失败（CI run 44673267017）；现统一注入临时路径覆盖，bridge 用例显式指向不存在的库，产品路径解析与查询行为不变。
 
 ## [0.18.0] - 2026-11-18
 

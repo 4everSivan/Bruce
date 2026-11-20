@@ -88,9 +88,14 @@ fn source_metrics_follow_the_stable_local_source_order() {
         serde_json::Value::String(home.to_string_lossy().into_owned()),
     );
     // 隔离 dsh: $DSH_HOME 会让默认路径指向开发者的真实 ~/.dsh, 用例必须显式覆盖。
+    // 隔离请求库: Windows 上 resolve_request_log_path 固定用 LOCALAPPDATA,
+    // 不注入覆盖会把夹具请求行写进开发机/CI 的真实库 (C250)。
     request.context.insert(
         "paths".to_owned(),
-        json!({"dsh_sessions": home.join("dsh/sessions")}),
+        json!({
+            "dsh_sessions": home.join("dsh/sessions"),
+            "request_log_db": home.join("request-log.sqlite")
+        }),
     );
 
     let output = collect_agent_usage_with_dependencies(
@@ -244,7 +249,9 @@ fn warm_jsonl_sources_keep_agent_results_and_skip_body_parsing() {
             "opencode_db": home.join("opencode.db"),
             "zcode_db": home.join("zcode.db"),
             "codebuddy_projects": home.join("codebuddy"),
-            "dsh_sessions": home.join("dsh/sessions")
+            "dsh_sessions": home.join("dsh/sessions"),
+            // C250: Windows 请求库路径不跟随 home, 必须显式注入。
+            "request_log_db": home.join("request-log.sqlite")
         }),
     );
 
@@ -333,6 +340,15 @@ fn codex_warm_cache_preserves_found_status() {
         .chain(std::iter::once((
             "codex_sessions".to_owned(),
             serde_json::Value::String(codex_root.to_string_lossy().into_owned()),
+        )))
+        // C250: Windows 请求库路径不跟随 home, 必须显式注入。
+        .chain(std::iter::once((
+            "request_log_db".to_owned(),
+            serde_json::Value::String(
+                home.join("request-log.sqlite")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
         )))
         .collect();
     let mut request = request(&["localSessions"]);
@@ -427,6 +443,8 @@ fn orca_sessions_count_toward_codex_and_no_orca_row_is_emitted() {
         ("codex_sessions", codex_root),
         ("orca_home", orca_home),
         ("orca_codex_sessions", orca_sessions),
+        // C250: Windows 请求库路径不跟随 home, 必须显式注入。
+        ("request_log_db", home.join("request-log.sqlite")),
     ] {
         paths.insert(key.to_owned(), json!(path.to_string_lossy()));
     }

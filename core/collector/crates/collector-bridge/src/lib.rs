@@ -624,6 +624,15 @@ mod tests {
             "timeouts": {"externalRequestSeconds": 1, "moduleSeconds": 10},
             "context": {
                 "home": home.to_string_lossy(),
+                // C250: Windows 的 resolve_request_log_path 固定用 LOCALAPPDATA,
+                // 仅传 home 会读到开发机/CI 的真实请求库; 显式指向不存在的路径
+                // 才能在任何宿主上覆盖「库未生成」分支。
+                "paths": {
+                    "request_log_db": home
+                        .join("missing")
+                        .join("request-log-v1.sqlite")
+                        .to_string_lossy()
+                },
                 "start": 0,
                 "end": 1_000,
                 "agentIds": ["claude-code"],
@@ -643,6 +652,52 @@ mod tests {
         // C249: 空库响应与正常页同形, 宿主不必按缺字段兜底。
         assert_eq!(artifact["summary"]["tokens"], 0);
         assert_eq!(artifact["models"], serde_json::json!([]));
+    }
+
+    /// C250: 查询必须使用 paths.request_log_db 覆盖 (Windows 上仅传 home 会解析到
+    /// 真实 LOCALAPPDATA 请求库, 测试会读宿主数据)。
+    #[test]
+    fn request_log_module_reads_the_paths_override() {
+        use collector_request_log::{RequestLogEntry, RequestLogStore};
+
+        let home = std::env::temp_dir().join(format!(
+            "bruce-bridge-request-log-override-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let db = home.join("request-log.sqlite");
+        let mut store = RequestLogStore::open(&db).unwrap();
+        store
+            .merge(
+                &[RequestLogEntry::exact("claude-code", "override-row", 500)],
+                0,
+            )
+            .unwrap();
+
+        let input = serde_json::json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "request-log",
+            "timeouts": {"externalRequestSeconds": 1, "moduleSeconds": 10},
+            "context": {
+                "home": home.to_string_lossy(),
+                "paths": {"request_log_db": db.to_string_lossy()},
+                "start": 0,
+                "end": 1_000,
+                "agentIds": ["claude-code"],
+                "page": 0,
+                "pageSize": 50
+            },
+            "credentials": {}
+        })
+        .to_string();
+        let response = run_bytes(input.as_bytes());
+        assert_eq!(response.status, ResponseStatus::Success);
+        let artifact = response.artifact.expect("request-log artifact");
+        assert_eq!(artifact["total"], 1);
+        assert_eq!(artifact["entries"][0]["requestId"], "override-row");
+        std::fs::remove_dir_all(&home).ok();
     }
 
     /// C249: agentIds 只接受请求日志范围内的 Agent, 其余视为协议错误, 不执行查询。

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C250",
+  "title": "请求日志测试隔离：Windows 采集用例注入请求库路径并封闭 bridge 空库用例",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C250-request-log-test-isolation",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector 测试",
+    "component": "collector-application / collector-bridge 测试隔离",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "why": "Windows CI run 44673267017（main 0357832）在 `cargo test --workspace` 的 collector-bridge 用例 `request_log_module_returns_an_empty_page_before_the_database_exists` 失败：`artifact[\"notice\"]` 为 Null，而断言期望「请求日志库尚未生成」。根因：`paths::resolve_request_log_path` 在 Windows 固定解析到 `%LOCALAPPDATA%\\Bruce\\request-log-v1.sqlite`（design/14 §3.2 的正式路径），不随测试注入的临时 `home` 变化；而 `tests_local` 的 warm_jsonl / codex_warm_cache / orca / source_metrics 用例与 `tests_run` 的 `local_or_skipped_request` 在跑完整本地采集时没有注入 `paths.request_log_db`，导致 `cargo test` 把夹具请求行写进 runner（以及 Windows 开发机）的真实请求库；随后 bridge 空库用例解析到同一个真实路径，库已存在而走正常查询分支（该分支无 `notice` 字段），断言失败。该缺陷自 T34–T38（d4abc78）引入，因请求日志落地后首次推送才首次在 Windows CI 暴露；除 CI 红外，还会污染 Windows 开发机的真实应用数据（C249 的空闲清理路径还会打开并清理该库），必须修复。",
+  "precheck": {
+    "description": "确认 Windows CI 失败可归因于测试未注入 request_log_db，而非产品路径解析或查询逻辑回归",
+    "command": "gh run view 44673267017 --job 136078970451 --log-failed；核对 resolve_request_log_path 的 Windows 分支与 tests_local/tests_run 的 paths 注入；核对 collector-bridge 空库用例的路径来源",
+    "expected": "bridge 空库用例解析到 %LOCALAPPDATA%\\Bruce 的真实库；应用侧至少一个完整采集用例未注入 request_log_db 且产出请求行；macOS 因路径跟随 home 而通过",
+    "is_completed": true,
+    "evidence": "2026-11-20 CI 日志：collector-application 的 `warm_jsonl_sources_keep_agent_results_and_skip_body_parsing ... ok` 与 `source_metrics_follow_the_stable_local_source_order ... ok` 先于 bridge 失败执行；失败栈 `crates\\collector-bridge\\src\\lib.rs:641`，left Null / right「请求日志库尚未生成」。代码核对：`collector-application/src/paths.rs:266-275` 的 Windows 分支固定用 LOCALAPPDATA；`tests_local.rs` 第 85/222/338/433 行构造的请求只注入 home 与部分 paths（无 request_log_db）；`tests_run.rs:176` 的 `local_or_skipped_request` 同样缺该键；`collector-bridge/src/lib.rs:617-646` 的空库用例仅传 home。macOS 分支 `resolve_request_log_path` 跟随 home，故本地 verify-local 与 mac CI 全绿。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C250-request-log-test-isolation"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C250 --to closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "测试隔离 (Windows 请求日志)",
+      "before": "`resolve_request_log_path` 在 Windows 固定用 `%LOCALAPPDATA%\\Bruce`；`tests_local` 的 source_metrics / warm_jsonl / codex_warm_cache / orca 用例与 `tests_run` 的 `local_or_skipped_request`、取消用例在完整采集时未注入 `paths.request_log_db`，`cargo test` 会把夹具请求行写进 runner/开发机的真实请求库；`collector-bridge` 空库用例同样解析真实路径，库已存在时走正常查询分支而缺少 `notice`，Windows CI 断言失败。",
+      "after": "上述用例统一在 `paths` 中注入 `home` 下的 `request_log_db`（与 `history_request` 一致）；bridge 空库用例显式指向不存在的临时路径，在任何宿主（含已有真实库的 Windows 开发机）都真正覆盖「库不存在」分支；产品代码、路径解析与 design/14 口径不变。",
+      "impact": "仅测试代码；采集端行为、请求库路径与 macOS/Windows 应用运行态不变。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/14-Agent请求日志.md",
+    "topic": "RequestLog",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace 与 verify-local 全绿；bridge 空库用例在注入不存在路径后仍通过；本机真实请求库不被测试读写",
+        "false_if": "任一测试失败或测试仍解析到真实 LOCALAPPDATA 路径",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "Windows CI 复验",
+        "true_if": "推送后 CI/CD 的「Rust 验证 (Windows)」作业转绿，空库用例通过",
+        "false_if": "Windows 作业仍失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "产品路径解析与查询响应不变；macOS 请求日志页与采集行为不受影响",
+        "false_if": "产品代码被改动或 mac 行为变化",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

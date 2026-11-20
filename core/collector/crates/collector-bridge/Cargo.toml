@@ -11,3 +11,7 @@ collector-domain = { path = "../collector-domain" }
 libc.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+
+# C250: 测试直接建请求库, 验证查询使用 paths.request_log_db 覆盖。
+[dev-dependencies]
+collector-request-log = { path = "../collector-request-log" }
