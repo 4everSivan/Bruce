@@ -351,15 +351,7 @@ pub fn scan_antigravity_cached(
 }
 
 fn antigravity_request_key(session_id: &str, step: u64) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(b"antigravity-request:");
-    hasher.update(session_id.as_bytes());
-    hasher.update(b":");
-    hasher.update(step.to_string().as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    format!("{:032x}", u128::from_be_bytes(bytes))
+    super::request_key("antigravity-request", &format!("{session_id}:{step}"))
 }
 
 /// Read exact first-token / total latency from Antigravity's native conversation
@@ -939,8 +931,8 @@ mod tests {
         assert_eq!(bucket.total, 125);
         assert_eq!(scan.contribution.models_today[0].model, "gemini-3.6-flash");
         assert_eq!(scan.stats.usage_records, 1);
-        assert_eq!(scan.requests.len(), 1);
-        let request = &scan.requests[0];
+        assert_eq!(scan.requests.rows.len(), 1);
+        let request = &scan.requests.rows[0];
         assert_eq!(request.key.len(), 32);
         assert_eq!(request.model.as_deref(), Some("gemini-3.6-flash"));
         assert_eq!(
@@ -984,13 +976,13 @@ mod tests {
             scan.contribution.models_today[0].model, "Orchestrator (Neon)",
             "模型用量不得落回 unknown"
         );
-        assert_eq!(scan.requests.len(), 1);
+        assert_eq!(scan.requests.rows.len(), 1);
         assert_eq!(
-            scan.requests[0].model.as_deref(),
+            scan.requests.rows[0].model.as_deref(),
             Some("Orchestrator (Neon)")
         );
         assert_eq!(
-            scan.requests[0].raw_model.as_deref(),
+            scan.requests.rows[0].raw_model.as_deref(),
             Some("Orchestrator (Neon)")
         );
         let _ = fs::remove_dir_all(root);

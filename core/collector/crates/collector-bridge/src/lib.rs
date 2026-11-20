@@ -640,6 +640,34 @@ mod tests {
         assert_eq!(artifact["total"], 0);
         assert_eq!(artifact["notice"], "请求日志库尚未生成");
         assert_eq!(artifact["entries"], serde_json::json!([]));
+        // C249: 空库响应与正常页同形, 宿主不必按缺字段兜底。
+        assert_eq!(artifact["summary"]["tokens"], 0);
+        assert_eq!(artifact["models"], serde_json::json!([]));
+    }
+
+    /// C249: agentIds 只接受请求日志范围内的 Agent, 其余视为协议错误, 不执行查询。
+    #[test]
+    fn request_log_module_rejects_agents_outside_the_request_log_scope() {
+        let input = serde_json::json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "request-log",
+            "timeouts": {"externalRequestSeconds": 1, "moduleSeconds": 10},
+            "context": {
+                "home": "/tmp",
+                "start": 0,
+                "end": 1_000,
+                "agentIds": ["claude-code", "codebuddy"],
+                "page": 0,
+                "pageSize": 50
+            },
+            "credentials": {}
+        })
+        .to_string();
+        let response = run_bytes(input.as_bytes());
+        assert_eq!(response.status, ResponseStatus::Error);
+        assert_eq!(response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST");
+        assert!(response.artifact.is_none());
     }
 
     #[test]

@@ -92,6 +92,15 @@ impl RequestLogEntry {
     }
 }
 
+/// Row counts from one [`RequestLogStore::merge`] (design/14 §3.5.6).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MergeOutcome {
+    /// Rows inserted or actually updated; unchanged replays are not counted.
+    pub written: usize,
+    /// Rows older than the cutoff that were deleted.
+    pub pruned: usize,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RequestLogFilter {
     pub start: i64,
@@ -214,48 +223,24 @@ impl RequestLogStore {
 
     /// Merge one scan's entries, then prune detail older than `cutoff`.
     ///
-    /// Token counters never shrink; a rewritten response can only grow. A null
-    /// cost is filled when pricing becomes available; a priced row is not
-    /// rewritten downwards.
+    /// Token counters never shrink; a rewritten response can only grow. Cost and
+    /// `pricing_model` follow the current price table whenever the replayed row
+    /// covers the stored tokens (C249), so request-log totals stay consistent
+    /// with the aggregate artifact, which prices its buckets on every run; a
+    /// partial replay can only fill a missing cost. The `WHERE` guard mirrors
+    /// the `SET` list so a replayed, unchanged row is not rewritten: every
+    /// refresh replays the whole 30-day window.
     pub fn merge(
         &mut self,
         entries: &[RequestLogEntry],
         cutoff: i64,
-    ) -> Result<usize, RequestLogError> {
+    ) -> Result<MergeOutcome, RequestLogError> {
         let transaction = self.connection.transaction()?;
+        let mut written = 0;
         {
-            let mut statement = transaction.prepare_cached(
-                "INSERT INTO request_log (
-                    agent_id, request_key, occurred_at, model, raw_model, project,
-                    input, output, cache_read, cache_creation, cache_creation_1h,
-                    cost_usd, pricing_model, status_code, fidelity, latency_ms, first_token_ms
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
-                ON CONFLICT(agent_id, request_key) DO UPDATE SET
-                    input = MAX(request_log.input, excluded.input),
-                    output = MAX(request_log.output, excluded.output),
-                    cache_read = MAX(request_log.cache_read, excluded.cache_read),
-                    cache_creation = MAX(request_log.cache_creation, excluded.cache_creation),
-                    cache_creation_1h = MAX(request_log.cache_creation_1h, excluded.cache_creation_1h),
-                    cost_usd = CASE
-                        WHEN excluded.cost_usd IS NULL THEN request_log.cost_usd
-                        WHEN request_log.cost_usd IS NULL THEN excluded.cost_usd
-                        WHEN excluded.cost_usd > request_log.cost_usd THEN excluded.cost_usd
-                        ELSE request_log.cost_usd
-                    END,
-                    pricing_model = COALESCE(excluded.pricing_model, request_log.pricing_model),
-                    model = COALESCE(excluded.model, request_log.model),
-                    raw_model = COALESCE(excluded.raw_model, request_log.raw_model),
-                    project = COALESCE(excluded.project, request_log.project),
-                    status_code = CASE
-                        WHEN excluded.status_code = 200 THEN 200
-                        ELSE request_log.status_code
-                    END,
-                    fidelity = excluded.fidelity,
-                    latency_ms = COALESCE(request_log.latency_ms, excluded.latency_ms),
-                    first_token_ms = COALESCE(request_log.first_token_ms, excluded.first_token_ms)",
-            )?;
+            let mut statement = transaction.prepare_cached(&merge_sql())?;
             for entry in entries {
-                statement.execute(params![
+                written += statement.execute(params![
                     entry.agent_id,
                     entry.request_key,
                     entry.occurred_at,
@@ -276,72 +261,54 @@ impl RequestLogStore {
                 ])?;
             }
         }
-        transaction.execute("DELETE FROM request_log WHERE occurred_at < ?1", [cutoff])?;
+        let pruned =
+            transaction.execute("DELETE FROM request_log WHERE occurred_at < ?1", [cutoff])?;
         transaction.commit()?;
-        Ok(entries.len())
+        Ok(MergeOutcome { written, pruned })
     }
 
     pub fn query(&self, filter: &RequestLogFilter) -> Result<RequestLogPage, RequestLogError> {
-        let mut clauses = vec!["occurred_at >= ?".to_owned(), "occurred_at <= ?".to_owned()];
-        let mut values = vec![Value::Integer(filter.start), Value::Integer(filter.end)];
-        if !filter.agent_ids.is_empty() {
-            let placeholders = vec!["?"; filter.agent_ids.len()].join(", ");
-            clauses.push(format!("agent_id IN ({placeholders})"));
-            values.extend(filter.agent_ids.iter().cloned().map(Value::Text));
-        }
-        if let Some(model) = filter.model.as_ref().filter(|model| !model.is_empty()) {
-            clauses.push("model = ?".to_owned());
-            values.push(Value::Text(model.clone()));
-        }
-        if let Some(status) = filter.status {
-            clauses.push("status_code = ?".to_owned());
-            values.push(Value::Integer(i64::from(status)));
-        }
-        let where_clause = clauses.join(" AND ");
-        let total: i64 = self.connection.query_row(
-            &format!("SELECT COUNT(*) FROM request_log WHERE {where_clause}"),
-            params_from_iter(values.clone()),
-            |row| row.get(0),
-        )?;
-        let (tokens, cost_usd): (i64, f64) = self.connection.query_row(
+        let (where_clause, values) = filter_clause(filter, true);
+        let (total, tokens, cost_usd): (i64, i64, f64) = self.connection.query_row(
             &format!(
-                "SELECT COALESCE(SUM(input + output + cache_read + cache_creation), 0),
+                "SELECT COUNT(*),
+                        COALESCE(SUM(input + output + cache_read + cache_creation), 0),
                         COALESCE(SUM(cost_usd), 0)
                  FROM request_log WHERE {where_clause}"
             ),
-            params_from_iter(values.clone()),
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            params_from_iter(values.iter()),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
 
         let page_size = filter.page_size.clamp(1, 200) as i64;
         let page = filter.page.min(1000) as i64;
-        let mut page_values = values.clone();
+        let mut page_values = values;
         page_values.push(Value::Integer(page_size));
         page_values.push(Value::Integer(page * page_size));
-        let sql = format!(
+        let mut statement = self.connection.prepare(&format!(
             "SELECT agent_id, request_key, occurred_at, model, raw_model, project,
                     input, output, cache_read, cache_creation, cache_creation_1h,
                     cost_usd, pricing_model, status_code, fidelity, latency_ms, first_token_ms
              FROM request_log WHERE {where_clause}
              ORDER BY occurred_at DESC, request_key ASC
              LIMIT ? OFFSET ?"
-        );
-        let mut statement = self.connection.prepare(&sql)?;
-        let rows = statement.query_map(params_from_iter(page_values), row_to_entry)?;
-        let mut entries = Vec::new();
-        for row in rows {
-            entries.push(row?);
-        }
+        ))?;
+        let entries = statement
+            .query_map(params_from_iter(page_values), row_to_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // The model menu is a facet: list every model matching the other
+        // filters, so choosing one model does not hide the alternatives (C249).
+        let (facet_clause, facet_values) = filter_clause(filter, false);
         let mut models_statement = self.connection.prepare(&format!(
             "SELECT DISTINCT model FROM request_log
-             WHERE {where_clause} AND model IS NOT NULL
+             WHERE {facet_clause} AND model IS NOT NULL
              ORDER BY model ASC LIMIT 256"
         ))?;
-        let model_rows = models_statement.query_map(params_from_iter(values), |row| row.get(0))?;
-        let mut models = Vec::new();
-        for model in model_rows {
-            models.push(model?);
-        }
+        let models = models_statement
+            .query_map(params_from_iter(facet_values), |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+
         let total = u64::try_from(total).unwrap_or(0);
         let tokens = u64::try_from(tokens).unwrap_or(0);
         Ok(RequestLogPage {
@@ -357,6 +324,89 @@ impl RequestLogStore {
     pub fn schema_version(&self) -> Result<i64, RequestLogError> {
         schema_version(&self.connection)
     }
+}
+
+/// Upsert used by [`RequestLogStore::merge`]. `COVERS` holds when the replayed
+/// row has at least the stored tokens in every column, i.e. it describes the
+/// same (or a more complete) response, so its cost reflects the merged row.
+fn merge_sql() -> String {
+    const COVERS: &str = "excluded.input >= request_log.input
+        AND excluded.output >= request_log.output
+        AND excluded.cache_read >= request_log.cache_read
+        AND excluded.cache_creation >= request_log.cache_creation
+        AND excluded.cache_creation_1h >= request_log.cache_creation_1h";
+    format!(
+        "INSERT INTO request_log (
+            agent_id, request_key, occurred_at, model, raw_model, project,
+            input, output, cache_read, cache_creation, cache_creation_1h,
+            cost_usd, pricing_model, status_code, fidelity, latency_ms, first_token_ms
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+        ON CONFLICT(agent_id, request_key) DO UPDATE SET
+            input = MAX(request_log.input, excluded.input),
+            output = MAX(request_log.output, excluded.output),
+            cache_read = MAX(request_log.cache_read, excluded.cache_read),
+            cache_creation = MAX(request_log.cache_creation, excluded.cache_creation),
+            cache_creation_1h = MAX(request_log.cache_creation_1h, excluded.cache_creation_1h),
+            cost_usd = CASE
+                WHEN {COVERS} THEN excluded.cost_usd
+                WHEN request_log.cost_usd IS NULL THEN excluded.cost_usd
+                ELSE request_log.cost_usd
+            END,
+            pricing_model = CASE
+                WHEN {COVERS} THEN excluded.pricing_model
+                WHEN request_log.cost_usd IS NULL THEN excluded.pricing_model
+                ELSE request_log.pricing_model
+            END,
+            model = COALESCE(excluded.model, request_log.model),
+            raw_model = COALESCE(excluded.raw_model, request_log.raw_model),
+            project = COALESCE(excluded.project, request_log.project),
+            status_code = CASE
+                WHEN excluded.status_code = 200 THEN 200
+                ELSE request_log.status_code
+            END,
+            fidelity = excluded.fidelity,
+            latency_ms = COALESCE(request_log.latency_ms, excluded.latency_ms),
+            first_token_ms = COALESCE(request_log.first_token_ms, excluded.first_token_ms)
+        WHERE excluded.input > request_log.input
+            OR excluded.output > request_log.output
+            OR excluded.cache_read > request_log.cache_read
+            OR excluded.cache_creation > request_log.cache_creation
+            OR excluded.cache_creation_1h > request_log.cache_creation_1h
+            OR (({COVERS})
+                AND (excluded.cost_usd IS NOT request_log.cost_usd
+                    OR excluded.pricing_model IS NOT request_log.pricing_model))
+            OR (request_log.cost_usd IS NULL AND excluded.cost_usd IS NOT NULL)
+            OR (excluded.model IS NOT NULL AND excluded.model IS NOT request_log.model)
+            OR (excluded.raw_model IS NOT NULL AND excluded.raw_model IS NOT request_log.raw_model)
+            OR (excluded.project IS NOT NULL AND excluded.project IS NOT request_log.project)
+            OR (excluded.status_code = 200 AND request_log.status_code <> 200)
+            OR excluded.fidelity IS NOT request_log.fidelity
+            OR (request_log.latency_ms IS NULL AND excluded.latency_ms IS NOT NULL)
+            OR (request_log.first_token_ms IS NULL AND excluded.first_token_ms IS NOT NULL)"
+    )
+}
+
+/// Parameterized `WHERE` body for a filter; `include_model` is false for the
+/// model facet so the menu keeps listing alternatives to the selected model.
+fn filter_clause(filter: &RequestLogFilter, include_model: bool) -> (String, Vec<Value>) {
+    let mut clauses = vec!["occurred_at >= ?".to_owned(), "occurred_at <= ?".to_owned()];
+    let mut values = vec![Value::Integer(filter.start), Value::Integer(filter.end)];
+    if !filter.agent_ids.is_empty() {
+        let placeholders = vec!["?"; filter.agent_ids.len()].join(", ");
+        clauses.push(format!("agent_id IN ({placeholders})"));
+        values.extend(filter.agent_ids.iter().cloned().map(Value::Text));
+    }
+    if include_model {
+        if let Some(model) = filter.model.as_ref().filter(|model| !model.is_empty()) {
+            clauses.push("model = ?".to_owned());
+            values.push(Value::Text(model.clone()));
+        }
+    }
+    if let Some(status) = filter.status {
+        clauses.push("status_code = ?".to_owned());
+        values.push(Value::Integer(i64::from(status)));
+    }
+    (clauses.join(" AND "), values)
 }
 
 fn schema_version(connection: &Connection) -> Result<i64, RequestLogError> {
@@ -426,8 +476,12 @@ mod tests {
     fn merge_is_idempotent_and_query_filters_by_agent() {
         let mut store = RequestLogStore::open_in_memory().unwrap();
         let entries = vec![entry("a", 1000, 10, Some(0.01)), entry("b", 2000, 20, None)];
-        assert_eq!(store.merge(&entries, 0).unwrap(), 2);
-        assert_eq!(store.merge(&entries, 0).unwrap(), 2);
+        assert_eq!(store.merge(&entries, 0).unwrap().written, 2);
+        assert_eq!(
+            store.merge(&entries, 0).unwrap().written,
+            0,
+            "replaying unchanged rows must not rewrite them"
+        );
         let page = store
             .query(&RequestLogFilter {
                 start: 0,
@@ -504,6 +558,188 @@ mod tests {
             .unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.entries[0].agent_id, "codex");
+    }
+
+    /// C249: only real changes pass the upsert guard; every merge rule still applies.
+    #[test]
+    fn merge_rewrites_only_rows_that_change() {
+        let mut store = RequestLogStore::open_in_memory().unwrap();
+        let base = entry("a", 1000, 10, None);
+        assert_eq!(
+            store.merge(std::slice::from_ref(&base), 0).unwrap().written,
+            1
+        );
+
+        let mut smaller = base.clone();
+        smaller.input = 4;
+        assert_eq!(
+            store.merge(&[smaller], 0).unwrap().written,
+            0,
+            "shrinking is a no-op"
+        );
+
+        let mut priced = base.clone();
+        priced.cost_usd = Some(0.2);
+        priced.pricing_model = Some("claude-opus-5-5".to_owned());
+        assert_eq!(
+            store
+                .merge(std::slice::from_ref(&priced), 0)
+                .unwrap()
+                .written,
+            1,
+            "null cost is filled"
+        );
+        assert_eq!(
+            store
+                .merge(std::slice::from_ref(&priced), 0)
+                .unwrap()
+                .written,
+            0
+        );
+
+        let mut timed = priced.clone();
+        timed.latency_ms = Some(2_500);
+        assert_eq!(
+            store
+                .merge(std::slice::from_ref(&timed), 0)
+                .unwrap()
+                .written,
+            1,
+            "first timing is kept"
+        );
+        let mut retimed = timed.clone();
+        retimed.latency_ms = Some(9_000);
+        assert_eq!(
+            store.merge(&[retimed], 0).unwrap().written,
+            0,
+            "timing is never replaced"
+        );
+
+        let mut grown = timed.clone();
+        grown.output = 50;
+        assert_eq!(
+            store.merge(&[grown], 0).unwrap().written,
+            1,
+            "growth is written"
+        );
+
+        let mut relabeled = timed;
+        relabeled.output = 50;
+        relabeled.raw_model = Some("Claude Opus 5.5".to_owned());
+        assert_eq!(
+            store.merge(&[relabeled], 0).unwrap().written,
+            1,
+            "label change is written"
+        );
+
+        let row = store
+            .query(&RequestLogFilter {
+                start: 0,
+                end: 10_000,
+                page_size: 50,
+                ..RequestLogFilter::default()
+            })
+            .unwrap()
+            .entries
+            .remove(0);
+        assert_eq!(row.input, 10);
+        assert_eq!(row.output, 50);
+        assert_eq!(row.cost_usd, Some(0.2));
+        assert_eq!(row.latency_ms, Some(2_500));
+        assert_eq!(row.raw_model.as_deref(), Some("Claude Opus 5.5"));
+    }
+
+    /// C249: a replay that covers the stored tokens reprices the row with the
+    /// current price table (up, down or unpriced), matching the aggregate; a
+    /// partial replay never overrides an existing cost.
+    #[test]
+    fn covering_replays_follow_the_current_price_table() {
+        let mut store = RequestLogStore::open_in_memory().unwrap();
+        let priced = |cost: Option<f64>, key: Option<&str>| {
+            let mut row = entry("a", 1000, 10, cost);
+            row.pricing_model = key.map(str::to_owned);
+            row
+        };
+        let read = |store: &RequestLogStore| {
+            let row = store
+                .query(&RequestLogFilter {
+                    start: 0,
+                    end: 10_000,
+                    page_size: 50,
+                    ..RequestLogFilter::default()
+                })
+                .unwrap()
+                .entries
+                .remove(0);
+            (row.cost_usd, row.pricing_model)
+        };
+        store.merge(&[priced(Some(0.1), Some("k1"))], 0).unwrap();
+        for (cost, key) in [(Some(0.2), Some("k2")), (Some(0.05), Some("k2"))] {
+            assert_eq!(store.merge(&[priced(cost, key)], 0).unwrap().written, 1);
+            assert_eq!(read(&store), (cost, key.map(str::to_owned)));
+        }
+        let mut partial = priced(Some(0.01), Some("k3"));
+        partial.input = 4;
+        assert_eq!(store.merge(&[partial], 0).unwrap().written, 0);
+        assert_eq!(read(&store), (Some(0.05), Some("k2".to_owned())));
+
+        assert_eq!(store.merge(&[priced(None, None)], 0).unwrap().written, 1);
+        assert_eq!(
+            read(&store),
+            (None, None),
+            "now unpriced, like the aggregate"
+        );
+    }
+
+    #[test]
+    fn merge_reports_pruned_rows_even_without_new_entries() {
+        let mut store = RequestLogStore::open_in_memory().unwrap();
+        store
+            .merge(
+                &[entry("old", 1000, 1, None), entry("new", 5000, 1, None)],
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            store.merge(&[], 3000).unwrap(),
+            MergeOutcome {
+                written: 0,
+                pruned: 1
+            }
+        );
+    }
+
+    /// C249: choosing a model narrows rows and totals but keeps the model menu whole.
+    #[test]
+    fn model_facet_ignores_the_selected_model() {
+        let mut store = RequestLogStore::open_in_memory().unwrap();
+        let mut other = entry("b", 2000, 5, Some(0.1));
+        other.model = Some("claude-sonnet-5-5".to_owned());
+        let mut codex = entry("c", 3000, 7, None);
+        codex.agent_id = "codex".to_owned();
+        codex.model = Some("gpt-6.2".to_owned());
+        store
+            .merge(&[entry("a", 1000, 10, Some(0.3)), other, codex], 0)
+            .unwrap();
+        let page = store
+            .query(&RequestLogFilter {
+                start: 0,
+                end: 10_000,
+                agent_ids: vec!["claude-code".to_owned()],
+                model: Some("claude-sonnet-5-5".to_owned()),
+                page_size: 50,
+                ..RequestLogFilter::default()
+            })
+            .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.tokens, 5);
+        assert_eq!(page.cost_usd, 0.1);
+        assert_eq!(page.entries[0].request_key, "b");
+        assert_eq!(
+            page.models,
+            vec!["claude-opus-5-5".to_owned(), "claude-sonnet-5-5".to_owned()],
+            "facet keeps the agent filter but drops the model filter"
+        );
     }
 
     #[test]

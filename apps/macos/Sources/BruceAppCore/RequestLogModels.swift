@@ -116,6 +116,8 @@ package struct RequestLogEntryModel: Codable, Identifiable, Equatable, Sendable 
     package let cacheCreation: UInt64
     package let cacheCreation1h: UInt64?
     package let costUsd: Double?
+    /// Price-catalog key that priced this row; nil when unpriced (C249).
+    package let pricingModel: String?
     package let statusCode: Int
     package let project: String?
     package let fidelity: String
@@ -149,6 +151,12 @@ package struct RequestLogEntryModel: Codable, Identifiable, Equatable, Sendable 
         return "未标注模型"
     }
 
+    /// 详情 Sheet「计价模型」: 实际命中的价卡键; 未命中价卡 (如 Orchestrator) 显示「未计价」。
+    package var pricingModelText: String {
+        if let pricingModel, !pricingModel.isEmpty { return pricingModel }
+        return "未计价"
+    }
+
     package var totalTokens: UInt64 {
         input + output + cacheRead + cacheCreation
     }
@@ -163,12 +171,10 @@ package struct RequestLogPageModel: Codable, Equatable, Sendable {
     package let entries: [RequestLogEntryModel]
     package let notice: String?
 
+    /// collector 自 C249 起空库响应也返回零值 summary; 缺字段的旧响应按零值处理,
+    /// 不再用当前页条目拼凑 (那只是一页而非筛选全集)。
     package var effectiveSummary: RequestLogSummaryModel {
-        summary ?? RequestLogSummaryModel(
-            tokens: entries.reduce(0) { $0 + $1.totalTokens },
-            costUsd: entries.compactMap(\.costUsd).reduce(0, +),
-            avgTokens: 0
-        )
+        summary ?? .empty
     }
 
     package static let empty = RequestLogPageModel(

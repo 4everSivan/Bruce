@@ -1576,8 +1576,9 @@ fn zcode_request_rows_normalize_tokens_and_survive_cache_hits() {
 
     let scan =
         scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
-    assert_eq!(scan.requests.len(), 1, "只保留 30 天内的请求行");
-    let request = &scan.requests[0];
+    assert_eq!(scan.requests.rows.len(), 1, "只保留 30 天内的请求行");
+    assert_eq!(scan.requests.truncated, 0, "过期行不计入截断");
+    let request = &scan.requests.rows[0];
     assert_eq!(request.model.as_deref(), Some("glm-5.3"));
     assert_eq!(
         request.input, 760,
@@ -1590,9 +1591,54 @@ fn zcode_request_rows_normalize_tokens_and_survive_cache_hits() {
     assert_eq!(request.fidelity, "exact");
     assert_eq!(request.timestamp_millis, base - 60_000);
 
+    assert_eq!(
+        request.key, "46dce88ca531087b08d8a8da0ee39546",
+        "C249: 请求键字节布局已落库, 不得变化"
+    );
+    // C249: 聚合与请求行共用同一归一化 (design/14 §3.5.5 / G6)。
+    let aggregate = scan
+        .contribution
+        .by_day
+        .values()
+        .fold((0, 0, 0, 0), |sum, bucket| {
+            (
+                sum.0 + bucket.input,
+                sum.1 + bucket.output,
+                sum.2 + bucket.cache_read,
+                sum.3 + bucket.cache_creation,
+            )
+        });
+    assert_eq!(
+        aggregate,
+        (
+            request.input,
+            request.output,
+            request.cache_read,
+            request.cache_creation
+        ),
+        "ZCode 请求行 Token 必须与聚合一致"
+    );
+
     let again =
         scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
-    assert_eq!(again.requests.len(), 1, "缓存命中仍应重放请求行");
-    assert_eq!(again.requests[0].key, request.key, "rowid 键必须稳定");
+    assert_eq!(again.requests.rows.len(), 1, "缓存命中仍应重放请求行");
+    assert_eq!(again.requests.rows[0].key, request.key, "rowid 键必须稳定");
     fs::remove_dir_all(root).ok();
+}
+
+/// C249: 三个来源的请求键收敛到同一 helper 后字节布局不变 (金值取自收敛前实现)。
+#[test]
+fn request_keys_keep_their_persisted_byte_layout() {
+    assert_eq!(
+        super::request_key("codex-request", "r:resp_123"),
+        "a405dd78356e7e35ea7b04985c88ce2e"
+    );
+    assert_eq!(
+        super::request_key("zcode-request", "42"),
+        "d951a2f07a21bd915983b8af7a5d042b"
+    );
+    assert_eq!(
+        super::request_key("antigravity-request", "session-a:7"),
+        "4af38513891a7aa2fa8b540e130ae65b"
+    );
 }

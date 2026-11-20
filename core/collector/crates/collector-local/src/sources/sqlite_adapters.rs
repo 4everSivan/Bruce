@@ -9,8 +9,8 @@ use crate::sqlite_cache::{
 };
 use crate::ScanStats;
 use collector_domain::{
-    CollectionWindow, RequestRecord, UsageContribution, UsageContributionBuilder,
-    REQUEST_LOG_RETENTION_DAYS,
+    request_log_cutoff_millis, CollectionWindow, RequestRecord, RequestRowCollector, RequestRows,
+    UsageContribution, UsageContributionBuilder,
 };
 use collector_runtime::CancellationToken;
 use rusqlite::Connection;
@@ -401,6 +401,57 @@ struct ZCodeRow {
     task_type: Option<String>,
 }
 
+/// Normalized token quadrants of one ZCode row.
+struct ZCodeTokens {
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_creation: u64,
+}
+
+impl ZCodeRow {
+    /// Read the shared 10-column projection
+    /// (`rowid, started_at, model_id, input, output, reasoning, cache_creation,
+    /// cache_read, directory, task_type`).
+    fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            rowid: Some(row.get(0)?),
+            started_at: row.get(1)?,
+            model: row.get(2)?,
+            input: row.get(3)?,
+            output: row.get(4)?,
+            reasoning: row.get(5)?,
+            cache_creation: row.get(6)?,
+            cache_read: row.get(7)?,
+            directory: row.get(8)?,
+            task_type: row.get(9)?,
+        })
+    }
+
+    /// ZCode's `input_tokens` includes cache reads and writes, and reasoning is
+    /// billed as output. The aggregate and the request log share this mapping so
+    /// the two can never drift (design/14 §3.5.5, C249). `None` = all counters zero.
+    fn tokens(&self) -> Option<ZCodeTokens> {
+        let count = |value: Option<i64>| u64::try_from(value.unwrap_or(0)).unwrap_or(0);
+        let input = count(self.input);
+        let output = count(self.output);
+        let reasoning = count(self.reasoning);
+        let cache_creation = count(self.cache_creation);
+        let cache_read = count(self.cache_read);
+        if input == 0 && output == 0 && reasoning == 0 && cache_creation == 0 && cache_read == 0 {
+            return None;
+        }
+        Some(ZCodeTokens {
+            input: input
+                .saturating_sub(cache_read)
+                .saturating_sub(cache_creation),
+            output: output.saturating_add(reasoning),
+            cache_read,
+            cache_creation,
+        })
+    }
+}
+
 struct ZCodeSqliteAdapter;
 
 impl ZCodeSqliteAdapter {
@@ -442,20 +493,7 @@ impl ZCodeSqliteAdapter {
                 )
                 .map_err(|_| sqlite_schema_error("zcode row cursor is unavailable"))?;
             let result = statement
-                .query_map(rusqlite::params![rowid, cutoff_ms], |row| {
-                    Ok(ZCodeRow {
-                        rowid: Some(row.get(0)?),
-                        started_at: row.get(1)?,
-                        model: row.get(2)?,
-                        input: row.get(3)?,
-                        output: row.get(4)?,
-                        reasoning: row.get(5)?,
-                        cache_creation: row.get(6)?,
-                        cache_read: row.get(7)?,
-                        directory: row.get(8)?,
-                        task_type: row.get(9)?,
-                    })
-                })
+                .query_map(rusqlite::params![rowid, cutoff_ms], ZCodeRow::read)
                 .map_err(|_| sqlite_query_error("zcode incremental query failed"))?;
             for row in result {
                 cancellation.check()?;
@@ -491,20 +529,7 @@ impl ZCodeSqliteAdapter {
         };
         if rowid_supported {
             let result = statement
-                .query_map(rusqlite::params![cutoff_ms], |row| {
-                    Ok(ZCodeRow {
-                        rowid: Some(row.get(0)?),
-                        started_at: row.get(1)?,
-                        model: row.get(2)?,
-                        input: row.get(3)?,
-                        output: row.get(4)?,
-                        reasoning: row.get(5)?,
-                        cache_creation: row.get(6)?,
-                        cache_read: row.get(7)?,
-                        directory: row.get(8)?,
-                        task_type: row.get(9)?,
-                    })
-                })
+                .query_map(rusqlite::params![cutoff_ms], ZCodeRow::read)
                 .map_err(|_| sqlite_query_error("zcode model_usage query failed"))?;
             for row in result {
                 cancellation.check()?;
@@ -563,29 +588,21 @@ impl ZCodeSqliteAdapter {
                 .unwrap_or(row.started_at)
                 .max(row.started_at),
         );
-        let input = u64::try_from(row.input.unwrap_or(0)).unwrap_or(0);
-        let output = u64::try_from(row.output.unwrap_or(0)).unwrap_or(0);
-        let reasoning = u64::try_from(row.reasoning.unwrap_or(0)).unwrap_or(0);
-        let cache_creation = u64::try_from(row.cache_creation.unwrap_or(0)).unwrap_or(0);
-        let cache_read = u64::try_from(row.cache_read.unwrap_or(0)).unwrap_or(0);
-        let usable =
-            input > 0 || output > 0 || reasoning > 0 || cache_creation > 0 || cache_read > 0;
+        let tokens = row.tokens();
         // C193: 每行 model_usage 都应带用量 (列改名已由 schema 指纹拦截, 这里看取值全零)。
-        probe.observe(usable);
-        if !usable {
+        probe.observe(tokens.is_some());
+        let Some(tokens) = tokens else {
             return;
-        }
+        };
         let project = project_from_zcode(row.directory.clone(), row.task_type.clone());
         record(
             builder,
             row.started_at,
             row.model.as_deref().or(Some("unknown")),
-            input
-                .saturating_sub(cache_read)
-                .saturating_sub(cache_creation),
-            output.saturating_add(reasoning),
-            cache_read,
-            cache_creation,
+            tokens.input,
+            tokens.output,
+            tokens.cache_read,
+            tokens.cache_creation,
             project.as_deref(),
         );
     }
@@ -729,88 +746,54 @@ fn scan_zcode_requests(
     path: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
-) -> Result<Vec<RequestRecord>, SourceScanError> {
+) -> Result<RequestRows, SourceScanError> {
     if !path.is_file() {
-        return Ok(Vec::new());
+        return Ok(RequestRows::default());
     }
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|_| sqlite_query_error("zcode request log open failed"))?;
-    let cutoff = window
-        .now
-        .timestamp_millis()
-        .saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    let cutoff = request_log_cutoff_millis(window.now.timestamp_millis());
     let mut statement = connection
         .prepare(
             "SELECT m.rowid, m.started_at, m.model_id, m.input_tokens, m.output_tokens, \
          m.reasoning_tokens, m.cache_creation_input_tokens, m.cache_read_input_tokens, \
          s.directory, s.task_type \
          FROM model_usage m LEFT JOIN session s ON s.id = m.session_id \
-         WHERE m.started_at >= ?1 ORDER BY m.rowid DESC LIMIT 100000",
+         WHERE m.started_at >= ?1",
         )
         .map_err(|_| sqlite_schema_error("zcode request log schema is incompatible"))?;
     let rows = statement
-        .query_map([cutoff], |row| {
-            Ok(ZCodeRow {
-                rowid: Some(row.get(0)?),
-                started_at: row.get(1)?,
-                model: row.get(2)?,
-                input: row.get(3)?,
-                output: row.get(4)?,
-                reasoning: row.get(5)?,
-                cache_creation: row.get(6)?,
-                cache_read: row.get(7)?,
-                directory: row.get(8)?,
-                task_type: row.get(9)?,
-            })
-        })
+        .query_map([cutoff], ZCodeRow::read)
         .map_err(|_| sqlite_query_error("zcode request log query failed"))?;
-    let mut requests = Vec::new();
+    // Same bounded, newest-first collector (and truncation count) as every
+    // other source.
+    let mut requests = RequestRowCollector::new(window.now.timestamp_millis());
     for row in rows {
         cancellation.check()?;
         let row = row.map_err(|_| sqlite_query_error("zcode request log row read failed"))?;
-        let input = u64::try_from(row.input.unwrap_or(0)).unwrap_or(0);
-        let output = u64::try_from(row.output.unwrap_or(0)).unwrap_or(0);
-        let reasoning = u64::try_from(row.reasoning.unwrap_or(0)).unwrap_or(0);
-        let cache_creation = u64::try_from(row.cache_creation.unwrap_or(0)).unwrap_or(0);
-        let cache_read = u64::try_from(row.cache_read.unwrap_or(0)).unwrap_or(0);
-        if input == 0 && output == 0 && reasoning == 0 && cache_creation == 0 && cache_read == 0 {
-            continue;
-        }
-        let Some(rowid) = row.rowid else {
+        let (Some(tokens), Some(rowid)) = (row.tokens(), row.rowid) else {
             continue;
         };
         requests.push(RequestRecord {
-            key: zcode_request_key(rowid),
+            key: super::request_key("zcode-request", &rowid.to_string()),
             timestamp_millis: row.started_at,
             model: row.model.clone(),
             raw_model: row.model.clone(),
             project: project_from_zcode(row.directory.clone(), row.task_type.clone()),
-            input: input
-                .saturating_sub(cache_read)
-                .saturating_sub(cache_creation),
-            output: output.saturating_add(reasoning),
-            cache_read,
-            cache_creation,
+            input: tokens.input,
+            output: tokens.output,
+            cache_read: tokens.cache_read,
+            cache_creation: tokens.cache_creation,
             cache_creation_1h: 0,
             fidelity: "exact".to_owned(),
             latency_ms: None,
             first_token_ms: None,
         });
     }
-    Ok(requests)
-}
-
-fn zcode_request_key(rowid: i64) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(b"zcode-request:");
-    hasher.update(rowid.to_string().as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    format!("{:032x}", u128::from_be_bytes(bytes))
+    Ok(requests.finish())
 }
 
 #[cfg(test)]

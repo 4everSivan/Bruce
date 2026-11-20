@@ -406,7 +406,7 @@ pub(crate) trait JsonlAggregator {
     ) -> Result<
         (
             UsageContribution,
-            Vec<collector_domain::RequestRecord>,
+            collector_domain::RequestRows,
             bool,
             Option<String>,
         ),

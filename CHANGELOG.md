@@ -11,6 +11,18 @@
 - **模型价卡补入 Gemini 3.5–4 与 GPT-6.2（C248）**：按 cc-switch 2026-11 价表补入 Gemini 4 Argon / Carbon / Hydrogen / Neon、Gemini 3.8 / 3.7 / 3.6 / 3.5 Flash（含 3.5 Flash Lite）与 GPT-6.2 Sol / Astra、GPT-6 Astra；同步生成 macOS 内置价卡，采集端计费与设置页价卡同源。
 - **请求粒度用量台账（T35–T38）**：新增独立 `request-log-v1.sqlite` 与 `collector-request-log` crate（schema v1、30 天保留、幂等 upsert、费用落库、筛选分页与 distinct models），不混入不可再生的 usage-history 台账；Claude Code / Codex / Antigravity 在现有观测流旁路产出 `RequestRecord`，复用原 dedupe key/step 键，无第二次会话解析；Bridge 新增 `module=request-log` 只读查询（31 天范围、分页/Agent/模型/状态校验），请求库故障仅输出信息级 `LOCAL_REQUEST_LOG_UNAVAILABLE`；mac 设置侧栏新增「请求日志」一级分类，落地摘要条 + 8 列表格 + 居中详情 Sheet（Agent 18px 品牌徽章、菜单 16px、Sheet 18px，含复制 request id、空/加载/错误态）。
 
+### Fixed
+- **请求日志模块评审收紧（[C249](docs/devel/change/C249.json)）**：
+  - **查询调度**：Mac 请求日志页原以 `guard !isLoading` 丢弃并发查询，后台 30s / artifact 刷新进行中切换 Agent、模型、页码或页大小时新查询被静默丢弃，界面显示新筛选而表格仍是旧数据；改为按代次后发先至——用户查询总会发出并使旧结果作废，后台刷新在忙时跳过；总量收缩使当前页越界时回到最后一页再查。视图模型下沉到 `BruceAppCore`，`RequestLogHarness` 覆盖后发先至、忙时跳过与越界回退。
+  - **模型菜单**：collector 的 `models` 改为不含模型条件的分面候选，选中模型后菜单不再只剩一项；计数与汇总合并为一次聚合查询；空库响应同样返回零值 `summary` 与空 `models`。
+  - **写放大**：请求库 upsert 增加与合并规则逐项对应的 `WHERE` 守卫，重放未变行不再重写；本机 6.4 万行实测每轮刷新由 267–287 ms、约 3.9 MB WAL 降为 120–166 ms、0 行写入。
+  - **来源范围**：新增 `REQUEST_LOG_AGENT_IDS`（Claude Code / Codex / Antigravity / ZCode）作为落库与查询 `agentIds` 的唯一门槛，CodeBuddy / DSH 不再写入 UI 不可见的请求行；Mac 支持集与之由 `tests/fixtures/bridge/request-log-agents.json` 双端锁定。
+  - **ZCode 与请求键**：ZCode 聚合与请求行共用同一 Token 归一化与行映射（不再另写一套），请求行上限改为每源 5 万条；Codex / ZCode / Antigravity 请求键收敛为同一 helper，金值测试锁定已落库键不变。
+  - **截断与可观测**：所有来源（含 ZCode）共用 `RequestRowCollector`，缓冲满时按时间压缩到最新 5 万条（不再按到达顺序丢弃较新行）并精确计数；首批来源有截断时给出 `LOCAL_SOURCE_NOTICE`「未记录较早的 N 条」；写入 / 清理 / 截断数量与合并耗时进入 collector 指标（`BRUCE_COLLECTOR_METRICS_PATH`）。
+  - **空闲清理**：本轮没有首批来源请求行时，已存在的请求库照常清理 30 天前明细（不存在则不创建）。
+  - **计价**：`pricing_model` 改记实际命中的价卡键（新增 `PricingTable::resolve_with_key`，与 `resolve` 同一匹配）并经 `pricingModel` 回传，详情 Sheet「计价模型」显示命中键、未命中显示「未计价」；重放行覆盖库内 Token 时费用随当前价卡重算（涨价、降价、改为未计价都跟随），与聚合 artifact 同口径，取代原「价格变更不回改历史行」。
+  - **设计回写**：design/14 修正首批来源、合并与计价细则、查询路径、`models` 语义与可观测口径，§4.3 改为已实现并列出残余说明。
+
 ## [0.18.0] - 2026-11-18
 
 ### Added

@@ -15,7 +15,8 @@ use crate::jsonl_cache::{
 };
 use crate::ScanStats;
 use collector_domain::{
-    CollectionWindow, RequestRecord, UsageContribution, UsageContributionBuilder, UsageSample,
+    CollectionWindow, RequestRecord, RequestRows, UsageContribution, UsageContributionBuilder,
+    UsageSample,
 };
 use collector_runtime::CancellationToken;
 use serde_json::Value;
@@ -68,36 +69,24 @@ impl ObservationAggregator {
 impl JsonlAggregator for ObservationAggregator {
     fn absorb(&mut self, payload: &CachedFilePayload) {
         self.absorbed = true;
-        let project = payload.project.as_deref();
         for observation in &payload.observations {
-            let _ = self.builder.record(observation.sample(project));
-            if let Some(key) = observation.dedupe_key {
-                self.builder.record_request(RequestRecord {
-                    key: format!("{key:032x}"),
-                    timestamp_millis: observation.timestamp_millis,
-                    model: observation.model.clone(),
-                    raw_model: observation.model.clone(),
-                    project: project.map(str::to_owned),
-                    input: observation.input,
-                    output: observation.output,
-                    cache_read: observation.cache_read,
-                    cache_creation: observation.cache_creation,
-                    cache_creation_1h: observation.cache_creation_1h,
-                    fidelity: "exact".to_owned(),
-                    latency_ms: None,
-                    first_token_ms: None,
-                });
-            }
+            let _ = self
+                .builder
+                .record(observation.sample(payload.project.as_deref()));
         }
     }
 
+    /// Kimi / Grok / Pi observations carry no stable request key, so this
+    /// aggregator emits no request rows (design/14 §4.2.2).
     fn finish(
-        mut self,
-    ) -> Result<(UsageContribution, Vec<RequestRecord>, bool, Option<String>), SourceScanError>
-    {
-        let contribution = self.builder.contribution();
-        let requests = self.builder.take_requests();
-        Ok((contribution, requests, self.absorbed, None))
+        self,
+    ) -> Result<(UsageContribution, RequestRows, bool, Option<String>), SourceScanError> {
+        Ok((
+            self.builder.contribution(),
+            RequestRows::default(),
+            self.absorbed,
+            None,
+        ))
     }
 }
 
@@ -235,8 +224,7 @@ impl JsonlAggregator for DedupedAggregator {
 
     fn finish(
         self,
-    ) -> Result<(UsageContribution, Vec<RequestRecord>, bool, Option<String>), SourceScanError>
-    {
+    ) -> Result<(UsageContribution, RequestRows, bool, Option<String>), SourceScanError> {
         let mut builder = UsageContributionBuilder::new(self.window);
         for (key, usage) in self.best {
             let model = self.names.name(usage.model);
@@ -798,7 +786,7 @@ pub fn scan_grok_cached(
     Ok(SourceScan {
         found,
         contribution: builder.contribution(),
-        requests: Vec::new(),
+        requests: RequestRows::default(),
         stats,
         diagnostic,
         notice,

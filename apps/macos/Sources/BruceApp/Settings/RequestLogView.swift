@@ -225,7 +225,7 @@ struct RequestLogView: View {
         HStack(spacing: 6) {
             Image(systemName: "info.circle")
                 .font(.system(size: 10))
-            Text("基于本机会话日志，不包含未落盘的失败请求；明细保留 30 天。首版支持 Claude Code / Codex / Antigravity / ZCode。")
+            Text("基于本机会话日志，不包含未落盘的失败请求；明细保留 30 天。首版支持 \(RequestLogViewModel.supportedAgentNames)。")
                 .font(.system(size: 10.5))
         }
         .foregroundStyle(SettingsDemoTokens.text2)
@@ -442,193 +442,6 @@ struct RequestLogView: View {
     }
 }
 
-// MARK: - View Model
-
-@MainActor
-final class RequestLogViewModel: ObservableObject {
-    struct AgentOption: Identifiable, Hashable {
-        let id: String
-        let name: String
-    }
-
-    static let agents: [AgentOption] = [
-        .init(id: "claude-code", name: "Claude Code"),
-        .init(id: "codex", name: "Codex"),
-        .init(id: "antigravity", name: "Antigravity"),
-        .init(id: "kimi-code-cli", name: "Kimi Code CLI"),
-        .init(id: "kimi-work", name: "Kimi Work"),
-        .init(id: "grok", name: "Grok"),
-        .init(id: "pi", name: "Pi"),
-        .init(id: "zcode", name: "ZCode"),
-        .init(id: "opencode", name: "OpenCode"),
-        .init(id: "codebuddy", name: "CodeBuddy"),
-        .init(id: "dsh", name: "DSH"),
-    ]
-
-    static let supportedAgentIDs = RequestLogAgentFilter.supportedAgentIDs
-
-    static func agentName(_ id: String) -> String {
-        agents.first(where: { $0.id == id })?.name ?? id
-    }
-
-    @Published var range: RequestLogRange = .sevenDays
-    @Published private(set) var agentFilter = RequestLogAgentFilter()
-    var selectedAgentIDs: Set<String> { agentFilter.selectedIDs }
-    @Published private(set) var selectedModel: String?
-    @Published var pageSize: Int = 50
-    @Published private(set) var page: Int = 0
-    @Published private(set) var data: RequestLogPageModel = .empty
-    @Published private(set) var isLoading = false
-    @Published private(set) var errorMessage: String?
-    @Published var selectedEntry: RequestLogEntryModel?
-    /// New request IDs from a background refresh; the row tint fades out after 1.8s.
-    @Published private(set) var highlightedEntryIDs: Set<String> = []
-
-    private let client: RequestLogClient
-    private var loaded = false
-    private var highlightClearTask: Task<Void, Never>?
-
-    init(collectorURL: URL?) {
-        client = RequestLogClient(executableURL: collectorURL)
-    }
-
-    var modelOptions: [String] {
-        var values = data.models ?? []
-        if let selectedModel, !values.contains(selectedModel) {
-            values.insert(selectedModel, at: 0)
-        }
-        return values
-    }
-
-    var pageCount: Int {
-        max(1, Int((data.total + UInt64(pageSize) - 1) / UInt64(pageSize)))
-    }
-
-    var agentLabel: String {
-        let count = selectedAgentIDs.count
-        if count == RequestLogViewModel.supportedAgentIDs.count { return "全部 Agent" }
-        if count == 0 { return "未选 Agent" }
-        if count == 1, let id = selectedAgentIDs.first { return Self.agentName(id) }
-        return "\(count) 个 Agent"
-    }
-
-    func loadIfNeeded() async {
-        guard !loaded else { return }
-        loaded = true
-        await refresh(highlightNew: false)
-    }
-
-    func reloadForFilterChange() async {
-        page = 0
-        highlightedEntryIDs = []
-        await refresh(highlightNew: false)
-    }
-
-    /// `silent`: background refresh — keep the table and last data on failure.
-    /// `highlightNew`: briefly tint rows that were not in the previous page.
-    func refresh(silent: Bool = false, highlightNew: Bool = true) async {
-        guard !isLoading else { return }
-        if selectedAgentIDs.isEmpty {
-            data = .empty
-            errorMessage = nil
-            highlightedEntryIDs = []
-            return
-        }
-        let previousIDs = Set(data.entries.map(\.id))
-        let hadData = !previousIDs.isEmpty
-        isLoading = true
-        defer { isLoading = false }
-        let now = Date()
-        let query = RequestLogQuery(
-            start: Int64(range.startDate(now: now).timeIntervalSince1970 * 1000),
-            end: Int64(now.timeIntervalSince1970 * 1000),
-            agentIDs: selectedAgentIDs.sorted(),
-            model: selectedModel,
-            page: page,
-            pageSize: pageSize
-        )
-        do {
-            let next = try await client.query(query)
-            if next == data {
-                errorMessage = nil
-                return
-            }
-            let newIDs = Set(next.entries.map(\.id)).subtracting(previousIDs)
-            data = next
-            errorMessage = nil
-            if highlightNew, hadData, !newIDs.isEmpty {
-                highlightedEntryIDs.formUnion(newIDs)
-                scheduleHighlightClear()
-            }
-        } catch {
-            // 后台刷新失败保留上一次结果，不把整张表替换成错误态。
-            if !silent {
-                errorMessage = (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
-            }
-        }
-    }
-
-    /// 自动刷新入口：只刷新第 1 页；保留筛选与页码，不整表重载。
-    func refreshInPlace() async {
-        guard page == 0 else { return }
-        let previousPage = page
-        await refresh(silent: true, highlightNew: true)
-        if page >= pageCount {
-            page = max(0, pageCount - 1)
-            if page != previousPage {
-                await refresh(silent: true, highlightNew: false)
-            }
-        }
-    }
-
-    private func scheduleHighlightClear() {
-        highlightClearTask?.cancel()
-        highlightClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.8))
-            guard !Task.isCancelled, let self else { return }
-            withAnimation(.easeOut(duration: 0.8)) {
-                self.highlightedEntryIDs.removeAll()
-            }
-        }
-    }
-
-    /// 首次进入/artifact 更新时，默认勾选“今日有使用量”的受支持 Agent。
-    @discardableResult
-    func applyDefaultAgents(_ ids: Set<String>) -> Bool {
-        guard agentFilter.applyDefault(activeIDs: ids) else { return false }
-        page = 0
-        return true
-    }
-
-    func selectAllAgents() {
-        guard agentFilter.selectAll() else { return }
-        Task { await reloadForFilterChange() }
-    }
-
-    func setAgent(_ id: String, selected: Bool) {
-        guard agentFilter.set(id, selected: selected) else { return }
-        Task { await reloadForFilterChange() }
-    }
-
-    func setModel(_ model: String?) {
-        selectedModel = model
-        Task { await reloadForFilterChange() }
-    }
-
-    func previousPage() async {
-        guard page > 0 else { return }
-        page -= 1
-        await refresh()
-    }
-
-    func nextPage() async {
-        guard page + 1 < pageCount else { return }
-        page += 1
-        await refresh()
-    }
-}
-
 // MARK: - Detail Sheet
 
 private struct RequestLogDetailSheet: View {
@@ -654,7 +467,7 @@ private struct RequestLogDetailSheet: View {
                         detailGrid([
                             ("模型", entry.displayModel, true),
                             ("原始模型名", entry.rawModel ?? entry.model ?? "—", true),
-                            ("计价模型", entry.model ?? "—", true),
+                            ("计价模型", entry.pricingModelText, true),
                             ("保真度", entry.fidelity == "exact" ? "精确（来源给出 Token 计数）" : "估算", false),
                         ])
                     }

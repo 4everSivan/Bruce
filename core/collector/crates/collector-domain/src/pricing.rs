@@ -395,23 +395,38 @@ impl PricingTable {
 
     /// Resolves model pricing by checking overrides first, then built-in baselines.
     pub fn resolve(&self, raw_model_name: &str) -> Option<ModelPricing> {
+        self.resolve_with_key(raw_model_name)
+            .map(|(_, pricing)| pricing)
+    }
+
+    /// Like [`Self::resolve`], also returning the matched catalog key: the
+    /// built-in row when one matched (an override only adjusts its prices),
+    /// otherwise the override row (C249: request-log `pricing_model`).
+    pub fn resolve_with_key(&self, raw_model_name: &str) -> Option<(String, ModelPricing)> {
         let normalized = Self::normalize_model_name(raw_model_name);
 
         // 1. Direct or normalized match in overrides
         let matched_override = self
             .overrides
-            .get(raw_model_name)
-            .or_else(|| self.overrides.get(&normalized))
+            .get_key_value(raw_model_name)
+            .or_else(|| self.overrides.get_key_value(&normalized))
             .or_else(|| Self::best_prefix_match(&self.overrides, &normalized));
 
         // 2. Direct or normalized match in builtin
         let matched_builtin = self
             .builtin
-            .get(&normalized)
-            .or_else(|| self.builtin.get(raw_model_name))
+            .get_key_value(&normalized)
+            .or_else(|| self.builtin.get_key_value(raw_model_name))
             .or_else(|| Self::best_prefix_match(&self.builtin, &normalized));
 
-        match (matched_builtin, matched_override) {
+        let key = matched_builtin
+            .map(|(key, _)| key)
+            .or(matched_override.map(|(key, _)| key))
+            .cloned();
+        let pricing = match (
+            matched_builtin.map(|(_, value)| value),
+            matched_override.map(|(_, value)| value),
+        ) {
             (Some(builtin), Some(over)) => Some(ModelPricing {
                 input_price_per_million: over
                     .input_price_per_million
@@ -453,7 +468,8 @@ impl PricingTable {
                 }
             }
             (None, None) => None,
-        }
+        };
+        Some((key?, pricing?))
     }
 
     /// Normalizes model identifier by lowercasing, stripping vendor/prefix, and bracketed tags.
@@ -472,7 +488,10 @@ impl PricingTable {
     /// 变化 (如 `gpt-5.4-mini-2026` 可能落到 `gpt-5.4` 而非 `gpt-5.4-mini` 的单价)。
     /// 优先「目录键是模型名前缀」的候选并取最长 (最具体的基础型号); 其次「模型名是目录键
     /// 前缀」的候选取最短; 同长按键名字典序。
-    fn best_prefix_match<'a, V>(map: &'a HashMap<String, V>, normalized: &str) -> Option<&'a V> {
+    fn best_prefix_match<'a, V>(
+        map: &'a HashMap<String, V>,
+        normalized: &str,
+    ) -> Option<(&'a String, &'a V)> {
         map.iter()
             .filter(|(key, _)| Self::model_matches(normalized, key))
             .map(|(key, value)| {
@@ -486,11 +505,11 @@ impl PricingTable {
                 };
                 (
                     (base_of_model, length_rank, std::cmp::Reverse(key.clone())),
-                    value,
+                    (key, value),
                 )
             })
             .max_by(|left, right| left.0.cmp(&right.0))
-            .map(|(_, value)| value)
+            .map(|(_, entry)| entry)
     }
 
     fn model_matches(model: &str, target: &str) -> bool {
@@ -987,6 +1006,48 @@ mod tests {
             table.resolve("gpt-5.4").unwrap().cache_write_multiplier,
             None
         );
+    }
+
+    /// C249: resolve_with_key 返回实际命中的价卡键 (内置行优先, 仅覆盖时取覆盖键),
+    /// 价格与 resolve 完全一致。
+    #[test]
+    fn resolve_with_key_reports_the_matched_catalog_row() {
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "claude-opus-5-5".to_string(),
+            ModelPricingOverride {
+                input_price_per_million: Some(9.0),
+                ..Default::default()
+            },
+        );
+        overrides.insert(
+            "my-local-model".to_string(),
+            ModelPricingOverride {
+                input_price_per_million: Some(1.0),
+                output_price_per_million: Some(2.0),
+                ..Default::default()
+            },
+        );
+        let table = PricingTable::new(overrides);
+        for (model, key) in [
+            ("claude-opus-5-5-20261001", "claude-opus-5-5"),
+            ("anthropic/claude-opus-5-5", "claude-opus-5-5"),
+            ("my-local-model", "my-local-model"),
+        ] {
+            let (matched, pricing) = table.resolve_with_key(model).expect(model);
+            assert_eq!(matched, key, "{model}");
+            assert_eq!(Some(pricing), table.resolve(model), "{model}");
+        }
+        assert_eq!(
+            table
+                .resolve_with_key("claude-opus-5-5")
+                .unwrap()
+                .1
+                .input_price_per_million,
+            9.0,
+            "override still adjusts the built-in row"
+        );
+        assert!(table.resolve_with_key("Orchestrator (Neon)").is_none());
     }
 
     /// C107: 缓存写入按 TTL 拆分计价 —— Anthropic 5 分钟 1.25×、1 小时 2× 输入单价;

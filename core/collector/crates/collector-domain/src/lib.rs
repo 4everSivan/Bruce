@@ -398,6 +398,18 @@ pub const REQUEST_LOG_RETENTION_DAYS: i64 = 30;
 /// Per-source safety cap for request rows emitted from one scan.
 pub const REQUEST_LOG_MAX_PER_SOURCE: usize = 50_000;
 const REQUEST_LOG_HARD_CAP: usize = REQUEST_LOG_MAX_PER_SOURCE * 2;
+/// Agents whose request rows are persisted and queryable (design/14 §4.2.2, C249).
+///
+/// This is the single gate for request-log scope: adapters may emit rows as a
+/// side effect of shared aggregators, but only these agents reach the store,
+/// and the Bridge query rejects any other id. The mac host's supported set is
+/// locked to the same list by `tests/fixtures/bridge/request-log-agents.json`.
+pub const REQUEST_LOG_AGENT_IDS: &[&str] = &["claude-code", "codex", "antigravity", "zcode"];
+
+/// Oldest `occurred_at` kept in the request log for a scan anchored at `now_millis`.
+pub fn request_log_cutoff_millis(now_millis: i64) -> i64 {
+    now_millis.saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+}
 
 /// One request-granularity row emitted alongside the aggregate sample.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -417,6 +429,68 @@ pub struct RequestRecord {
     pub latency_ms: Option<i64>,
     /// Time to first token when the source records it; `None` otherwise.
     pub first_token_ms: Option<i64>,
+}
+
+/// Request rows from one source scan, newest first, plus how many rows the
+/// per-source cap dropped (design/14 §3.5.3).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RequestRows {
+    pub rows: Vec<RequestRecord>,
+    /// Rows inside the retention window dropped by [`REQUEST_LOG_MAX_PER_SOURCE`].
+    pub truncated: usize,
+}
+
+/// Bounded request-row collector shared by every adapter (C249).
+///
+/// Drops rows outside the retention window, keeps memory under a hard cap by
+/// compacting to the newest [`REQUEST_LOG_MAX_PER_SOURCE`] rows whenever the
+/// buffer fills (so arrival order never decides which rows survive), and counts
+/// every row it drops.
+#[derive(Debug, Clone)]
+pub struct RequestRowCollector {
+    cutoff_millis: i64,
+    rows: Vec<RequestRecord>,
+    truncated: usize,
+}
+
+impl RequestRowCollector {
+    pub fn new(now_millis: i64) -> Self {
+        Self {
+            cutoff_millis: request_log_cutoff_millis(now_millis),
+            rows: Vec::new(),
+            truncated: 0,
+        }
+    }
+
+    pub fn push(&mut self, request: RequestRecord) {
+        if request.timestamp_millis < self.cutoff_millis {
+            return;
+        }
+        if self.rows.len() >= REQUEST_LOG_HARD_CAP {
+            self.compact();
+        }
+        self.rows.push(request);
+    }
+
+    /// Rows newest first (ties by key), capped at [`REQUEST_LOG_MAX_PER_SOURCE`].
+    pub fn finish(mut self) -> RequestRows {
+        self.compact();
+        RequestRows {
+            rows: self.rows,
+            truncated: self.truncated,
+        }
+    }
+
+    fn compact(&mut self) {
+        self.rows.sort_by(|left, right| {
+            right
+                .timestamp_millis
+                .cmp(&left.timestamp_millis)
+                .then_with(|| left.key.cmp(&right.key))
+        });
+        self.truncated += self.rows.len().saturating_sub(REQUEST_LOG_MAX_PER_SOURCE);
+        self.rows.truncate(REQUEST_LOG_MAX_PER_SOURCE);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -471,16 +545,12 @@ pub struct UsageContributionBuilder {
     hours: [u64; 24],
     models_by_day: BTreeMap<String, BTreeMap<String, TokenBucket>>,
     hour_models_today: BTreeMap<u8, BTreeMap<String, TokenBucket>>,
-    requests: Vec<RequestRecord>,
-    request_cutoff_millis: i64,
+    requests: RequestRowCollector,
 }
 
 impl UsageContributionBuilder {
     pub fn new(window: CollectionWindow) -> Self {
-        let request_cutoff_millis = window
-            .now
-            .timestamp_millis()
-            .saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        let requests = RequestRowCollector::new(window.now.timestamp_millis());
         Self {
             window,
             by_day: HashMap::new(),
@@ -492,37 +562,20 @@ impl UsageContributionBuilder {
             hours: [0; 24],
             models_by_day: BTreeMap::new(),
             hour_models_today: BTreeMap::new(),
-            requests: Vec::new(),
-            request_cutoff_millis,
+            requests,
         }
     }
 
-    /// Collect one request row beside the aggregate sample.
-    ///
-    /// Rows older than [`REQUEST_LOG_RETENTION_DAYS`] are dropped here, so the
-    /// request store never needs a second retention filter before insert. The
-    /// hard cap prevents a pathological cold scan from growing without bound;
-    /// [`Self::take_requests`] sorts and truncates to the design cap.
+    /// Collect one request row beside the aggregate sample; see
+    /// [`RequestRowCollector`] for retention and cap handling.
     pub fn record_request(&mut self, request: RequestRecord) {
-        if request.timestamp_millis < self.request_cutoff_millis {
-            return;
-        }
-        if self.requests.len() < REQUEST_LOG_HARD_CAP {
-            self.requests.push(request);
-        }
+        self.requests.push(request);
     }
 
-    /// Take request rows, newest first, capped at [`REQUEST_LOG_MAX_PER_SOURCE`].
-    pub fn take_requests(&mut self) -> Vec<RequestRecord> {
-        let mut requests = std::mem::take(&mut self.requests);
-        requests.sort_by(|left, right| {
-            right
-                .timestamp_millis
-                .cmp(&left.timestamp_millis)
-                .then_with(|| left.key.cmp(&right.key))
-        });
-        requests.truncate(REQUEST_LOG_MAX_PER_SOURCE);
-        requests
+    /// Take the request rows collected so far (newest first, capped).
+    pub fn take_requests(&mut self) -> RequestRows {
+        let empty = RequestRowCollector::new(self.window.now.timestamp_millis());
+        std::mem::replace(&mut self.requests, empty).finish()
     }
 
     pub fn record(&mut self, sample: UsageSample<'_>) -> bool {
@@ -982,6 +1035,83 @@ mod tests {
                 "{timezone}: the instant before the gap still belongs to the previous day"
             );
         }
+    }
+
+    fn request_at(key: &str, timestamp_millis: i64) -> super::RequestRecord {
+        super::RequestRecord {
+            key: key.to_owned(),
+            timestamp_millis,
+            model: None,
+            raw_model: None,
+            project: None,
+            input: 1,
+            output: 0,
+            cache_read: 0,
+            cache_creation: 0,
+            cache_creation_1h: 0,
+            fidelity: "exact".to_owned(),
+            latency_ms: None,
+            first_token_ms: None,
+        }
+    }
+
+    /// C249: 每源上限保留最新行并精确计数截断; 硬上限压缩不按到达顺序丢弃较新行。
+    #[test]
+    fn request_row_collector_keeps_the_newest_rows_and_counts_truncation() {
+        use super::{RequestRowCollector, REQUEST_LOG_MAX_PER_SOURCE};
+        let now = 10_000_000_000_i64;
+        let max = REQUEST_LOG_MAX_PER_SOURCE as i64;
+        let mut collector = RequestRowCollector::new(now);
+        // Newest rows arrive first: a buffer that stopped accepting at the hard
+        // cap would keep them, but rows arriving later must not evict them.
+        for offset in 0..(3 * max) {
+            collector.push(request_at(&format!("k{offset}"), now - offset));
+        }
+        collector.push(request_at(
+            "expired",
+            super::request_log_cutoff_millis(now) - 1,
+        ));
+        let rows = collector.finish();
+        assert_eq!(rows.rows.len(), REQUEST_LOG_MAX_PER_SOURCE);
+        assert_eq!(
+            rows.truncated,
+            2 * REQUEST_LOG_MAX_PER_SOURCE,
+            "过期行不计入截断"
+        );
+        assert_eq!(rows.rows[0].timestamp_millis, now);
+        assert_eq!(rows.rows.last().unwrap().timestamp_millis, now - max + 1);
+
+        // Oldest-first arrival keeps the same newest rows.
+        let mut reversed = RequestRowCollector::new(now);
+        for offset in (0..(3 * max)).rev() {
+            reversed.push(request_at(&format!("k{offset}"), now - offset));
+        }
+        assert_eq!(reversed.finish(), rows);
+
+        let mut small = RequestRowCollector::new(now);
+        small.push(request_at("b", now - 5));
+        small.push(request_at("a", now - 5));
+        small.push(request_at("c", now));
+        let small = small.finish();
+        assert_eq!(small.truncated, 0);
+        let keys: Vec<&str> = small.rows.iter().map(|row| row.key.as_str()).collect();
+        assert_eq!(keys, ["c", "a", "b"], "newest first, ties by key");
+    }
+
+    /// C249: 请求日志来源范围与共享 fixture 一致 (mac 侧以同一 fixture 校验支持集)。
+    #[test]
+    fn request_log_agents_match_the_shared_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../../tests/fixtures/bridge/request-log-agents.json"
+        ))
+        .unwrap();
+        let expected: Vec<&str> = fixture["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_str().unwrap())
+            .collect();
+        assert_eq!(super::REQUEST_LOG_AGENT_IDS, expected.as_slice());
     }
 
     /// C200: 信息级诊断码清单与共享 fixture 一致 (mac 侧以同一 fixture 校验), 代表性故障码不在其中。

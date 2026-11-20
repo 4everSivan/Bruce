@@ -1,0 +1,4 @@
+{
+  "description": "请求日志来源范围 (C249, design/14 §4.2.2): collector-domain REQUEST_LOG_AGENT_IDS 是请求行落库与 Bridge 查询 agentIds 的唯一门槛, mac RequestLogAgentFilter.supportedAgentIDs 必须与 agents 一致 (顺序以 collector 为准)。二期扩源时三处同改。",
+  "agents": ["claude-code", "codex", "antigravity", "zcode"]
+}

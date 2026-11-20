@@ -399,14 +399,8 @@ fn observation_dedupe_key(observation: &CachedUsageObservation) -> Cow<'_, str> 
 
 fn codex_request(observation: &CachedUsageObservation) -> Option<RequestRecord> {
     let key = observation.dedupe_key.as_deref()?;
-    let mut hasher = Sha256::new();
-    hasher.update(b"codex-request:");
-    hasher.update(key.as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
     Some(RequestRecord {
-        key: format!("{:032x}", u128::from_be_bytes(bytes)),
+        key: super::request_key("codex-request", key),
         timestamp_millis: observation.timestamp_millis,
         model: observation.model.clone(),
         raw_model: observation.model.clone(),

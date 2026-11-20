@@ -29,7 +29,8 @@ use collector_domain::{
     AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
     ModelPricingOverride, PricingTable, RequestRecord, TokenBucket, UsageSample, WindowError,
     AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION, LOCAL_HISTORY_STORE_UNAVAILABLE,
-    LOCAL_REQUEST_LOG_UNAVAILABLE, LOCAL_SOURCE_NOTICE, REQUEST_LOG_RETENTION_DAYS,
+    LOCAL_REQUEST_LOG_UNAVAILABLE, LOCAL_SOURCE_NOTICE, REQUEST_LOG_AGENT_IDS,
+    REQUEST_LOG_MAX_PER_SOURCE,
 };
 use collector_history::HistoryStore;
 use collector_local::{
@@ -47,6 +48,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -349,14 +351,32 @@ fn persist_request_logs(
         "request_log_db",
         paths::resolve_request_log_path(Path::new(home)),
     );
-    let cutoff = context
-        .window
-        .now
-        .timestamp_millis()
-        .saturating_sub(REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    let cutoff = collector_domain::request_log_cutoff_millis(context.window.now.timestamp_millis());
     let mut entries = Vec::new();
-    for (agent_id, result) in agents {
-        for request in &result.requests {
+    let mut truncated_total = 0;
+    // Shared aggregators also emit rows for agents outside the request-log
+    // scope (CodeBuddy / DSH); only in-scope agents reach the store (C249).
+    let in_scope = agents
+        .iter()
+        .filter(|(agent_id, _)| REQUEST_LOG_AGENT_IDS.contains(&agent_id.as_str()));
+    for (agent_id, result) in in_scope {
+        if result.requests.truncated > 0 {
+            truncated_total += result.requests.truncated;
+            // design/14 §3.5.3: the cap keeps the newest rows; say how many
+            // older ones were left out (informational, not a fault).
+            diagnostics.push(Diagnostic::new(
+                LOCAL_SOURCE_NOTICE,
+                "local",
+                agent_id,
+                format!(
+                    "请求日志明细超过每源 {REQUEST_LOG_MAX_PER_SOURCE} 条上限, 已保留最近 \
+                     {REQUEST_LOG_MAX_PER_SOURCE} 条, 未记录较早的 {} 条",
+                    result.requests.truncated
+                ),
+                false,
+            ));
+        }
+        for request in &result.requests.rows {
             let (cost_usd, pricing_model) = request_cost(pricing, request);
             entries.push(RequestLogEntry {
                 agent_id: agent_id.clone(),
@@ -379,18 +399,40 @@ fn persist_request_logs(
             });
         }
     }
-    if entries.is_empty() {
+    context
+        .metrics
+        .request_log_rows_truncated
+        .store(truncated_total, Ordering::Release);
+    // With nothing to write, still prune an existing store so expired detail
+    // does not linger while every in-scope agent is idle; never create one.
+    if entries.is_empty() && !path.is_file() {
         return;
     }
+    let started = Instant::now();
     let result = RequestLogStore::open(&path).and_then(|mut store| store.merge(&entries, cutoff));
-    if let Err(error) = result {
-        diagnostics.push(Diagnostic::new(
+    let elapsed_ms = usize::try_from(started.elapsed().as_millis()).unwrap_or(usize::MAX);
+    context
+        .metrics
+        .request_log_merge_ms
+        .store(elapsed_ms, Ordering::Release);
+    match result {
+        Ok(outcome) => {
+            context
+                .metrics
+                .request_log_rows_written
+                .store(outcome.written, Ordering::Release);
+            context
+                .metrics
+                .request_log_rows_pruned
+                .store(outcome.pruned, Ordering::Release);
+        }
+        Err(error) => diagnostics.push(Diagnostic::new(
             LOCAL_REQUEST_LOG_UNAVAILABLE,
             "local",
             "request-log",
             format!("请求日志写入失败, 已跳过本轮明细: {error}"),
             true,
-        ));
+        )),
     }
 }
 
@@ -431,7 +473,7 @@ pub fn query_request_log_artifact(
             .map(|value| {
                 value
                     .as_str()
-                    .filter(|value| !value.is_empty())
+                    .filter(|value| REQUEST_LOG_AGENT_IDS.contains(value))
                     .map(str::to_owned)
                     .ok_or_else(|| invalid_request("请求日志 agentIds 无效"))
             })
@@ -472,6 +514,8 @@ pub fn query_request_log_artifact(
             "total": 0,
             "page": page,
             "pageSize": page_size,
+            "summary": { "tokens": 0, "costUsd": 0.0, "avgTokens": 0 },
+            "models": [],
             "entries": [],
             "notice": "请求日志库尚未生成"
         }));
@@ -520,6 +564,7 @@ pub fn query_request_log_artifact(
                 "cacheCreation": entry.cache_creation,
                 "cacheCreation1h": entry.cache_creation_1h,
                 "costUsd": entry.cost_usd,
+                "pricingModel": entry.pricing_model,
                 "statusCode": entry.status_code,
                 "project": entry.project,
                 "fidelity": entry.fidelity,
@@ -559,7 +604,7 @@ fn request_cost(pricing: &PricingTable, request: &RequestRecord) -> (Option<f64>
     let Some(model) = request.model.as_deref().filter(|model| !model.is_empty()) else {
         return (None, None);
     };
-    let Some(price) = pricing.resolve(model) else {
+    let Some((pricing_key, price)) = pricing.resolve_with_key(model) else {
         return (None, None);
     };
     let sample = UsageSample {
@@ -578,7 +623,7 @@ fn request_cost(pricing: &PricingTable, request: &RequestRecord) -> (Option<f64>
     bucket.add_sample_classified(&sample, rate_class);
     (
         Some(pricing.calculate_cost(&bucket, &price)),
-        Some(model.to_owned()),
+        Some(pricing_key),
     )
 }
 
@@ -682,7 +727,7 @@ struct LocalAgentResult {
     found: bool,
     contribution: collector_domain::UsageContribution,
     /// Request rows emitted by this source during the scan (design/14).
-    requests: Vec<RequestRecord>,
+    requests: collector_domain::RequestRows,
     diagnostic: Option<String>,
     /// 来源信息级说明 (C198): 附在 note 后, 不改变 status。
     notice: Option<String>,

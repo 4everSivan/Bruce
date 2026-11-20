@@ -1,0 +1,141 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C249",
+  "title": "请求日志模块评审收紧：刷新竞态、模型筛选、写放大与来源范围",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C249-request-log-review",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/macos",
+    "component": "collector-request-log / RequestLogView",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "why": "2026-11-19 请求日志模块评审发现：(1) Mac 视图模型 `refresh()` 以 `guard !isLoading` 丢弃并发请求，后台 30s/artifact 查询进行中切换 Agent、模型、页码或页大小时新查询被静默丢弃，界面显示新筛选而表格仍是旧数据（翻页后不再自动刷新，会一直错位）；(2) collector 计算模型菜单 `models` 时带上了当前 model 条件，选中一个模型后菜单只剩该模型；(3) upsert 的 DO UPDATE 无条件执行，每轮刷新把约 6.4 万行全部重写进 WAL，违背设计 §4.2.4「其余情况保持旧行」；(4) DedupedAggregator 被 Claude/CodeBuddy/DSH 共用，CodeBuddy/DSH 请求行入库（本机 6 + 2,809 行）但 Mac UI 只查询首批四源，永不可见，且与设计「二期」范围不符；(5) ZCode 请求行另写一套「input 减缓存 / output 加 reasoning」归一化，违背设计 §3.5.5，并以 LIMIT 100000 绕过 5 万条每源上限（本机已 4.45 万行）；(6) 设计文档 §3.3/§4.3/§4.4 状态与范围陈旧，查询路径与计价模型字段描述与实现不符。 二轮（维护者 2026-11-19「Go ahead and fix all the issues—use whatever you'd recommend for each one.」）处理首轮仅登记的缺口：截断无说明且硬上限按到达顺序丢弃；写入/清理/截断数量未进入可观测；空闲轮不清理过期行；pricing_model 只是模型名且未回传、详情「计价模型」对未计价行也显示模型名；费用「变大即更新」导致涨价回改而降价不回改，且与每轮按价卡重算的聚合 artifact 口径不一致。",
+  "precheck": {
+    "description": "确认评审发现在 main (07fe01a) 上真实存在",
+    "command": "复制本机 request-log-v1.sqlite 到临时目录只读统计；在副本上对比带/不带 no-op 守卫的整表 upsert；阅读 RequestLogView.swift refresh 路径与 collector query 的 models SQL",
+    "expected": "CodeBuddy/DSH 行存在；无守卫 upsert changes()≈全表；refresh 存在 isLoading 丢弃分支；models 查询复用含 model 条件的 where",
+    "is_completed": false,
+    "evidence": "2026-11-19 本机库副本：antigravity 10,505 / claude-code 5,218 / codebuddy 6 / codex 718 / dsh 2,809 / zcode 44,528 行；同一批行重放 upsert：无守卫 changes()=63,784、0.40s，带守卫 changes()=0、0.19s（sqlite3 CLI，含 ATTACH 开销）；RequestLogView.swift:530 `guard !isLoading else { return }`；collector-request-log query 的 DISTINCT model 复用含 `model = ?` 的 where_clause。"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C249-request-log-review"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C249 --to closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Mac 刷新竞态",
+      "before": "`refresh()` 在 isLoading 时直接 return；筛选/翻页触发的查询在后台查询进行中被丢弃，旧查询结果仍会落地覆盖；`refreshInPlace` 的页码回退分支在 page==0 守卫下永不执行。",
+      "after": "查询按代次（generation）后发先至：用户触发的查询总会发出并使旧查询结果作废；后台刷新在有查询进行中时跳过；页码越界回退移入共享查询路径（总量收缩时回到最后一页再查一次），删除死分支。",
+      "impact": "仅请求日志页查询调度；查询协议与刷新频率不变。"
+    },
+    {
+      "scope": "模型菜单",
+      "before": "`models` 列表与分页共用同一 where（含 model 条件），选中模型后菜单只剩该模型。",
+      "after": "`models` 按除模型外的同一筛选（时间/Agent/状态）计算，选中模型后仍可直接切换其他模型；计数与汇总合并为一次聚合查询。",
+      "impact": "查询响应 `models` 语义变为分面候选；total/summary/entries 不变。"
+    },
+    {
+      "scope": "写放大",
+      "before": "每轮刷新对全部请求行执行 DO UPDATE，即使取值未变也重写页。",
+      "after": "DO UPDATE 增加与 SET 逐项对应的 WHERE 守卫：仅当 Token 增长、费用/计价键按计价规则变化（见「计价」）、模型/原始模型/工程/保真度/状态变化、或计时首次出现时才写入；未变行不再重写。",
+      "impact": "合并语义不变；刷新写入量从全表降为变更行。"
+    },
+    {
+      "scope": "来源范围",
+      "before": "请求行由各适配器隐式决定是否产出；CodeBuddy/DSH 经共享 DedupedAggregator 写入请求库，但 UI 不可见。",
+      "after": "collector-domain 定义 `REQUEST_LOG_AGENT_IDS`（claude-code/codex/antigravity/zcode），落库前按其过滤；Bridge 查询的 agentIds 只接受该集合内的 Agent。",
+      "impact": "CodeBuddy/DSH 不再写入新请求行，已写入的旧行 30 天内自然清理；二期扩源只需改常量与 Mac 支持集。"
+    },
+    {
+      "scope": "ZCode 与请求键",
+      "before": "ZCode 请求行复制一份 Token 归一化与 10 列行映射，LIMIT 100000；Codex/ZCode/Antigravity 各自复制 SHA-256 截断 128 位键实现。",
+      "after": "ZCode 聚合与请求行共用同一归一化与行映射；请求行改走共享 RequestRowCollector（与其他来源同一 5 万条上限与截断计数，见「截断与可观测」）；三处请求键收敛为同一 helper，并以金值测试锁定键不变。",
+      "impact": "Token 口径、请求键与聚合用量不变；ZCode 明细上限与其他来源一致。"
+    },
+    {
+      "scope": "协议一致",
+      "before": "请求库未生成时响应缺 `summary` / `models`，Mac 端以当前页条目临时拼汇总。",
+      "after": "空库响应同样返回零值 `summary` 与空 `models`；Mac 端缺省汇总直接取零值。",
+      "impact": "仅响应字段补齐；旧响应仍可解码。"
+    },
+    {
+      "scope": "截断与可观测",
+      "before": "builder 达 10 万条后停止收集（按到达顺序丢弃），take_requests 静默截断到 5 万；ZCode 以 SQL LIMIT 自行截断；写入/清理数量不可见。",
+      "after": "collector-domain 新增 RequestRowCollector/RequestRows：缓冲满时按时间压缩到最新 5 万条并计数，所有来源（含 ZCode）共用；首批来源截断时发 LOCAL_SOURCE_NOTICE；merge 返回 MergeOutcome{written,pruned}，与截断量、合并耗时写入 collector 指标。Kimi/Grok/Pi 共用的 ObservationAggregator 删除从未触发的请求行分支。",
+      "impact": "仅请求行收集与诊断/指标输出；聚合不变。"
+    },
+    {
+      "scope": "空闲清理",
+      "before": "本轮无首批来源请求行时直接返回，过期行不清理。",
+      "after": "请求库已存在时照常执行清理（不写行）；不存在则不创建。",
+      "impact": "仅请求库保留行为。"
+    },
+    {
+      "scope": "计价",
+      "before": "pricing_model 存请求模型名且不回传；费用只在由空变有或变大时更新。",
+      "after": "PricingTable::resolve_with_key 返回命中价卡键并写入 pricing_model，查询响应回传 pricingModel，详情 Sheet 显示命中键或「未计价」；重放行各 Token 列均不少于库内值时费用与计价键随当前价卡更新（含降价与改为未计价），部分重放只补齐空费用。",
+      "impact": "请求日志费用与聚合 artifact 同口径；已落库行在下次刷新按当前价卡校正一次。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/14-Agent请求日志.md",
+    "topic": "RequestLog",
+    "modified": true,
+    "rule_diff": {
+      "before": "§3.3 首批三源；§4.2.4 只列三条更新条件；§4.2.7 查询不使用请求中的任意路径；§4.2.1 pricing_model 为命中价卡键；§4.3 未实现未建卡；§4.4 由 T35–T38 实施。 §3.5.6 写入/截断/清理数量进入信息级诊断；§4.2.1 cost_usd 写入时计算、价格变更不回改历史行；§4.2.5 每轮写入后清理；详情「计价模型」按原始标签展示。",
+      "after": "首批四源（含 ZCode）并以 `REQUEST_LOG_AGENT_IDS` 为唯一落库门槛；upsert 仅在列出的变化条件下写入；查询与写入共用 home 解析路径或同一 `paths.request_log_db` 覆盖；pricing_model 记录参与计价的模型名（当前不回传 UI）；`models` 为不含模型条件的分面候选；§4.3 改为已实现并列出已知缺口；§4.4 补 T34–T38、C248、C249。 截断以 LOCAL_SOURCE_NOTICE 说明、例行计数进 collector 指标；cost_usd 在覆盖性重放时随当前价卡重算（与聚合同口径）；空闲轮也清理已存在的库；pricing_model 为命中价卡键并回传，详情显示命中键或「未计价」；§3.5.1 记录稳态约 116 ms，低于 200 ms 触发线不引入增量写。"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local 全绿；collector 用例覆盖 upsert 守卫、模型分面、来源过滤、agentIds 校验、请求键金值、ZCode 共用归一化、截断收集器、按价卡重算、空闲清理、价卡命中键；RequestLogHarness 覆盖并发查询后发先至与「未计价」展示",
+        "false_if": "任一测试失败、编译错误或回归用例缺失",
+        "evidence": "2026-11-19 二轮 zsh scripts/verify-local.sh Exit 0（日志 local/verify-C249-r2.log；Rust fmt/test/clippy -D warnings 全绿，20 Harness 全过，Node 27/27；仅 45 条环境性 ld search-path 警告）。首轮用例：upsert 守卫、模型分面、来源范围（CodeBuddy 不落库、聚合=16）、agentIds 校验、空库同形、fixture 双端锁定、请求键金值（收敛前实现取值）、ZCode 请求行=聚合；RequestLogHarness 后发先至 / 忙时跳过 / 越界回退。二轮新增：collector-domain request_row_collector_keeps_the_newest_rows_and_counts_truncation（新→旧、旧→新到达结果一致，截断 10 万、过期行不计）、resolve_with_key_reports_the_matched_catalog_row；collector-request-log covering_replays_follow_the_current_price_table（涨/降/未计价跟随、部分重放不覆盖）、merge_reports_pruned_rows_even_without_new_entries；collector-application request_log_prunes_expired_rows_without_new_entries_and_never_creates_a_store、request_log_reports_truncation_and_stores_the_matched_price_key（截断 3 → 一条 LOCAL_SOURCE_NOTICE，范围外截断不报，pricing_model=claude-opus-5-5）；Harness「未计价」与支持集文案。变异校验（两轮共 9 处）：范围过滤、分面条件、upsert 守卫、guard !isLoading、代次守卫、按到达顺序截断、费用只增、空闲跳过清理、pricing_model=模型名，对应用例均失败。性能：6.4 万行库副本 release 稳态重放约 116 ms、written=0（首轮前 267–287 ms、每轮 3.9 MB WAL）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "安装版请求日志页：选中模型后模型菜单仍列出其他模型；后台刷新期间切换 Agent/翻页后表格与筛选一致；详情 Sheet「计价模型」对已计价行显示价卡键、对 Orchestrator 行显示「未计价」",
+        "false_if": "菜单仍塌缩或筛选与表格不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "聚合 artifact 与 ZCode 用量不变；首批四源请求行仍正常写入与查询；CodeBuddy/DSH 聚合用量不受影响",
+        "false_if": "聚合口径变化、首批来源缺行或其他来源受影响",
+        "evidence": "自动化：PanelParityHarness 五份 golden 无变更；ZCode 请求行与聚合 Token 一致；CodeBuddy 聚合不受范围过滤影响；Kimi/Grok/Pi 去掉从未触发的请求行分支后聚合用例全过；指标新增字段不影响既有 payload 断言。已落库行会在首次刷新按当前价卡与命中键校正一次（一次性写入）。安装版实机未复核。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

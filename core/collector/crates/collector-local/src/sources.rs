@@ -53,6 +53,7 @@ use collector_runtime::{CancellationToken, RuntimeError};
 #[cfg(test)]
 use jsonl_adapters::digest_source_key;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 // C126: 目录遍历只剩参照实现使用
 #[cfg(test)]
 use std::collections::{BTreeMap, BTreeSet};
@@ -71,7 +72,7 @@ pub struct SourceScan {
     pub found: bool,
     pub contribution: UsageContribution,
     /// Request-granularity rows emitted beside the aggregate sample (design/14).
-    pub requests: Vec<collector_domain::RequestRecord>,
+    pub requests: collector_domain::RequestRows,
     pub stats: ScanStats,
     /// 真实 schema / 读取故障 (artifact 中 agent 置 error, 诊断码
     /// `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE`, envelope Partial)。
@@ -104,12 +105,26 @@ impl SourceScan {
         Self {
             found: false,
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
-            requests: Vec::new(),
+            requests: collector_domain::RequestRows::default(),
             stats: ScanStats::default(),
             diagnostic: None,
             notice: None,
         }
     }
+}
+
+/// Request-log row key (design/14): the first 128 bits of
+/// SHA-256(`{namespace}:{id}`) as 32 lowercase hex digits. Rows are persisted
+/// under this key, so the byte layout must never change (C249 golden test).
+pub(super) fn request_key(namespace: &str, id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(namespace.as_bytes());
+    hasher.update(b":");
+    hasher.update(id.as_bytes());
+    hasher.finalize()[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub(super) fn finish(

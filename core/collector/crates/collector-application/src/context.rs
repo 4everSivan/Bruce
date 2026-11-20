@@ -12,6 +12,14 @@ pub struct CollectionMetrics {
     pub http_request_count: u64,
     pub retry_count: u64,
     pub credential_refresh_count: u64,
+    /// Request-log rows inserted or updated this run (design/14 §3.5.6).
+    pub request_log_rows_written: u64,
+    /// Request-log rows pruned by the 30-day retention this run.
+    pub request_log_rows_pruned: u64,
+    /// In-scope request rows dropped by the per-source cap this run.
+    pub request_log_rows_truncated: u64,
+    /// Wall time of the request-log open + merge + prune.
+    pub request_log_merge_ms: u64,
 }
 
 /// Per-source local scan measurements for diagnostic output only.
@@ -27,6 +35,10 @@ pub(crate) struct RuntimeCounters {
     pub http_request_count: AtomicUsize,
     pub retry_count: AtomicUsize,
     pub credential_refresh_count: AtomicUsize,
+    pub request_log_rows_written: AtomicUsize,
+    pub request_log_rows_pruned: AtomicUsize,
+    pub request_log_rows_truncated: AtomicUsize,
+    pub request_log_merge_ms: AtomicUsize,
 }
 
 impl RuntimeCounters {
@@ -35,6 +47,11 @@ impl RuntimeCounters {
             http_request_count: self.http_request_count.load(Ordering::Acquire) as u64,
             retry_count: self.retry_count.load(Ordering::Acquire) as u64,
             credential_refresh_count: self.credential_refresh_count.load(Ordering::Acquire) as u64,
+            request_log_rows_written: self.request_log_rows_written.load(Ordering::Acquire) as u64,
+            request_log_rows_pruned: self.request_log_rows_pruned.load(Ordering::Acquire) as u64,
+            request_log_rows_truncated: self.request_log_rows_truncated.load(Ordering::Acquire)
+                as u64,
+            request_log_merge_ms: self.request_log_merge_ms.load(Ordering::Acquire) as u64,
         }
     }
 }

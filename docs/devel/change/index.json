@@ -62,7 +62,8 @@
     "RequestLog": {
       "design_doc": "docs/devel/design/14-Agent请求日志.md",
       "changes": [
-        "C248"
+        "C248",
+        "C249"
       ]
     }
   },
@@ -73,6 +74,13 @@
       "branch": "fix/C248-request-log-ui",
       "topic": "RequestLog",
       "file": "docs/devel/change/C248.json"
+    },
+    "C249": {
+      "title": "请求日志模块评审收紧：刷新竞态、模型筛选、写放大与来源范围",
+      "status": "in_progress",
+      "branch": "fix/C249-request-log-review",
+      "topic": "RequestLog",
+      "file": "docs/devel/change/C249.json"
     }
   }
 }

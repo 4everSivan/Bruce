@@ -57,7 +57,7 @@ Bruce 现有用量链路只产出**聚合桶**（日 / 月 / 周 / 模型 / 小�
 
 1. **不做代理记账**：不实现 cc-switch 的本地路由、转发、故障转移或 `proxy_request_logs` 的 `proxy` 数据源。
 2. **不记录失败请求**：会话日志通常只保存成功响应；未落盘的 4xx/5xx、超时与流中断不在本能力范围内，UI 必须明示「不包含未落盘的失败请求」。
-3. **不一次性覆盖全部 Agent**：首批只做请求键可靠的三源（Claude Code、Codex、Antigravity）；SQLite 源与无稳定 ID 的源放二期。
+3. **不一次性覆盖全部 Agent**：首批四源（Claude Code、Codex、Antigravity，C248 补入 ZCode）；其余 SQLite 源与无稳定 ID 的源放二期。范围以 `collector-domain::REQUEST_LOG_AGENT_IDS` 为唯一门槛（C249），见 §4.2.2。
 4. **不做请求内容检索**：没有全文搜索、没有 prompt 回放、没有对话预览。
 5. **不替代额度查询**：请求日志不参与订阅额度、预警或出口校验。
 6. **不在首版做 Windows UI**：collector 与查询协议跨平台；Windows 前端另卡对齐。
@@ -77,12 +77,12 @@ Bruce 现有用量链路只产出**聚合桶**（日 / 月 / 周 / 模型 / 小�
 
 ### 3.5 非功能约束
 
-1. **性能**：热刷新从缓存重放请求行，30 天量级（本机约数万行）应在 100 ms 量级完成写入；超过 200 ms 时再引入「只写变更文件 + 定期全量校准」，不在首版过度设计。
+1. **性能**：热刷新从缓存重放请求行，30 天量级（本机约数万行）应在 100 ms 量级完成写入；超过 200 ms 时再引入「只写变更文件 + 定期全量校准」，不在首版过度设计。C249 实测（本机 6.4 万行库副本、release）：稳态重放约 116 ms、0 行写入，处于 100 ms 量级、低于 200 ms 触发线，暂不引入增量写。
 2. **存储**：请求库独立，WAL，`busy_timeout` 3 秒；目录 `0700`、文件 `0600`；30 天自然日截止。
-3. **内存**：每个来源在扫描期间最多保留 50,000 条请求行；超出时按时间倒序截断并附信息级说明，避免冷扫描峰值失控。
+3. **内存**：每个来源在扫描期间最多保留 50,000 条请求行；超出时按时间倒序截断并附信息级说明，避免冷扫描峰值失控。C249 起所有来源（含 ZCode）共用 `RequestRowCollector`：缓冲达 10 万条时按时间压缩到最新 5 万条再继续收集（到达顺序不影响保留哪些行），精确计数截断量；首批来源有截断时以 `LOCAL_SOURCE_NOTICE`（stage = Agent）给出「未记录较早的 N 条」。
 4. **隐私**：请求键是 hash；工程只存 basename；不存 session id；不读会话正文进入任何持久化文件。
 5. **一致性**：请求行使用与 `UsageSample` 相同的归一化 Token 口径；不允许另写一套「input 减 cache / output 加 reasoning」。
-6. **可观测**：写入数量、截断数量、清理数量、失败原因进入信息级诊断；不进入菜单栏故障态。
+6. **可观测**：截断与失败原因进入信息级诊断（`LOCAL_SOURCE_NOTICE` / `LOCAL_REQUEST_LOG_UNAVAILABLE`）；每轮例行的写入 / 清理 / 截断数量与合并耗时进入 collector 指标（`request_log_rows_written` / `_pruned` / `_truncated` / `request_log_merge_ms`，仅 `BRUCE_COLLECTOR_METRICS_PATH` 开启时输出），不逐轮刷诊断（C249）；均不进入菜单栏故障态。
 
 ### 3.6 输入输出与失败条件
 
@@ -95,7 +95,7 @@ Bruce 现有用量链路只产出**聚合桶**（日 / 月 / 周 / 模型 / 小�
 
 **查询输入**：Bridge `module=request-log` 的只读请求，包含 `home`、时间范围、Agent 列表、模型、状态、分页。
 
-**查询输出**：`total / page / pageSize / entries[] / generatedAt`。
+**查询输出**：`total / page / pageSize / summary / models / entries[] / generatedAt`（空库时同形，另附 `notice`）。
 
 **失败条件**：
 
@@ -162,7 +162,7 @@ CREATE TABLE request_log (
     cache_creation      INTEGER NOT NULL DEFAULT 0,
     cache_creation_1h   INTEGER NOT NULL DEFAULT 0,
     cost_usd            REAL,             -- NULL = 未定价
-    pricing_model       TEXT,             -- 写入时实际命中的价卡键
+    pricing_model       TEXT,             -- 实际命中的价卡键（内置行优先，仅覆盖时取覆盖键）；未计价为 NULL
     status_code         INTEGER NOT NULL DEFAULT 200,
     fidelity            TEXT NOT NULL DEFAULT 'exact', -- exact / estimated
     latency_ms          INTEGER,          -- NULL = 无计时
@@ -180,7 +180,7 @@ CREATE INDEX idx_request_log_status_time ON request_log(status_code, occurred_at
 
 - `input / output / cache_read / cache_creation` 与 `UsageSample` 相同，是**归一化后**的四象限，不是厂商原始字段；
 - `cache_creation_1h` 只对 Anthropic 1 小时 TTL 缓存有意义，其余来源为 0；
-- `cost_usd` 在写入时计算，价格变更不回改历史行；
+- `cost_usd` 每轮重放按当前价卡计算：重放行各 Token 列均不少于库内值（同一响应或更完整）时，费用与 `pricing_model` 随当前价卡更新（涨价、降价、改为未计价都跟随），与聚合 artifact 每轮按价卡重算同口径；部分重放只能补齐空费用（C249，取代原「价格变更不回改历史行」）；
 - `fidelity`：`exact` 表示来源给出精确 Token 计数；`estimated` 留给 Grok 等估算源；
 - `model` 与 `raw_model` 分离，既支持模型归并/计价，也保留原始显示名。
 
@@ -202,6 +202,8 @@ CREATE INDEX idx_request_log_status_time ON request_log(status_code, occurred_at
 
 首版只承诺四源（Claude Code / Codex / Antigravity / ZCode）。其余来源在 UI 显示「该 Agent 暂无逐请求明细」，不伪造空行。
 
+**范围门槛（C249）**：`collector-domain::REQUEST_LOG_AGENT_IDS` 是请求行落库与 Bridge 查询 `agentIds` 的唯一门槛。CodeBuddy / DSH 与 Claude 共用 `DedupedAggregator`，扫描时也会产出请求行，但落库前按该常量过滤；查询传入范围外 Agent 视为协议错误。Mac `RequestLogAgentFilter.supportedAgentIDs` 与之由 `tests/fixtures/bridge/request-log-agents.json` 双端锁定，二期扩源时三处同改。三源请求键统一为 SHA-256(`{namespace}:{id}`) 前 128 位（`codex-request` / `zcode-request` / `antigravity-request`），键已落库，字节布局由金值测试锁定。
+
 #### 4.2.3 采集与写入
 
 1. **旁路产出**：`UsageContributionBuilder` 增加 `record_request(sample, request_meta)`；适配器在调用 `record` 的同一处调用。没有稳定键的适配器不调用。
@@ -216,17 +218,19 @@ CREATE INDEX idx_request_log_status_time ON request_log(status_code, occurred_at
 使用 `INSERT ... ON CONFLICT(agent_id, request_key) DO UPDATE`，只在以下条件更新：
 
 1. 新 Token 总量大于旧值（流式响应继续增长）；
-2. 旧 `cost_usd IS NULL` 且新值可计价；
+2. 费用或计价键变化：重放行覆盖库内 Token 时随当前价卡更新，否则仅在旧 `cost_usd IS NULL` 且新值可计价时补齐；
 3. 旧 `status_code` 非终态且新值为 200（首版均为 200，预留给二期错误状态）。
 
 其余情况保持旧行。**禁止**把已落库的 Token 改小；Antigravity step 覆盖若出现修正值，按 `max` 合并，不向下覆盖。
+
+实现细则（C249 回写）：各 Token 列按列取 `max`；费用与计价键按规则 2 更新；模型 / 原始模型 / 工程 / 计价模型取新值（新值为空时保留旧值）；耗时与首字只在首次出现时写入；保真度取新值。`DO UPDATE` 带与上述规则逐项对应的 `WHERE` 守卫，取值未变的重放行不再重写——每轮刷新都会重放 30 天窗口，无守卫时本机约 6.4 万行每轮全表重写（实测 267–287 ms、每轮约 3.9 MB WAL），加守卫后 0 行写入、约 116 ms。`merge` 返回实际写入与清理行数，写入指标。
 
 不需要 cc-switch 式的 `session_usage_dedup` 墓碑表：写入前按 30 天截止过滤，旧行即使被重放也不会重新插入；主键本身保证幂等。
 
 #### 4.2.5 保留与清理
 
 - 保留窗口：当前本地自然日向前 30 天（含今日），与查询上限一致；
-- 每轮写入后执行 `DELETE FROM request_log WHERE occurred_at < cutoff`；走时间索引；
+- 每轮写入后执行 `DELETE FROM request_log WHERE occurred_at < cutoff`；走时间索引；本轮没有首批来源请求行时，请求库已存在也照常清理，不存在则不创建（C249）；
 - 不做二次 rollup：30 天前的聚合数据已在 `usage-history-v1.sqlite`；
 - 每周一次 `PRAGMA incremental_vacuum`（或等价维护），避免频繁 `VACUUM`；
 - 请求库可删除：删除后下一轮从热缓存重建；缓存也已清空时，只能从仍存在的会话文件重建。
@@ -235,7 +239,7 @@ CREATE INDEX idx_request_log_status_time ON request_log(status_code, occurred_at
 
 - 复用 `PricingTable::calculate_cost` 与 `pricing::rate_class_for`，不另写计价；
 - 每条请求构造单样本 `TokenBucket`（含 `cache_creation_1h` 与 `rate_splits`），按同一分档规则计费；
-- 价卡命中键写入 `pricing_model`；未命中或模型为 `unknown` 时 `cost_usd = NULL`；
+- 价卡命中键写入 `pricing_model`（`PricingTable::resolve_with_key`，与 `resolve` 同一匹配）并经查询响应 `pricingModel` 回传；未命中或模型为 `unknown` 时 `cost_usd` 与 `pricing_model` 均为 NULL；
 - UI 对 NULL 显示「未计价」，不显示 `$0.00`；
 - 请求行费用合计允许与 artifact 费用存在舍入差，但同一窗口、同一价卡下应基本一致；验收时以「差额 < 0.01 USD 或因未计价而少计」为口径。
 
@@ -288,6 +292,7 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
       "cacheRead": 9947,
       "cacheCreation": 19932,
       "costUsd": 0.12,
+      "pricingModel": "claude-opus-5-5",
       "statusCode": 200,
       "project": "Bruce",
       "fidelity": "exact"
@@ -300,8 +305,9 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 
 - `page` 0–1000，`pageSize` 1–200；
 - `start` / `end` 必须是毫秒时间戳，范围不超过 31 天；
-- `agentIds` 只接受已知 Agent；`model` 最长 128 字符；`status` 100–599；
-- 查询只读打开，不使用请求中的任意路径；库路径由 `home` 固定解析；
+- `agentIds` 只接受 `REQUEST_LOG_AGENT_IDS` 内的 Agent；`model` 最长 128 字符；`status` 100–599；
+- 查询只读打开；库路径由 `home` 解析，或使用与写入轮相同的 `paths.request_log_db` 覆盖（测试与宿主路径注入沿用全局 `paths` 机制），不接受其他路径字段；
+- `total` 与 `summary`（Token 合计、已计价费用、平均每请求 Token）按完整筛选集计算，不限当前页；`models` 是**分面候选**：按除模型外的同一筛选（时间 / Agent / 状态）列出，选中某模型后菜单仍可直接切换其他模型（C249）；
 - SQL 全部参数化。
 
 #### 4.2.8 前端信息架构（2026-11-19 已定骨架）
@@ -322,7 +328,7 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 - **摘要条**：请求数、Token 合计、已计价费用、平均每请求 Token；标注「仅本机会话记录」。
 - **表格列**：时间、Agent（品牌徽章，不使用色点）、模型（优先归一化模型，归一化失败回退原始标签如 `Orchestrator (Neon)`，模型用量与请求日志同口径；两者皆缺才显示「未标注模型」；Orchestrator 行维持不计价）、新鲜输入、输出、缓存读、费用、速度、工程；缓存写 / 耗时 / 状态默认隐藏（首版会话行均为 200，状态列无信息量）。速度按 cc-switch 会话日志估算口径：`output ÷ 总耗时`，仅 `output ≥ 200` 且 `总耗时 ≥ 1000ms` 时展示，前缀 `≈`；无原生计时显示「—」。
 - **Agent 徽章**：沿用 `AgentBrandBadge` 口径（品牌底/位图 + 系列色环），筛选菜单、表格、详情 Sheet 三处一致；Antigravity 使用官方 App 图标（指示性识别），缺素材时回退字标。
-- **详情 Sheet**：request id（可复制）、原始模型、计价模型（归一化失败时按原始标签展示并视为未计价）、四象限 Token、费用、工程、时间、数据来源、保真度、速度 / 总耗时 / 首字。
+- **详情 Sheet**：request id（可复制）、原始模型、计价模型（实际命中的价卡键；未命中价卡时显示「未计价」，原始标签见「模型」）、四象限 Token、费用、工程、时间、数据来源、保真度、速度 / 总耗时 / 首字。
 - **空态**：区分「还没有请求」「筛选无结果」「该 Agent 暂不支持逐请求明细」「请求库不可用」。
 - **刷新**：进入分类查询一次；artifact 更新后 250 ms 防抖重查；页面可见期间每 30 s 兜底查询；手动刷新执行「同步后查询」；保留当前筛选与页码，总量收缩时回退一页；详情 Sheet 打开时不强行跳页。后台刷新不切换整表加载态，只对新出现的请求行做强调色高亮并淡出（约 1.8 s），不清空或重播整张表；仅第 1 页自动刷新，避免翻页时行位移动。
 - **深链**：概览页后续可从模型 / Agent 行跳到已筛选的请求日志分类（二期）。
@@ -352,7 +358,13 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 
 ### 4.3 验证与实现情况
 
-**实现状态**：未实现，未建卡。本文只定义目标规则；代码、测试与人工验收在 T 卡落地后补证。
+**实现状态**：已实现。T34–T38 交付独立库、四源请求行、Bridge 查询与 Mac 页面；C248 补齐 ZCode 请求行、速度列与默认筛选；C249 收紧查询调度、模型分面、写放大、来源范围、ZCode 归一化复用，并补齐截断说明、例行指标、空闲清理、价卡命中键与按当前价卡重算费用。
+
+**残余说明（C249 后）**：
+
+- 合并按列取 `max`，同一请求的修正值若有升有降，库内可能是两次观测的组合（设计 §4.2.4 已接受）；此时费用保留最近一次覆盖性重放计得的值；
+- ZCode 请求行每轮直接只读查询本机 `model_usage` 近 30 天，不走增量缓存（§4.2.2）；
+- 截断说明是信息级诊断，请求日志页本身不展示「已截断」提示；需要时另卡评审。
 
 **计划测试**：
 
@@ -382,7 +394,9 @@ Bridge 增加 `module = "request-log"`，与 `agent-usage` 并列；`context` �
 
 | 编号 | 类型 | 简介 | 规则演进 |
 |---|---|---|---|
-| 本设计 | Baseline | 请求日志独立库、复用观测去重键、三源首批、30 天明细、查询模块；前端为侧栏分类 + 摘要条 + 表格 + 居中 Sheet | 2026-11-19 维护者确认开工，转现行基线；由 T35–T38 实施 |
+| 本设计 | Baseline | 请求日志独立库、复用观测去重键、三源首批、30 天明细、查询模块；前端为侧栏分类 + 摘要条 + 表格 + 居中 Sheet | 2026-11-19 维护者确认开工，转现行基线；由 T34–T38 实施 |
+| C248 | BugFix | ZCode 请求行、速度口径、默认筛选、未归一化模型原标签 | 首批扩为四源；速度按 output ÷ 总耗时；默认只勾选今日有用量的受支持 Agent |
+| C249 | BugFix | 评审收紧：查询后发先至、模型分面、upsert 守卫、来源范围门槛、ZCode 归一化复用、请求键收敛、截断说明与指标、空闲清理、价卡命中键、按当前价卡重算 | `REQUEST_LOG_AGENT_IDS` 为唯一范围门槛；`models` 为分面候选；重放未变行不写；空库响应同形；`cost_usd` 随当前价卡重算（取代「不回改历史行」）；`pricing_model` 为命中价卡键并回传 |
 
 ### 4.5 参考资料
 

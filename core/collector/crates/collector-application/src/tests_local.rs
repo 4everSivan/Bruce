@@ -50,7 +50,7 @@ fn local_agent_merge_failure_is_visible_not_silent() {
     let source = LocalAgentResult {
         found: true,
         contribution: invalid,
-        requests: Vec::new(),
+        requests: collector_domain::RequestRows::default(),
         diagnostic: None,
         notice: None,
         history_note: None,
@@ -549,7 +549,7 @@ fn finalize_local_agent_with_dynamic_catalog_and_overrides() {
     let local_result = LocalAgentResult {
         found: true,
         contribution,
-        requests: Vec::new(),
+        requests: collector_domain::RequestRows::default(),
         diagnostic: None,
         notice: None,
         history_note: None,
@@ -753,7 +753,7 @@ fn finalize_local_agent_appends_notice_without_changing_status() {
         let source = LocalAgentResult {
             found: history_note.is_none(),
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
-            requests: Vec::new(),
+            requests: collector_domain::RequestRows::default(),
             diagnostic: diagnostic.map(str::to_owned),
             notice: Some("缓存已重建".to_owned()),
             history_note: history_note.map(str::to_owned),
@@ -800,6 +800,8 @@ fn empty_sources_keep_placeholder_status() {
 }
 
 /// design/14: Claude 请求行写入独立库, 连续两轮幂等且不影响 artifact。
+/// C249: CodeBuddy 经共享 DedupedAggregator 也会产出请求行, 但不在请求日志范围内,
+/// 聚合照常计入而请求库不落行。
 #[test]
 fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
     use collector_request_log::{RequestLogFilter, RequestLogStore};
@@ -819,6 +821,20 @@ fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
         ),
     )
     .unwrap();
+    let codebuddy = home.join("codebuddy").join("project");
+    std::fs::create_dir_all(&codebuddy).unwrap();
+    std::fs::write(
+        codebuddy.join("session.jsonl"),
+        serde_json::json!({
+            "type": "message",
+            "role": "assistant",
+            "timestamp": 1_785_207_600_000_i64,
+            "message": {"usage": {"input_tokens": 12, "output_tokens": 4}},
+            "providerData": {"model": "codebuddy-model", "messageId": "request-log-scope"}
+        })
+        .to_string(),
+    )
+    .unwrap();
     let history_db = home.join("usage-history.sqlite");
     let request = history_request(&home, &history_db);
 
@@ -826,19 +842,29 @@ fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
     let second = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
     assert_eq!(first.artifact["agents"], second.artifact["agents"]);
     assert_eq!(claude_agent(&first.artifact)["today"]["total"], 19);
+    let codebuddy_agent = first.artifact["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|agent| agent["id"] == "codebuddy")
+        .unwrap();
+    assert_eq!(
+        codebuddy_agent["today"]["total"], 16,
+        "范围外来源聚合不受影响"
+    );
 
     let store = RequestLogStore::open(&home.join("request-log.sqlite")).unwrap();
     let page = store
         .query(&RequestLogFilter {
             start: 0,
             end: i64::MAX,
-            agent_ids: vec!["claude-code".to_owned()],
             page: 0,
             page_size: 50,
             ..RequestLogFilter::default()
         })
         .unwrap();
-    assert_eq!(page.total, 1, "重复运行不得重复插入");
+    assert_eq!(page.total, 1, "重复运行不得重复插入, 范围外来源不得落库");
+    assert_eq!(page.entries[0].agent_id, "claude-code");
     let entry = &page.entries[0];
     assert_eq!(entry.input, 10);
     assert_eq!(entry.output, 2);
@@ -846,6 +872,138 @@ fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
     assert_eq!(entry.cache_creation, 4);
     assert_eq!(entry.model.as_deref(), Some("claude-opus-5-5"));
     assert!(entry.cost_usd.is_some(), "claude-opus-5-5 应命中内置价卡");
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// C249: 本轮无首批来源请求行时仍清理已有请求库的过期明细; 库不存在时不创建。
+#[test]
+fn request_log_prunes_expired_rows_without_new_entries_and_never_creates_a_store() {
+    use collector_request_log::{RequestLogEntry, RequestLogFilter, RequestLogStore};
+
+    let home = history_test_home("request-log-prune");
+    let history_db = home.join("usage-history.sqlite");
+    let request = history_request(&home, &history_db);
+    let store_path = home.join("request-log.sqlite");
+
+    let idle = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert!(!store_path.exists(), "无请求行时不得凭空创建请求库");
+    assert_eq!(idle.metrics.request_log_rows_written, 0);
+
+    let now = 1_785_211_200_000_i64; // history_request 的 now
+    let day = 86_400_000_i64;
+    {
+        let mut store = RequestLogStore::open(&store_path).unwrap();
+        store
+            .merge(
+                &[
+                    RequestLogEntry::exact("claude-code", "expired", now - 40 * day),
+                    RequestLogEntry::exact("claude-code", "recent", now - day),
+                ],
+                0,
+            )
+            .unwrap();
+    }
+    let output = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert_eq!(output.metrics.request_log_rows_pruned, 1);
+    let page = RequestLogStore::open(&store_path)
+        .unwrap()
+        .query(&RequestLogFilter {
+            start: 0,
+            end: i64::MAX,
+            page_size: 50,
+            ..RequestLogFilter::default()
+        })
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.entries[0].request_key, "recent");
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// C249: 范围内来源的截断给出信息级说明并计入指标 (范围外来源不报);
+/// pricing_model 记录实际命中的价卡键而非请求模型名。
+#[test]
+fn request_log_reports_truncation_and_stores_the_matched_price_key() {
+    use collector_domain::{
+        CollectionWindow, PricingTable, RequestRecord, RequestRows, UsageContributionBuilder,
+        LOCAL_SOURCE_NOTICE,
+    };
+    use collector_request_log::{RequestLogFilter, RequestLogStore};
+    use std::collections::BTreeMap;
+
+    let home = history_test_home("request-log-truncation");
+    let history_db = home.join("usage-history.sqlite");
+    let request = history_request(&home, &history_db);
+    let window = CollectionWindow::from_context(&request.context).unwrap();
+    let http = empty_http();
+    let context = crate::RunContext::new(
+        &request,
+        window.clone(),
+        &http,
+        crate::RuntimeLimits::default(),
+    )
+    .unwrap();
+    let agent = |rows: Vec<RequestRecord>, truncated: usize| crate::LocalAgentResult {
+        found: true,
+        contribution: UsageContributionBuilder::new(window.clone()).contribution(),
+        requests: RequestRows { rows, truncated },
+        diagnostic: None,
+        notice: None,
+        history_note: None,
+    };
+    let row = RequestRecord {
+        key: "dated".to_owned(),
+        timestamp_millis: 1_785_207_600_000,
+        model: Some("claude-opus-5-5-20261001".to_owned()),
+        raw_model: Some("claude-opus-5-5-20261001".to_owned()),
+        project: None,
+        input: 1_000,
+        output: 200,
+        cache_read: 0,
+        cache_creation: 0,
+        cache_creation_1h: 0,
+        fidelity: "exact".to_owned(),
+        latency_ms: None,
+        first_token_ms: None,
+    };
+    let mut agents = BTreeMap::new();
+    agents.insert("claude-code".to_owned(), agent(vec![row], 3));
+    agents.insert("codebuddy".to_owned(), agent(Vec::new(), 5));
+
+    let mut diagnostics = Vec::new();
+    crate::persist_request_logs(
+        &context,
+        &agents,
+        &PricingTable::default(),
+        &mut diagnostics,
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].code, LOCAL_SOURCE_NOTICE);
+    assert_eq!(diagnostics[0].stage, "claude-code");
+    assert!(
+        diagnostics[0].message.contains("较早的 3 条"),
+        "{}",
+        diagnostics[0].message
+    );
+    let metrics = context.metrics.snapshot();
+    assert_eq!(metrics.request_log_rows_truncated, 3);
+    assert_eq!(metrics.request_log_rows_written, 1);
+
+    let entry = RequestLogStore::open(&home.join("request-log.sqlite"))
+        .unwrap()
+        .query(&RequestLogFilter {
+            start: 0,
+            end: i64::MAX,
+            page_size: 50,
+            ..RequestLogFilter::default()
+        })
+        .unwrap()
+        .entries
+        .remove(0);
+    assert_eq!(entry.pricing_model.as_deref(), Some("claude-opus-5-5"));
+    assert!(entry.cost_usd.is_some_and(|cost| cost > 0.0));
 
     std::fs::remove_dir_all(&home).ok();
 }
