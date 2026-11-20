@@ -4,7 +4,7 @@
   "title": "请求日志模块评审收紧：刷新竞态、模型筛选、写放大与来源范围",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C249-request-log-review",
   "is_hotfix": false,
   "target": {
@@ -97,10 +97,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261120-01",
+    "user_quote": "签收所有卡片",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -113,8 +113,8 @@
         "item": "行为实测",
         "true_if": "安装版请求日志页：选中模型后模型菜单仍列出其他模型；后台刷新期间切换 Agent/翻页后表格与筛选一致；详情 Sheet「计价模型」对已计价行显示价卡键、对 Orchestrator 行显示「未计价」",
         "false_if": "菜单仍塌缩或筛选与表格不一致",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-20 12:12 重新打包并部署 C249 测试包（main fbec4d6，/Applications/Bruce.app，PID 65434，Universal 2，codesign 通过；构建日志 local/build-C249-r1.log），用户随后「签收所有卡片」。库侧实测：request-log-v1.sqlite 于 12:12:12 由新 collector 更新（21.5 MB）；pricing_model 已写命中价卡键（deepseek-v4.1-flash → cline-pass/deepseek-v4.1-flash-1017、glm-5.3 → GLM-5.3、gemini-4-hydrogen → gemini-4-hydrogen-tiered，未计价 1,068 行）；DSH/CodeBuddy 最新 occurred_at 停在 11-05/11-06（来源过滤后不再新增），ZCode/Antigravity 行持续更新到 12:11。UI 交互项（模型菜单不塌缩、刷新期间切换筛选/翻页一致、详情「计价模型」显示命中键或「未计价」）由用户在本包验收签收。",
+        "result": true
       },
       {
         "item": "反向影响排查",
@@ -127,15 +127,19 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "fbec4d6",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-20",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片",
+    "signed_rejection_count": 0
   }
 }

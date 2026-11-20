@@ -77,7 +77,7 @@
     },
     "C249": {
       "title": "请求日志模块评审收紧：刷新竞态、模型筛选、写放大与来源范围",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C249-request-log-review",
       "topic": "RequestLog",
       "file": "docs/devel/change/C249.json"
