@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-11-12 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-11-24 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -411,7 +411,7 @@ Windows Tauri 后端 (Rust)
 33. **订阅卡空态与 Tab 回退（Windows 同构）**（C157，design/03 规则 12 同契）：
     - `panel.subscription == nil` 且已有 artifact（`panel.usage` 存在）时 `factories.subscription` 不得返回 `null`；按 design/03 规则 12 的 A / C 两态渲染空态卡（虚线空位框 + 图标 A `creditCard`（与 SF Symbol `creditcard` 同形的 SVG 路径）/ C `arrowClockwise` + 标题 / 说明 / 按钮），文案与 mac 逐字一致。B「待验证 / 已停用」状态不做，eligible 为 0 一律归 A。
     - Tab 模式当前在 active card 为 nil 时回退到别的卡；空态卡接入后订阅页签必须显示空态，不得显示 Token 用量卡。
-    - CTA 必须打开设置并落到「订阅额度」分类，不得只落在通用页。实现不改 `open_settings` 签名：面板先把 `bruce_settings_pane` 写入同源 `localStorage` 再调用 `open_settings`；设置窗口在首次加载、`focus`、`visibilitychange`（转可见）时读取并立即删除该键，经 `switchCategory`（自带分类白名单）切换；`open_settings` 失败时面板撤回该键，避免下次正常打开设置被旧请求劫持。
+    - CTA 必须打开设置并落到「订阅额度」分类，不得只落在通用页。C262 起 `open_settings` 接受可选 `pane` 命令参数：面板以参数登记目标分类（后端按白名单存入 `SettingsNavigationState`，未知值忽略），设置窗口在初始化与 `settings-pane-requested` 事件到达时调用 `take_pending_settings_pane` 取走（取走即清）并经 `switchCategory`（自带分类白名单）切换；不再使用 localStorage + `focus` / `visibilitychange` 轮询。
     - A 判定排除临时屏蔽 provider（`jev`）；C 判定要求存在「已启用 ∧ 验证通过」的 provider 且已拿到 artifact。provider 配置 / 验证状态变化必须触发重渲并重新判定。
 34. **看板只保留基础动效，数值更新直接落终值**（C233，取代 C158 渲染后补间；design/03 规则 13 同契）：
     - **补间层退役**：删除 `motion.js`（WAAPI 量条补间、Nothing 分段错峰、余额 / 百分比数字列滚动）及其在 `index.html` 的加载、`app.js` 中的 `animatePanelMotion` 调用与 `data-motion-key` / `data-percent-key` / `data-balance-key` 打标。`render(panel)` 全量重建后数值即终值，不保留 `previousPanel`。
@@ -438,12 +438,22 @@ Windows Tauri 后端 (Rust)
     - **命令授权**：`build.rs` 以 `tauri_build::AppManifest::commands` 声明 `generate_handler!` 的全部应用命令，声明后每个命令只对 `capabilities/commands-<窗口>.json` 中显式授予 `allow-<command>` 的窗口开放、未授予即被 ACL 拒绝；各窗口只授予其页面及外链脚本实际调用的命令（dashboard 8、settings 51、preview 5、quota-alert 2）。未被任何窗口调用的已注册命令（`import_codex_auth`、`save_credentials_command`）不授予任何窗口，IPC 不可达。远程页面（StepFun 网页登录窗）本就无法调用应用命令（Tauri 2.11 对非本地源一律校验 ACL），不得为其配置 `remote` capability。
     - **转义**：预警气泡把服务名 / 窗口标签 / 重置文案写入 innerHTML 前一律转义（CSP 之外的第二道防线）。
     - **门禁**：`scripts/check-win-frontend.mjs` 断言 CSP 满足上述基线、页面无内联脚本与事件属性、AppManifest 与 `generate_handler!` 逐一相同、每个窗口的授权恰为其调用集合（漏授 / 多授 / remote 均红灯）；构建期 tauri-build 校验 capability 引用的权限必须存在。CSP 下真实 WebView2 的表现仍须 Windows 实机确认。
-37. **看板配色与 14 日柱交互对齐 mac C219–C223**：
-    - **热力图完整块（C219/C223）**：模型按连续 7 天块输出（末格今天），每列 7 格均为有效 cell，不产生 nil/未来格；`.heatmap .cell` 的基础空槽底色供 level 0 使用，**禁止** `.cell.empty { background: transparent }`（`.empty` 仅作异常兜底）。首块可早于数据首日并渲染 level 0，网格恒为完整矩形、无缺口。
+37. **看板配色与 14 日柱交互对齐 mac C219–C223**：    - **热力图完整块（C219/C223）**：模型按连续 7 天块输出（末格今天），每列 7 格均为有效 cell，不产生 nil/未来格；`.heatmap .cell` 的基础空槽底色供 level 0 使用，**禁止** `.cell.empty { background: transparent }`（`.empty` 仅作异常兜底）。首块可早于数据首日并渲染 level 0，网格恒为完整矩形、无缺口。
     - **面板强调色（C220）**：仪表盘使用 `--panel-accent`（`#4A9E5C`）/ `--panel-accent-deep`（`#2A6B3C`）/ `--panel-accent-soft`（`#8CCB98`）；hero 变量固定为深阶 → 浅阶，`.hero-cost`、`.chip.current/.selected`、`.card.drop-target` 与代码流 tint 消费面板 accent。设置页继续使用 `--accent` 蓝色，两者不得互相改写。热力图 l1-l5 为 `rgba(74,158,92,.2/.4/.6/.8/1)`。
     - **14 日柱总量（C222）**：`.daily-chart .day-total` 默认 `opacity: 0`，`.daily-chart .day:hover .day-total` 为 1；标注仍占 10px 行高，柱高公式 `calc((100% - 10px) × ratio)` 不变，悬停不得引起柱体位移。Nothing 点阵柱同用该规则，删除 theme-nothing 重复覆写。
     - **热力图分块与末日（C223）**：`make_usage_heatmap(artifact, today)` 以今天为最后一格向前每 7 天切块，`块数 = floor(spanDays/7)+1`、`首块首日 = today − (块数×7−1)`；`today` 取 `make_usage` 注入的 `now.date_naive()`；首块可早于数据首日（补 level 0），末格固定为今天，footer 起始/截止与网格首尾一致；仅统计近 182 天。
     - **测试**：`frontend.test.mjs` 断言 empty 非透明、`--panel-accent` 存在且设置页 `--accent` 未变、`HERO_GRADIENT` 固定值、`.day-total` 默认隐藏与 hover 显示；真实渲染用 render-harness 截图核对。
+
+38. **热路径缓存、IPC 去重与看板浏览态保活**（C262）：
+    - **设置 / 凭据进程内快照**：`settings::load_settings` 以 root + 文件戳（长度 / 修改时间）缓存已解析设置，保存成功后立即刷新，手改 `settings.json` 仍会被文件戳发现；`credentials::load_credentials` 缓存已过滤凭据并发布单调递增的 `credential_revision`，凭据写入成功后刷新。托盘悬停、下载进度广播、面板构造与采集上下文不得每拍重读 + 全量校验。
+    - **面板视图模型缓存**：`SchedulerControl` 缓存 `panel_json_verified` 输出，键 = 快照代数（`runtime_core::snapshot_revision`，artifact 与运行态写入递增）+ 凭据代数 + 分钟桶 + `usageEnabled` / 启用集合 / 验证集合 / `providerOrder`；命中时只覆盖 `runtime` 与 `preview`，`publish` 复用同一份速览，不再二次扫描。
+    - **活动价卡缓存**：`pricing_sync` 缓存已加载 `CatalogFile` JSON（启动恢复 / 同步落盘写入，恢复内置清空），采集 `context.pricingCatalog` 不再重读文件。
+    - **检查更新单次清单**：插件 `updater.check()` 返回的 `raw_json` 直接构造 `ReleaseInfo`（version / notes），包体尺寸用 HEAD 补；仅失败路径回退一次 ureq 拉取做失败分类。
+    - **设置页 IPC 去重**：`loadCredentials` 不再调用无返回用途的 `get_credential_fields`，静态 `credential_allowlist` 仅首次获取；设置窗初始化不再重复 `loadClaudeLocalStatus` 与 `get_usage_analytics`。
+    - **看板浏览态**：卡片折叠集合、模型用量选中月份 / 三档维度 / 展开全部提升为模块级状态，`render(panel)` 重建后恢复；正文签名未变（仅运行态变化）时只更新状态灯与定向刷新按钮，不重建 DOM；`selectTab` 依赖后端 `settings-updated` 广播重绘一次，不再同步 `render`。
+    - **跨窗深链**：见规则 33 的 `open_settings({ pane })` + `take_pending_settings_pane` 机制。
+    - **时间轴拖拽**：平移只替换 `.wb-chart` 子树（`redrawTimelineChart`），不再整卡 `fillSlot`；缩放仍整体重绘工具栏。
+    - **测试**：`frontend.test.mjs` 覆盖深链命令参数 / 事件、运行态-only 不重建、重建后折叠与月份 / 展开态保留、时间轴拖拽复用图表子树。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

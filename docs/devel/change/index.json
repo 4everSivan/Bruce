@@ -198,7 +198,7 @@
     },
     "C262": {
       "title": "Windows 热路径磁盘 I/O 缓存、设置页 IPC 合并与看板 UI 状态保活",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C262-win-hotpath-io-and-dom-state",
       "topic": "WindowsCompat",
       "file": "docs/devel/change/C262.json"

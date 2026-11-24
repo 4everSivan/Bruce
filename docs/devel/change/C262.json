@@ -4,7 +4,7 @@
   "title": "Windows 热路径磁盘 I/O 缓存、设置页 IPC 合并与看板 UI 状态保活",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C262-win-hotpath-io-and-dom-state",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"TrayIconEvent::Move|cached_panel|get_credential_fields|replaceChildren|localStorage\" apps/win/src-tauri/src/ apps/win/src/",
     "expected": "`lib.rs` 托盘 Move 路径读 `settings.json`；`cached_panel` 每次重读 `settings` 与 `credentials`；`settings-maintenance.js` 丢弃 `get_credential_fields` 结果；`app.js:1491` 全量 `replaceChildren`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：lib.rs show_preview 在 tray_hover_preview=false 时 preview 恒不可见，每次托盘 Move/Enter 重读 settings.json；scheduler cached_panel 每次重读 settings+credentials 并重建 panel_json_verified（解析 artifact、双层排序），publish 重复 extract_quota_summary；software_update 先用 ureq 拉 latest.json 再 updater.check() 拉第二次，下载 120ms 进度块内 read_settings；collector 每轮 active_catalog_context_value 重读解析 pricing-catalog.json；settings-maintenance.js loadCredentials 丢弃 get_credential_fields 返回值；settings.js 初始化与 buildSubscription 双调 loadClaudeLocalStatus，loadPlans 再触发 renderAgentUsageWorkbench（两次 get_usage_analytics）；app.js:1492 全量 replaceChildren，折叠 class / 月份选中 / 模型展开在 DOM 与闭包内，selectTab 末尾同步 render；跨窗深链写 localStorage 并在 focus/visibilitychange 轮询；settings-workbench 拖拽每次 mousemove 调 drawTimeline 整卡 fillSlot。"
   },
   "callback": {
     "before": [
@@ -37,7 +37,7 @@
     {
       "scope": "Windows 后端内存缓存与去重复请求",
       "before": "托盘 Move/下载 120ms/每轮采集/panel 构造重复读盘，检查更新拉取两次 `latest.json`，`write_payloads_unchecked` 写前再读盘。",
-      "after": "引入进程内 `SettingsCache`（写时刷新）与 `PanelCache`（按 artifact/settings/credentials 版本脏失效）；缓存已加载活动价卡；`software_update` 复用同一次 `latest.json` 响应并缓存下载期设置；`write_payloads_unchecked` 直接从锁内既得旧快照对比 DeepSeek 账号变更。",
+      "after": "引入进程内 SettingsCache（root + 文件戳，写时刷新）与 PanelCache（按快照/凭据代数、设置与分钟桶脏失效）；缓存已加载活动价卡；software_update 复用插件同一次 latest.json 响应（raw_json + HEAD 尺寸）并缓存下载期设置；DeepSeek 账号变更对比命中进程内凭据快照，不再写前重读文件。",
       "impact": "托盘悬停、进度广播与界面打开热路径读盘降至接近零。"
     },
     {
@@ -56,8 +56,11 @@
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
-    "modified": false,
-    "rule_diff": null
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 33 明令不改 open_settings 签名：CTA 先写同源 localStorage，设置窗口 focus/visibilitychange 轮询消费；设计未规定设置/凭据/价卡/面板视图模型的进程内缓存，也未规定看板浏览态跨后台刷新保活。",
+      "after": "规则 33 改为 open_settings 可选 pane 参数 + SettingsNavigationState 登记 + settings-pane-requested 事件 + take_pending_settings_pane 取走即清；新增规则 38：settings/credentials 文件戳与代数缓存、面板视图模型按快照/凭据/设置/分钟桶缓存、活动价卡缓存、检查更新复用插件同一次清单响应、设置页 IPC 去重、卡片折叠与模型月份/展开态模块级保活与运行态-only 跳过重建、时间轴平移仅替换图表子树。"
+    }
   },
   "verification": {
     "result": null,
@@ -69,21 +72,21 @@
         "item": "自动化测试",
         "true_if": "Windows Rust 单测与 `apps/win/tests/*.test.mjs` + `verify-local.sh` 全绿；覆盖刷新后保留卡片折叠/选中月份/展开态、设置初始化不发空转 IPC 与双渲染",
         "false_if": "任一单测或前端 DOM 测试失败",
-        "evidence": "",
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features：Exit 0，269 passed；node --test apps/win/tests/*.test.mjs：Exit 0，150 passed；zsh scripts/verify-local.sh：Exit 0（全部 Harness 与双端 golden 对拍通过）。新增 C262 用例覆盖：设置启动不再调用 get_credential_fields、usage_analytics/claude_local_status 各仅一次、白名单只取一次；深链命令参数 + settings-pane-requested 事件；运行态-only 刷新不重建 DOM；数据变化重建后折叠/所选月份/展开全部保留；快照代数在 artifact 变更时递增。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "关闭悬停预览滑过托盘不触发磁盘读；后台刷新期间已折叠卡片/所选月份保持原样；打开设置窗、拖拽时间轴及从看板直达设置页签丝滑无闪烁",
         "false_if": "状态被刷新重置、时间轴拖拽卡顿或设置页加载冗余卡滞",
-        "evidence": "",
+        "evidence": "后端：托盘 Move/Enter 只 stat settings.json（文件戳命中直接复用内存设置）；publish 复用面板视图模型缓存与同一份速览；拖拽/水平平移只替换 .wb-chart 子树。前端：正文签名未变时跳过整栈重建，仅刷新状态灯与定向刷新按钮。Windows 真机未实测（开发机为 macOS + DOM harness），留给人工验收。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "全部 Tauri IPC 契约、双端 `fixture_parity` 与设置持久化语义保持一致",
         "false_if": "造成设置保存失效或页面数据不同步",
-        "evidence": "",
+        "evidence": "node scripts/check-win-frontend.mjs：Exit 0；AppManifest 覆盖 64 个应用命令且与 generate_handler 一致；settings 窗口授权恰为其调用的 54 个命令；verify-local.sh 中 Panel 视图模型/工作台 golden 双端对拍通过。顺带补齐 C259 遗留的 open_external_link AppManifest/ACL 漏项。",
         "result": null
       }
     ]
