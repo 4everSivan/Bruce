@@ -709,6 +709,16 @@ mod desktop {
         Err("仅 Windows 支持打开外部浏览器".to_owned())
     }
 
+    /// 设置页引导链接统一出口 (C259): 仅允许 https，长度有界，交给系统浏览器。
+    #[tauri::command]
+    fn open_external_link(url: String) -> Result<(), String> {
+        let trimmed = url.trim();
+        if trimmed.len() > 2048 || !trimmed.to_ascii_lowercase().starts_with("https://") {
+            return Err("INVALID_EXTERNAL_URL".to_owned());
+        }
+        open_external_url(trimmed)
+    }
+
     #[tauri::command]
     fn import_codex_auth(app: tauri::AppHandle, auth: serde_json::Value) -> Result<(), String> {
         credentials::import_codex_auth(&paths::data_root(), &auth)?;
@@ -1547,6 +1557,7 @@ mod desktop {
                 expand_dashboard,
                 set_hotkey_recording,
                 quit_app,
+                open_external_link,
                 crate::software_update::desktop_impl::update_state,
                 crate::software_update::desktop_impl::update_check,
                 crate::software_update::desktop_impl::update_download,

@@ -20,6 +20,16 @@ function escapeHtml(value) {
   })[ch]);
 }
 
+/** 由生成产物构建内联 SVG；路径数据同样转义后再写入 innerHTML。 */
+function providerGlyphSvg(providerId) {
+  const glyph = (window.BRUCE_PROVIDER_GLYPHS || {})[providerId];
+  if (!glyph || !Array.isArray(glyph.shapes)) return "";
+  const paths = glyph.shapes
+    .map(([d, opacity]) => `<path d="${escapeHtml(d)}"${opacity !== 1 ? ` fill-opacity="${opacity}"` : ""}/>`)
+    .join("");
+  return `<svg viewBox="${escapeHtml(glyph.vb)}" width="16" height="16" fill="currentColor" aria-hidden="true">${paths}</svg>`;
+}
+
 function getTierColor(tier) {
   if (tier >= 95) return "var(--tier-danger)";
   if (tier >= 80) return "var(--tier-warn)";
@@ -61,10 +71,9 @@ function renderAlerts(alerts) {
     const usedPct = Math.round(alert.usedPercent || 0);
     const countdown = formatCountdown(alert.resetsAt, alert.resetText);
 
-    let iconSvg = "";
-    if (window.ProviderBrand && window.ProviderBrand.getGlyph) {
-      iconSvg = window.ProviderBrand.getGlyph(alert.providerId || alert.serviceId, 16);
-    }
+    // C259: 品牌图形来自 provider-brand.js 生成的 BRUCE_PROVIDER_GLYPHS
+    // (旧代码调用了不存在的 window.ProviderBrand.getGlyph，图标恒退化为单字母)。
+    let iconSvg = providerGlyphSvg(alert.providerId || alert.serviceId);
     if (!iconSvg) {
       iconSvg = `<span style="font-size:10px;font-weight:700;">${escapeHtml((alert.serviceName || "A")[0])}</span>`;
     }

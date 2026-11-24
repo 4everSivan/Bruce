@@ -812,7 +812,8 @@
      用量区: 组合堆叠图 + 各行数字明细
      ============================================================ */
   /* 14 日全机消耗，按 agent 堆叠成一张图（取前 4 名，其余按名称合并展示） */
-  var colorByName = {};
+  // C259: 无原型对象，避免 Agent 名称为 toString/constructor 时命中原型属性。
+  var colorByName = Object.create(null);
   function renderCombo(agents) {
     var wrap = $("[data-combo-wrap]");
     if (!wrap) return;
@@ -838,7 +839,7 @@
       });
       series.push({ name: rest.map(function (x) { return x.a.name; }).join("、"), sum: restSum, daily: null, values: restDaily, cls: "c4" });
     }
-    colorByName = {};
+    colorByName = Object.create(null);
     sums.forEach(function (x, i) { colorByName[x.a.name] = "c" + Math.min(i, 4); });
     var dayTotals = [];
     var grand = 0;
@@ -866,7 +867,7 @@
     xAxis.innerHTML = dates.map(function (dt, i) {
       var label = i === n - 1 ? "今天" : dt.slice(5).replace("-", "/");
       var show = i === n - 1 || i === 0 || i === Math.floor(n / 2) || n <= 7;
-      return "<span" + (i === n - 1 ? ' class="today"' : "") + ">" + (show ? label : "") + "</span>";
+      return "<span" + (i === n - 1 ? ' class="today"' : "") + ">" + (show ? esc(label) : "") + "</span>";
     }).join("");
     legend.innerHTML = series.map(function (s) {
       var pct = grand > 0 ? Math.round((s.sum / grand) * 100) : 0;

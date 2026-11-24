@@ -18,6 +18,8 @@
     { id: "codebuddy", name: "CodeBuddy", pathHint: "~/.codebuddy/projects", status: "missing" },
     // DSH (DeepSeek Harness, C189): zstd JSONL 会话目录。
     { id: "dsh", name: "DSH", pathHint: "~/.dsh/sessions", status: "missing" },
+    // C258/C259: Antigravity 与 paths.rs 的 11 项探针保持一致。
+    { id: "antigravity", name: "Antigravity", pathHint: "~/.gemini/antigravity/brain", status: "missing" },
     { id: "ccSwitch", name: "CC Switch", pathHint: "~/.cc-switch/cc-switch.db", status: "missing" },
   ];
 
@@ -31,6 +33,7 @@
     zcode: "#3b82f6",
     codebuddy: "#06b6d4",
     dsh: "#4D6BFE",
+    antigravity: "#1B1B1B",
     ccSwitch: "#10b981",
   };
 
@@ -113,12 +116,11 @@
     const copy = WP?.copy || {};
     const aside = node("aside", null, { class: "welcome-sidebar" });
 
-    // 1. 品牌头部 (含真实本机 App 图标 icons/icon.png)
+    // 1. 品牌头部 (C259: frontendDist 为 ../src，无 icons/icon.png；用内联品牌块避免破图)
     const brand = node("div", null, { class: "welcome-brand" });
-    const icon = node("img", null, {
-      src: "icons/icon.png",
-      alt: "Bruce",
-      class: "welcome-app-icon",
+    const icon = node("span", "B", {
+      class: "welcome-app-icon welcome-app-mark",
+      "aria-hidden": "true",
     });
     const brandMeta = node("div", null, { class: "welcome-brand-meta" });
     const titleRow = node("div", null, { class: "welcome-brand-title-row" });

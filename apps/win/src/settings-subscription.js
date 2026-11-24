@@ -497,6 +497,12 @@
     throw new Error("凭证必须是 JSON 对象");
   }
 
+  /// C259: 连点「移除」只保留一个确认框，避免确认框堆叠。
+  function replaceDangerConfirm(container, confirm) {
+    container.querySelectorAll(".cfg-confirm-danger").forEach((entry) => entry.remove());
+    container.append(confirm);
+  }
+
   function quotaFieldOf(id) { return providerDescriptor(id)[2]; }
 
   /// 打开某个 Provider 的配置对话框。
@@ -512,6 +518,9 @@
 
   function closeProviderDialog() {
     stopStepFunWebLogin(true);
+    // C259: 关闭弹窗必须停掉 Codex 设备码轮询，避免后台 HTTP 轮询泄漏。
+    stopCodexPoll();
+    codexDeviceLogin = null;
     const host = byId("provider-dialog");
     if (!host) return;
     host.classList.add("hidden");
@@ -605,7 +614,7 @@
         button(line, `cfg-remove-${account.accountId}`, "移除", () => {
           // C096: 账号移除前二次确认 (对齐 mac SettingsView.swift:162 的 confirmationDialog),
           // 不再直接删除 —— 误点即丢凭据。
-          const confirm = node("div", null, { class: "cfg-confirm" });
+          const confirm = node("div", null, { class: "cfg-confirm cfg-confirm-danger" });
           confirm.append(node("p", `移除 ${account.displayName || account.accountId} 账号?`, { class: "cfg-label" }));
           const act = actions(confirm);
           button(act, `cfg-remove-confirm-${account.accountId}`, "移除账号", async () => {
@@ -616,7 +625,7 @@
             } catch (error) { message(byId("cfg-status"), `移除失败：${error.message || error}`, "warn"); }
           }, "btn danger");
           button(act, `cfg-remove-cancel-${account.accountId}`, "取消", () => renderProviderDialog(id), "btn");
-          body.append(confirm);
+          replaceDangerConfirm(body, confirm);
         }, "btn link");
         body.append(line);
       }
@@ -733,8 +742,10 @@
     guide.append(node("span", "🌐", { class: "cfg-guide-icon", "aria-hidden": "true" }));
     guide.append(node("span", config.guide || "", { class: "cfg-guide-text" }));
     if (config.link) {
-      const link = node("a", config.link.title, { href: config.link.url, target: "_blank", rel: "noreferrer", class: "cfg-link" });
-      guide.append(link);
+      // C259: 外链统一经 Rust 命令交给系统浏览器，不再用 target=_blank 裸链。
+      button(guide, "cfg-guide-link", config.link.title, () => {
+        invoke("open_external_link", { url: config.link.url }).catch(() => {});
+      }, "btn link");
     }
     body.append(guide);
     if (config.footnote) body.append(node("p", config.footnote, { class: "hint" }));
@@ -744,13 +755,13 @@
     const foot = node("div", null, { class: "cfg-foot" });
     button(foot, `cfg-remove-provider-${id}`, "移除服务", () => {
       // C089 / 设计规则 25: 移除前二次确认 (对齐 mac removeSubscriptionProvider 的破坏性语义)。
-      const confirm = node("div", null, { class: "cfg-confirm" });
+      const confirm = node("div", null, { class: "cfg-confirm cfg-confirm-danger" });
       confirm.append(node("p", `移除 ${descriptor[1]} 服务?`, { class: "cfg-label" }));
       confirm.append(node("p", "将删除该服务的全部账号凭证并停止查询; 重新添加需再次配置", { class: "hint" }));
       const act = actions(confirm);
       button(act, `cfg-remove-confirm-${id}`, "移除", () => removeProvider(id), "btn danger");
       button(act, `cfg-remove-cancel-${id}`, "取消", () => renderProviderDialog(id), "btn");
-      body.append(confirm);
+      replaceDangerConfirm(body, confirm);
     }, "btn link danger");
     if (configured) {
       button(foot, `cfg-reverify-${id}`, "重新验证", () => reverifyProvider(id), "btn link");

@@ -8,7 +8,7 @@ package enum WelcomeCopy {
     package static let windowTitle = "欢迎使用 Bruce"
     package static let brandSubtitle = "LOCAL-FIRST"
     package static let privacyTitle = "100% 本地只读闭环"
-    package static let privacyBody = "不代理对话流量、不修改外部会话数据库（SQLite 强制 mode=ro），凭据以 POSIX 0600 权限保存在本机目录。"
+    package static let privacyBody = "不代理对话流量、不修改外部会话数据库（SQLite 强制 mode=ro），凭据仅保存在本机受保护文件（macOS POSIX 0600 / Windows NTFS + DPAPI）。"
 
     package static let step1NavTitle = "环境扫描与启用"
     package static let step1NavSubtitle = "自动探测本机 Agent 目录"
@@ -22,8 +22,8 @@ package enum WelcomeCopy {
     package static let step1Description = "Bruce 已在后台完成本机只读探测。点击下方主按钮即可一步开启本地 Token 与费用统计，无需逐项翻找设置。"
     package static let step1SectionTitle = "本机 AI Agent 会话源（只读扫描）"
     package static let step1RescanButton = "重新扫描"
-    package static let step1ConsentTitle = "一步启用：本地会话统计 + 本机 0600 凭据存储"
-    package static let step1ConsentBody = "只读扫描已发现的 Agent 目录与 CC Switch 数据库（每 30 分钟自动刷新）；订阅凭据统一保存在本机受保护文件（权限 0600），彻底告别系统钥匙串频繁弹窗。可随时在「设置 → 授权与隐私」撤销。"
+    package static let step1ConsentTitle = "一步启用：本地会话统计 + 本机凭据加密存储"
+    package static let step1ConsentBody = "只读扫描已发现的 Agent 目录与 CC Switch 数据库（每 30 分钟自动刷新）；订阅凭据统一保存在本机受保护文件（macOS 权限 0600，Windows NTFS 仅当前用户并叠加 DPAPI 加密），不写入任何第三方数据库。可随时在「设置 → 授权与隐私」撤销。"
     package static let step1PrimaryButton = "启用本地统计并继续 →"
 
     package static let step2Eyebrow = "STEP 02 · SUBSCRIPTION QUOTA"
@@ -33,7 +33,7 @@ package enum WelcomeCopy {
     package static let step2DiscoveryTitle = "发现本机已登录凭据（免填 Key 一键导入）"
     package static let step2ImportButton = "一键只读导入"
     package static let step2ImportedBadge = "✓ 已导入"
-    package static let step2ProvidersSectionTitle = "支持的服务商（10 家）· 也可在「设置 → 订阅额度」随时添加"
+    package static let step2ProvidersSectionTitle = "支持的服务商（11 家）· 也可在「设置 → 订阅额度」随时添加"
     package static let step2BackButton = "← 上一步"
     package static let step2SkipButton = "稍后在设置中配置"
     package static let step2NextButton = "继续 →"
@@ -41,14 +41,14 @@ package enum WelcomeCopy {
     package static let step3Eyebrow = "STEP 03 · APPEARANCE & SHORTCUT"
     package static let step3Title = "定制你的菜单栏看板"
     package static let step3Description = "完成最后一步外观与热键偏好，点击「完成并打开看板」即刻在菜单栏展开实时监控。"
-    package static let step3RingOuterTitle = "外母环 · 全局平均剩余额度"
-    package static let step3RingOuterSubtitle = "≥30% 翡翠绿 · 15~30% 琥珀黄 · <15% 警示红"
-    package static let step3RingInnerTitle = "内子环 · 最紧缺窗口短板预警"
-    package static let step3RingInnerSubtitle = "防止长周期充裕掩盖 5h 窗口即将耗尽的断流风险"
+    package static let step3RingOuterTitle = "菜单栏预览 · 实时用量"
+    package static let step3RingOuterSubtitle = "额度环与状态灯随刷新实时更新"
+    package static let step3RingInnerTitle = "全局热键 · 随时唤出"
+    package static let step3RingInnerSubtitle = "不打断当前工作即可展开看板"
     package static let step3FinishButton = "完成并打开看板 ↵"
 
     package static let settingsRowTitle = "欢迎与使用引导"
-    package static let settingsRowSubtitle = "重新查看三步快速上手向导、本机 Agent 扫描状态与菜单栏双环图解"
+    package static let settingsRowSubtitle = "重新查看三步快速上手向导、本机 Agent 扫描状态与菜单栏预览"
     package static let settingsReopenButton = "重新打开欢迎向导"
 }
 

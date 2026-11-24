@@ -177,7 +177,7 @@
     },
     "C259": {
       "title": "Windows 预警窗/设置页交互缺陷、双端欢迎文案漂移与 Widget XSS/原型碰撞修复",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C259-win-ui-bugs-and-widget-xss",
       "topic": "WindowsCompat",
       "file": "docs/devel/change/C259.json"

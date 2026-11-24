@@ -4,7 +4,7 @@
   "title": "Windows 预警窗/设置页交互缺陷、双端欢迎文案漂移与 Widget XSS/原型碰撞修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C259-win-ui-bugs-and-widget-xss",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"ProviderBrand\\.getGlyph|icons/icon\\.png|subscriptionEmpty|POSIX 0600|stopCodexPoll|xAxis\\.innerHTML\" apps/win/src/ apps/macos/Sources/ apps/widget/index.html",
     "expected": "全部问题点在对应行号均命中：不存在 `ProviderBrand.getGlyph`、无 `icons/icon.png`、引用 `subscriptionEmpty`、Windows 欢迎文案含 `POSIX 0600`、`closeProviderDialog` 无 `stopCodexPoll`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：quota-alert.js 调 window.ProviderBrand.getGlyph 且 HTML 有游离 CSS；settings-pricing.js input 事件重建整页；settings-welcome.js 引用不存在的 icons/icon.png 且缺 antigravity；双端欢迎文案含 POSIX 0600/10 家/双环；closeProviderDialog 未停 Codex 轮询、移除确认可堆叠、引导外链用 target=_blank；loadPrices 回退 {}；Ctrl+2 引用不存在的 subscriptionEmpty；widget xAxis 未转义 dt 且 colorByName 为普通对象。"
   },
   "callback": {
     "before": [

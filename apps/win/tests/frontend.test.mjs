@@ -3251,8 +3251,11 @@ test("first-launch welcome wizard auto-presents on fresh install, walks 3 steps 
 
   // 左侧栏真实 App 图标与 3 步轨断言
   const appIcon = overlay.querySelector(".welcome-app-icon");
-  assert.ok(appIcon, "左侧品牌栏包含真实应用图标节点");
-  assert.equal(appIcon.getAttribute("src"), "icons/icon.png");
+  assert.ok(appIcon, "左侧品牌栏包含品牌块节点");
+  // C259: frontendDist 为 ../src，icons/icon.png 不存在；改为内联品牌块避免破图。
+  assert.equal(appIcon.tagName, "SPAN");
+  assert.ok(appIcon.classList.contains("welcome-app-mark"));
+  assert.equal(appIcon.textContent, "B");
   const railItems = overlay.querySelectorAll(".welcome-rail-item");
   assert.equal(railItems.length, 3, "左侧进度轨包含 3 步");
   assert.match(overlay.textContent, /100% 本地只读闭环/);
@@ -3265,7 +3268,7 @@ test("first-launch welcome wizard auto-presents on fresh install, walks 3 steps 
   assert.equal(app.state.settings.consentVersion, 1, "Step 1 合并激活授权");
   assert.equal(app.state.settings.usageEnabled, true, "Step 1 开启本机统计");
 
-  // Step 2: 呈现本机发现与 10 家服务商网格, 可直接跳过至 Step 3
+  // Step 2: 呈现本机发现与 11 家服务商网格, 可直接跳过至 Step 3
   assert.match(overlay.textContent, /STEP 02 · SUBSCRIPTION QUOTA/);
   assert.equal(overlay.querySelectorAll(".welcome-provider-card").length, 11, "Step 2 展示 11 家订阅服务 (含 T39 Grok Bot)");
   await app.node("welcome-step2-skip").click();
@@ -3273,7 +3276,7 @@ test("first-launch welcome wizard auto-presents on fresh install, walks 3 steps 
 
   // Step 3: 双同心环规图例、快捷偏好设置与「完成并打开看板」
   assert.match(overlay.textContent, /STEP 03 · APPEARANCE & SHORTCUT/);
-  assert.match(overlay.textContent, /外母环 · 全局平均剩余额度/);
+  assert.match(overlay.textContent, /菜单栏预览 · 实时用量/);
   await app.node("welcome-default-hotkey-btn").click();
   await settle();
   assert.equal(app.state.settings.hotkey, "Control+Shift+B");

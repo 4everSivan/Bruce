@@ -1642,7 +1642,8 @@ window.addEventListener("focus", () => {
 function cardShortcutAvailable(cardID) {
   if (!currentPanel) return false;
   if (cardID === "usage") return Boolean(currentPanel.usage);
-  if (cardID === "subscription") return Boolean(currentPanel.subscription || currentPanel.subscriptionEmpty);
+  // C259: 空订阅页由 usage 存在时渲染的空态卡承载；不存在 subscriptionEmpty 字段。
+  if (cardID === "subscription") return Boolean(currentPanel.subscription || currentPanel.usage);
   if (cardID === "hourly") return Boolean(currentPanel.hourly);
   return false;
 }

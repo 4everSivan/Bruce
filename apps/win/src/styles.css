@@ -2723,6 +2723,16 @@ html[data-motion="off"] *::before {
   flex: none;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.42);
 }
+.welcome-app-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #2f6fed, #16357a);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
 .welcome-brand-meta {
   display: flex;
   flex-direction: column;

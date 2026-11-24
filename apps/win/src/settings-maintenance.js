@@ -843,7 +843,8 @@
     try {
       coreState.currentModelPrices = await invoke("get_model_prices") || {};
     } catch {
-      coreState.currentModelPrices = {};
+      // C259: currentModelPrices 是数组；回退成对象会让定价页 .map 抛 TypeError。
+      coreState.currentModelPrices = [];
     }
     renderPricingPane();
   }

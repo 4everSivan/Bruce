@@ -62,52 +62,26 @@
     return rows.reduce((sum, row) => sum + (row.cost || 0), 0);
   }
 
-  function renderPricingPane() {
-    const host = byId("pane-modelPricing-content");
-    if (!host) return;
-    const previous = byId("pricing-host");
-    const container = previous || node("div", null, { id: "pricing-host" });
-    container.replaceChildren();
-    if (!previous) host.append(container);
+  let pricingTableHost = null;
 
+  function pricingVisibleRows() {
     const rows = effectivePricingRows();
-    const withUsage = rows.filter((row) => row.tokens > 0);
-    const custom = rows.filter((row) => row.isCustom);
     const query = pricingQuery.trim().toLowerCase();
-    const visible = rows.filter((row) => {
+    return rows.filter((row) => {
       if (pricingFilter === "已有用量" && row.tokens <= 0) return false;
       if (pricingFilter === "已校准" && !row.isCustom) return false;
       if (!query) return true;
       return [row.key, row.displayName, row.vendor].some((value) => String(value).toLowerCase().includes(query));
     });
+  }
 
-    // 1. 今日费用总览
-    const summary = card(container, null);
-    summary.classList.add("pricing-summary");
-    summary.append(node("h2", "今日 TOKEN 预估折算总费用", { class: "pricing-title" }));
-    summary.append(node("p", "基于当前本机全部活跃 Agent 真实 Token 吞吐量进行折算", { class: "row-sub" }));
-    const amount = node("div", null, { class: "pricing-amount" });
-    amount.append(node("span", `$${pricingTodayTotal(rows).toFixed(2)}`, { class: "pricing-money" }));
-    const tokens = (coreState.currentRuntimeInfo?.modelUsage || []).reduce((sum, row) => sum + (row.tokens || 0), 0);
-    if (tokens > 0) amount.append(node("span", `/ ${formatTokens(tokens)}`, { class: "pricing-tokens" }));
-    summary.append(amount);
-
-    // 2. 搜索 + 三态筛选
-    const filterBar = node("div", null, { class: "pricing-filter" });
-    const search = input("pricing-search", "search", { placeholder: "搜索模型或厂商 (如 k3, deepseek, gpt...)", class: "pricing-search" });
-    search.value = pricingQuery;
-    search.addEventListener("input", () => { pricingQuery = search.value; renderPricingPane(); });
-    filterBar.append(search);
-    for (const mode of PRICING_FILTERS) {
-      const count = mode === "全部" ? rows.length : mode === "已有用量" ? withUsage.length : custom.length;
-      const chip = node("button", `${mode} (${count})`, { type: "button", class: mode === pricingFilter ? "pricing-chip active" : "pricing-chip" });
-      chip.addEventListener("click", () => { pricingFilter = mode; renderPricingPane(); });
-      filterBar.append(chip);
-    }
-    container.append(filterBar);
-
+  function renderPricingTable() {
+    const host = pricingTableHost;
+    if (!host) return;
+    host.replaceChildren();
+    const visible = pricingVisibleRows();
     // 3. 定价表 (8 列, 与 mac 表格同列序)
-    const tableCard = card(container, null);
+    const tableCard = card(host, null);
     tableCard.classList.add("pricing-table-card");
     if (!visible.length) {
       const empty = node("div", null, { class: "pricing-empty" });
@@ -151,7 +125,51 @@
       wrap.append(table);
       tableCard.append(wrap);
     }
-    container.append(tableCard);
+    host.append(tableCard);
+  }
+
+  function renderPricingPane() {
+    const host = byId("pane-modelPricing-content");
+    if (!host) return;
+    const previous = byId("pricing-host");
+    const container = previous || node("div", null, { id: "pricing-host" });
+    container.replaceChildren();
+    if (!previous) host.append(container);
+
+    const rows = effectivePricingRows();
+    const withUsage = rows.filter((row) => row.tokens > 0);
+    const custom = rows.filter((row) => row.isCustom);
+
+    // 1. 今日费用总览
+    const summary = card(container, null);
+    summary.classList.add("pricing-summary");
+    summary.append(node("h2", "今日 TOKEN 预估折算总费用", { class: "pricing-title" }));
+    summary.append(node("p", "基于当前本机全部活跃 Agent 真实 Token 吞吐量进行折算", { class: "row-sub" }));
+    const amount = node("div", null, { class: "pricing-amount" });
+    amount.append(node("span", `$${pricingTodayTotal(rows).toFixed(2)}`, { class: "pricing-money" }));
+    const tokens = (coreState.currentRuntimeInfo?.modelUsage || []).reduce((sum, row) => sum + (row.tokens || 0), 0);
+    if (tokens > 0) amount.append(node("span", `/ ${formatTokens(tokens)}`, { class: "pricing-tokens" }));
+    summary.append(amount);
+
+    // 2. 搜索 + 三态筛选
+    const filterBar = node("div", null, { class: "pricing-filter" });
+    const search = input("pricing-search", "search", { placeholder: "搜索模型或厂商 (如 k3, deepseek, gpt...)", class: "pricing-search" });
+    search.value = pricingQuery;
+    // C259: 输入只重绘表格区域，搜索框常驻 DOM —— 逐键重建会让焦点/光标与 IME 组合态丢失。
+    search.addEventListener("input", () => { pricingQuery = search.value; renderPricingTable(); });
+    filterBar.append(search);
+    for (const mode of PRICING_FILTERS) {
+      const count = mode === "全部" ? rows.length : mode === "已有用量" ? withUsage.length : custom.length;
+      const chip = node("button", `${mode} (${count})`, { type: "button", class: mode === pricingFilter ? "pricing-chip active" : "pricing-chip" });
+      chip.addEventListener("click", () => { pricingFilter = mode; renderPricingPane(); });
+      filterBar.append(chip);
+    }
+    container.append(filterBar);
+
+    // C259: 表格放入独立宿主，搜索时只替换这一块。
+    pricingTableHost = node("div", null, { id: "pricing-table-host" });
+    container.append(pricingTableHost);
+    renderPricingTable();
 
     // 4. settings.json 联动预览
     const configCard = card(container, null);
