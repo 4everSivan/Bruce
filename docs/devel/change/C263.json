@@ -4,7 +4,7 @@
   "title": "跨端单一事实源收敛：品牌色阶注册表统一生成与价卡/软件更新策略下沉 FFI",
   "version": "0.19.0",
   "type": "Refactor",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C263-unified-brand-and-shared-policy-tier1",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"946A08|2A6B3C|0x811c9dc5|parse_semver|schemaVersion|PROVIDER_GLYPHS\" apps/macos/Sources/ apps/win/",
     "expected": "`PanelModels.swift` 为杏色阶而 `viewmodel/src/color.rs` 为绿阶；`app.js` 含 32-bit FNV-1a 与重复 `PROVIDER_GLYPHS`；`software_update.rs` `parse_semver` 静默回退 `0`；`SharedRefreshPolicy.swift` 无 `schemaVersion` 校验",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：PanelModels.swift 浅色为杏色阶（#946A08..#F0D69A）而 viewmodel color.rs 仍为绿阶反转；app.js 自算 UTF-16 32-bit FNV-1a，且内联 13,438 字节 PROVIDER_GLYPHS（gen-provider-glyphs.mjs 同时写 app.js 与 provider-brand.js 两份）；provider id 归一仍存在 4 份、状态灯/错误文案与账号命名仍双写（本轮未收敛）；pricing_sync.rs 只拉常量 https URL，fetch 无运行时协议校验；software_update parse_semver 对非法版本静默回退 (0,0,0)、HEAD 不验域名；3 个 Swift FFI Client 各自编解码、SharedRefreshPolicy 缺 schemaVersion 校验（本轮未动）。本轮已落地：config/brand-registry.json + gen-brand-registry.mjs 生成三端色阶/档位，Windows 浅色杏色阶与 UTF-8 FNV-1a 对齐，app.js 删除内联品牌图形。"
   },
   "callback": {
     "before": [

@@ -205,7 +205,7 @@
     },
     "C263": {
       "title": "跨端单一事实源收敛：品牌色阶注册表统一生成与价卡/软件更新策略下沉 FFI",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C263-unified-brand-and-shared-policy-tier1",
       "topic": "SharedPolicyCore",
       "file": "docs/devel/change/C263.json"
