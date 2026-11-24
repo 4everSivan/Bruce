@@ -191,7 +191,7 @@
     },
     "C261": {
       "title": "macOS 主线程减负：消除深度 JSONValue 判等、分析正则缓存、后台落盘与轻量视图刷新",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C261-macos-mainactor-and-analytics-perf",
       "topic": "AgentAnalytics",
       "file": "docs/devel/change/C261.json"

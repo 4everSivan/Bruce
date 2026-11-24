@@ -26,10 +26,14 @@ package enum ModelNormalizer {
         if let slash = key.lastIndex(of: "/") {
             key = String(key[key.index(after: slash)...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if let range = key.range(of: #"-\d{8}$"#, options: .regularExpression) {
-            key.removeSubrange(range)
-        } else if let range = key.range(of: #"-\d{4}$"#, options: .regularExpression) {
-            key.removeSubrange(range)
+        // C261: 手写尾部日期剥离，避免每次调用现场编译正则。
+        for digits in [8, 4] {
+            guard let dash = key.lastIndex(of: "-") else { continue }
+            let suffix = key[key.index(after: dash)...]
+            if suffix.count == digits, suffix.allSatisfy(\.isNumber) {
+                key = String(key[..<dash])
+                break
+            }
         }
         if key.hasSuffix("-latest") {
             key.removeLast("-latest".count)
@@ -39,11 +43,21 @@ package enum ModelNormalizer {
 
     // MARK: - 展示元数据
 
+    /// 规范键 → 目录条目的一次性索引 (C261): 旧实现每次展示都线性归一化 100+ 条目录.
+    private static let catalogByCanonicalKey: [String: BuiltinModelPricing] = {
+        var lookup: [String: BuiltinModelPricing] = [:]
+        for entry in BuiltinModelPricingCatalog.allModels {
+            let key = canonicalKey(for: entry.modelName)
+            if lookup[key] == nil {
+                lookup[key] = entry
+            }
+        }
+        return lookup
+    }()
+
     /// 内置价格目录中与规范键精确相等 (目录模型名按同一规则归一) 的条目.
     private static func catalogEntry(for canonicalKey: String) -> BuiltinModelPricing? {
-        BuiltinModelPricingCatalog.allModels.first {
-            Self.canonicalKey(for: $0.modelName) == canonicalKey
-        }
+        catalogByCanonicalKey[canonicalKey]
     }
 
     /// 展示名: 目录精确命中取目录展示名, 否则即规范键本身 (不臆造名称).

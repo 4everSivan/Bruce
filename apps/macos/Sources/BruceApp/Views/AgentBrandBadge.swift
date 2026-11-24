@@ -143,12 +143,22 @@ struct AgentBrandBadge: View {
 @MainActor
 enum AgentBrandIconStore {
     private static let cache = NSCache<NSString, NSImage>()
+    /// C261: 缺失图标负缓存，避免每个渲染帧重复探测文件系统。
+    private static let missingLock = NSLock()
+    private static var missing: Set<String> = []
 
     static func image(named name: String) -> NSImage? {
         let key = name as NSString
         if let hit = cache.object(forKey: key) { return hit }
+        missingLock.lock()
+        let knownMissing = missing.contains(name)
+        missingLock.unlock()
+        if knownMissing { return nil }
         guard let url = iconURL(named: name),
               let image = NSImage(contentsOf: url) else {
+            missingLock.lock()
+            missing.insert(name)
+            missingLock.unlock()
             return nil
         }
         cache.setObject(image, forKey: key)

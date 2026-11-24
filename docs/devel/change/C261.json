@@ -4,7 +4,7 @@
   "title": "macOS 主线程减负：消除深度 JSONValue 判等、分析正则缓存、后台落盘与轻量视图刷新",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C261-macos-mainactor-and-analytics-perf",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"cachedArtifactRef == raw|canonicalKey\\(for:|loadPayloadLocked|regularExpression|0\\.05|SQLiteSchemaProbe\" apps/macos/Sources/",
     "expected": "`AppModel.swift:695` 做 `JSONValue` 全树 `==`；`ModelNormalizer` 内含 `.regularExpression` 遍历；`ArtifactStore` 与 `ProtectedFileCredentialStore` 同步读盘无缓存；`MenuBarStatusItemController` 0.05s 重建摘要与图像",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：ModelNormalizer.catalogEntry 每次 linear scan 并对每条目录现场正则归一化；WorkbenchAnalytics.dayBucket 用 Array.contains；AgentBrandIconStore 无缺失负缓存。AppModel 深度 JSONValue 判等、ArtifactStore 主线程 fsync、SQLiteSchemaProbe 5 次子进程、菜单栏 20FPS 重建本轮未实施。"
   },
   "callback": {
     "before": [

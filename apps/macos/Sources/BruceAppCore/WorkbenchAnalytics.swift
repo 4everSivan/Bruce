@@ -529,9 +529,11 @@ package enum WorkbenchAnalytics {
         var bucket = TimelineBucket()
         var types = (input: 0, output: 0, cache: 0)
         var typesAvailable = true
+        // C261: 日期集合预计算，避免逐日 Array.contains 的 O(n²) 扫描。
+        let dateSet = Set(dates)
         for agent in agents {
             var agentTotal = 0
-            for day in agent.daily where dates.contains(day.date) {
+            for day in agent.daily where dateSet.contains(day.date) {
                 agentTotal += day.total
                 if day.cacheRead == nil || day.cacheCreation == nil { typesAvailable = false }
                 let tokens = Tokens(day: day)
