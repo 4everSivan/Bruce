@@ -54,6 +54,22 @@ mod desktop {
     #[derive(Clone, Default)]
     struct ActivityState(std::sync::Arc<std::sync::Mutex<DashboardActivityState>>);
 
+    /// 跨窗口设置页签深链 (C262): 看板通过 `open_settings` 命令参数登记目标分类,
+    /// 设置窗口在加载完成 / 收到 `settings-pane-requested` 时取走并消费。
+    /// 取代原先的 localStorage + focus 轮询。
+    #[derive(Default)]
+    struct SettingsNavigationState(Mutex<Option<String>>);
+
+    /// 设置窗口接受的分类白名单 (与 settings-state.js CATEGORIES 对齐)。
+    const SETTINGS_PANES: &[&str] = &[
+        "general",
+        "agentUsage",
+        "modelPricing",
+        "subscription",
+        "consent",
+        "maintenance",
+    ];
+
     fn rect_to_bounds(rect: &tauri::Rect, scale: f64) -> TrayIconBounds {
         let pos = rect.position.to_physical::<i32>(scale);
         let sz = rect.size.to_physical::<u32>(scale);
@@ -1278,12 +1294,22 @@ mod desktop {
     /// 打开设置窗口 (mac SettingsWindowController 单实例语义: 已存在则置前)。
     /// 静态配置于 tauri.conf.json，随应用在主线程完成 WebView2 初始化并隐藏预备。
     /// 若窗口因异常缺失，在主线程兜底创建并显式呈现。
+    /// `pane` (C262) 为可选的设置分类深链: 登记后由设置窗口取走并切换, 未知值忽略。
     #[tauri::command]
-    fn open_settings(app: tauri::AppHandle) {
+    fn open_settings(app: tauri::AppHandle, pane: Option<String>) {
+        if let Some(pane) = pane.filter(|pane| SETTINGS_PANES.contains(&pane.as_str())) {
+            if let Some(state) = app.try_state::<SettingsNavigationState>() {
+                if let Ok(mut slot) = state.0.lock() {
+                    *slot = Some(pane);
+                }
+            }
+        }
         if let Some(window) = app.get_webview_window("settings") {
             let _ = window.show();
             let _ = window.unminimize();
             let _ = window.set_focus();
+            // 已常驻的窗口用事件即时消费; 未就绪时由设置页初始化时的 take 兜底。
+            let _ = window.emit("settings-pane-requested", ());
             return;
         }
         let app_clone = app.clone();
@@ -1302,8 +1328,16 @@ mod desktop {
             {
                 let _ = window.show();
                 let _ = window.set_focus();
+                let _ = window.emit("settings-pane-requested", ());
             }
         });
+    }
+
+    /// 取走一次待消费的设置分类深链 (C262): 读取即清空, 重复调用不会重复切换。
+    #[tauri::command]
+    fn take_pending_settings_pane(app: tauri::AppHandle) -> Option<String> {
+        app.try_state::<SettingsNavigationState>()
+            .and_then(|state| state.0.lock().ok().and_then(|mut slot| slot.take()))
     }
 
     // MARK: - 入口
@@ -1332,6 +1366,7 @@ mod desktop {
                 app.manage(RegisteredHotkey::default());
                 app.manage(TrayBoundsState::default());
                 app.manage(ActivityState::default());
+                app.manage(SettingsNavigationState::default());
                 // 软件更新状态机 + 自动检查 (启动 30 秒后首查, 每 24 小时一次)。
                 app.manage(UpdateState::default());
                 crate::software_update::desktop_impl::spawn_auto_check(app.handle().clone());
@@ -1365,7 +1400,7 @@ mod desktop {
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "show" => toggle_dashboard(app),
                         "refresh" => app.state::<SchedulerControl>().request_manual_refresh(),
-                        "settings" => open_settings(app.clone()),
+                        "settings" => open_settings(app.clone(), None),
                         "quit" => app.exit(0),
                         _ => {}
                     })
@@ -1441,7 +1476,7 @@ mod desktop {
                 // 已完成向导或存量老用户升级则保持双击启动直接呈现看板面板。
                 let initial_settings = settings::load_settings(&paths::data_root());
                 if settings::should_present_welcome(&initial_settings) {
-                    open_settings(app.handle().clone());
+                    open_settings(app.handle().clone(), None);
                 } else {
                     reveal_dashboard(app.handle(), DashboardOpenSource::Tray, false);
                 }
@@ -1550,6 +1585,7 @@ mod desktop {
                 refresh_subscription,
                 refresh_agent_usage_local,
                 open_settings,
+                take_pending_settings_pane,
                 hide_dashboard,
                 hide_preview_window,
                 hide_quota_alert_window,

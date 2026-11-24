@@ -323,6 +323,28 @@
     drawTimelineSummary();
   }
 
+  /// C262: 拖拽/水平平移只替换 `.wb-chart` 子树; 卡片外壳、工具栏与图例不重建,
+  /// 缩放标签等只在真正缩放时由 `drawTimeline()` 整体刷新。
+  function redrawTimelineChart() {
+    const snapshot = workbench.snapshot;
+    const card = document.querySelector(".workbench-chart-card");
+    if (!snapshot || !card) {
+      drawTimeline();
+      return;
+    }
+    const series = chartSeries(snapshot);
+    if (!snapshot.timeline.points.length || !series.length) {
+      drawTimeline();
+      return;
+    }
+    const next = timelineChart(snapshot.timeline.points, series);
+    const current = card.querySelector(".wb-chart");
+    if (current) card.replaceChild(next, current);
+    else card.append(next);
+    if (workbench.drag) next.querySelector(".wb-chart-plot")?.classList.add("dragging");
+    drawTimelineSummary();
+  }
+
   // 时序图视口 (C165, mac AnalyticsTimelineViewport 同口径, tests/fixtures/timeline-axis-parity 对拍):
   // 倍率钳制在 1–4x, 放大后至少保留 4 点, 起点钳制在 [0, maxStart]。
   const ZOOM_RANGE = [1, 4];
@@ -491,7 +513,8 @@
         const next = dragViewport(drag.base, event.clientX - drag.startX, rect.width / view.visibleCount);
         if (next.start !== view.start) {
           setViewport(next);
-          drawTimeline();
+          // C262: 拖拽只重建图表子树, 卡片外壳/工具栏/图例保持不动。
+          redrawTimelineChart();
         }
         return;
       }
@@ -525,7 +548,7 @@
       if (steps) {
         workbench.panRemainder -= steps * pointWidth;
         setViewport(panViewport(view, steps));
-        drawTimeline();
+        redrawTimelineChart();
       }
     }, { passive: false });
 

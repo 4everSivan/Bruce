@@ -2797,45 +2797,102 @@ test("only enabled, verified, non-jev providers count as eligible for the no-dat
   }
 });
 
-test("add-subscription CTA deep-links the settings window to the subscription pane (C157)", async () => {
-  const storage = memoryStorage();
-  const dashboard = await boot({ panel: emptySubscriptionPanel(), settings: { ...defaults, subscriptionProviders: {} }, storage });
+test("add-subscription CTA deep-links the settings window to the subscription pane (C157 / C262)", async () => {
+  const dashboard = await boot({ panel: emptySubscriptionPanel(), settings: { ...defaults, subscriptionProviders: {} } });
   await dashboard.node("stack").querySelector(".sub-empty-btn").click();
   await settle();
-  assert.equal(storage.getItem("bruce_settings_pane"), "subscription", "面板先落 pending pane 再打开设置");
+  const openCall = dashboard.calls.filter((call) => call.command === "open_settings").at(-1);
+  assert.equal(openCall.args?.pane, "subscription", "目标页签作为 open_settings 命令参数登记");
+  assert.equal(dashboard.state.pendingPane, "subscription");
 
-  // 设置窗口首次加载即消费 pending pane, 读完清空。
-  const settings = await boot({ html: "settings.html", storage });
+  // 设置窗口首次加载即取走 pending pane, 取走清空。
+  const settings = await boot({ html: "settings.html", pendingPane: "subscription" });
   await settle();
   const active = () => settings.document.querySelector(".navitem.active")?.dataset.category;
   assert.equal(active(), "subscription", "首次打开应直达订阅额度");
   assert.equal(settings.node("pane-subscription").classList.contains("hidden"), false);
-  assert.equal(storage.getItem("bruce_settings_pane"), null, "深链只消费一次");
+  assert.equal(settings.state.pendingPane, null, "深链只消费一次");
 
-  // 常驻隐藏的设置窗口: 再次聚焦时消费新请求; 无请求的聚焦不改分类。
+  // 常驻隐藏的设置窗口: 收到事件时取走新请求; 无请求的事件不改分类。
   await settings.document.querySelector('[data-category="general"]').click();
-  await settings.window.dispatch("focus");
-  assert.equal(active(), "general", "无 pending pane 的聚焦不得切分类");
-  storage.setItem("bruce_settings_pane", "subscription");
-  await settings.window.dispatch("focus");
-  assert.equal(active(), "subscription", "聚焦时消费新的深链请求");
-  storage.setItem("bruce_settings_pane", "not-a-pane");
-  await settings.window.dispatch("focus");
-  assert.equal(active(), "subscription", "未知分类直接忽略");
-  assert.equal(storage.getItem("bruce_settings_pane"), null);
+  await settings.emit("settings-pane-requested");
+  assert.equal(active(), "general", "无 pending pane 的事件不得切分类");
+  settings.state.pendingPane = "subscription";
+  await settings.emit("settings-pane-requested");
+  assert.equal(active(), "subscription", "事件到达时消费新的深链请求");
+  settings.state.pendingPane = "not-a-pane";
+  await settings.emit("settings-pane-requested");
+  assert.equal(active(), "subscription", "未知分类由 switchCategory 白名单忽略");
+  assert.equal(settings.state.pendingPane, null);
 });
 
-test("a failed open_settings withdraws the pending pane so the next normal open is not hijacked (C157)", async () => {
-  const storage = memoryStorage();
-  const app = await boot({
+test("settings boot skips retired IPC and duplicate initialization calls (C262)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await settle();
+  const commands = app.calls.map((call) => call.command);
+  assert.equal(commands.includes("get_credential_fields"), false, "不再发起无返回用途的 get_credential_fields");
+  assert.equal(commands.filter((command) => command === "get_usage_analytics").length, 1, "工作台初始化只取一次分析快照");
+  assert.equal(commands.filter((command) => command === "claude_local_status").length, 1, "本机 Claude 登录态只探测一次");
+  assert.equal(commands.filter((command) => command === "credential_allowlist").length, 1, "静态白名单首次加载一次");
+  // 后续凭据刷新复用已加载白名单。
+  await app.window.BruceSettingsSections.loadCredentials();
+  await settle();
+  assert.equal(commands.filter((command) => command === "credential_allowlist").length, 1, "凭据刷新不再重取白名单");
+});
+
+test("a failed open_settings leaves no pending pane behind (C262)", async () => {  const app = await boot({
     panel: emptySubscriptionPanel(),
     settings: { ...defaults, subscriptionProviders: {} },
     reject: { open_settings: "window unavailable" },
-    storage,
   });
   await app.node("stack").querySelector(".sub-empty-btn").click();
   await settle();
-  assert.equal(storage.getItem("bruce_settings_pane"), null);
+  assert.equal(app.state.pendingPane, null, "IPC 失败时后端未登记深链");
+});
+
+test("background refresh preserves collapsed cards and the selected model month (C262)", async () => {
+  const panel = structuredClone(fixture);
+  const row = (name) => ({ name, share: 0.2, colorHex: "#123456", totalText: "1K", pctText: "20%" });
+  panel.usage.monthly = [
+    { key: "2026-07", label: "7 月", totalText: "9K", isCurrent: true },
+    { key: "2026-06", label: "6 月", totalText: "5K", isCurrent: false },
+  ];
+  panel.usage.models = {
+    currentMonthKey: "2026-07",
+    tiers: [{ label: "本月", rows: ["a", "b", "c", "d"].map(row) }, { label: "3 月", rows: [] }, { label: "6 月", rows: [] }],
+    months: [{ id: "2026-06", rows: ["x", "y", "z", "w"].map(row) }],
+  };
+  const app = await boot({ panel });
+  const usageCard = () => app.node("stack").querySelector('[data-card="usage"]');
+  const cardHead = () => usageCard().querySelector(".card-head");
+  const monthChips = () => usageCard().querySelectorAll(".monthly-grid .chip");
+  const selected = () => monthChips().find((chip) => chip.classList.contains("selected"))?.dataset.month;
+
+  // 选中非本月 + 展开全部模型
+  await monthChips()[1].click();
+  assert.equal(selected(), "2026-06");
+  await usageCard().querySelector(".models-expand").click();
+  assert.equal(usageCard().querySelector(".models-expand").getAttribute("aria-expanded"), "true");
+  assert.equal(cardHead().getAttribute("aria-expanded"), "true");
+
+  // 运行态-only 刷新 (phase 变化, 正文未变) 不重建 DOM
+  const collapsedHead = cardHead();
+  await app.emit("dashboard-updated", { ...structuredClone(panel), runtime: { phase: "refreshing" } });
+  assert.equal(cardHead(), collapsedHead, "正文未变时不得重建卡片");
+  assert.equal(selected(), "2026-06");
+  assert.equal(usageCard().querySelector(".models-expand").getAttribute("aria-expanded"), "true");
+
+  // 数据变化触发重建: 折叠与月份/展开态仍要恢复
+  await cardHead().click();
+  assert.equal(cardHead().getAttribute("aria-expanded"), "false");
+  const changed = structuredClone(panel);
+  changed.usage.totalTokensText = "99.9K";
+  changed.runtime = { phase: "fresh" };
+  await app.emit("dashboard-updated", changed);
+  assert.ok(usageCard().classList.contains("collapsed"), "重建后保持折叠");
+  assert.equal(cardHead().getAttribute("aria-expanded"), "false");
+  assert.equal(selected(), "2026-06", "重建后保持所选月份");
+  assert.equal(usageCard().querySelector(".models-expand").getAttribute("aria-expanded"), "true", "重建后保持展开全部");
 });
 
 // ---------- C233: 看板只保留基础动效 ----------

@@ -53,6 +53,14 @@ export class Element {
     }
   }
   replaceChildren(...nodes) { this.innerHTML = ""; this.append(...nodes); }
+  replaceChild(next, previous) {
+    const index = this.children.indexOf(previous);
+    if (index < 0) throw new Error("replaceChild: 旧节点不在父节点中");
+    next.parentElement = this;
+    previous.parentElement = null;
+    this.children[index] = next;
+    return previous;
+  }
   remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(x => x !== this); }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
@@ -157,18 +165,28 @@ export function memoryStorage(initial = {}) {
   };
 }
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, grokBotConnect = { status: "connected" }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, pricingCatalogState = null, storage = null } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, grokBotConnect = { status: "connected" }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, pricingCatalogState = null, storage = null, pendingPane = null } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
   const window = new Element("window");
   // 凭据账号随移除命令收敛 (C089): 移除服务后重新添加须得到空账号列表。
-  const state = { panel: structuredClone(panel), settings: structuredClone(settings), accounts: structuredClone(accounts) };
+  const state = { panel: structuredClone(panel), settings: structuredClone(settings), accounts: structuredClone(accounts), pendingPane };
   const invoke = async (command, args) => {
     calls.push({ command, args });
     if (reject[command]) throw new Error(reject[command]);
     if (command === "get_dashboard") return structuredClone(state.panel);
     if (command === "get_settings") return structuredClone(state.settings);
+    // C262: 跨窗深链 = 命令参数登记 + 取走即清 (替代 localStorage 轮询)。
+    if (command === "open_settings") {
+      if (args?.pane) state.pendingPane = args.pane;
+      return null;
+    }
+    if (command === "take_pending_settings_pane") {
+      const pane = state.pendingPane;
+      state.pendingPane = null;
+      return pane;
+    }
     if (command === "save_settings_command") {
       // 镜像后端契约 (C090): enabled_providers 是 subscriptionProviders[id].enabled 的派生投影,
       // 保存时由后端归一, 并把归一结果回传前端作本地缓存。
@@ -178,6 +196,11 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
           .filter((id) => next.subscriptionProviders[id]?.enabled);
       }
       state.settings = next;
+      // 镜像后端: 保存成功广播 settings-updated, 前端统一监听重绘 (C262 起
+      // selectTab 不再同步 render, 避免双重渲染)。
+      for (const callback of events.get("settings-updated") || []) {
+        await callback({ payload: structuredClone(next) });
+      }
       return structuredClone(next);
     }
     if (command === "credential_allowlist") return ["kimiQuotaAccounts", "codexQuotaAccounts", "volcengineQuotaAccounts", "providerMeta"];

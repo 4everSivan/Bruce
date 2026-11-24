@@ -49,6 +49,8 @@ fn main() {
                 "refresh_subscription",
                 "refresh_agent_usage_local",
                 "open_settings",
+                "take_pending_settings_pane",
+                "open_external_link",
                 "hide_dashboard",
                 "hide_preview_window",
                 "hide_quota_alert_window",

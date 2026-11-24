@@ -265,7 +265,23 @@ function cardHead(card, title, status) {
   return head;
 }
 
-function makeCollapsible(card, summary, onExpand = null) {
+// C262: 卡片折叠状态提升到模块级; 后台刷新 (dashboard-updated) 重建卡片时恢复,
+// 不再把用户收起的卡片重新展开。
+const collapsedCards = new Set();
+// C262: 模型用量视图状态 (选中月份 / 三档维度 / 展开全部) 跨后台刷新保持。
+const usageViewState = { monthKey: null, mode: "tier0", modelsExpanded: false };
+
+function applyCollapsedState(card, stateKey) {
+  const collapsed = collapsedCards.has(stateKey);
+  card.classList.toggle("collapsed", collapsed);
+  const head = card.querySelector(".card-head");
+  if (head) {
+    head.classList.toggle("collapsed", collapsed);
+    head.setAttribute("aria-expanded", String(!collapsed));
+  }
+}
+
+function makeCollapsible(card, summary, onExpand = null, stateKey = null) {
   const head = card.querySelector(".card-head");
   head.setAttribute("role", "button");
   head.setAttribute("tabindex", "0");
@@ -283,6 +299,10 @@ function makeCollapsible(card, summary, onExpand = null) {
     const collapsed = card.classList.toggle("collapsed");
     head.classList.toggle("collapsed", collapsed);
     head.setAttribute("aria-expanded", String(!collapsed));
+    if (stateKey) {
+      if (collapsed) collapsedCards.add(stateKey);
+      else collapsedCards.delete(stateKey);
+    }
     // C212: 展开时通知卡片重置默认明细 (仅 Agent 卡使用).
     if (!collapsed && typeof onExpand === "function") onExpand();
   };
@@ -290,6 +310,7 @@ function makeCollapsible(card, summary, onExpand = null) {
   head.addEventListener("keydown", event => {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
   });
+  if (stateKey) applyCollapsedState(card, stateKey);
 }
 
 /* ---------- Token 用量卡 (mac UsageHeroCard) ---------- */
@@ -354,7 +375,7 @@ function usageCard(usage) {
 
     mini.append(el("b", "mini-num", usage.totalTokensText), right);
     return mini;
-  });
+  }, null, "usage");
 
   // hero 行: 40pt 档位渐变数字 (Nothing: Doto 52 纯色 + 方块小数点) + tokens + 右侧成本
   const hero = el("div", "hero-row");
@@ -401,8 +422,16 @@ function usageCard(usage) {
     sec.append(head2);
     const grid = el("div", "monthly-grid");
     const models = usage.models;
-    let selectedKey = models ? models.currentMonthKey : "";
-    let mode = "tier0";
+    // C262: 选中月份 / 三档维度 / 展开全部提升到模块级, 后台刷新重建卡片时恢复。
+    if (models) {
+      const available = new Set(usage.monthly.map((month) => month.key));
+      if (!usageViewState.monthKey || !available.has(usageViewState.monthKey)) {
+        usageViewState.monthKey = models.currentMonthKey || "";
+        if (usageViewState.mode === "month") usageViewState.mode = "tier0";
+      }
+    }
+    let selectedKey = models ? (usageViewState.monthKey || models.currentMonthKey || "") : "";
+    let mode = models ? usageViewState.mode : "tier0";
     let renderModelRows = () => {};
     let renderSeg = () => {};
     const renderGrid = () => {
@@ -418,7 +447,15 @@ function usageCard(usage) {
           chip.setAttribute("role", "button");
           chip.setAttribute("tabindex", "0");
           chip.setAttribute("aria-label", `${month.label} ${month.totalText}，查看该月模型用量`);
-          const selectMonth = () => { selectedKey = month.key; mode = "month"; renderGrid(); renderSeg(); renderModelRows(); };
+          const selectMonth = () => {
+            selectedKey = month.key;
+            mode = "month";
+            usageViewState.monthKey = month.key;
+            usageViewState.mode = "month";
+            renderGrid();
+            renderSeg();
+            renderModelRows();
+          };
           chip.addEventListener("click", selectMonth);
           chip.addEventListener("keydown", event => {
             if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMonth(); }
@@ -438,7 +475,7 @@ function usageCard(usage) {
       const mhead = el("div", "models-head");
       const left = el("div", "sec-row");
       const titleSpan = el("span", "sec", "模型用量");
-      let expanded = false;
+      let expanded = usageViewState.modelsExpanded;
       const expand = el("button", "models-expand");
       expand.type = "button";
       expand.append(icon("chevronDown"));
@@ -451,7 +488,13 @@ function usageCard(usage) {
           const b = el("button", null, tier.label);
           b.type = "button";
           if (mode === `tier${index}`) b.classList.add("active");
-          b.addEventListener("click", () => { mode = `tier${index}`; renderGrid(); renderSeg(); renderModelRows(); });
+          b.addEventListener("click", () => {
+            mode = `tier${index}`;
+            usageViewState.mode = mode;
+            renderGrid();
+            renderSeg();
+            renderModelRows();
+          });
           seg.append(b);
         });
       };
@@ -486,7 +529,11 @@ function usageCard(usage) {
         }
         if (!rows.length) rowsHost.append(el("div", "models-empty", "暂无模型数据"));
       };
-      expand.addEventListener("click", () => { expanded = !expanded; renderModelRows(); });
+      expand.addEventListener("click", () => {
+        expanded = !expanded;
+        usageViewState.modelsExpanded = expanded;
+        renderModelRows();
+      });
       renderModelRows();
       msec.append(rowsHost);
       card.append(msec);
@@ -720,7 +767,7 @@ function subscriptionEmptyCard() {
       };
   const card = el("div", "card sub-empty-card");
   cardHead(card, "订阅用量", el("span", "updated", copy.status));
-  makeCollapsible(card, () => el("span", "sub-empty-mini", copy.status));
+  makeCollapsible(card, () => el("span", "sub-empty-mini", copy.status), null, "subscription");
 
   const body = el("div", "sub-empty");
   const frame = el("span", "sub-empty-frame");
@@ -744,20 +791,10 @@ function subscriptionEmptyCard() {
   return card;
 }
 
-// 设置分类深链 (C157): 面板先落 pending pane, 设置窗口在 focus / visibilitychange
-// 时读取并切换分类; 不依赖 Rust command 改签名.
+// 设置分类深链 (C262): 目标页签作为命令参数交给后端登记, 设置窗口消费后切换;
+// 不再依赖同源 localStorage + focus 轮询。
 function openSettingsPane(pane) {
-  try {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("bruce_settings_pane", pane);
-    }
-  } catch {}
-  invoke("open_settings").catch(() => {
-    // 打开失败时撤回深链, 避免下次正常打开设置被旧请求劫持到订阅页。
-    try {
-      if (typeof localStorage !== "undefined") localStorage.removeItem("bruce_settings_pane");
-    } catch {}
-  });
+  invoke("open_settings", { pane }).catch(() => {});
 }
 // 纯余额型双槽 (mac BalanceDualSlotView): 可用余额 + 订阅状态。
 function balanceSlots(section) {
@@ -812,7 +849,7 @@ function subscriptionCard(sub) {
       mini.append(group);
     }
     return mini;
-  });
+  }, null, "subscription");
   const body = el("div", "sub-body");
   // 段渲染独立成函数: 多账号展开/收起只重建本卡正文, 不触发整栈重渲染
   // (避免清掉模型用量卡片的选中档位/展开态等局部状态)。
@@ -1194,7 +1231,7 @@ function hourlyCard(hourly, usage) {
   }, () => {
     resetExpansion();
     renderRows();
-  });
+  }, "hourly");
 
   renderRows();
   card.append(body);
@@ -1238,6 +1275,40 @@ let currentSettings = {
   motionPreference: "system"
 };
 let lastSlideDirection = "right";
+// C262: 最近一次整栈渲染的正文签名; 未变时仅刷新运行态绑定。
+let renderedBodySignature = null;
+
+function panelBodySignature(panel) {
+  return JSON.stringify([
+    panel.usage,
+    panel.subscription,
+    panel.hourly,
+    currentSettings.layoutMode,
+    currentSettings.cardOrder,
+    currentSettings.providerOrder,
+    currentSettings.usageEnabled,
+    currentSettings.enabledProviders,
+    currentSettings.activeCardId || currentSettings.activeCardID,
+    isNothingTheme(),
+  ]);
+}
+
+/// C262: 跳过重建时的轻量运行态刷新 (状态灯 / LIVE / 定向刷新按钮可用态)。
+function updateRuntimeBindings(panel) {
+  renderStatus(panel);
+  const dot = document.getElementById("hud-dot-wrap");
+  if (dot) dot.classList.toggle("live", Boolean(panel.usage?.isLive));
+  const runtime = panel.runtime || {};
+  const refreshing = new Set(runtime.refreshingProviders || []);
+  for (const button of document.querySelectorAll(".sub-refresh[data-provider]")) {
+    const provider = button.dataset.provider;
+    const runnable = runtime.quotaRefreshAllowed !== false
+      && (!currentSettings.enabledProviders || currentSettings.enabledProviders.includes(provider));
+    const busy = refreshing.has(provider);
+    button.disabled = !(runnable && !busy && runtime.phase !== "refreshing");
+    button.classList.toggle("busy", busy);
+  }
+}
 
 /* ---------- 全局界面动效闸门 (C145) ----------
  * 应用内偏好与系统「减少动画」的唯一裁决点: 结果只写 <html data-motion>,
@@ -1282,8 +1353,12 @@ async function selectTab(targetKey) {
   try {
     const updated = { ...await invoke("get_settings"), activeCardId: targetKey };
     await invoke("save_settings_command", { settings: updated });
-  } catch (e) {}
-  if (currentPanel) render(currentPanel);
+    // C262: 后端保存成功会广播 settings-updated, 由统一监听重绘一次;
+    // 这里不再同步 render, 避免同一次切换叠加两次全量重建。
+  } catch (e) {
+    // 保存失败时后端不会广播; 本地先按新页签渲染, 保持交互一致。
+    if (currentPanel) render(currentPanel);
+  }
 }
 
 document.getElementById("tab-btn-usage")?.addEventListener("click", () => selectTab("usage"));
@@ -1454,9 +1529,16 @@ function renderStatus(panel) {
   refresh.disabled = resolved.isRefreshing;
   refresh.classList.toggle("spinning", resolved.isRefreshing);
 }
-function render(panel) {
+function render(panel, options = {}) {
   if (!panel || typeof panel !== "object") throw new Error("看板数据不可用");
   currentPanel = panel;
+  // C262: 数据/设置/主题未变的再次发布 (如刷新开始) 只更新运行态, 跳过整栈重建,
+  // 保留卡片折叠、所选月份与展开态以及 DOM 事件监听。
+  const signature = panelBodySignature(panel);
+  if (!options.force && signature === renderedBodySignature) {
+    updateRuntimeBindings(panel);
+    return;
+  }
   const activeCount = panel.hourly?.rows.filter(r => r.todayTotal > 0).length || 0;
   document.getElementById("hud-dot-wrap").classList.toggle("live", Boolean(panel.usage?.isLive));
 
@@ -1544,6 +1626,7 @@ function render(panel) {
     empty.append(inner);
     stack.append(empty);
   }
+  renderedBodySignature = signature;
 }
 // 致命错误 (面板无法渲染 / IPC 失败): 顶部零输出 (C080/C100), 只把 HUD 状态灯标为红色「失败」,
 // 详情走控制台保留可诊断性。
@@ -1579,23 +1662,31 @@ function applySettings(settings) {
   applyTheme(settings.theme);
   // C145: 动效偏好变更后立即刷新 <html data-motion>, 无需重启.
   applyMotionPreference();
-  if (currentPanel) renderWhenVisible(currentPanel);
+  // 设置变更可能影响卡片顺序/启用集合/布局: 强制重建一次。
+  if (currentPanel) renderWhenVisible(currentPanel, { force: true });
 }
 window.addEventListener("settings-saved", event => applySettings(event.detail));
 // C013: 面板隐藏时跳过全量 DOM 重建 (常驻周期刷新每拍都在重渲染不可见节点);
 // 脏标记挂起, 下次可见时补渲一次。document.hidden 在旧环境/测试桩缺省时
 // 视为可见, 行为与门控前一致。
 let pendingPanel = null;
-function renderWhenVisible(panel) {
-  if (document.hidden === true) { pendingPanel = panel; return; }
-  render(panel);
+let pendingForce = false;
+function renderWhenVisible(panel, options = {}) {
+  if (document.hidden === true) {
+    pendingPanel = panel;
+    pendingForce = Boolean(options.force);
+    return;
+  }
+  render(panel, options);
 }
 
 function renderPendingPanel() {
   if (pendingPanel === null) return;
   const panel = pendingPanel;
+  const force = pendingForce;
   pendingPanel = null;
-  render(panel);
+  pendingForce = false;
+  render(panel, { force });
 }
 
 function triggerCurtainEnter() {
@@ -1674,6 +1765,8 @@ window.addEventListener("keydown", event => {
   }
   const head = card.querySelector(".card-head");
   const collapsed = card.classList.toggle("collapsed");
+  if (collapsed) collapsedCards.add(cardID);
+  else collapsedCards.delete(cardID);
   if (head) {
     head.classList.toggle("collapsed", collapsed);
     head.setAttribute("aria-expanded", String(!collapsed));

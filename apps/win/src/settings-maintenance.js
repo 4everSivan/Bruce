@@ -10,7 +10,6 @@
   const enabledProvidersOf = (...args) => S.enabledProvidersOf(...args);
   const renderOrders = (...args) => S.renderOrders(...args);
   const renderSubscriptionViews = (...args) => S.renderSubscriptionViews(...args);
-  const renderAgentUsageWorkbench = (...args) => S.renderAgentUsageWorkbench(...args);
   const renderSessionProbes = (...args) => S.renderSessionProbes(...args);
   const renderPricingPane = (...args) => S.renderPricingPane(...args);
 
@@ -915,13 +914,15 @@
   }
 
   async function loadCredentials() {
-    const [fields, , accounts, rejections] = await Promise.all([
-      invoke("credential_allowlist"),
-      invoke("get_credential_fields"),
+    // C262: `get_credential_fields` 的返回值从未被使用 (每次还让后端重读一遍凭证
+    // 文件); 静态白名单只在首次加载时获取, 后续凭证增删复用。
+    const [accounts, rejections] = await Promise.all([
       invoke("get_credential_accounts"),
       invoke("get_credential_rejections"),
     ]);
-    coreState.allowlist = fields;
+    if (!Array.isArray(coreState.allowlist) || coreState.allowlist.length === 0) {
+      coreState.allowlist = await invoke("credential_allowlist");
+    }
     coreState.credentialAccounts = accounts || [];
     coreState.credentialRejections = rejections || [];
     renderOrders();
@@ -950,7 +951,8 @@
       }
       coreState.providerPlans = plans;
       renderOrders();
-      renderAgentUsageWorkbench();
+      // C262: 这里原先无条件重跑 renderAgentUsageWorkbench(), 与 buildAgentUsage 的
+      // 首次渲染叠成两次 get_usage_analytics; 套餐名只影响订阅列表, 不再触发工作台请求。
     } catch { coreState.providerPlans = {}; }
   }
 

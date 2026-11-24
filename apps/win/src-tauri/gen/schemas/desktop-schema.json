@@ -363,6 +363,12 @@
           "markdownDescription": "Enables the import_volcengine_from_ccswitch command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_external_link command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-external-link",
+          "markdownDescription": "Enables the open_external_link command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_release_page command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-release-page",
@@ -493,6 +499,12 @@
           "type": "string",
           "const": "allow-sync-pricing-catalog",
           "markdownDescription": "Enables the sync_pricing_catalog command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the take_pending_settings_pane command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-take-pending-settings-pane",
+          "markdownDescription": "Enables the take_pending_settings_pane command without any pre-configured scope."
         },
         {
           "description": "Enables the update_cancel command without any pre-configured scope.",
@@ -735,6 +747,12 @@
           "markdownDescription": "Denies the import_volcengine_from_ccswitch command without any pre-configured scope."
         },
         {
+          "description": "Denies the open_external_link command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-external-link",
+          "markdownDescription": "Denies the open_external_link command without any pre-configured scope."
+        },
+        {
           "description": "Denies the open_release_page command without any pre-configured scope.",
           "type": "string",
           "const": "deny-open-release-page",
@@ -865,6 +883,12 @@
           "type": "string",
           "const": "deny-sync-pricing-catalog",
           "markdownDescription": "Denies the sync_pricing_catalog command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the take_pending_settings_pane command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-take-pending-settings-pane",
+          "markdownDescription": "Denies the take_pending_settings_pane command without any pre-configured scope."
         },
         {
           "description": "Denies the update_cancel command without any pre-configured scope.",
