@@ -1,16 +1,27 @@
 //! 共享策略的 C ABI (T16, design/08 第二期): mac 以静态库链接后进程内调用。
 //!
-//! 只有两个函数: `bruce_policy_call` 收 policy-request-v1 字节、返回 policy-response-v1
-//! 字节 (与 `collector_policy::handle_request` 同一入口, 校验与诊断语义一致);
-//! `bruce_policy_free` 释放返回的缓冲区。错误一律以诊断信封返回, panic 不越过边界。
+//! `bruce_policy_call` 收 policy-request-v1 字节、返回 policy-response-v1 字节
+//! (与 `collector_policy::handle_request` 同一入口, 校验与诊断语义一致);
+//! `bruce_policy_free` 释放返回的缓冲区; `bruce_policy_abi_version` 供 Swift 端握手
+//! (C263: 过期的静态库不得静默链接)。错误一律以诊断信封返回, panic 不越过边界。
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
+
+/// C ABI 版本 (C263): 头文件、Rust 实现与 Swift `PolicyFFITransport.expectedABIVersion`
+/// 必须一致; ABI 形状或语义破坏性变化时递增。
+pub const ABI_VERSION: u32 = 1;
 
 /// 序列化本身失败或越界 panic 时的兜底信封 (不依赖任何堆上状态)。
 const PANIC_ENVELOPE: &str = r#"{"schemaVersion":1,"status":"error","operation":null,"result":null,"diagnostics":[{"code":"POLICY_INTERNAL_PANIC","message":"策略计算内部错误 (已捕获 panic)"}]}"#;
 
 /// 超限请求直接拒绝，不构造 slice（C257：避免非法长度导致的 UB）。
 const OVERSIZED_ENVELOPE: &str = r#"{"schemaVersion":1,"status":"error","operation":null,"result":null,"diagnostics":[{"code":"POLICY_REQUEST_TOO_LARGE","message":"策略请求超过大小上限"}]}"#;
+
+/// 返回 C ABI 版本; Swift 端首次调用前与之握手, 不匹配即报错 (C263)。
+#[no_mangle]
+pub extern "C" fn bruce_policy_abi_version() -> u32 {
+    ABI_VERSION
+}
 
 /// 处理一次策略请求, 返回 policy-response-v1 字节; 长度写入 `out_len`。
 ///
@@ -65,4 +76,14 @@ pub unsafe extern "C" fn bruce_policy_free(buffer: *mut u8, len: usize) {
     }
     // SAFETY: buffer / len 来自 bruce_policy_call 中 Box<[u8]> 的 into_raw。
     drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(buffer, len)) });
+}
+
+#[cfg(test)]
+mod tests {
+    /// C263: ABI 版本是对外契约, 只能显式递增; Swift 端以同值握手。
+    #[test]
+    fn abi_version_is_explicit() {
+        assert_eq!(super::bruce_policy_abi_version(), super::ABI_VERSION);
+        assert_eq!(super::ABI_VERSION, 1);
+    }
 }

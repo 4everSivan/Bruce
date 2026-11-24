@@ -117,7 +117,7 @@ package final class CollectorQuotaAlertPolicy: QuotaAlertDeciding {
     }
 
     package static func inProcess() -> CollectorQuotaAlertPolicy {
-        CollectorQuotaAlertPolicy { input in InProcessQuotaPolicyTransport.call(input) }
+        CollectorQuotaAlertPolicy { input in try InProcessQuotaPolicyTransport.callThrowing(input) }
     }
 
     package func decide(
@@ -127,26 +127,23 @@ package final class CollectorQuotaAlertPolicy: QuotaAlertDeciding {
         activeKeys: [String]?,
         now: Date
     ) async throws -> QuotaAlertDecision {
-        let request: JSONValue = .object([
-            "schemaVersion": .integer(1),
-            "operation": .string("alertDecide"),
-            "nowMs": .integer(Int(now.timeIntervalSince1970 * 1000)),
-            "deliverable": .boolean(deliverable),
-            "services": .array(services),
-            "previousState": previousState ?? .null,
-            "activeKeys": activeKeys.map { .array($0.sorted().map(JSONValue.string)) } ?? .null,
-        ])
-        let output = try await transport(try JSONEncoder().encode(request))
-        guard let response = try? JSONDecoder().decode(JSONValue.self, from: output).objectValue,
-              response["schemaVersion"]?.intValue == 1 else {
-            throw QuotaPolicyError.invalidResponse
+        let output: Data
+        do {
+            output = try await transport(try PolicyFFITransport.request(operation: "alertDecide", fields: [
+                "nowMs": .integer(Int(now.timeIntervalSince1970 * 1000)),
+                "deliverable": .boolean(deliverable),
+                "services": .array(services),
+                "previousState": previousState ?? .null,
+                "activeKeys": activeKeys.map { .array($0.sorted().map(JSONValue.string)) } ?? .null,
+            ]))
+        } catch let failure as PolicyFFITransport.Failure {
+            throw QuotaPolicyError.from(failure)
         }
-        guard response["status"]?.stringValue == "success",
-              let result = response["result"]?.objectValue else {
-            let code = response["diagnostics"]?.arrayValue?.first?.objectValue?["code"]?
-                .stringValue
-            guard let code else { throw QuotaPolicyError.invalidResponse }
-            throw QuotaPolicyError.rejected(code: code)
+        let result: [String: JSONValue]
+        do {
+            result = try PolicyFFITransport.decode(output)
+        } catch let failure as PolicyFFITransport.Failure {
+            throw QuotaPolicyError.from(failure)
         }
         guard let state = result["state"],
               let events = result["events"]?.arrayValue else {

@@ -291,6 +291,8 @@ struct RefreshSchedulerHarness {
         try await agentCardRefreshRunsLocalOnlyAndKeepsServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 137")
+        print("Refresh scheduler: policy transport validates envelope + ABI version (C263)")
+        try policyTransportValidatesEnvelopeAndABI()
+        print("Refresh scheduler tests passed: 138")
     }
 }

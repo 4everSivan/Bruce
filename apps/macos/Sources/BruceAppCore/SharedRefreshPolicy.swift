@@ -1,6 +1,5 @@
 import Foundation
 import BruceOnboardingCore
-import BrucePolicyFFI
 
 /// 共享刷新策略入口 (T17, design/08): 窗口边界唤醒与退避经进程内 C ABI 计算,
 /// 规则只在 `collector-policy::refresh` 中实现一份。
@@ -13,12 +12,7 @@ package enum SharedRefreshPolicy {
         guard let services = artifact.objectValue?["services"]?.arrayValue else {
             return []
         }
-        let request: JSONValue = .object([
-            "schemaVersion": .integer(1),
-            "operation": .string("boundaryIds"),
-            "services": .array(services),
-        ])
-        guard let result = call(request),
+        guard let result = call("boundaryIds", ["services": .array(services)]),
               let values = result["boundaries"]?.arrayValue else {
             return nil
         }
@@ -33,16 +27,13 @@ package enum SharedRefreshPolicy {
         slack: TimeInterval,
         consumed: inout Set<Int64>
     ) -> TimeInterval? {
-        let request: JSONValue = .object([
-            "schemaVersion": .integer(1),
-            "operation": .string("boundaryWake"),
+        guard let result = call("boundaryWake", [
             "interval": .double(intervalRemaining),
             "boundaries": .array(boundaries.map { .integer(Int($0)) }),
             "now": .double(now.timeIntervalSince1970),
             "slack": .double(slack),
             "consumed": .array(consumed.sorted().map { .integer(Int($0)) }),
-        ])
-        guard let result = call(request),
+        ]),
               let delay = result["delay"]?.doubleValue,
               let values = result["consumed"]?.arrayValue else {
             return nil
@@ -60,33 +51,25 @@ package enum SharedRefreshPolicy {
         rateLimit: TimeInterval,
         jitterFraction: Double
     ) -> TimeInterval? {
-        let request: JSONValue = .object([
-            "schemaVersion": .integer(1),
-            "operation": .string("backoff"),
+        guard let result = call("backoff", [
             "retryCount": .integer(retryCount),
             "rateLimited": .boolean(rateLimited),
             "base": .double(base),
             "max": .double(max),
             "rateLimit": .double(rateLimit),
             "jitterFraction": .double(jitterFraction),
-        ])
-        guard let result = call(request),
+        ]),
               let seconds = result["seconds"]?.doubleValue else {
             return nil
         }
         return seconds
     }
 
-    private static func call(_ request: JSONValue) -> [String: JSONValue]? {
-        guard let input = try? JSONEncoder().encode(request) else { return nil }
-        let output = InProcessQuotaPolicyTransport.call(input)
-        guard let response = try? JSONDecoder().decode(
-            JSONValue.self,
-            from: output
-        ).objectValue,
-            response["status"]?.stringIdValue == "success" else {
-            return nil
-        }
-        return response["result"]?.objectValue
+    /// 入口不可用 (编码 / ABI 不匹配 / 非 success 信封) 一律返回 nil，调用方回退安全值。
+    private static func call(
+        _ operation: String,
+        _ fields: [String: JSONValue]
+    ) -> [String: JSONValue]? {
+        try? PolicyFFITransport.call(operation: operation, fields: fields)
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 @testable import BruceAppCore
 import BruceOnboardingCore
+import BrucePolicyFFI
 
 enum RefreshTestFailure: Error, CustomStringConvertible {
     case expectation(String)
@@ -980,4 +981,28 @@ final class CredentialUpdateExecutor: CollectorExecuting {
 
     func cancel(module: CollectorModule) {}
     func cancelAll() {}
+}
+
+extension RefreshSchedulerHarness {
+    /// C263: 统一 PolicyFFITransport 校验 schemaVersion 与 ABI 版本；
+    /// 修复 SharedRefreshPolicy 此前缺少 schemaVersion 校验的漂移。
+    static func policyTransportValidatesEnvelopeAndABI() throws {
+        let ok = Data(#"{"schemaVersion":1,"status":"success","operation":"backoff","result":{"seconds":1.5},"diagnostics":[]}"#.utf8)
+        let result = try PolicyFFITransport.decode(ok)
+        try refreshExpect(result["seconds"]?.doubleValue == 1.5, "success 信封应解出 result")
+
+        let missingSchema = Data(#"{"status":"success","operation":"backoff","result":{"seconds":1.5},"diagnostics":[]}"#.utf8)
+        do {
+            _ = try PolicyFFITransport.decode(missingSchema)
+            throw RefreshTestFailure.expectation("缺少 schemaVersion 必须拒绝")
+        } catch is PolicyFFITransport.Failure {
+            // expected
+        }
+
+        let version = bruce_policy_abi_version()
+        try refreshExpect(
+            version == PolicyFFITransport.expectedABIVersion,
+            "ABI 版本应与静态库一致, got \(version)"
+        )
+    }
 }

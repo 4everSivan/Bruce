@@ -16,4 +16,7 @@ uint8_t *bruce_policy_call(const uint8_t *request, size_t request_len, size_t *o
 // 释放 bruce_policy_call 返回的缓冲区; NULL 时无操作。
 void bruce_policy_free(uint8_t *buffer, size_t len);
 
+// C ABI 版本 (C263): Swift 端启动/首次调用前握手; 与 Rust ABI_VERSION 必须一致。
+uint32_t bruce_policy_abi_version(void);
+
 #endif

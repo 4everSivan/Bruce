@@ -1,6 +1,5 @@
 import Foundation
 import BruceOnboardingCore
-import BrucePolicyFFI
 
 // MARK: - QuotaRunPolicy
 
@@ -50,19 +49,15 @@ package typealias QuotaPolicyTransport = @MainActor (Data) async throws -> Data
 
 /// 进程内传输 (T16, design/08 第二期): 经静态链接的共享策略 C ABI
 /// (`collector-policy-ffi`) 计算, 不启动进程; 返回的缓冲区当场复制并释放.
+/// C263 起统一走 `PolicyFFITransport`（含 ABI 版本握手）。
 package enum InProcessQuotaPolicyTransport {
     package static func call(_ input: Data) -> Data {
-        var outputLength = 0
-        let buffer = input.withUnsafeBytes { raw in
-            bruce_policy_call(
-                raw.bindMemory(to: UInt8.self).baseAddress,
-                raw.count,
-                &outputLength
-            )
-        }
-        guard let buffer else { return Data() }
-        defer { bruce_policy_free(buffer, outputLength) }
-        return Data(bytes: buffer, count: outputLength)
+        (try? callThrowing(input)) ?? Data()
+    }
+
+    /// 与 `call` 相同但保留 ABI 不匹配等传输错误；生产客户端用这个入口。
+    package static func callThrowing(_ input: Data) throws -> Data {
+        try PolicyFFITransport.inProcess(input)
     }
 }
 
@@ -71,6 +66,24 @@ package enum QuotaPolicyError: Error, Equatable {
     case invalidResponse
     /// 入口返回 error 信封 (诊断码见 policy-response-v1).
     case rejected(code: String)
+    /// 静态库 ABI 与本端预期不一致 (过期的 libbruce_policy.a).
+    case abiMismatch(expected: UInt32, actual: UInt32)
+
+    /// 把统一传输层的失败映射为本端错误 (保留诊断码与 ABI 信息)。
+    static func from(_ error: Error) -> QuotaPolicyError {
+        // 测试注入的传输可直接抛本枚举；原样透传，避免被降级成 invalidResponse。
+        if let policy = error as? QuotaPolicyError {
+            return policy
+        }
+        switch error {
+        case PolicyFFITransport.Failure.rejected(let code):
+            return .rejected(code: code)
+        case PolicyFFITransport.Failure.abiMismatch(let expected, let actual):
+            return .abiMismatch(expected: expected, actual: actual)
+        default:
+            return .invalidResponse
+        }
+    }
 }
 
 /// 额度门禁输入 (纯数据; 不含凭据).
@@ -147,7 +160,7 @@ package final class CollectorQuotaPolicy: QuotaPolicyComputing {
 
     /// 生产入口: 进程内调用共享策略 (T16).
     package static func inProcess() -> CollectorQuotaPolicy {
-        CollectorQuotaPolicy { input in InProcessQuotaPolicyTransport.call(input) }
+        CollectorQuotaPolicy { input in try InProcessQuotaPolicyTransport.callThrowing(input) }
     }
 
     package func plan(_ input: QuotaPlanInput) async throws -> QuotaRunPolicy {
@@ -243,21 +256,19 @@ package final class CollectorQuotaPolicy: QuotaPolicyComputing {
         _ operation: String,
         _ fields: [String: JSONValue]
     ) async throws -> [String: JSONValue] {
-        var request = fields
-        request["schemaVersion"] = .integer(1)
-        request["operation"] = .string(operation)
-        let output = try await transport(try JSONEncoder().encode(JSONValue.object(request)))
-        guard let response = try? JSONDecoder().decode(JSONValue.self, from: output).objectValue,
-              response["schemaVersion"]?.intValue == 1 else {
-            throw QuotaPolicyError.invalidResponse
+        let output: Data
+        do {
+            output = try await transport(
+                try PolicyFFITransport.request(operation: operation, fields: fields)
+            )
+        } catch let failure as PolicyFFITransport.Failure {
+            // 只映射统一传输层的失败；测试注入的其它错误原样透传。
+            throw QuotaPolicyError.from(failure)
         }
-        guard response["status"]?.stringIdValue == "success",
-              let result = response["result"]?.objectValue else {
-            let code = response["diagnostics"]?.arrayValue?.first?.objectValue?["code"]?
-                .stringIdValue
-            guard let code else { throw QuotaPolicyError.invalidResponse }
-            throw QuotaPolicyError.rejected(code: code)
+        do {
+            return try PolicyFFITransport.decode(output)
+        } catch let failure as PolicyFFITransport.Failure {
+            throw QuotaPolicyError.from(failure)
         }
-        return result
     }
 }
