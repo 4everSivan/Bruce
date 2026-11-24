@@ -4,7 +4,7 @@
   "title": "SQLite WAL 事务锁竞态、外部只读库 busy_timeout、Mach CPU 指标与 FFI 边界加固",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C257-sqlite-concurrency-wal-and-zcode-cancel",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"connection\\.transaction\\(\\)|SQLITE_OPEN_URI|scan_zcode_requests|ri_user_time|from_raw_parts\" core/collector/crates/",
     "expected": "`RequestLogStore::merge` 用 `transaction()`；`sqlite_cache.rs:222` 含 `SQLITE_OPEN_URI`；`scan_zcode_cached` 吞掉 `Err(_)`；`metrics.rs:34-35` 未乘 `mach_timebase_info`；`collector-policy-ffi` 先 `from_raw_parts` 后判边界",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：RequestLogStore::merge 默认 DEFERRED、query 无读事务、建表无事务；sqlite_cache 只读打开含 SQLITE_OPEN_URI 且无 busy_timeout，zcode 请求库同样缺 busy_timeout；scan_zcode_cached 用 Err(_) 吞 Runtime；metrics.rs 直接把 ri_user_time/ri_system_time 当纳秒；policy-ffi 先 from_raw_parts 后判上限。"
   },
   "callback": {
     "before": [

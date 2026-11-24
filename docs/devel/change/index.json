@@ -163,7 +163,7 @@
     },
     "C257": {
       "title": "SQLite WAL 事务锁竞态、外部只读库 busy_timeout、Mach CPU 指标与 FFI 边界加固",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C257-sqlite-concurrency-wal-and-zcode-cancel",
       "topic": "RequestLog",
       "file": "docs/devel/change/C257.json"

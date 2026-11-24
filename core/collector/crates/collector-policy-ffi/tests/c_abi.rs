@@ -109,3 +109,27 @@ fn repeated_calls_release_every_buffer() {
         assert_eq!(response["status"], "success");
     }
 }
+
+/// C257: 超限长度必须在构造 slice 之前拦截；即使指针不可映射也安全返回错误信封。
+#[test]
+fn oversized_request_length_is_rejected_without_dereferencing() {
+    let mut len = 0usize;
+    // SAFETY: 哨兵指针不会被解引用 —— 入口先按长度拦截。
+    let buffer = unsafe {
+        bruce_policy_call(
+            usize::MAX as *const u8,
+            collector_policy::MAX_POLICY_REQUEST_BYTES + 1,
+            &mut len,
+        )
+    };
+    assert!(!buffer.is_null());
+    // SAFETY: buffer 指向 len 字节, 读取后按同一长度释放一次。
+    let response: Value =
+        serde_json::from_slice(unsafe { std::slice::from_raw_parts(buffer, len) }).unwrap();
+    assert_eq!(response["status"], "error");
+    assert_eq!(
+        response["diagnostics"][0]["code"],
+        "POLICY_REQUEST_TOO_LARGE"
+    );
+    unsafe { bruce_policy_free(buffer, len) };
+}

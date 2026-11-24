@@ -210,9 +210,10 @@ impl RequestLogStore {
     fn ensure_schema(&self) -> Result<(), RequestLogError> {
         let version = schema_version(&self.connection)?;
         if version == 0 {
-            self.connection.execute_batch(SCHEMA_SQL)?;
-            self.connection
-                .pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            // C257: 建表与 user_version 必须原子，避免半初始化 schema 被并发打开看到。
+            self.connection.execute_batch(&format!(
+                "BEGIN IMMEDIATE;\n{SCHEMA_SQL}\nPRAGMA user_version = {SCHEMA_VERSION};\nCOMMIT;"
+            ))?;
             return Ok(());
         }
         if version != SCHEMA_VERSION {
@@ -235,7 +236,10 @@ impl RequestLogStore {
         entries: &[RequestLogEntry],
         cutoff: i64,
     ) -> Result<MergeOutcome, RequestLogError> {
-        let transaction = self.connection.transaction()?;
+        // C257: WAL 下 DEFERRED 事务的读升级写会绕过 busy_timeout 直接 SQLITE_BUSY。
+        let transaction = self
+            .connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let mut written = 0;
         {
             let mut statement = transaction.prepare_cached(&merge_sql())?;
@@ -264,12 +268,16 @@ impl RequestLogStore {
         let pruned =
             transaction.execute("DELETE FROM request_log WHERE occurred_at < ?1", [cutoff])?;
         transaction.commit()?;
+        // C257: -wal/-shm 可能在本轮写入时重建，权限随之漂移；写后重新收紧。
+        self.restrict_sidecar_files();
         Ok(MergeOutcome { written, pruned })
     }
 
     pub fn query(&self, filter: &RequestLogFilter) -> Result<RequestLogPage, RequestLogError> {
         let (where_clause, values) = filter_clause(filter, true);
-        let (total, tokens, cost_usd): (i64, i64, f64) = self.connection.query_row(
+        // C257: 总计 / 分页 / 分面必须来自同一 WAL 快照，避免并发写入导致跨查询不一致。
+        let transaction = self.connection.unchecked_transaction()?;
+        let (total, tokens, cost_usd): (i64, i64, f64) = transaction.query_row(
             &format!(
                 "SELECT COUNT(*),
                         COALESCE(SUM(input + output + cache_read + cache_creation), 0),
@@ -285,7 +293,7 @@ impl RequestLogStore {
         let mut page_values = values;
         page_values.push(Value::Integer(page_size));
         page_values.push(Value::Integer(page * page_size));
-        let mut statement = self.connection.prepare(&format!(
+        let mut statement = transaction.prepare(&format!(
             "SELECT agent_id, request_key, occurred_at, model, raw_model, project,
                     input, output, cache_read, cache_creation, cache_creation_1h,
                     cost_usd, pricing_model, status_code, fidelity, latency_ms, first_token_ms
@@ -300,7 +308,7 @@ impl RequestLogStore {
         // The model menu is a facet: list every model matching the other
         // filters, so choosing one model does not hide the alternatives (C249).
         let (facet_clause, facet_values) = filter_clause(filter, false);
-        let mut models_statement = self.connection.prepare(&format!(
+        let mut models_statement = transaction.prepare(&format!(
             "SELECT DISTINCT model FROM request_log
              WHERE {facet_clause} AND model IS NOT NULL
              ORDER BY model ASC LIMIT 256"
@@ -308,9 +316,13 @@ impl RequestLogStore {
         let models = models_statement
             .query_map(params_from_iter(facet_values), |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
+        // 结束 SELECT 语句借用后才能提交只读事务（快照到此一致）。
+        drop(statement);
+        drop(models_statement);
 
         let total = u64::try_from(total).unwrap_or(0);
         let tokens = u64::try_from(tokens).unwrap_or(0);
+        transaction.commit()?;
         Ok(RequestLogPage {
             total,
             tokens,
@@ -323,6 +335,19 @@ impl RequestLogStore {
 
     pub fn schema_version(&self) -> Result<i64, RequestLogError> {
         schema_version(&self.connection)
+    }
+
+    /// 写后重新收紧主库与 -wal/-shm 权限 (C257)。
+    fn restrict_sidecar_files(&self) {
+        let Ok(path) = self
+            .connection
+            .query_row("PRAGMA database_list", [], |row| row.get::<_, String>(2))
+        else {
+            return;
+        };
+        if !path.is_empty() {
+            restrict_database_files(Path::new(&path));
+        }
     }
 }
 
@@ -470,6 +495,39 @@ mod tests {
         entry.input = input;
         entry.cost_usd = cost;
         entry
+    }
+
+    /// C257: 并发写持有 IMMEDIATE 锁时，merge 必须等锁而不是因读升级写直接 SQLITE_BUSY。
+    #[test]
+    fn merge_waits_for_concurrent_writer_instead_of_failing_busy() {
+        let dir = std::env::temp_dir().join(format!(
+            "bruce-request-log-wal-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("request-log.sqlite");
+        let mut store = RequestLogStore::open(&path).unwrap();
+
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let writer_path = path.clone();
+        let writer = std::thread::spawn(move || {
+            let connection = Connection::open(&writer_path).unwrap();
+            connection.execute_batch("BEGIN IMMEDIATE").unwrap();
+            locked_tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            connection.execute_batch("COMMIT").unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        // 旧 DEFERRED 实现在此直接 SQLITE_BUSY；IMMEDIATE 会按 busy_timeout 等写锁释放。
+        let outcome = store.merge(&[], i64::MAX).unwrap();
+        assert_eq!(outcome.written, 0);
+        writer.join().unwrap();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

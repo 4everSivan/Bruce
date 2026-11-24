@@ -9,6 +9,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 /// 序列化本身失败或越界 panic 时的兜底信封 (不依赖任何堆上状态)。
 const PANIC_ENVELOPE: &str = r#"{"schemaVersion":1,"status":"error","operation":null,"result":null,"diagnostics":[{"code":"POLICY_INTERNAL_PANIC","message":"策略计算内部错误 (已捕获 panic)"}]}"#;
 
+/// 超限请求直接拒绝，不构造 slice（C257：避免非法长度导致的 UB）。
+const OVERSIZED_ENVELOPE: &str = r#"{"schemaVersion":1,"status":"error","operation":null,"result":null,"diagnostics":[{"code":"POLICY_REQUEST_TOO_LARGE","message":"策略请求超过大小上限"}]}"#;
+
 /// 处理一次策略请求, 返回 policy-response-v1 字节; 长度写入 `out_len`。
 ///
 /// 返回的缓冲区必须且只能以同一长度交给 `bruce_policy_free` 释放一次。
@@ -27,13 +30,18 @@ pub unsafe extern "C" fn bruce_policy_call(
     if out_len.is_null() {
         return std::ptr::null_mut();
     }
-    let input: &[u8] = if request.is_null() || request_len == 0 {
-        &[]
-    } else {
-        // SAFETY: 调用方保证 request 指向 request_len 字节的有效只读内存。
-        unsafe { std::slice::from_raw_parts(request, request_len) }
-    };
+    // C257: 先校验长度再 from_raw_parts —— request_len 超过上限时完全不触碰指针。
+    let oversized = !request.is_null() && request_len > collector_policy::MAX_POLICY_REQUEST_BYTES;
     let output = catch_unwind(AssertUnwindSafe(|| {
+        if oversized {
+            return OVERSIZED_ENVELOPE.as_bytes().to_vec();
+        }
+        let input: &[u8] = if request.is_null() || request_len == 0 {
+            &[]
+        } else {
+            // SAFETY: 调用方保证 request 指向 request_len 字节的有效只读内存。
+            unsafe { std::slice::from_raw_parts(request, request_len) }
+        };
         serde_json::to_vec(&collector_policy::handle_request(input))
             .unwrap_or_else(|_| PANIC_ENVELOPE.as_bytes().to_vec())
     }))

@@ -730,7 +730,9 @@ pub fn scan_zcode_cached(
     // truth for usage; a failed request read only removes ZCode detail rows.
     match scan_zcode_requests(path, window, cancellation) {
         Ok(requests) => scan.requests = requests,
-        Err(_) => {
+        // C257: 取消/超时是 Runtime 错误，必须向上传播，不能降级成「读取失败」提示。
+        Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+        Err(SourceScanError::Io(_)) => {
             let notice = scan.notice.take().unwrap_or_default();
             scan.notice = Some(if notice.is_empty() {
                 "ZCode 请求日志读取失败，本轮仅保留聚合用量".to_owned()
@@ -755,6 +757,8 @@ fn scan_zcode_requests(
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|_| sqlite_query_error("zcode request log open failed"))?;
+    // C257: 外部应用正在写库时短暂等待，避免瞬时锁冲突被误报为读取失败。
+    let _ = connection.busy_timeout(std::time::Duration::from_millis(250));
     let cutoff = request_log_cutoff_millis(window.now.timestamp_millis());
     let mut statement = connection
         .prepare(

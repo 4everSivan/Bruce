@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 const SQLITE_CACHE_SCHEMA_VERSION: u32 = 3;
 
@@ -219,7 +219,9 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
     };
     let connection = match Connection::open_with_flags(
         path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+        // C257: 普通文件路径不得附加 SQLITE_OPEN_URI（`?`/`#` 会被当成 URI 参数）；
+        // 外部 Agent 正在写库时用短 busy_timeout 等待，而不是立即报错。
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     ) {
         Ok(connection) => connection,
         Err(_) => {
@@ -230,6 +232,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
             ))
         }
     };
+    let _ = connection.busy_timeout(Duration::from_millis(250));
     let schema_fingerprint = match adapter.schema_fingerprint(&connection) {
         Ok(fingerprint) => fingerprint,
         Err(SourceScanError::Runtime(error)) => return Err(error.into()),

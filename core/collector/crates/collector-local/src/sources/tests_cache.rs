@@ -1642,3 +1642,35 @@ fn request_keys_keep_their_persisted_byte_layout() {
         "4af38513891a7aa2fa8b540e130ae65b"
     );
 }
+
+/// C257: 外部只读库的普通文件路径即使含 `?` / `#` 也不得按 URI 解析。
+#[test]
+fn external_sqlite_path_with_query_characters_is_not_parsed_as_uri() {
+    use rusqlite::Connection;
+
+    let root = temp_root("opencode-uri-chars");
+    let db_path = root.join("opencode?mode=ro#frag.db");
+    let cache_root = root.join("cache");
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute("CREATE TABLE message (data text not null)", [])
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO message (data) VALUES (?1)",
+            [&json!({
+                "role": "assistant",
+                "time": { "created": 1_785_211_200_000_i64 },
+                "tokens": { "input": 7, "output": 2 },
+                "modelID": "qwen3-coder",
+            })
+            .to_string()],
+        )
+        .unwrap();
+    drop(connection);
+
+    let scan =
+        scan_opencode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert!(scan.found, "含 ?/# 的普通文件路径不得被当作 URI 解析");
+    fs::remove_dir_all(root).ok();
+}

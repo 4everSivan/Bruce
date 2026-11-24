@@ -31,11 +31,34 @@ pub(crate) fn process_resource_snapshot() -> Option<ProcessResourceSnapshot> {
     }
     let usage = unsafe { usage.assume_init() };
     Some(ProcessResourceSnapshot {
-        user_cpu_ns: usage.ri_user_time,
-        system_cpu_ns: usage.ri_system_time,
+        // C257: ri_user_time / ri_system_time 是 Mach absolute time ticks；
+        // Apple Silicon 的 timebase 为 125/3，直接当纳秒会低报约 41.67 倍。
+        user_cpu_ns: mach_ticks_to_nanos(usage.ri_user_time),
+        system_cpu_ns: mach_ticks_to_nanos(usage.ri_system_time),
         physical_footprint_bytes: usage.ri_phys_footprint,
         disk_read_bytes: usage.ri_diskio_bytesread,
     })
+}
+
+/// Mach absolute time ticks → 纳秒（按本机 `mach_timebase_info` 精确折算）。
+///
+/// `libc` 将该 API 标记为 deprecated 并建议引入 `mach2`；这里只调用一次且不新增依赖，
+/// 保留 libc 实现（调用语义与 mach2 相同）。
+#[cfg(target_os = "macos")]
+#[allow(deprecated, unsafe_code)]
+fn mach_ticks_to_nanos(ticks: u64) -> u64 {
+    static TIMEBASE: std::sync::OnceLock<(u32, u32)> = std::sync::OnceLock::new();
+    let (numer, denom) = *TIMEBASE.get_or_init(|| {
+        let mut info = libc::mach_timebase_info_data_t { numer: 1, denom: 1 };
+        let result = unsafe { libc::mach_timebase_info(&mut info) };
+        if result == 0 && info.denom != 0 && info.numer != 0 {
+            (info.numer, info.denom)
+        } else {
+            (1, 1)
+        }
+    });
+    let nanos = (u128::from(ticks) * u128::from(numer)) / u128::from(denom);
+    nanos.min(u128::from(u64::MAX)) as u64
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -332,5 +355,29 @@ mod tests {
         let text = payload.to_string();
         assert!(!text.contains("/Users/"));
         assert!(!text.contains("refresh_token"));
+    }
+    /// C257: CPU 时间必须按 Mach timebase 折算 —— Apple Silicon 上把 ticks 当纳秒
+    /// 会让 20ms 的纯 CPU 循环低报到亚毫秒。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cpu_time_units_follow_mach_timebase() {
+        let cpu = |snapshot: Option<super::ProcessResourceSnapshot>| {
+            snapshot
+                .map(|value| value.user_cpu_ns.saturating_add(value.system_cpu_ns))
+                .unwrap_or(0)
+        };
+        let start = cpu(super::process_resource_snapshot());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
+        let mut spinner = 0u64;
+        while std::time::Instant::now() < deadline {
+            spinner = spinner.wrapping_add(1);
+        }
+        std::hint::black_box(spinner);
+        let end = cpu(super::process_resource_snapshot());
+        assert!(
+            end.saturating_sub(start) >= 5_000_000,
+            "20ms CPU 循环折算后应 >= 5ms, got {} ns",
+            end.saturating_sub(start)
+        );
     }
 }

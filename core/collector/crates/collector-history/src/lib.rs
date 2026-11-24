@@ -526,11 +526,49 @@ impl HistoryStore {
         }
 
         transaction.commit()?;
+        // C257: 写后 -wal/-shm 可能已重建，重新收紧为 0600。
+        self.restrict_sidecar_files();
         Ok(stats)
     }
 
+    /// 写后重新收紧主库与 -wal/-shm 权限 (C257)。
+    fn restrict_sidecar_files(&self) {
+        let Ok(path) = self
+            .connection
+            .query_row("PRAGMA database_list", [], |row| row.get::<_, String>(2))
+        else {
+            return;
+        };
+        if !path.is_empty() {
+            restrict_database_files(Path::new(&path));
+        }
+    }
+
     /// 按请求窗口把台账投影回 `UsageContribution` 形状。
+    ///
+    /// C257: 多次 SELECT 包在同一个只读事务内，保证日/月/今日明细来自同一快照。
     pub fn load(
+        &self,
+        agent_id: &str,
+        window: &CollectionWindow,
+    ) -> Result<StoredWindow, HistoryError> {
+        self.connection.execute_batch("BEGIN DEFERRED")?;
+        let result = self.load_locked(agent_id, window);
+        match &result {
+            Ok(_) => {
+                if let Err(error) = self.connection.execute_batch("COMMIT") {
+                    let _ = self.connection.execute_batch("ROLLBACK");
+                    return Err(error.into());
+                }
+            }
+            Err(_) => {
+                let _ = self.connection.execute_batch("ROLLBACK");
+            }
+        }
+        result
+    }
+
+    fn load_locked(
         &self,
         agent_id: &str,
         window: &CollectionWindow,
@@ -629,9 +667,10 @@ impl HistoryStore {
             .connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version == 0 {
-            self.connection.execute_batch(SCHEMA_SQL)?;
-            self.connection
-                .pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            // C257: 建表与 user_version 原子提交，避免半初始化 schema。
+            self.connection.execute_batch(&format!(
+                "BEGIN IMMEDIATE;\n{SCHEMA_SQL}\nPRAGMA user_version = {SCHEMA_VERSION};\nCOMMIT;"
+            ))?;
             Ok(())
         } else if version == 1 {
             // C199: v1 → v2 只加列; 既有 agent 记为基线版本 1, 升级本身不触发修正。
