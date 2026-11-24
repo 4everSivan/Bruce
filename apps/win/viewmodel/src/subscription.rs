@@ -279,12 +279,8 @@ pub fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
         if approximates(10080) {
             // Claude 模型专属周窗口 ("每周 Fable/Opus/Sonnet" 带空格后缀) 原样保留,
             // 避免多行周窗口被归一成同一文案后不可区分 (C058);
-            // "每周窗口"/裸"每周"等无后缀形态仍归一。
+            // "每周窗口"/裸"每周"以及 Grok Bot 周窗口均归一为「每周」。
             if raw_label.starts_with("每周 ") {
-                return raw_label.to_owned();
-            }
-            // Grok Bot 共享池 / 旧版独立周额度 (T39) 以 label 区分口径, 原样保留 (mac 同口径)。
-            if raw_label.ends_with("每周用量") {
                 return raw_label.to_owned();
             }
             return "每周".to_owned();
@@ -295,7 +291,9 @@ pub fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
     }
     match raw_label {
         "5小时窗口" => "每 5 小时".to_owned(),
-        "7天窗口" | "每周窗口" => "每周".to_owned(),
+        "7天窗口" | "每周窗口" | "共享每周用量" | "Grok Bot 每周用量" => {
+            "每周".to_owned()
+        }
         "每月窗口" => "每月".to_owned(),
         other => other.to_owned(),
     }
@@ -662,12 +660,11 @@ mod tests {
             window_label("\u{6bcf}\u{5468}\u{7a97}\u{53e3}", Some(10080)),
             "\u{6bcf}\u{5468}"
         );
-        // T39: Grok Bot 两种口径的周用量 label 原样保留。
-        assert_eq!(window_label("共享每周用量", Some(10080)), "共享每周用量");
-        assert_eq!(
-            window_label("Grok Bot 每周用量", Some(10080)),
-            "Grok Bot 每周用量"
-        );
+        // T39: Grok Bot 两种口径的周用量在仪表盘统一归一为「每周」。
+        assert_eq!(window_label("共享每周用量", Some(10080)), "每周");
+        assert_eq!(window_label("Grok Bot 每周用量", Some(10080)), "每周");
+        assert_eq!(window_label("共享每周用量", None), "每周");
+        assert_eq!(window_label("Grok Bot 每周用量", None), "每周");
     }
 
     #[test]

@@ -105,7 +105,7 @@ struct SubscriptionBrandGlyphHarness {
     }
 
     /// 全 provider (11 家) 除 Jev (界面暂时隐藏, 且全部图标库无覆盖) 外
-    /// 必须都有图形数据。
+    /// 必须都有图形数据, 且 grokBot 拥有独立球形图形而不复用 grok。
     private static func glyphCoverage() throws {
         for provider in SubscriptionProviderID.allCases {
             let hasGlyph = ProviderBrandGlyphData.glyphs[provider.rawValue] != nil
@@ -119,6 +119,11 @@ struct SubscriptionBrandGlyphHarness {
                 )
             }
         }
+        try expect(
+            ProviderBrandGlyphData.glyphs["grokBot"]?.shapes.first?.path
+                != ProviderBrandGlyphData.glyphs["grok"]?.shapes.first?.path,
+            "grokBot 必须使用专属白色球形图标, 不得复用 grok 图形"
+        )
     }
 
     /// 未知 provider 与非法尺寸必须 fail-closed 返回 nil, 由视图回退首字母。
@@ -210,18 +215,30 @@ struct SubscriptionBrandGlyphHarness {
         )
     }
 
-    /// 深色品牌色集合: Nothing 主题下退回 secondary 灰的唯一依据。
+    /// 深色品牌色集合: Nothing 主题下退回 secondary 灰的唯一依据; grokBot 保持纯白 #FFFFFF。
     private static func darkBrandSet() throws {
-        for provider in ["grok", "zhipu", "cline"] {
+        for provider in ["grok", "grokBot", "zhipu", "cline"] {
             try expect(
                 ProviderBrandPalette.isDarkBrand(provider),
                 "\(provider) 属于深色品牌色, 必须进兜底集合"
             )
         }
+        try expect(
+            ProviderBrandPalette.nothingDarkHex(for: "grokBot") == "#FFFFFF",
+            "grokBot 在 Nothing 深色主题下应保持白色 #FFFFFF"
+        )
+        try expect(
+            ProviderBrandPalette.nothingDarkHex(for: "grok") == "#999999",
+            "grok 在 Nothing 深色主题下应退回 #999999"
+        )
         for provider in ["kimi", "deepseek", "volcengine", "codex", "claude", "opencodeGo", "stepfun", "jev"] {
             try expect(
                 !ProviderBrandPalette.isDarkBrand(provider),
                 "\(provider) 不应进深色兜底集合"
+            )
+            try expect(
+                ProviderBrandPalette.nothingDarkHex(for: provider) == nil,
+                "\(provider) 非深色品牌色, nothingDarkHex 应为 nil"
             )
         }
     }

@@ -163,7 +163,7 @@ struct QuotaAlertBubbleView: View {
                 onOpenDashboard()
             } label: {
                 ProviderBrandBadge(
-                    providerID: alert.providerID ?? alert.serviceID,
+                    providerID: alert.providerID ?? SubscriptionPresentationPolicy.providerID(forServiceID: alert.serviceID),
                     name: alert.serviceName,
                     size: 24
                 )
@@ -277,7 +277,7 @@ struct QuotaAlertBubbleView: View {
                 onOpenSettings()
             } label: {
                 ProviderBrandBadge(
-                    providerID: alert.providerID ?? alert.serviceID,
+                    providerID: alert.providerID ?? SubscriptionPresentationPolicy.providerID(forServiceID: alert.serviceID),
                     name: alert.serviceName,
                     size: 24
                 )

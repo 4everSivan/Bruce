@@ -87,6 +87,31 @@ extension BruceOnboardingCoreHarness {
                 && GrokBotLocalClient.isValidAccount("grok|user_01"),
             "账号标识校验与 Collector 同口径"
         )
+
+        // 瞬态半包重试: 首次为截断 JSON, 在重试 sleep 回调中恢复完整分片即成功;
+        // 格式版本漂移 (有效 JSON) 则立即失败且不触发 sleep.
+        try write("{")
+        var sleepCount = 0
+        let recovered = GrokBotLocalClient.readActiveAccount(
+            dataDirectory: root,
+            retryDelays: [0.001, 0.001],
+            sleep: { _ in
+                sleepCount += 1
+                try? Data(#"{"schemaVersion":1,"value":"grok|user_01"}"#.utf8).write(to: slot)
+            }
+        )
+        try coreExpect(recovered == .success("grok|user_01"), "瞬态半包应在重试后恢复")
+        try coreExpect(sleepCount == 1, "首次恢复后不应继续无谓重试: sleepCount=\(sleepCount)")
+
+        try write(#"{"schemaVersion":2,"value":"grok|user_01"}"#)
+        var driftSleeps = 0
+        let driftResult = GrokBotLocalClient.readActiveAccount(
+            dataDirectory: root,
+            retryDelays: [0.001, 0.001],
+            sleep: { _ in driftSleeps += 1 }
+        )
+        try coreExpect(driftResult == .failure(.formatChanged), "格式漂移应失败")
+        try coreExpect(driftSleeps == 0, "有效 JSON 的格式漂移不应重试")
     }
 
     /// 注册表与各 provider 分派表: Grok Bot 只存账号标识, 不参与轮换, 无旧键迁移.

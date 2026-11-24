@@ -259,7 +259,7 @@ struct PanelViewModelHarness {
         try windowWordingMatrixMapsMinutes()
         try windowWordingFallsBackToKnownLabels()
         try windowWordingKeepsSuffixedWeeklyLabels()
-        try grokBotWeeklyLabelsArePreserved()
+        try grokBotWeeklyLabelsNormalizeToWeekly()
         try ownRowFlagIsPreserved()
         try balanceSinksToBottom()
         try kimiDisabledBoosterExtraIsHidden()
@@ -310,6 +310,7 @@ struct PanelViewModelHarness {
         try providerOrderUnknownIDsGoLast()
         try providerOrderNormalizesKimiCodingID()
         try providerOrderMatchesOpenCodeGoRawValue()
+        try grokBotBadgeOrderAndReorderHelperContracts()
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         try appVersionReadsBundleAndFallsBack()
@@ -332,7 +333,7 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatePolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 74")
+        print("PanelViewModel tests passed: 75")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -402,9 +403,9 @@ struct PanelViewModelHarness {
         )
     }
 
-    // T39: Grok Bot 共享池 / 旧版独立周额度以 label 区分口径, 10080 分钟窗口不得归一为「每周」.
-    private static func grokBotWeeklyLabelsArePreserved() throws {
-        let service = makeService(
+    // T39: Grok Bot 共享池 / 旧版独立周额度在仪表盘均归一为「每周」.
+    private static func grokBotWeeklyLabelsNormalizeToWeekly() throws {
+        let withMinutes = makeService(
             id: "grokbot_f827599c055f9a8a",
             name: "Grok Bot · 账号 1",
             windows: [
@@ -412,11 +413,26 @@ struct PanelViewModelHarness {
                 makeWindow(label: "Grok Bot 每周用量", usedPercent: 12, windowMinutes: 10080),
             ]
         )
-        let vm = try subscriptionSections(services: [service])
+        let vm = try subscriptionSections(services: [withMinutes])
         let labels = vm[0].windows.map(\.label)
         try expect(
-            labels == ["共享每周用量", "Grok Bot 每周用量"],
-            "Grok Bot 周用量文案保留失败: \(labels)"
+            labels == ["每周", "每周"],
+            "Grok Bot 周用量文案应归一为每周: \(labels)"
+        )
+
+        let withoutMinutes = makeService(
+            id: "grokbot_f827599c055f9a8a",
+            name: "Grok Bot · 账号 1",
+            windows: [
+                makeWindow(label: "共享每周用量", usedPercent: 31),
+                makeWindow(label: "Grok Bot 每周用量", usedPercent: 12),
+            ]
+        )
+        let vmNoMin = try subscriptionSections(services: [withoutMinutes])
+        let labelsNoMin = vmNoMin[0].windows.map(\.label)
+        try expect(
+            labelsNoMin == ["每周", "每周"],
+            "无 windowMinutes 时 Grok Bot 周用量文案也应归一为每周: \(labelsNoMin)"
         )
     }
 
@@ -1946,6 +1962,87 @@ struct PanelViewModelHarness {
         )
     }
 
+    /// T39: grokbot_ 单账号 section 徽章键与自定义排序归一为 "grokBot",
+    /// 且列表拖拽重排支持向下与移至末尾.
+    private static func grokBotBadgeOrderAndReorderHelperContracts() throws {
+        let grokBot = makeService(
+            id: "grokbot_f827599c055f9a8a",
+            name: "Grok Bot · 账号 1",
+            kind: "windows",
+            windows: [makeWindow(label: "共享每周用量", usedPercent: 31, windowMinutes: 10080)]
+        )
+        let kimi = makeService(
+            id: "kimi_coding",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [], services: [kimi, grokBot])
+
+        let firstVM = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            providerOrder: ["grokBot", "kimi"]
+        )
+        guard let firstSections = firstVM.subscription?.sections else {
+            throw PanelTestFailure.expectation("订阅卡意外为 nil")
+        }
+        try expect(firstSections.count == 2, "段数量错误: \(firstSections.count)")
+        try expect(
+            firstSections[0].id == "grokbot_f827599c055f9a8a",
+            "grokBot 应按顺序排前: \(firstSections.map(\.id))"
+        )
+        try expect(
+            firstSections[0].badgeProviderID == "grokBot",
+            "grokbot_ badgeProviderID 应归一为 grokBot: \(firstSections[0].badgeProviderID)"
+        )
+        try expect(
+            ProviderBrandGlyph.resolvedShapes(for: firstSections[0].badgeProviderID, size: 15) != nil,
+            "grokBot 应命中品牌图形"
+        )
+        try expect(
+            ProviderBrandPalette.hex(for: firstSections[0].badgeProviderID) == "#111111",
+            "grokBot 品牌色应为 #111111"
+        )
+
+        let secondVM = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            providerOrder: ["kimi", "grokBot"]
+        )
+        try expect(
+            secondVM.subscription?.sections.map(\.id) == ["kimi_coding", "grokbot_f827599c055f9a8a"],
+            "kimi 在前时 grokBot 应排第二: \(secondVM.subscription?.sections.map(\.id) ?? [])"
+        )
+
+        // 拖拽重排纯规则: 向下移一格 / 拖至末尾 / 向上移 / 同项与未知项空操作.
+        let items = ["a", "b", "c"]
+        try expect(
+            SubscriptionPresentationPolicy.reordered(items, moving: "a", onto: "b") == ["b", "a", "c"],
+            "向下移动一格失败"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.reordered(items, moving: "a", onto: "c") == ["b", "c", "a"],
+            "向下拖至末尾失败"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.reordered(items, moving: "c", onto: "a") == ["c", "a", "b"],
+            "向上移至首位失败"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.reordered(items, moving: "c", onto: "b") == ["a", "c", "b"],
+            "向上移动一格失败"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.reordered(items, moving: "a", onto: "a") == items,
+            "拖至自身不应变动"
+        )
+        try expect(
+            SubscriptionPresentationPolicy.reordered(items, moving: "x", onto: "a") == items,
+            "未知元素不应变动"
+        )
+    }
+
     // S5a: SubscriptionPresentationPolicy 纯规则表驱动锁定.
     private static func presentationPolicyTableDrivenRules() throws {        // kimi_coding → kimi 排序键; 其他原样.
         let providerIDCases: [(String, String)] = [
@@ -1958,6 +2055,10 @@ struct PanelViewModelHarness {
             ("codex", "codex"),
             ("opencode_go_eada03635c22306a", "opencodeGo"),
             ("opencode_go_acct1", "opencodeGo"),
+            ("grokbot_f827599c055f9a8a", "grokBot"),
+            ("grok-bot", "grokBot"),
+            ("grokbot", "grokBot"),
+            ("grok_a1b2", "grok"),
         ]
         for (input, expected) in providerIDCases {
             let got = SubscriptionPresentationPolicy.providerID(forServiceID: input)

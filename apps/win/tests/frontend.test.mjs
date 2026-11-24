@@ -2397,6 +2397,52 @@ test("grok bot dialog connects the client account without key form (T39)", async
   assert.ok(!signedOut.calls.some(c => c.command === "verify_subscription"), "未登录不验证、不启用");
 });
 
+test("grok bot dashboard ordering, brand glyph and settings plan key work without section.provider (T39)", async () => {
+  const panel = {
+    ...fixture,
+    subscription: {
+      updatedText: null,
+      sections: [
+        {
+          id: "kimi_coding",
+          name: "Kimi",
+          status: "ok",
+          plan: "Allegretto",
+          windows: [{ label: "每 5 小时", usedPercent: 10, percentText: "10%", resetText: "" }],
+          accounts: [],
+        },
+        {
+          id: "grokbot_f827599c055f9a8a",
+          name: "Grok Bot",
+          status: "ok",
+          plan: "Premium",
+          windows: [{ label: "每周", usedPercent: 31, percentText: "31%", resetText: "6 天后" }],
+          accounts: [],
+        },
+      ],
+    },
+  };
+  const dash = await boot({
+    panel,
+    settings: { ...defaults, providerOrder: ["grokBot", "kimi"] },
+  });
+  const names = [...dash.node("stack").querySelectorAll(".sub-head .sub-name")].map(n => n.textContent);
+  assert.deepEqual(names, ["Grok Bot", "Kimi"], "providerOrder 中的 grokBot 应将 grokbot_ 单账号段排至首位");
+  const grokBadge = dash.node("stack").querySelector(".sub-head .pbadge");
+  assert.ok(grokBadge.querySelector("svg"), "grokbot_ 应渲染 SVG 品牌图形而非字母兜底");
+  assert.equal(grokBadge.style["--brand"], "#111111", "grokBot 品牌色应为 #111111");
+  assert.equal(grokBadge.style["--brand-nothing"], "#FFFFFF", "grokBot 在 Nothing 主题下应保持白色球体");
+
+  const settings = await boot({
+    html: "settings.html",
+    panel,
+    settings: { ...defaults, enabledProviders: ["grokBot", "kimi"], providerOrder: ["grokBot", "kimi"] },
+  });
+  const grokRow = [...settings.node("setting-providers").querySelectorAll(".provider-row")]
+    .find(item => item.querySelector(".provider-name").textContent === "Grok Bot");
+  assert.equal(grokRow.querySelector(".plan-chip").textContent, "Premium", "providerKeyOfSection 应将 grokbot_ 归一为 grokBot 展示套餐标签");
+});
+
 test("grok dialog follows the local CLI login and counts as configured (C085)", async () => {
   const app = await boot({
     html: "settings.html",

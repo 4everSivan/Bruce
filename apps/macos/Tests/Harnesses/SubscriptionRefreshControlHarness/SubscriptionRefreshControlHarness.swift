@@ -54,6 +54,14 @@ struct SubscriptionRefreshControlHarness {
             resolve("opencode_go_acc1") == .opencodeGo,
             "opencode_go_ 前缀应归一为 opencodeGo"
         )
+        try expect(
+            resolve("grokbot_f827599c055f9a8a") == .grokBot,
+            "grokbot_ 前缀应归一为 grokBot"
+        )
+        try expect(
+            resolve("grok-bot") == .grokBot,
+            "grok-bot 应归一为 grokBot"
+        )
         try expect(resolve("openai") == nil, "未知 provider (openai) 必须 fail-closed 为 nil")
         try expect(resolve("") == nil, "空 service id 必须 fail-closed 为 nil")
     }

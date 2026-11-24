@@ -14,6 +14,8 @@ public enum GrokBotLocalClient {
     public static let maxSliceBytes = 64 * 1024
     /// 账号标识长度上限, 与 Collector `GROK_BOT_MAX_ACCOUNT_BYTES` 一致.
     public static let maxAccountBytes = 256
+    /// 对齐客户端 `.tmp` 替换窗口的瞬态退避序列 (秒).
+    private static let transientRetryDelays: [TimeInterval] = [0.015, 0.040]
 
     public enum ReadError: Error, Equatable, Sendable {
         case unreadable
@@ -66,42 +68,80 @@ public enum GrokBotLocalClient {
             && !account.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
     }
 
-    /// 读取客户端当前登录账号. 未安装 / 未登录返回 `.success(nil)`.
+    /// 读取客户端当前登录账号. 未安装 / 未登录返回 `.success(nil)`, 遇瞬态读写/半包做有界短重试.
     public static func readActiveAccount(
         dataDirectory: URL
+    ) -> Result<String?, ReadError> {
+        readActiveAccount(
+            dataDirectory: dataDirectory,
+            retryDelays: transientRetryDelays,
+            sleep: { Thread.sleep(forTimeInterval: $0) }
+        )
+    }
+
+    /// 可注入退避与等待钩子的读取入口 (供测试验证瞬态重试而不拖慢套件).
+    static func readActiveAccount(
+        dataDirectory: URL,
+        retryDelays: [TimeInterval],
+        sleep: (TimeInterval) -> Void
     ) -> Result<String?, ReadError> {
         let url = dataDirectory
             .appendingPathComponent("sand-client-persistence", isDirectory: true)
             .appendingPathComponent(sliceFileName(accountSlotSliceKey))
+        var attempt = 0
+        while true {
+            switch readActiveAccountOnce(url: url) {
+            case .done(let result):
+                return result
+            case .transient(let error):
+                if attempt < retryDelays.count {
+                    sleep(retryDelays[attempt])
+                    attempt += 1
+                    continue
+                }
+                return .failure(error)
+            }
+        }
+    }
+
+    private enum AttemptOutcome {
+        case done(Result<String?, ReadError>)
+        case transient(ReadError)
+    }
+
+    private static func readActiveAccountOnce(url: URL) -> AttemptOutcome {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return .success(nil)
+            return .done(.success(nil))
         }
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return .failure(.unreadable)
+            return .transient(.unreadable)
         }
         defer { try? handle.close() }
         let data: Data
         do {
             data = try handle.read(upToCount: maxSliceBytes + 1) ?? Data()
         } catch {
-            return .failure(.unreadable)
+            return .transient(.unreadable)
         }
         if data.count > maxSliceBytes {
-            return .failure(.tooLarge)
+            return .done(.failure(.tooLarge))
         }
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let decoded = try? JSONSerialization.jsonObject(with: data) else {
+            return .transient(.formatChanged)
+        }
+        guard let object = decoded as? [String: Any],
               (object["schemaVersion"] as? NSNumber)?.intValue == 1 else {
-            return .failure(.formatChanged)
+            return .done(.failure(.formatChanged))
         }
         switch object["value"] {
         case nil, is NSNull:
-            return .success(nil)
+            return .done(.success(nil))
         case let account as String where account.isEmpty:
-            return .success(nil)
+            return .done(.success(nil))
         case let account as String where isValidAccount(account):
-            return .success(account)
+            return .done(.success(account))
         default:
-            return .failure(.formatChanged)
+            return .done(.failure(.formatChanged))
         }
     }
 }

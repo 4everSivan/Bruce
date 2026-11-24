@@ -71,11 +71,12 @@ struct SubscriptionCredentialsHarness {
         try providerAccountStoreCorruptedRecordFailsClosed()
         try enabledQuotaProvidersFollowEnabledFlag()
         try await scopedInputCarriesOnlyLiveContractFields()
-        print("Subscription credentials tests passed: 40")
+        try await scopedRunInputForGrokBotCarriesHomeAndCredentials()
+        print("Subscription credentials tests passed: 41")
     }
 
-    /// C123: 定向刷新输入只携带 capabilities (= externalQuotas) 与目标凭证, 不再发送
-    /// 已退役的 subscriptionQuotaOnly / subscriptionProviders (Bridge 会拒绝).
+    /// C123 / T39: 定向刷新输入携带 capabilities (= externalQuotas) 与 home (供本地客户端
+    /// 状态定位数据目录), 不携带 localSessions / days / 已退役字段.
     private static func scopedInputCarriesOnlyLiveContractFields() async throws {
         let goJSON = #"{"apiKey":"oc_sk_fixture","workspaceId":"wrk_01"}"#
         let (provider, _, _) = try makeProvider(
@@ -87,8 +88,8 @@ struct SubscriptionCredentialsHarness {
             providers: [.opencodeGo]
         )
         try credentialsExpect(
-            input.context.keys.sorted() == ["capabilities"],
-            "定向输入 context 只含 capabilities: \(input.context.keys.sorted())"
+            input.context.keys.sorted() == ["capabilities", "home"],
+            "定向输入 context 只含 capabilities 与 home: \(input.context.keys.sorted())"
         )
         try credentialsExpect(
             input.context["capabilities"] == .array([.string("externalQuotas")]),
@@ -97,6 +98,47 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             input.credentials["opencodeGoQuotaAccounts"] != nil,
             "目标凭证应注入"
+        )
+    }
+
+    /// T39 回归: Grok Bot 定向刷新 (连接后自动首刷 / 卡片重试 / 单卡刷新) 必须携带 home
+    /// 上下文, 否则 Collector inject_local_client_dir 移除 data_dir 误报 CREDENTIAL_MISSING.
+    private static func scopedRunInputForGrokBotCarriesHomeAndCredentials() async throws {
+        let customHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-bot-scoped-\(UUID().uuidString)", isDirectory: true)
+        let (provider, store, _) = try makeProvider(
+            enabled: [.grokBot],
+            credentials: [:],
+            homeURL: customHome
+        )
+        let accounts = ProviderAccountStore(provider: .grokBot, credentialStore: store)
+        let accountKey = GrokBotAccountIdentity.accountKey(for: "grok|user_01")
+        _ = try accounts.addAccount(
+            accountID: accountKey,
+            displayName: "Grok Bot · 账号 1",
+            credentialJSON: "grok|user_01"
+        )
+        let input = try await provider.scopedRunInput(
+            for: .agentUsage,
+            providers: [.grokBot]
+        )
+        try credentialsExpect(
+            input.context["home"] == .string(customHome.path),
+            "Grok Bot 定向刷新必须携带 home: \(String(describing: input.context["home"]))"
+        )
+        try credentialsExpect(
+            input.context["capabilities"] == .array([.string("externalQuotas")]),
+            "Grok Bot 定向刷新只授予 externalQuotas"
+        )
+        guard case .object(let injected)? = input.credentials["grokBotQuotaAccounts"],
+              case .object(let payload)? = injected[accountKey] else {
+            throw CredentialsTestFailure.expectation(
+                "Grok Bot 定向刷新未注入 grokBotQuotaAccounts: \(input.credentials.keys.sorted())"
+            )
+        }
+        try credentialsExpect(
+            payload["account"] == .string("grok|user_01") && payload["data_dir"] == nil,
+            "定向刷新应只透传 account/display_name 且不注入 data_dir"
         )
     }
 
@@ -124,7 +166,8 @@ struct SubscriptionCredentialsHarness {
         enabled: [SubscriptionProviderID],
         credentials: [String: String],
         externalSources: Set<KeychainExternalSource> = [],
-        externalCredentialReader: ExternalCredentialReader? = nil
+        externalCredentialReader: ExternalCredentialReader? = nil,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws -> (OnboardingRunInputProvider, InMemoryCredentialStore, OnboardingConfigurationStore) {
         let store = InMemoryCredentialStore()
         for (account, value) in credentials {
@@ -153,7 +196,8 @@ struct SubscriptionCredentialsHarness {
             configStore: configStore,
             credentialStore: store,
             keychainAccessController: accessController,
-            externalCredentialReader: externalCredentialReader
+            externalCredentialReader: externalCredentialReader,
+            homeURL: homeURL
         )
         return (provider, store, configStore)
     }

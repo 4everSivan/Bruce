@@ -303,7 +303,7 @@
     grokBot: {
       kind: "clientConnect",
       guide: "需先在本机打开 Grok Bot 并登录",
-      footnote: "共享池显示「共享每周用量」, 旧版套餐显示「Grok Bot 每周用量」; 读数超过 30 分钟未被 Grok Bot 刷新时标为陈旧",
+      footnote: "支持 X Subscription 共享周额度与旧版套餐周额度, 仪表盘统一显示「每周」; 读数超过 30 分钟未被 Grok Bot 刷新时标为陈旧",
     },
     opencodeGo: {
       kind: "apiKey",

@@ -33,7 +33,13 @@ package enum SubscriptionPresentationPolicy: Sendable {
     package static func providerID(forServiceID serviceID: String) -> String {
         switch serviceID {
         case "kimi_coding": return "kimi"
+        case "grok-bot", "grokbot": return SubscriptionProviderID.grokBot.rawValue
+        case "opencode-go": return SubscriptionProviderID.opencodeGo.rawValue
         default:
+            // T39: collector 前缀 `grokbot_` 与 rawValue `grokBot` 大小写不同, 须先于通用前缀匹配.
+            if serviceID.hasPrefix("grokbot_") {
+                return SubscriptionProviderID.grokBot.rawValue
+            }
             // 多账号 service ID 格式: <provider>_<accountID> (如 codex_a1b2c3d4).
             // 按 provider rawValue 前缀分组.
             for provider in SubscriptionProviderID.allCases {
@@ -55,7 +61,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
     /// 回退按 service id 前缀推断。
     package static func providerID(for service: AgentServiceItem) -> String {
         if let provider = service.provider, !provider.isEmpty {
-            return provider
+            return providerID(forServiceID: provider)
         }
         return providerID(forServiceID: service.id)
     }
@@ -63,9 +69,26 @@ package enum SubscriptionPresentationPolicy: Sendable {
     /// 同 `providerID(for:)`, 供以 JSONValue 处理 artifact 的合并 / 节流路径使用。
     package static func providerID(forServiceObject object: [String: JSONValue]) -> String? {
         if let provider = object["provider"]?.stringIdValue, !provider.isEmpty {
-            return provider
+            return providerID(forServiceID: provider)
         }
         return object["id"]?.stringIdValue.map(providerID(forServiceID:))
+    }
+
+    /// 列表项拖拽重排: 先在原数组中取起止下标再移位, 保证向下拖拽与拖至末尾均生效.
+    package static func reordered<T: Equatable>(
+        _ items: [T],
+        moving dragged: T,
+        onto target: T
+    ) -> [T] {
+        guard let fromIndex = items.firstIndex(of: dragged),
+              let toIndex = items.firstIndex(of: target),
+              fromIndex != toIndex else {
+            return items
+        }
+        var result = items
+        result.remove(at: fromIndex)
+        result.insert(dragged, at: toIndex)
+        return result
     }
 
     /// 订阅展示名: 火山引擎剥离 collector 名称里的 Coding Plan 后缀, 仅显示层覆盖.

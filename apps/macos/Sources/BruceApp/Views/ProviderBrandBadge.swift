@@ -75,10 +75,12 @@ struct ProviderBrandBadge: View {
     }
 
     /// Nothing 分支深色兜底: grok #111111 / zhipu #2D2D2D / cline #18181b
-    /// 在深色表面不可读, 退回 secondary 灰。
+    /// 在深色表面不可读, 退回 secondary 灰; grokBot 保持纯白球体 #FFFFFF。
     private var nothingBrandColor: Color {
-        ProviderBrandPalette.isDarkBrand(providerID) && colorScheme == .dark
-            ? Color(hex: "#999999")
-            : brandColor
+        if colorScheme == .dark,
+           let darkHex = ProviderBrandPalette.nothingDarkHex(for: providerID) {
+            return Color(hex: darkHex)
+        }
+        return brandColor
     }
 }

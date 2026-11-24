@@ -32,6 +32,8 @@ pub const GROK_BOT_MAX_ACCOUNT_BYTES: usize = 256;
 const ACCOUNT_SLOT_SLICE: &str = "sand.client.slice.client-meta.account-slot";
 const WEEK_MINUTES: u64 = 7 * 24 * 60;
 const PLAN_MAX_CHARS: usize = 40;
+/// 对齐 Grok Bot 客户端 `.tmp` 替换重试窗口的瞬态退避序列 (毫秒)。
+const SLICE_RETRY_DELAYS_MS: [u64; 2] = [15, 40];
 
 /// 平台默认的 Grok Bot 数据目录。
 pub fn grok_bot_data_dir(home: &Path) -> PathBuf {
@@ -129,10 +131,41 @@ fn slice_path(data_dir: &Path, slice_key: &str) -> PathBuf {
         .join(slice_file_name(slice_key))
 }
 
-/// 有界读取分片 JSON。文件不存在返回 `Ok(None)`。
+/// 是否为客户端并发写入替换窗口内的瞬态分片读取错误。
+fn is_transient_slice_error(error: &ProviderError) -> bool {
+    matches!(
+        error.diagnostic.code.as_str(),
+        "CREDENTIAL_READ_FAILED" | "PROVIDER_INVALID_JSON"
+    )
+}
+
+/// 有界读取分片 JSON；文件不存在返回 `Ok(None)`，遇瞬态读写/半包 JSON 做有界短重试。
 fn read_slice(data_dir: &Path, slice_key: &str) -> Result<Option<Value>, ProviderError> {
+    read_slice_with_delays(data_dir, slice_key, &SLICE_RETRY_DELAYS_MS)
+}
+
+fn read_slice_with_delays(
+    data_dir: &Path,
+    slice_key: &str,
+    retry_delays_ms: &[u64],
+) -> Result<Option<Value>, ProviderError> {
     let path = slice_path(data_dir, slice_key);
-    let file = match File::open(&path) {
+    let mut attempt = 0usize;
+    loop {
+        match read_slice_once(&path) {
+            Ok(value) => return Ok(value),
+            Err(error) if is_transient_slice_error(&error) && attempt < retry_delays_ms.len() => {
+                std::thread::sleep(std::time::Duration::from_millis(retry_delays_ms[attempt]));
+                attempt += 1;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+/// 单次有界读取分片 JSON。文件不存在返回 `Ok(None)`。
+fn read_slice_once(path: &Path) -> Result<Option<Value>, ProviderError> {
+    let file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(read_failed()),
@@ -745,6 +778,41 @@ mod tests {
             &json!({"schemaVersion": 1, "value": ACCOUNT}).to_string(),
         );
         assert_eq!(read_active_account(&dir).unwrap().as_deref(), Some(ACCOUNT));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn transient_slice_read_recovers_after_concurrent_write_window() {
+        assert!(is_transient_slice_error(&read_failed()));
+        assert!(is_transient_slice_error(&ProviderError::new(
+            "PROVIDER_INVALID_JSON",
+            "parse",
+            "bad json",
+            false,
+        )));
+        assert!(!is_transient_slice_error(&ProviderError::new(
+            "PROVIDER_RESPONSE_TOO_LARGE",
+            "response",
+            "too large",
+            false,
+        )));
+
+        let dir = temp_dir("retry");
+        write_slice(&dir, ACCOUNT_SLOT_SLICE, "{");
+        let dir_for_writer = dir.clone();
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(12));
+            write_slice(
+                &dir_for_writer,
+                ACCOUNT_SLOT_SLICE,
+                &json!({"schemaVersion": 1, "value": ACCOUNT}).to_string(),
+            );
+        });
+        let value = read_slice_with_delays(&dir, ACCOUNT_SLOT_SLICE, &[25, 40])
+            .unwrap()
+            .unwrap();
+        writer.join().unwrap();
+        assert_eq!(value["value"], ACCOUNT);
         fs::remove_dir_all(dir).unwrap();
     }
 }

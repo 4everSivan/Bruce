@@ -39,7 +39,7 @@ package enum ProviderBrandPalette {
     }
 
     /// 深色品牌色 (grok / grokBot / zhipu / cline): Nothing 主题深色表面不可读,
-    /// 图形与字母退回 secondary 灰 (定稿于 grok, C026 起覆盖同色系品牌)。
+    /// `grokBot` 保持白色球体 `#FFFFFF`, 其余退回 secondary 灰 `#999999`。
     package static func isDarkBrand(_ providerID: String) -> Bool {
         switch providerID {
         case "grok", "grokBot", "zhipu", "cline":
@@ -47,5 +47,11 @@ package enum ProviderBrandPalette {
         default:
             return false
         }
+    }
+
+    /// Nothing 深色表面下的深色品牌前景色; 非深色品牌返回 nil (沿用品牌本色)。
+    package static func nothingDarkHex(for providerID: String) -> String? {
+        guard isDarkBrand(providerID) else { return nil }
+        return providerID == "grokBot" ? "#FFFFFF" : "#999999"
     }
 }

@@ -932,10 +932,11 @@
   // 套餐名: 取自 artifact (mac C024 起只在设置页行内呈现套餐标签), 按 provider 归一化键归并。
   function providerKeyOfSection(id) {
     if (id === "kimi_coding") return "kimi";
+    if (id === "grok-bot" || id === "grokbot" || id.startsWith("grokbot_")) return "grokBot";
+    if (id === "opencode-go" || id.startsWith("opencode_go_")) return "opencodeGo";
     for (const [key] of providers) {
       if (id === key || id.startsWith(`${key}_`)) return key;
     }
-    if (id.startsWith("opencode_go_")) return "opencodeGo";
     return id;
   }
   async function loadPlans() {

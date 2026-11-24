@@ -369,10 +369,10 @@ fn single_account_stale_section_carries_last_success_like_mac() {
     );
 }
 
-/// T39: Grok Bot 服务 ID 前缀 `grokbot_` 归入 `grokBot` 分组 (不得落入 Grok), 两种口径的
-/// 周用量 label 原样保留 (mac PanelViewModelHarness 同口径)。
+/// T39: Grok Bot 服务 ID 前缀 `grokbot_` 归入 `grokBot` 分组 (不得落入 Grok), 周用量
+/// 在仪表盘统一归一为「每周」 (mac PanelViewModelHarness 同口径)。
 #[test]
-fn grok_bot_service_groups_separately_and_keeps_weekly_labels() {
+fn grok_bot_service_groups_separately_and_normalizes_weekly_label() {
     let services = json!([
         {
             "id": "grokbot_f827599c055f9a8a", "name": "Grok Bot · 账号 1", "provider": "grokBot",
@@ -389,7 +389,7 @@ fn grok_bot_service_groups_separately_and_keeps_weekly_labels() {
     let subscription = subscription.unwrap();
     assert_eq!(subscription.sections.len(), 2);
     assert_eq!(subscription.sections[0].name, "Grok Bot");
-    assert_eq!(subscription.sections[0].windows[0].label, "共享每周用量");
+    assert_eq!(subscription.sections[0].windows[0].label, "每周");
     assert_eq!(subscription.sections[1].name, "Grok");
     assert_eq!(
         bruce_win_viewmodel::subscription::provider_id_for_service("grokbot_f827599c055f9a8a"),

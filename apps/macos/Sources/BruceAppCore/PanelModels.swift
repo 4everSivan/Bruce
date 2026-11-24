@@ -259,10 +259,8 @@ package enum PanelFormat {
             if approximately(minutes, 10080) {
                 // Claude 模型专属周窗口 ("每周 Fable/Opus/Sonnet" 带空格后缀) 原样保留,
                 // 避免多行周窗口被归一成同一文案后不可区分 (C058);
-                // "每周窗口"/裸"每周"等无后缀形态仍归一。
+                // "每周窗口"/裸"每周"以及 Grok Bot 周窗口均归一为「每周」.
                 if rawLabel.hasPrefix("每周 ") { return rawLabel }
-                // Grok Bot 共享池 / 旧版独立周额度 (T39) 以 label 区分口径, 原样保留.
-                if rawLabel.hasSuffix("每周用量") { return rawLabel }
                 return "每周"
             }
             if approximately(minutes, 43200) {
@@ -272,7 +270,7 @@ package enum PanelFormat {
         switch rawLabel {
         case "5小时窗口":
             return "每 5 小时"
-        case "7天窗口", "每周窗口":
+        case "7天窗口", "每周窗口", "共享每周用量", "Grok Bot 每周用量":
             return "每周"
         case "每月窗口":
             return "每月"

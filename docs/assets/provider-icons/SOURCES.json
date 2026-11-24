@@ -45,11 +45,11 @@
       "url": "https://api.iconify.design/logos/grok-icon.svg"
     },
     "grokBot": {
-      "file": "grok-icon.svg",
-      "library": "SVG Logos (Gil Barbara, Iconify set: logos)",
-      "license": "CC0-1.0",
-      "url": "https://api.iconify.design/logos/grok-icon.svg",
-      "note": "T39: Grok Bot 同属 xAI 品牌, 复用 Grok 图形"
+      "file": "grok-bot.svg",
+      "library": "Grok Bot 官方 App 球形机器人图标重绘 (白球双胶囊眼)",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://docs.x.ai/grok-bot",
+      "note": "T39: 取自 Grok Bot 官方 App 球形机器人外观 (右上象限两枚倾斜胶囊眼镂空)"
     },
     "opencodeGo": {
       "file": "opencode.svg",

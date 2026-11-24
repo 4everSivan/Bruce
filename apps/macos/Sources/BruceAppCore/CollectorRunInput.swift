@@ -161,6 +161,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     private let credentialStore: CredentialStore
     private let keychainAccessController: KeychainAccessController
     private let externalCredentialReader: ExternalCredentialReader
+    private let homeURL: URL
     /// Codex access token 注入器; nil 表示尚未装配 (App 启动时注入).
     private weak var codexTokenInjector: (any CodexAccessTokenInjecting)?
     /// 已决议的 Codex 账号列表 (accountID + displayName), 只供 Swift 内使用,
@@ -191,10 +192,12 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         codexTokenInjector: (any CodexAccessTokenInjecting)? = nil,
         codexStore: CodexCredentialStore? = nil,
         keychainAccessController: KeychainAccessController? = nil,
-        externalCredentialReader: ExternalCredentialReader? = nil
+        externalCredentialReader: ExternalCredentialReader? = nil,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
     ) {
         self.configStore = configStore
         self.credentialStore = credentialStore
+        self.homeURL = homeURL
         let resolvedAccessController = keychainAccessController
             ?? KeychainAccessController(
                 policy: KeychainAccessPolicy(
@@ -205,7 +208,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         self.keychainAccessController = resolvedAccessController
         self.externalCredentialReader = externalCredentialReader
             ?? SystemExternalCredentialReader(
-                homeURL: FileManager.default.homeDirectoryForCurrentUser,
+                homeURL: homeURL,
                 accessController: resolvedAccessController
             )
         self.codexTokenInjector = codexTokenInjector
@@ -259,7 +262,8 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     }
 
     /// 定向刷新运行输入 (任务 1.3): 只装配目标 Provider 的凭证/ProviderMeta, 能力仅
-    /// externalQuotas, 不携带 localSessions / days (C123 起不再发送从未被读取的
+    /// externalQuotas, 携带 home (供 grok-bot 等本机客户端状态 provider 解析数据目录),
+    /// 不携带 localSessions / days (C123 起不再发送从未被读取的
     /// subscriptionQuotaOnly / subscriptionProviders). 目标非法或凭证未装配抛
     /// missingAuthorization (fail-closed).
     func scopedRunInput(
@@ -311,6 +315,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         }
 
         var context: [String: JSONValue] = [
+            "home": .string(homeURL.path),
             "capabilities": .array([
                 .string(CollectorCapability.externalQuotas.rawValue),
             ]),
@@ -429,7 +434,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         var credentials: [String: JSONValue] = [:]
         // 182 天聚合窗口: 柱状图仍取末 14 天 (映射层 suffix), 全量 daily
         // 供用量热力图渲染; Bridge 协议上限 366.
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = homeURL.path
         let nowFormatter = ISO8601DateFormatter()
         nowFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         nowFormatter.timeZone = TimeZone.current

@@ -14,12 +14,18 @@ extension SettingsView {
         VStack(alignment: .leading, spacing: 14) {
             paneCaption("云端额度凭证")
             FluentCard {
-                ForEach(Array(visibleSubscriptionProviders.enumerated()), id: \.element) { index, id in
-                    subscriptionProviderRow(id, divided: index > 0)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(visibleSubscriptionProviders.enumerated()), id: \.element) { index, id in
+                        subscriptionProviderRow(id, divided: index > 0)
+                    }
+                    if visibleSubscriptionProviders.isEmpty {
+                        FluentRow("尚未配置任何订阅 Provider", sub: "从下方添加服务")
+                    }
                 }
-                if visibleSubscriptionProviders.isEmpty {
-                    FluentRow("尚未配置任何订阅 Provider", sub: "从下方添加服务")
-                }
+                .animation(
+                    motionSuppressed ? nil : .spring(response: 0.25, dampingFraction: 0.8),
+                    value: visibleSubscriptionProviders
+                )
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("添加服务")
@@ -115,8 +121,11 @@ extension SettingsView {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11))
                 .foregroundStyle(SettingsDemoTokens.text3)
+                .frame(width: 16, height: 20)
+                .contentShape(Rectangle())
                 .accessibilityHidden(true)
                 .draggable(id.rawValue)
+                .help("按住拖拽以调整在仪表盘的展示顺序")
             // 品牌图形徽章 (C026 方案 A): 26pt 品牌色瓷砖 + 白色图形, 与仪表盘同图形语言;
             // 未收录图形的 provider (Jev) 回退首字母。
             ProviderBrandBadge(providerID: id.rawValue, name: id.displayName, size: 26)
@@ -698,11 +707,14 @@ extension SettingsView {
         _ dragged: SubscriptionProviderID,
         onto target: SubscriptionProviderID
     ) {
-        var order = visibleSubscriptionProviders
-        order.removeAll { $0 == dragged }
-        guard let targetIndex = order.firstIndex(of: target) else { return }
-        order.insert(dragged, at: targetIndex)
-        coordinator.setSubscriptionProviderOrder(order)
+        let current = visibleSubscriptionProviders
+        let updated = SubscriptionPresentationPolicy.reordered(
+            current,
+            moving: dragged,
+            onto: target
+        )
+        guard updated != current else { return }
+        coordinator.setSubscriptionProviderOrder(updated)
     }
 
 }
