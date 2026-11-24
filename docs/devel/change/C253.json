@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C253",
+  "title": "Rust 采集器 JSONL 缓存 TOCTOU 重复计费、空模型定价劫持与动态分档价卡修复",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C253-collector-cache-toctou-and-pricing-bugs",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-local / collector-domain / collector-aggregate / collector-application",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "代码审查发现采集计费引擎 6 处数据准确性缺陷：(1) `jsonl_cache.rs:693-799` 在调用 `adapter.parse_file(...)` 之前读取 `fs::metadata(path)`，随后却将解析前旧 `metadata` 传给 `cache_payload_entry`。若活跃 CLI（Kimi/Pi/Grok 等非去重源）在 `stat` 与解析完成之间向文件追加新行，缓存 payload 已包含新字节，但 `entry.file.size` 与 `safe_offset` 记录的仍是旧长度，下次刷新命中前缀校验后将从旧 `safe_offset` 重复解析追加段，造成 Token 与费用永久重复累计；(2) `pricing.rs:515-518` `PricingTable::model_matches` 检查了 `!t.is_empty()` 却漏检 `!model.is_empty()`，一旦 `raw_model_name` 归一化为空串（如 `\"\"`、`\"openai/\"`、`\"[fast]\"`），`t.starts_with(\"\")` 恒为 `true`，将错误匹配到目录中最短键名并误计费；(3) `pricing.rs:691-738` 的 `rate_class_for` 通过全局静态 `OnceLock` 读取编译期 `builtin_catalog()` 且按 JSON 顺序 `.find()` 首次命中，导致远端同步/测试注入的 `context.pricingCatalog` 热更新分档价卡完全不生效，且匹配顺序违背 `best_prefix_match` 最长前缀优先规则；(4) `cache_util.rs:163-168` `fingerprint_head_tail` 读文件头块仅调用一次 `.take(chunk_bytes).read(&mut buffer)?`，存在短读（short read）隐患；(5) `codex.rs:384,391-396` `observation_dedupe_key` 的 `None` 回退分支按 `input + cache_read` 还原原始输入，漏加了在 `:874` 被扣除的 `cache_creation`；(6) `collector-aggregate/src/lib.rs:185` 与 `collector-application/src/lib.rs:288` 用 `total_cost > 0.0` 判断模型是否已计价，将合法的 `$0.00` 定价模型误报为 `None`（未计价）。",
+  "precheck": {
+    "description": "核对 jsonl_cache TOCTOU 顺序、pricing.rs 空串与静态 OnceLock 分档、cache_util 短读及聚合层零元判定",
+    "command": "rg -n \"model_matches|rate_class_for|tiered_rules|cache_payload_entry|fingerprint_head_tail|total_cost > 0\\.0\" core/collector/crates/",
+    "expected": "`jsonl_cache.rs:693` 在 `parse_file` 前读 `metadata` 并回传；`model_matches` 未检查 `!model.is_empty()`；`rate_class_for` 使用静态 `OnceLock` 且 `.find()`；`fingerprint_head_tail` 单次 `read`；`total_cost > 0.0` 判已计价",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C253-collector-cache-toctou-and-pricing-bugs"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C253 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "JSONL 缓存防 TOCTOU 重复计费",
+      "before": "`process_file` 解析前取 `metadata`，解析期间若文件被活跃 CLI 追加写入，仍把旧长度写入 `entry.file.size` 与 `safe_offset`。",
+      "after": "解析按明确读取到的真实消费字节偏移确定结束位置，或将 `parse_file` 限制在已锁定大小并校对解析前后文件长度/指纹一致；仅当指纹与已消费偏移严格对应已解析内容时才推进 `safe_offset`。",
+      "impact": "消除高并发会话写入下 Kimi/Pi/Grok 等来源的重复计费隐患。"
+    },
+    {
+      "scope": "模型定价防空串劫持与支持热更新分档",
+      "before": "`model_matches` 允许空 `model` 命中任意键；`rate_class_for` 绑定静态内置目录且顺序 `.find()`。",
+      "after": "`model_matches` 强制 `!model.is_empty()`；将分档规则归入 `PricingTable` 实例并在 `resolve_with_key`/`rate_class` 中复用预归一化最长前缀匹配，确保 `context.pricingCatalog` 热更新中的峰谷与长上下文规则生效。",
+      "impact": "异常/空模型名正确记为未计价，远端价卡热更新分档规则真实落地。"
+    },
+    {
+      "scope": "指纹短读、Codex 键回退与 `$0` 定价语义修正",
+      "before": "`fingerprint_head_tail` 头块单次 `read()`；Codex 回退键漏 `cache_creation`；聚合层以 `total_cost > 0.0` 判定有成本。",
+      "after": "头块改用循环读满（`read_exact_or_eof` / `read_to_end`）；Codex 回退键补入 `cache_creation`（保持既有金值不变的同时修复带缓存写入的回退一致性）；聚合结构显式维护 `has_cost: bool`，保留 `$0.00` 已计价语义。",
+      "impact": "消除碎片读导致的指纹误判与零元模型被误归类为未计价。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 中分档规则仅绑定内置价卡静态表，零费用模型与未计价模型在聚合输出未显式区分",
+      "after": "design/01 明确分档规则随活动 `PricingTable`（含 `context.pricingCatalog` 热更新）按最长前缀匹配生效，聚合层以 `has_cost` 区分已计价 `$0` 与未计价"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；新增解析期间并发追加不双倍累计、`\"\"` / `\"openai/\"` 返回未计价、动态注入峰谷/长上下文档目录生效、头块短读、`$0` 模型计价回归用例",
+        "false_if": "任一用例失败、存在 clippy 告警或未覆盖 TOCTOU/热更新分档用例",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "向测试 JSONL 在解析钩子中模拟追加写入两轮刷新，累计 Token 与真实行总和 100% 一致；同步自定义分档价卡时费用准确切换",
+        "false_if": "出现重复累计或热更新分档不生效",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "既有 `PanelParityHarness` 与 `fixture_parity` 金值全过，常规计费金额与模型归一化结果不变",
+        "false_if": "既有模型定价或金值用例发生意外偏差",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

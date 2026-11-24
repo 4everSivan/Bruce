@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C257",
+  "title": "SQLite WAL 事务锁竞态、外部只读库 busy_timeout、Mach CPU 指标与 FFI 边界加固",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C257-sqlite-concurrency-wal-and-zcode-cancel",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-request-log / collector-history / collector-local / collector-bridge / collector-policy-ffi",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "why": "代码审查发现持久化与底层接口 5 组可靠性缺陷：(1) `collector-request-log/src/lib.rs:238` `RequestLogStore::merge` 使用默认 `DEFERRED` 事务（`self.connection.transaction()`），WAL 模式下读升级写绕过 `busy_timeout` 直接报 `SQLITE_BUSY`（而 `collector-history/src/lib.rs:265` 正确使用 `TransactionBehavior::Immediate`）；同时 `query()`（`:270-322`）与 `HistoryStore::load()`（`collector-history/src/lib.rs:533-598`）执行多条独立 `SELECT` 未包在只读事务中，并发 WAL 写入时总计、分页与分面可能跨快照不一致；初始建表与 `PRAGMA user_version`（`collector-history:631-635`, `collector-request-log:212-216`）未包事务；`-wal`/`-shm` 在写后未重设 `0o600` 权限；(2) `sqlite_cache.rs:220-232` 与 `sources/sqlite_adapters.rs:753-757` 打开外部只读库 `opencode.db` 与 `zcode/db.sqlite` 时未配置 `busy_timeout`，外部应用写入瞬间即报错标红，且 `sqlite_cache.rs:222` 对普通文件路径错误附加 `SQLITE_OPEN_URI`（路径含 `?` 或 `#` 会被解析为 URI 参数/片段）；(3) `sources/sqlite_adapters.rs:731-740` `scan_zcode_cached` 的 `Err(_)` 分支吞掉了 `SourceScanError::Runtime(Cancelled | DeadlineExceeded)`，将其降级为读取失败提示；(4) `collector-bridge/src/metrics.rs:20-39,237-248` 将 macOS `proc_pid_rusage` 返回的 `ri_user_time`/`ri_system_time`（Mach absolute timebase ticks）直接当作纳秒除 `1_000_000.0`，在 Apple Silicon（`mach_timebase_info = 125/3`）下 CPU 毫秒指标低报约 41.67 倍；(5) `collector-policy-ffi/src/lib.rs:22-60` 在校验 `request_len > MAX_POLICY_REQUEST_BYTES` 之前就调用 `std::slice::from_raw_parts(request, request_len)`（若传入 `request_len > isize::MAX` 即 UB），且 panic 兜底分配（`.as_bytes().to_vec()` 与 `.into_boxed_slice()`）处于 `catch_unwind` 之外。",
+  "precheck": {
+    "description": "核对 request-log/history 事务模式、外部 SQLite 打开标志、ZCode 错误匹配、metrics.rs 时间基换算及 policy-ffi 入口顺序",
+    "command": "rg -n \"connection\\.transaction\\(\\)|SQLITE_OPEN_URI|scan_zcode_requests|ri_user_time|from_raw_parts\" core/collector/crates/",
+    "expected": "`RequestLogStore::merge` 用 `transaction()`；`sqlite_cache.rs:222` 含 `SQLITE_OPEN_URI`；`scan_zcode_cached` 吞掉 `Err(_)`；`metrics.rs:34-35` 未乘 `mach_timebase_info`；`collector-policy-ffi` 先 `from_raw_parts` 后判边界",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C257-sqlite-concurrency-wal-and-zcode-cancel"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C257 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "SQLite WAL 事务一致性和文件权限收紧",
+      "before": "`RequestLogStore::merge` 用 `DEFERRED` 事务；`query`/`HistoryStore::load` 无读事务快照；建表 DDL 与 `user_version` 无事务；`-wal`/`-shm` 权限仅建库时设。",
+      "after": "`merge` 改用 `TransactionBehavior::Immediate`；`query`/`load` 多查询包入只读事务；DDL+`user_version` 包入事务；首次写后补齐 `-wal`/`-shm` 的 `0o600` 权限检查。",
+      "impact": "并发采集与查询不再因 WAL 升级触发 `SQLITE_BUSY` 或跨快照不一致，私有权限覆盖附属文件。"
+    },
+    {
+      "scope": "外部 SQLite 容错与 ZCode 取消透传",
+      "before": "只读打开 `opencode.db`/`zcode/db.sqlite` 无 `busy_timeout`、误用 `SQLITE_OPEN_URI`；`scan_zcode_cached` 捕获所有 `Err(_)` 吞掉取消与超时。",
+      "after": "外部只读连接设置合理 `busy_timeout`（如 250–500 ms）并移除普通路径 `SQLITE_OPEN_URI`；`scan_zcode_cached` 显式透传 `SourceScanError::Runtime(_)`。",
+      "impact": "外部 Agent 正写库时不易误报错标红，取消/超时能正确中止 ZCode 扫描。"
+    },
+    {
+      "scope": "Apple Silicon CPU 指标换算与 FFI 安全边界",
+      "before": "`ri_user_time`/`ri_system_time` 直接除以 `1e6`；FFI 先构 slice 后验上限且兜底分配在 `catch_unwind` 外。",
+      "after": "macOS 侧读取 `mach_timebase_info` 将 Mach ticks 精确折算为纳秒；FFI 入口先校验非空与 `request_len <= MAX_POLICY_REQUEST_BYTES` 再调用 `from_raw_parts`，并使用静态常量/受保护兜底封包。",
+      "impact": "修复 ARM64 Mac CPU 耗时指标 41.67× 失真与 FFI 极端参数安全风险。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/14-Agent请求日志.md",
+    "topic": "RequestLog",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；覆盖 WAL 并发写入不报 `SQLITE_BUSY`、含 `?`/`#` 路径只读打开、ZCode 取消信号透传、Mach timebase 换算单测及 FFI 超限长度安全返回错误",
+        "false_if": "任一用例失败或仍有 clippy 警告",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Apple Silicon Mac 上 `BRUCE_COLLECTOR_METRICS_PATH` 输出的 `userCpuMs`/`systemCpuMs` 与实测进程 CPU 时间量级一致；高并发读写请求库零 `SQLITE_BUSY`",
+        "false_if": "CPU 指标仍偏低一个数量级以上或出现锁超时错误",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "既有请求日志页查询、历史台账读写与 `BrucePolicyFFI` 全套 Harness 全绿",
+        "false_if": "影响既有查询结果或 FFI 调用兼容性",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C260",
+  "title": "采集引擎热路径优化：历史库批量查询、写放大短路、请求日志按需持久化与代理连接池",
+  "version": "0.19.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C260-collector-hotpath-perf",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-history / collector-application / collector-provider / collector-bridge / collector-domain / collector-local / collector-runtime",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "代码审查识别出 Rust 采集引擎多处高开销 I/O、查询与分配热点：(1) `collector-history/src/lib.rs:550-582` `HistoryStore::load` 在 `for date in &window.day_list` 循环内逐天逐月执行无缓存 `connection.prepare(...)`（366 天×10 Agent 达 7,300+ 次查询）；`merge_versioned`（`:350-497`）仅在 `new_total < stored` 时跳过，当历史天完全未变（`new_total == stored`）时仍每轮 JSON 编码 `bucket_json`、更新 `agent_day` 并 `DELETE + INSERT` 全部 `agent_day_model`/`agent_month_model` 明细行，制造严重 SQLite WAL 写放大；(2) `collector-application/src/lib.rs:340-437` 在本地缓存 100% 命中时仍重放多达 20 万条请求逐行定价、clone 字符串并运行海量 SQLite upsert；`jsonl_adapters.rs:243-258` 为不在 `REQUEST_LOG_AGENT_IDS` 内的 `codebuddy`/`dsh` 分配再丢弃 `RequestRecord`；`sqlite_adapters.rs:723-797` `scan_zcode_cached` 命中时仍无条件重开 `zcode/db.sqlite` 全表扫描 30 天明细；(3) `collector-provider/src/lib.rs:528-535` `send_via_loopback_proxy` 每次出口探针与代理请求都重建全新 `ureq::Agent`（重复加载 TLS 根证书库且无法复用连接池）；(4) `collector-bridge/src/lib.rs:74-118,218` `run_bytes_panic_safe` 对最多 4 MiB 请求完整反序列化两次（`run_id_of` + `run_bytes`），Windows 进程内调用还在 `apps/win/src-tauri/src/collector.rs:198` 先序列化再双反序列化，且未开启 `BRUCE_COLLECTOR_METRICS_PATH` 时仍无条件两次调用 `proc_pid_rusage`；(5) `pricing.rs:491-518,691-717` 热路径每次调用重复归一化全部目录键与分配堆字符串、`UsageContributionBuilder`/`CompactContribution` 线性扫描已排序 `day_list`、`jsonl_cache.rs:558,637,659` 无变更重写 manifest 且窄窗口切宽窗口删缓存触发冷重建、`read_bounded_line` 未用已依赖的 `memchr`、`CancellationState::deadline` 热循环每次加锁 `Mutex`、`resolve_pricing_table` 把 `Value` 转字节再解析、`execution.rs:173-231` 先占 `network_permit` 再阻塞等出口探针。",
+  "precheck": {
+    "description": "核对 collector-history、collector-application、collector-provider、collector-bridge 与 collector-local 热路径实现并测量基线耗时",
+    "command": "rg -n \"load_day_models|send_via_loopback_proxy|run_id_of|persist_request_logs|fill_buf|Mutex<Option<Instant>>\" core/collector/crates/",
+    "expected": "`HistoryStore::load` 逐日单条 SQL 查询；`send_via_loopback_proxy` 每次 `AgentBuilder::new()`；`run_bytes_panic_safe` 两次 `from_slice`；`CancellationState::deadline` 为 `Mutex`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C260-collector-hotpath-perf"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C260 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-history 批量查询与零变更写放大消除",
+      "before": "`load` 逐日逐月发 7,300+ 次无缓存 SQL；`merge_versioned` 对完全一致的历史天每轮重写并全删全插明细。",
+      "after": "改用按 `agent_id` 与日期区间 `BETWEEN` 的批量预准备查询一次拉取；`merge_versioned` 对比总量与桶快照等价时直接短路跳过写入与明细重建。",
+      "impact": "大幅缩短历史台账加载时间，稳态刷新 WAL 写入量接近于 0。"
+    },
+    {
+      "scope": "请求日志与 ZCode 增量重放减负",
+      "before": "非白名单来源仍分配 `RequestRecord`；缓存命中仍重放全量行计价与 ZCode 全表 30 天重扫。",
+      "after": "仅白名单来源才构造 `RequestRecord`；结合文件/SQLite 游标与缓存签名在无变更且价卡指纹一致时跳过冗余全量请求日志重放与 ZCode 全扫描。",
+      "impact": "降低稳态刷新的 CPU 分配与 SQLite 事务时长。"
+    },
+    {
+      "scope": "Bridge 单次解析、Windows 强类型入口与代理连接复用",
+      "before": "`run_bytes_panic_safe` 双反序列化、Windows 进程内 JSON 序列化+双反序列化、每代理请求新建 `ureq::Agent`、无条件采样 `proc_pid_rusage`。",
+      "after": "单次解析入口提取 `run_id` 并为 Windows 进程内直接提供 `run_request_panic_safe(BridgeRequest)`；按代理端口缓存复用 `ureq::Agent`；仅当启用指标输出时采样 `proc_pid_rusage`。",
+      "impact": "消除请求期 TLS 重复初始化和 3× JSON 序列化/解析开销。"
+    },
+    {
+      "scope": "定价预归一化与底层热循环微优化",
+      "before": "每次查找归一化全部目录键、O(N) 线性扫描 `day_list`、每行锁定 `deadline`、`iter().position` 找换行、无变更写 manifest、持 permit 等探针。",
+      "after": "构建 `PricingTable` 时预存归一化键；`day_list` 改用 `binary_search`；`deadline` 改为只读不可变字段去除互斥锁；`read_bounded_line` 改用 `memchr::memchr`；manifest 仅脏时落盘、合理区分窗口外跳过与物理删除；出口探针先于 `network_permit` 执行；`resolve_pricing_table` 改用 `serde_json::from_value`。",
+      "impact": "全面降低热路径微开销与线程锁竞争。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；新增 `HistoryStore` 批量查询等价性、等价日零 SQLITE_CHANGES 跳过、Bridge 强类型入口与代理 Agent 缓存复用测试",
+        "false_if": "任一用例失败、存在 clippy 告警或统计口径出现偏差",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "本机稳态热刷新对比基线：历史读写耗时、WAL 增量字节与 CPU 占用有明显可量化下降，请求库与聚合产物完全一致",
+        "false_if": "耗时未降反升或产生数据不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Windows/macOS 采集结果、`PanelParityHarness` 与所有基准 fixture 一致",
+        "false_if": "影响既有统计数值或并发取消语义",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

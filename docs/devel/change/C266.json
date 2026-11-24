@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C266",
+  "title": "协议 Schema 同步与契约化、Release Universal 2 打包修复及 CI/测试流程提效",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C266-schema-contracts-packaging-and-ci-pipeline",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/schemas + scripts + .github/workflows + apps/macos/Tests",
+    "component": "schemas/*.schema.json / build-release-app.sh / build-test-app.sh / ci.yml / SwiftPM Package.swift",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "代码审查发现协议文档契约与打包/CI/测试流水线 5 处系统性问题：(1) `core/collector/schemas/` 下 5 份 JSON Schema 中有 4 份未参与测试校验且已与 Rust 实现严重漂移：`request-v1.schema.json:77-81,106-332` 缺 ``\"request-log\"` 模块和 8 个上下文字段、缺 `claudeOAuth`/`grokOAuth`/`opencodeGoQuotaAccounts`，且 `$defs.quotaAccounts` 设 `additionalProperties: false` 却只允许 `display_name`；`response-v1.schema.json:145-156` 缺 `\"runtime\"` 诊断分类；`policy-request-v1.schema.json` 与 `policy-response-v1.schema.json` 完全缺 `alertDecide` 操作及其返回体；(2) `scripts/build-release-app.sh:112-120` 虽按 Universal 2 构建了 Rust Collector 与 `libbruce_policy.a`，但 Swift `BruceApp` 仅执行单架构 `swift build --configuration release --product BruceApp`，违背 `design/00 §3.3` Intel Mac 原生可用要求，且与 `build-test-app.sh` 重复约 150 行打包逻辑，CI `.github/workflows/ci.yml:135` 实际走 `build-test-app.sh` 导致 `build-release-app.sh` 长期失修；(3) `.github/workflows/ci.yml:83-135` 中 `build-release-app` 刚编完 Universal 2 App/DMG 并上传 `Bruce-test-app`，下游 `release` 作业在 `needs` 它之后又安装 `ripgrep`+`x86_64` 目标并从头全量重编一次；(4) 打包脚本与 CI 默认输出到项目根目录 `dist/`（本地已堆积 68 MB 含旧版 release-notes），违背 `AGENTS.md §三.1`（所有打包分发产物强制收拢至 `local/`）；(5) `scripts/test-stepfun-token.sh`（94 行）全仓 0 引用且内联调用 `python3 -c` 绕开资产守卫；`apps/macos/Package.swift:41-140` 维护 20 个手写 `.executableTarget` 替代标准 `.testTarget`，导致无法使用 `swift test --filter`、用例级并行、单条失败继续跑后续用例与代码覆盖率统计。",
+  "precheck": {
+    "description": "核对 4 份 schema 缺口、build-release-app.sh 单架构 swift build、ci.yml 重复构建、dist/ 路径与孤儿脚本",
+    "command": "rg -n \"alertDecide|request-log|--configuration release --product BruceApp|Bruce-test-app\" core/collector/schemas/ scripts/build-release-app.sh .github/workflows/ci.yml",
+    "expected": "`policy-*-v1.schema.json` 无 `alertDecide`；`request-v1.schema.json` 无 `request-log`；`build-release-app.sh:112` 无 `--triple` 与 `lipo`；`ci.yml` 重复执行 `build-test-app.sh --universal --dmg`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C266-schema-contracts-packaging-and-ci-pipeline"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "node --test tests/unit/*.test.mjs",
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C266 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "JSON Schema 同步与 CI 自动化契约校准",
+      "before": "4/5 份 schema 严重缺项漂移且几乎不被测试读取。",
+      "after": "补齐 `request-log`、`alertDecide`、全部凭据/诊断枚举与宽松/真实 `quotaAccounts` 约束；在测试套件（Rust/Node）新增自动化契约测试，用真实 Bridge/Policy 请求与响应夹具校验全部 5 份 Schema 防再次漂移。",
+      "impact": "保证协议参考文件与运行时白名单 100% 实时一致。"
+    },
+    {
+      "scope": "Universal 2 打包逻辑统一、CI 复用与输出路径收口",
+      "before": "`build-release-app.sh` 单架构 Swift；与 `build-test-app.sh` 大量重复；CI `release` 从零重编；输出落在根 `dist/`。",
+      "after": "将双架构 Swift 构建（`arm64`/`x86_64` + `lipo`）与 bundle 组装提炼到共享 `runtime-manifest.zsh` 供 Preview/Release 共用并断言双二进制均为 `arm64 x86_64`；CI `release` 直接消费前置作业构建并验证的产物；在确认 release workflow 兼容后将打包输出路径统一收口至 `local/dist/`。",
+      "impact": "修复 Release 脚本架构缺陷，CI 发布耗时减半并符合 `AGENTS.md §三.1` 隔离要求。"
+    },
+    {
+      "scope": "孤儿脚本清理与 SwiftPM 标准 TestTarget 现代化",
+      "before": "存在无引用且绕过守卫的 `scripts/test-stepfun-token.sh`；20 个 `.executableTarget` 无法用 `swift test`。",
+      "after": "清理孤儿脚本 `scripts/test-stepfun-token.sh`；将 macOS 20 个 Harness 按批次/统一过渡到标准 `XCTest` / `Swift Testing` `.testTarget`，并更新 `verify-local.sh` 保持 1 分钟内全绿 SLA。",
+      "impact": "支持 `swift test --filter`、用例并行、覆盖率与完整失败汇总。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 §3.3-3.4 登记产物路径在 `dist/`、测试通过 20 个 `*Harness` 可执行文件运行且 schemas 仅作非强制参考",
+      "after": "design/00 §3.3-3.4 更新为 schemas 受测试契约校验、Preview/Release 共用同一 Universal 2 组装脚本与 `local/dist/` 输出隔离、macOS 测试采用标准 SwiftPM TestTarget"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "5 份 JSON Schema 契约测试全过、`check-bundle-resources.zsh` 与 `check-ci-tool-deps.mjs` 通过、`swift test` 与 `verify-local.sh` 全绿（耗时保持在 SLA 内）",
+        "false_if": "任一 schema 校验失败、资源门禁报错或测试超时/漏跑",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "实测 `build-release-app.sh`（或等价干跑路径）产出的 `BruceApp`、`Bruce-collector` 与 `libbruce_policy.a` 经 `lipo -archs` 均含 `arm64 x86_64`；输出落于 `local/dist/`；`swift test --filter` 正常运行",
+        "false_if": "任一产物退化为单架构或测试目标不可过滤",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "GitHub Actions CI 各作业（verify/build-release-app/release/windows）及 `check-ci-tool-deps.mjs` 全兼容",
+        "false_if": "CI 路径失配或签名发布步骤受损",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C259",
+  "title": "Windows 预警窗/设置页交互缺陷、双端欢迎文案漂移与 Widget XSS/原型碰撞修复",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C259-win-ui-bugs-and-widget-xss",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src + apps/macos + apps/widget",
+    "component": "quota-alert / settings-pricing / settings-welcome / settings-subscription / settings-maintenance / app.js / WelcomeOnboardingPresentation / widget",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "代码审查发现 Windows 前端、双端欢迎文案与 Widget 共 9 处明确缺陷：(1) `quota-alert.js:65-67` 调用不存在的 `window.ProviderBrand.getGlyph(...)`（`provider-brand.js` 实际导出 `window.BRUCE_PROVIDER_GLYPHS`），致所有预警弹窗图标恒退化为单字母；且 `quota-alert.html:155-156` 存在选择器外的游离非法 CSS（`}\\n  position: relative;\\n}`）；(2) `settings-pricing.js:70,99` 搜索框在 `input` 事件中调用 `renderPricingPane()` → `container.replaceChildren()`，每次按键都销毁重建 `<input id=\"pricing-search\">`，导致立刻丢失焦点与光标，无法连续输入或使用中文输入法；(3) `settings-welcome.js:118-120` 引用不存在的 `icons/icon.png`（`frontendDist` 为 `../src`），且 `DEFAULT_LOCAL_SOURCES` 与 `AGENT_COLORS`（`:10-35`）遗漏 `antigravity`（与 `paths.rs` 11 个探针失配）；(4) `welcome-presentation.js:12,24-25,34` 在 Windows 上展示 macOS 专属文案（“POSIX 0600 / 告别系统钥匙串频繁弹窗”），且双端（含 `WelcomeOnboardingPresentation.swift:36,44-47`）仍写“10 家”支持服务商（实际已有 11+ 家）及已退役的双环阈值文案；(5) `settings-subscription.js:513-520,605-620,735-754` 关闭弹窗 `closeProviderDialog` 时停了 StepFun 却漏停 `stopCodexPoll()` 导致后台 HTTP 轮询最长泄漏 15 分钟；连点“移除”会堆叠多个 `.cfg-confirm` 确认框；部分外部链接用 `<a target=\"_blank\">` 未走 `open_external_url`；(6) `settings-maintenance.js:844-847` `loadPrices` 失败回退将 `coreState.currentModelPrices` 设为 `{}`（对象），致使 `settings-pricing.js:26` 调用 `.map` 抛 `TypeError`；(7) `app.js:1645` `Ctrl+2` 快捷键检测不存在的 `currentPanel.subscriptionEmpty` 致空订阅页切换失效；(8) `apps/widget/index.html:866-870,902` 将 `dt`（`day.date`）未经 `esc()` 直接插入 `xAxis.innerHTML`（XSS 风险），且 `colorByName` 使用普通 `{}` 对象在遇到 `\"toString\"`/`\"constructor\"` 等 Agent 键名时存在原型属性碰撞。",
+  "precheck": {
+    "description": "核对 quota-alert、settings-pricing、settings-welcome、settings-subscription、settings-maintenance、app.js、WelcomeOnboardingPresentation.swift 与 widget/index.html 对应行号",
+    "command": "rg -n \"ProviderBrand\\.getGlyph|icons/icon\\.png|subscriptionEmpty|POSIX 0600|stopCodexPoll|xAxis\\.innerHTML\" apps/win/src/ apps/macos/Sources/ apps/widget/index.html",
+    "expected": "全部问题点在对应行号均命中：不存在 `ProviderBrand.getGlyph`、无 `icons/icon.png`、引用 `subscriptionEmpty`、Windows 欢迎文案含 `POSIX 0600`、`closeProviderDialog` 无 `stopCodexPoll`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C259-win-ui-bugs-and-widget-xss"
+    ],
+    "after": [
+      "node --test apps/win/tests/*.test.mjs",
+      "node --test tests/unit/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C259 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "预警窗图标/CSS 与价卡搜索焦点修复",
+      "before": "`quota-alert.js` 调不存在接口且 HTML 有非法 CSS；`settings-pricing.js` 输入框每次 `input` 自毁重建。",
+      "after": "改用 `window.BRUCE_PROVIDER_GLYPHS` 渲染真实 SVG 图标并清理非法 CSS；`settings-pricing.js` 将搜索筛选条持久化保留在表格容器外，输入只重绘表格区域并保留 IME 组合状态。",
+      "impact": "预警图标正确渲染，价卡中文搜索连续可用。"
+    },
+    {
+      "scope": "欢迎向导、订阅弹窗、设置容错与快捷键修复",
+      "before": "缺图标与 `antigravity`、文案错端/过期、关窗漏停 Codex 轮询、重复确认框、`loadPrices` 回退 `{}`、`Ctrl+2` 失效。",
+      "after": "补齐图标资源路径与 `antigravity` 探针渲染；双端更新欢迎文案至真实 Provider 数与当前菜单栏规则并区分 Windows NTFS/DPAPI 描述；关窗调用 `stopCodexPoll()`；弹出确认前移除旧 `.cfg-confirm`；外链统一走 `open_external_url`；失败回退 `[]`；按 `panel.usage` 修复 `Ctrl+2` 判定。",
+      "impact": "消除定时器泄漏、脚本 TypeError 与跨平台文案失真。"
+    },
+    {
+      "scope": "Widget XSS 与原型链安全加固",
+      "before": "`xAxis.innerHTML` 未转义 `dt`；`colorByName` 使用普通 `{}` 对象。",
+      "after": "统一使用 `esc(dt)` 转义插值，并将 `colorByName` 替换为 `Object.create(null)` 或 `Map`。",
+      "impact": "消除 DOM XSS 与原型键污染隐患。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "更新并全绿通过 `apps/win/tests/*.test.mjs`、`welcome-onboarding-parity`、`tests/unit/*.test.mjs` 与 `verify-local.sh`，覆盖价卡输入保焦、预警 SVG、Codex 关窗停轮询、Widget 转义及原型键名",
+        "false_if": "任一前端/对拍测试失败或缺失回归断言",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Windows 端实机确认预警弹窗图标正常、价卡搜索输入拼音不断触、欢迎页无破图且文案正确、关闭 Codex 弹窗后台无续轮询",
+        "false_if": "仍有破图、失焦、报错或后台继续轮询",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "macOS 欢迎向导与 `widget-performance-harness.mjs` 通过，样式与桌面布局无偏移",
+        "false_if": "造成其他窗体或卡片样式回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

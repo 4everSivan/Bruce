@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C265",
+  "title": "Rust 三锁分裂治理、跨模块死代码清理、缓存引擎收口与巨型模块拆分",
+  "version": "0.19.0",
+  "type": "Refactor",
+  "status": "pending",
+  "branch": "fix/C265-cargo-workspace-unify-and-dead-code-cleanup",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/win + apps/macos",
+    "component": "Cargo.toml / collector-* / BruceOnboardingCore / AppModel / SettingsView / SubscriptionService / RefreshScheduler / src-tauri",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "代码审查暴露三类深层结构性债务与大面积冗余：(1) **Rust Workspace 三裂与精确钉版冲突**：`core/collector`、`apps/win/viewmodel`、`apps/win/src-tauri` 各自维护独立 `Cargo.lock` 与 `target/`，由于 `core/collector/Cargo.toml:25-38` 全量采用 `=` 精确钉版（如 `serde = \"=1.0.210\"`），直接迫使 `apps/win/src-tauri/Cargo.toml:24-26` 将 `tauri` 冻死在 `=2.11.6`（与 `.github/workflows/ci.yml:169` 的 `tauri-cli 2.12.2` 分裂），三锁间存在 48 个 crate 版本分叉（`src-tauri` 单图内有 5 个版本的 `windows-sys`、共 71 个重复实例），且 CI/本地要编译 3 遍共享 crate；`src-tauri` 仅为调用 `default_cache_root`（`paths.rs:21`）拉入整个 `collector-local`；`bin/Bruce-collector/Cargo.toml:8-13` 将 benchmark 工具混入生产二进制依赖树；(2) **全仓已证实的死代码与高度重复实现**：`collector-credential/src/lib.rs:17-265`（~250 行占 crate 60% 的读取代码 0 生产调用方）；`collector-aggregate` 复制 `UsageContributionBuilder` 的 9 字段与合并逻辑；`collector-runtime::PermitPool` 在 `collector-application:1044-1068` 与工作线程数相等形同虚设；时间戳解析函数在 4 crate 间复制 8+ 份（`1e12/1e11/1e10` 阈值还不一致）；目录遍历与 `file_identity` 在 `collector-local` 内复制 3~4 份；Unix SQLite 权限在 `collector-history` 与 `collector-request-log` 复制；`context.rs:13-14` `retry_count`/`credential_refresh_count` 恒 0；`RuntimeError::Closed`、`claude_token()`、两处 unreachable 分支、`account.rs:284-336` 重复 48 行已执行校验；Windows 死命令 `save_credentials_command`/`import_codex_auth` 与重复 `ShellExecuteW`、无用表达式 `settings-pricing.js:206,211`；macOS 死代码（`OnboardingConfigError`、`reverifyOpenCodeGo()`、`ArtifactStore.recordAttempt`、`RefreshScheduler.onQuotaAlerts`、`readFile throws`）以及 6 处私有 `NothingTokens`、2 处不一致欢迎判断、`ProtectedFileCredentialStore` 重写 `AtomicJSONStore`、`EgressRouteTester` 重复 `egress.rs`、`StepFunWebLoginView` 内嵌远端校验、重复 CSV 导出与 `publishSubscriptionProviders`；(3) **5 套割裂缓存引擎与多处超规模模块**：`collector-local` 并存 5 套缓存（`jsonl_cache`/`sqlite_cache`/`codex`/`dsh`/`antigravity`），其中 `codex`/`dsh` 缓存文件名未哈希源根易碰撞且整库全量重写；`BruceOnboardingCore`（`OnboardingConfiguration.swift` 1,429 行混 7 领域）、`AppModel`（26 `@Published`）、`OnboardingCoordinator`（15 `@Published` + 30+ 转发样板）、`SettingsView`（2,228 行 / 35 `@State`）、`SubscriptionService`（1,782 行）、`RefreshScheduler`（1,183 行）、`collector-history/src/lib.rs`（1,678 行）、`apps/win/src-tauri/src/lib.rs`（1,563 行）及前端全局 `<script>` 袋均超出或偏离单一职责边界。",
+  "precheck": {
+    "description": "核对三份 Cargo.toml/Cargo.lock 版本分叉、0 调用方死代码列表及各超规模文件行数",
+    "command": "rg -n \"save_credentials_command|import_codex_auth|OnboardingConfigError|reverifyOpenCodeGo|CLAUDE_KEYCHAIN_SERVICE|RuntimeError::Closed\" apps/ core/collector/",
+    "expected": "上述符号仅在定义/少数死分支或测试中出现；`core/collector/Cargo.toml` 全用 `=` 钉版；`apps/win/src-tauri/Cargo.toml` 标注 `tauri =2.11.6` 锁定说明",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C265-cargo-workspace-unify-and-dead-code-cleanup"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features",
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C265 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Cargo 依赖去精确钉版、解冻 Tauri 与工作区收敛",
+      "before": "3 套锁文件 48 处版本分叉、`serde =1.0.210` 冻死 `tauri 2.11.6`、`src-tauri` 为单一路径函数拉入 `collector-local`、生产 bin 混入 benchmark。",
+      "after": "将 `core/collector/Cargo.toml` 的 `=` 精确约束改回兼容 semver 范围（评估合并根 Cargo Workspace 与统一 `target/`），升级兼容 `tauri 2.12`；将路径解析原语抽至 `collector-domain` 解除 `src-tauri` 对 `collector-local` 依赖；将 benchmark 二进制移出 `Bruce-collector` 生产依赖。",
+      "impact": "统一依赖图与构建缓存，消除 3× 编译浪费与版本分裂。"
+    },
+    {
+      "scope": "全仓死代码与冗余工具函数清理",
+      "before": "`collector-credential` 60% 死代码、`collector-aggregate` 重复聚合器、8+ 份时间戳解析、3~4 份目录遍历、双端及前端死命令/死符号、6 处 `NothingTokens` 等大量复制粘贴代码。",
+      "after": "移除全部已确认 0 调用死代码（仅在测试被调用者迁回对应测试模块）；合并 `collector-aggregate` 与 `UsageContributionBuilder`、统一 `collector-domain` 时间戳与 `collector-local` 遍历/`cache_util`、收敛 `NothingTokens`、统一 Welcome 判断与 `ShellExecuteW`、移除无效 `PermitPool` 样板。",
+      "impact": "净裁撤数千行维护噪音，杜绝“改一漏多”类回归。"
+    },
+    {
+      "scope": "缓存引擎抽象统一与巨型模块/上帝对象拆分",
+      "before": "`collector-local` 5 套互不统属的缓存实现；`BruceOnboardingCore` 混 7 领域；`collector-history`/`src-tauri`/`AppModel`/`SettingsView`/`RefreshScheduler` 巨型耦合；Windows 前端依赖加载顺序全局变量。",
+      "after": "在 `collector-local::cache_util` 统一带来源哈希文件名、身份校验与窗口外 GC 的文件缓存抽象（覆盖 `codex`/`dsh`/`antigravity`/`jsonl`）；按单一职责拆分 `BruceOnboardingCore`（基础/设置/凭据/主题）、`collector-history/src/lib.rs`、`apps/win/src-tauri/src/lib.rs`、`SettingsView` 表单状态，并逐步解耦 `AppModel`/`OnboardingCoordinator`（结合 `.macOS(.v14)` `@Observable`）。",
+      "impact": "模块边界清晰、增编加快、避免主题等轻量目标牵入网络/钥匙串重模块。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 §3.1 仅记录首轮 C053/C128 四处文件拆分，未约束 Cargo 钉版方式、缓存引擎统一及 `BruceOnboardingCore`/`src-tauri` 细分边界",
+      "after": "design/00 §3.1 明确 Rust 依赖采用 semver 范围（依赖 `Cargo.lock` 锁版本）、`collector-local` 统一缓存抽象，以及 `BruceOnboardingCore`/`collector-history`/`src-tauri`/`AppModel` 的职责拆分基线"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Rust 全工作区/Windows/viewmodel、macOS 20 Harness、Windows 前端及顶层 `tests/unit` 与 `verify-local.sh` 100% 全绿，且无新增 clippy/Swift 告警",
+        "false_if": "任一构建、单测、对拍或 lint 检查失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "验证拆分子模块与合并工具后 `Bruce-collector`、macOS 与 Windows 端冷启动、采集、设置保存、导出与升级均行为等价；统计每个重构后文件规模合规",
+        "false_if": "任何功能或对拍结果出现偏差",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "对外 CLI/IPC/FFI 契约与公开路径保持等价，归档历史测试基线与黄金样本全过",
+        "false_if": "破坏外部契约或引入构建循环依赖",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

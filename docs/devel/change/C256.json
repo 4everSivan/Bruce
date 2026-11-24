@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C256",
+  "title": "macOS 采集管道主线程阻塞、热键悬垂指针、调度器状态机与更新/同步并发修复",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C256-macos-runtime-lifecycle-and-scheduler-races",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "CollectorRunner / RefreshScheduler / GlobalHotkeyMonitor / PricingCatalogSyncService / SoftwareUpdateService / RequestLogClient / DashboardGlassPanelController",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "代码审查发现 macOS 运行时调度、子进程通信与生命周期 7 处高/中危缺陷：(1) `GlobalHotkeyMonitor.swift:36,73-94` 将 `Unmanaged.passUnretained(self)` 传入 Carbon `InstallEventHandler` 却没有 `deinit` 调用 `unregister()`，释放监听后回调将触发悬垂指针崩溃；(2) `CollectorRunner.swift:252,291-325,567-573` 是 `@MainActor` 类，在 `launch` 中同步调用 `stdinPipe.fileHandleForWriting.write(contentsOf: input)`（含 512 KB 同步价卡时超 64 KB macOS 管道缓冲即卡死主线程或遇子进程早退触发 SIGPIPE）；若写入抛错而 `process.run()` 已成功，已挂载的 `terminationHandler` 按 `module`（而非 `runId`）回调 `complete(module:result:)` 会错杀后续新启动的运行；管道读线程使用已废弃且存在 ObjC 异常/无界内存风险的 `readDataToEndOfFile()`，`forceTerminate()` 未校验 `pid > 0`；(3) `RefreshScheduler.swift:244-280,770-805,930-953` 中 `applyCompleted` 拷贝值类型 `state` 后跨 `await quotaAlertPolicy.decide` 回写，覆盖挂起期间的新变更（`pendingIntent`/`disableModule`/`setAutoRefresh`）；`stop()` 不取消 `runningTasks` 导致 `stop→start` 竞态把取消转为失败；首次运行被取消时将 `phase = .disabled` 但 `enabled = true` 致后续调度永久忽略该模块；缺少 `deinit` 移除唤醒与激活通知观察者；(4) `PricingCatalogSyncService.swift:229,253,272` 定时同步不设 `stage = .syncing` 可与 `syncNow()` 并发写盘，`Dictionary(uniqueKeysWithValues:)` 遇仅大小写不同的模型名直接崩溃，未失效内部 `URLSession`；(5) `SoftwareUpdateService.swift:340-347` `cancelDownload()` 在下载/解包任务仍在运行时同步清理 `updatesRoot`，`SystemUpdateCommandRunner` 缺少超时与任务取消；(6) `ApplicationLifecycle.swift:100-103` 退出未调用 `updates.stop()` 与 `pricingSync.stop()` 且两者 `stop()` 未取消在途任务；(7) `RequestLogClient.swift:79-110` 缺少 `withTaskCancellationHandler` 导致快速筛选翻页时泄漏并行采集子进程；`DashboardGlassPanelController.swift:123` 仅加视图未调用 `addChild(hostingController)` 违反 AppKit 控制器嵌套契约。",
+  "precheck": {
+    "description": "核对 GlobalHotkeyMonitor、CollectorRunner、RefreshScheduler、PricingCatalogSyncService、SoftwareUpdateService、ApplicationLifecycle 与 RequestLogClient",
+    "command": "rg -n \"passUnretained|stdinPipe\\.fileHandleForWriting\\.write|applyCompleted|uniqueKeysWithValues|cancelDownload|withCheckedThrowingContinuation\" apps/macos/Sources/",
+    "expected": "`GlobalHotkeyMonitor` 无 `deinit`；`CollectorRunner` 在 `@MainActor` 同步写 stdin 且 `complete` 仅按 `module` 索引；`RefreshScheduler` 跨 `await` 回写值拷贝 `state`；`PricingCatalogSyncService` 用 `uniqueKeysWithValues`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C256-macos-runtime-lifecycle-and-scheduler-races"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C256 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "GlobalHotkeyMonitor 与 CollectorRunner 线程/身份安全",
+      "before": "热键无 `deinit` 反注册；`@MainActor` 同步写大 stdin；`terminationHandler` 按 `module` 回调错杀新任务；`readDataToEndOfFile()` 且未验 `pid > 0`。",
+      "after": "补充 `deinit` 自动注销热键与事件句柄；将 stdin 写入移到后台串行队列并捕获/屏蔽管道异常；`complete` 绑定唯一 `runId` / 句柄引用避免错杀；改用安全异步块读与 `pid > 0` 强杀校验。",
+      "impact": "彻底消除大请求卡死主线程、子进程早退崩溃与并发错杀。"
+    },
+    {
+      "scope": "RefreshScheduler 状态机与观察者生命周期修复",
+      "before": "跨 `await` 回写旧值拷贝 `state`；`stop()` 不取消 `runningTasks`；首次取消卡死 `.disabled`；通知观察者未在 `deinit` 移除。",
+      "after": "`await quotaAlertPolicy.decide` 返回后重读当前 `states[module]` 仅合并完成态而不覆盖挂起期间的意图与开关变更；`stop()` 取消所有 `runningTasks` 并以代次隔离；首次取消恢复 `.idle`；补充 `deinit` 移除通知观察者。",
+      "impact": "保证并发触发刷新、停启切换及首轮取消后调度器保持一致性。"
+    },
+    {
+      "scope": "价卡同步、软件更新、请求日志与面板容器修复",
+      "before": "定时/手动并发同步、大小写重复键崩溃、取消竞态删目录、退出不停后台任务、请求日志泄漏子进程、玻璃面板缺 `addChild`。",
+      "after": "统一在途任务锁与取消传播、`Dictionary(_, uniquingKeysWith:)` 安全合并、取消先 await 任务退出再清理目录、退出时联动停止 `updates`/`pricingSync`、为 `RequestLogClient` 补 `withTaskCancellationHandler` 中止子进程、在面板控制器补 `addChild`。",
+      "impact": "消除大小写模型名崩溃、并发写损坏与僵尸子进程泄漏。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "扩展 `GlobalHotkeyHarness`、`CollectorRunnerHarness`、`RefreshSchedulerHarness`、`PricingCatalogSyncHarness`、`SoftwareUpdateHarness`、`BruceRequestLogHarness` 覆盖上述并发/边界回归用例，全部 20 Harness 与 `verify-local.sh` 全绿",
+        "false_if": "任一 Harness 失败或缺少对应回归测试",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "加载大体积价卡刷新主界面不阻塞；快速连续切换请求日志筛选不残留多余 `Bruce-collector` 进程；应用退出干净收尾",
+        "false_if": "主线程卡顿、有残留子进程或关闭报错",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "既有面板玻璃效果、自动刷新节拍、软件更新自替换与请求日志页功能不受影响",
+        "false_if": "引发其他生命周期或 UI 回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

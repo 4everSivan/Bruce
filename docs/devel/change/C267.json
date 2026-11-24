@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C267",
+  "title": "官网产品数据同步、仓库暂存脏文件清理（TD-013）与废弃 Demo 整理",
+  "version": "0.19.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C267-website-sync-and-repo-hygiene",
+  "is_hotfix": false,
+  "target": {
+    "module": "website + docs + apps/win/demo",
+    "component": "website/js/{data,egress,analysis} / website/index.html / docs/official / docs/assets/km / apps/win/demo",
+    "design_doc": "docs/devel/design/13-官方网站.md",
+    "design_topic": "OfficialWebsite"
+  },
+  "why": "代码审查发现官网展示数据失真、TD-013 仓库脏文件继续膨胀及无用原型滞留：(1) `website/` 手工维护了 ~12.6K LOC CSS/JS 且明显落后于真实产品：`website/index.html:7,60` 与 `website/js/data.js:207-231` 仍宣传“10 Agents / 10 Providers”，遗漏已交付的 `Antigravity` 与 `Grok Bot`，把 Kimi CLI 路径写错为 `~/.kimi/history`（实际为 `~/.kimi-code/sessions`），将 StepFun 误标为“按量余额”，`data.js:235-236` 列出虚构模型 `claude-fable-5-1` / `gpt-6.1-sol`（与 `analysis.js:86-98` 不一致），`website/index.html:71-75` 在 v0.18.0 发版后仍禁用 Windows 下载按钮（“NSIS 安装包筹备中”），且品牌图标在 `data.js`/`egress.js`/`analysis.js`/`assets` 重复手写 4 份；(2) `docs/devel/todo/future.md` 登记的 TD-013 持续扩大：`git ls-files` 显示 `docs/official/.staging/`（103 个）、`docs/official/.cards/`（63 个）与 `docs/assets/km/.staging/`（46 个）共 **212 个文档生成中间产物被 Git 跟踪**（占 `docs/official` 体积 91%），且 `docs/official/` 正文停留在 `2026-10-20`（缺 T13–T39）；(3) `apps/win/demo/` 中仅 `win-taskbar-interaction-demo.html` 与 `win-settings-update-flow-demo.html` 被测试/设计引用，其余 3 个预览文件（`win-mac-dashboard-animation-options.html` 含外链外部 Tailwind CDN、`win-dashboard-fluent-preview.html`、`win-settings-fluent-preview.html`，~2,065 LOC）没有任何代码或测试引用。",
+  "precheck": {
+    "description": "核对 website 失真条目、git ls-files 统计的 212 个 .staging/.cards 跟踪文件与 apps/win/demo 引用情况",
+    "command": "rg -n \"10 Agents|NSIS 安装包筹备中|claude-fable|\\.kimi/history\" website/ && git ls-files docs/official/.staging docs/official/.cards docs/assets/km/.staging | wc -l",
+    "expected": "`website/` 存在 10 Agents、虚构模型与禁用 Windows 按钮文案；`git ls-files` 统计 `.staging`/`.cards` 为 212 个",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C267-website-sync-and-repo-hygiene"
+    ],
+    "after": [
+      "node --test tests/unit/u_website_contract.test.mjs",
+      "node scripts/build-site.mjs",
+      "node --test apps/win/tests/geometry-parity.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C267 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "官网基线数据同步、图标收口与契约守卫",
+      "before": "官网宣传 10 Agents/10 Providers、路径/标签错漏、虚构模型名、Windows 下载禁用、4 份重复图标数据。",
+      "after": "将官网文案与 `data.js`/`analysis.js`/`egress.js` 对齐 11 Agents / 11+ Providers（补入 Antigravity 与 Grok Bot、修正 Kimi 路径与 StepFun 计费类型、替换虚构模型名）、开放 Windows NSIS 下载入口、收敛官网内部唯一品牌与 SVG 数据源并在 `tests/unit/u_website_contract.test.mjs` 增加一致性和虚构名称守卫。",
+      "impact": "官网产品信息、交互示例与真实 v0.18+/v0.19 版本保持一致。"
+    },
+    {
+      "scope": "落地 TD-013 移除 212 个跟踪暂存文件并刷新 `docs/official/`",
+      "before": "212 个 `.staging`/`.cards` 中间文件被 Git 跟踪，`docs/official/` 停在 2026-10-20。",
+      "after": "在向人类确认生成工具对 `.staging`/`.cards` 依赖口径后，将 `docs/official/.staging/`、`docs/official/.cards/`、`docs/assets/km/.staging/` 加入 `.gitignore` 并通过 `git rm --cached` 移出版本索引（保留工作区本地文件），刷新 `docs/official/` 落后内容并关闭 `future.md` TD-013。",
+      "impact": "显著瘦身 Git 仓库与 PR 评审噪音。"
+    },
+    {
+      "scope": "清理 `apps/win/demo/` 无引用预览 HTML",
+      "before": "3 个无测试/设计引用的历史原型 HTML（含外链 CDN）滞留源码目录。",
+      "after": "保留现行规格基线 `win-taskbar-interaction-demo.html` 与 `win-settings-update-flow-demo.html`，清理或归档其余 3 个无引用原型文件。",
+      "impact": "消除过期原型维护干扰与外链资源。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/13-官方网站.md",
+    "topic": "OfficialWebsite",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/13 按 10 Agents / 10 Providers 与 Windows 下载筹备中描述官网首屏与数据口径",
+      "after": "design/13 更新为 11 Agents / 11+ Providers 与 Windows 安装包下载就绪口径，并补充官网数据与仓库主仓一致性的自动化契约检查"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`u_website_contract.test.mjs`、`build-site.mjs`、`geometry-parity.test.mjs` 与 `verify-local.sh` 全绿；`git ls-files` 中 `.staging`/`.cards` 文件数为 0",
+        "false_if": "官网构建/契约测试失败、索引仍跟踪暂存文件或破坏现有 demo 测试",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "本地构建预览官网页面（桌面与移动端 `responsive-check.mjs`）：11 Agents、Grok Bot/Antigravity、下载链接与三主题面板交互正常",
+        "false_if": "页面脚本报错、图标缺失或响应式校验失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "保留的 `win-taskbar-interaction-demo.html` 与 `win-settings-update-flow-demo.html` 及对应测试 `geometry-parity`/`update-copy-parity` 不受影响；本地 `.staging` 工作区未被物理误删",
+        "false_if": "误删现行引用 demo 或物理销毁暂存目录",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

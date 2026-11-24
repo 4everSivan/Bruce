@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C261",
+  "title": "macOS 主线程减负：消除深度 JSONValue 判等、分析正则缓存、后台落盘与轻量视图刷新",
+  "version": "0.19.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C261-macos-mainactor-and-analytics-perf",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "AppModel / ArtifactStore / ModelNormalizer / WorkbenchAnalytics / ProtectedFileCredentialStore / OnboardingConfigurationStore / RequestLogClient / MenuBarStatusItemController / SQLiteSchemaProbe",
+    "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "design_topic": "AgentAnalytics"
+  },
+  "why": "代码审查发现 macOS `@MainActor` 主线程承载了大量高延迟同步 I/O 与 O(N²) 计算：(1) `AppModel.swift:695` 每次访问 `decodedAgentUsageArtifact` 都执行 `cachedArtifactRef == raw`，对 181+ KB 递归 `JSONValue` 枚举树做全量深度对比（`SettingsView+SubscriptionPane.swift:143` 在 `ForEach` 内单次渲染可触发 12 次），且 `ArtifactStore.publish` 已校验解码 `AgentUsageArtifact` 后丢弃对象，`AppModel` 又经 `JSONValue` 重新编码再解码（单次 ~70ms）；(2) `ModelNormalizer.swift:21-63` 的 `catalogEntry(for:)` 每次线性扫描 100+ 价卡条目并对每个条目现场编译 2 次正则，`WorkbenchAnalytics.swift` 在无任何缓存的情况下直接在 `AgentUsageWorkbenchView.body:17` 执行（该视图订阅总共 41 个 `@Published` 属性的 `AppModel` + `OnboardingCoordinator`），且 `dayBucket`（`:534`）用 `Array.contains`；(3) `ArtifactStore` 在 `@MainActor` 执行 3 次同步 `fsync()`；`ProtectedFileCredentialStore.loadCredential`（`OnboardingConfiguration.swift:801`）无内存/mtime 缓存致单轮采集或切换设置读盘解析 20+ 次 `credentials.json`；`BruceApp.init` 启动读 3 次 `onboarding-v1.json`；`RequestLogClient.swift:46-56` 将 `artifact` 解成 `JSONValue` 后再重编码解码 `RequestLogPageModel`；`SQLiteSchemaProbe.swift:60-136` 串行拉起 5 次 `/usr/bin/sqlite3` 子进程；(4) `MenuBarStatusItemController.swift:352-361` 刷新期间以 20 FPS（0.05s Timer）重建 `MenuBarSummary`、测量文本并分配重绘整张 `NSImage`；`ProviderBrandGlyph` 每帧重解析 SVG 字符串、`AgentBrandIconStore` 缺少缺失 PNG 负缓存、多处内联重复实例化 `DateFormatter`/`ISO8601DateFormatter`。",
+  "precheck": {
+    "description": "核对 AppModel 缓存判等、ModelNormalizer 正则扫描、ArtifactStore/ProtectedFileCredentialStore 主线程 I/O 与 MenuBar 刷新动画实现",
+    "command": "rg -n \"cachedArtifactRef == raw|canonicalKey\\(for:|loadPayloadLocked|regularExpression|0\\.05|SQLiteSchemaProbe\" apps/macos/Sources/",
+    "expected": "`AppModel.swift:695` 做 `JSONValue` 全树 `==`；`ModelNormalizer` 内含 `.regularExpression` 遍历；`ArtifactStore` 与 `ProtectedFileCredentialStore` 同步读盘无缓存；`MenuBarStatusItemController` 0.05s 重建摘要与图像",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C261-macos-mainactor-and-analytics-perf"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C261 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "O(1) Artifact 缓存与取消二次解码",
+      "before": "`cachedArtifactRef == raw` 遍历整棵 `JSONValue`；`ArtifactStore.publish` 校验解码后丢弃，`AppModel` 再重编码解码。",
+      "after": "在 `AppModel` 为当前 artifact 分配单调递增 `artifactRevision: UInt64` 实现 O(1) 缓存命中；`ArtifactStore.publish` 直接向 `AppModel` 传递已解码校验好的 `AgentUsageArtifact`。",
+      "impact": "消除主线程 ~70ms 重复编解码与设置页 12× 全树对比。"
+    },
+    {
+      "scope": "ModelNormalizer 正则预编译与 WorkbenchAnalytics 快照缓存",
+      "before": "每次调用遍历百余模型现场编译正则；`AgentUsageWorkbenchView.body` 无缓存全量重算分析快照。",
+      "after": "将 `ModelNormalizer` 正则与归一化目录映射预编译为静态字典查找；`AppModel` 按 `(artifactRevision, range)` 缓存 `analyticsSnapshot`；`dayBucket` 改用 `Set`。",
+      "impact": "切换工作台/筛选维度及无关状态变动时分析视图零重复算力消耗。"
+    },
+    {
+      "scope": "主线程 I/O 异步化与读取缓存",
+      "before": "`ArtifactStore` 主线程 3 次 `fsync`；`ProtectedFileCredentialStore` 单轮 20+ 次读盘；启动 3 次读配置；`RequestLogClient` 二次编码；5 次 `/usr/bin/sqlite3` 进程。",
+      "after": "将 `ArtifactStore` 磁盘持久化（及 `fsync`）移入后台串行 actor；为 `ProtectedFileCredentialStore` 与 `OnboardingConfigurationStore` 引入基于 mtime/写回更新的内存读缓存；`RequestLogClient` 直接泛型解码 `RequestLogEnvelope<RequestLogPageModel>`；`SQLiteSchemaProbe` 改用系统内置 `SQLite3` C API 或单进程。",
+      "impact": "消除菜单栏/看板后台刷新时的主线程磁盘卡顿。"
+    },
+    {
+      "scope": "菜单栏动效与图形渲染微优化",
+      "before": "刷新期 20 FPS 重算摘要与重绘 `NSImage`；每帧解析 SVG；无图标负缓存；内联构造 Formatter。",
+      "after": "刷新期间仅更新/旋转图标层或按需缓存渲染图像，不每秒 20 次重建 `MenuBarSummary`；缓存 SVG `CGPath` 与 PNG 查找负结果；静态化 `DateFormatter`/`ISO8601DateFormatter`。",
+      "impact": "大幅降低刷新周期内的主线程 CPU 与内存抖动。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "topic": "AgentAnalytics",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 §5.3 记录快照读写仍在主线程（@MainActor），改为后台需单独评估",
+      "after": "design/00 §5.3 更新为快照持久化与 fsync 迁离 @MainActor（后台串行持久化），AppModel 按 artifactRevision 与已校验对象直接复用缓存"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`AppModelCacheHarness`、`ArtifactStoreHarness`、`PanelViewModelHarness`、`BruceRequestLogHarness`、`BruceOnboardingCoreHarness` 与全部 20 Harness + `verify-local.sh` 全绿",
+        "false_if": "任一 Harness 失败、引入线程隔离/Swift 6 编译告警或丢失三级容灾保证",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "macOS 实测在打开工作台/设置页同时触发刷新无界面掉帧，冷启动与刷新期间凭据/配置读取耗时显著降低",
+        "false_if": "仍存在主线程卡顿或快照持久化异常",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "三层快照容灾回退、历史 v0 迁移及工作台统计数字 100% 等价",
+        "false_if": "破坏快照原子性或分析数值精度",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

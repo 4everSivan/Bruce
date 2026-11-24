@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C258",
+  "title": "Antigravity 双根缺席误报、step 计数修正与会话缓存生命周期完善",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C258-antigravity-scan-errors-and-cache",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-local/src/sources/antigravity.rs",
+    "design_doc": "docs/devel/design/15-Antigravity接入.md",
+    "design_topic": "AntigravityUsage"
+  },
+  "why": "代码审查发现 `antigravity.rs` 存在 2 处 P0 误报缺陷与 4 处缓存/统计问题：(1) `antigravity.rs:96-109` 在检测到 CLI 与 IDE 双根中任一存在（`found == true`）后，循环对两个根同时执行 `fs::canonicalize(root)`。对于仅安装 CLI 或仅安装 IDE 的用户，不存在的另一个根目录必然触发 `NotFound` 并执行 `stats.io_errors += 1`，导致每轮刷新都向外弹出误导性诊断“Antigravity 1 个会话读取失败，已跳过”；(2) `antigravity.rs:258-261` 在 `if step.status.as_deref() != Some(\"DONE\") { continue; }` 之前先自增 `saw_completed`，导致进行中或失败的 `PLANNER_RESPONSE` 被误算成缺 Token 的已完成响应；(3) `antigravity.rs:58-64` 的 `CacheEntry` 缺少 `timezone` 与 `device`/`inode` 身份字段（尽管 `parse_transcript` 在 `:634` 调用 `window.epoch_from_iso`），也没有 `cutoff_ts` 过滤与过期缓存文件 GC 清理机制；(4) `:610-615` 遇到超长截断行时将旧缓冲长度 `line_buffer.len()` 而非真实读取字节 `line.bytes` 计入 `stats.bytes_read`，且未跳过空行使其被计为 `malformed_lines`；(5) `:182-184` 跨根合并同一 session 时固定保留最先出现的 `native_db`，未按最新 step 所在根更新；(6) `:360-432,544-558` 在缓存命中路径仍对 `entry.steps` 执行两次 clone，且每轮刷新都会逐一打开所有历史会话的 `conversations/<id>.db` 全表扫描 `SELECT idx, metadata FROM steps`（未按需过滤也无取消检查）。",
+  "precheck": {
+    "description": "核对 antigravity.rs 双根遍历、saw_completed 顺序、CacheEntry 字段及原生 SQLite 扫描逻辑",
+    "command": "rg -n \"canonicalize\\(root\\)|saw_completed|struct CacheEntry|conversations|malformed_lines\" core/collector/crates/collector-local/src/sources/antigravity.rs",
+    "expected": "双根循环中未跳过 `NotFound`；`saw_completed` 在 `status != Some(\"DONE\")` 之前自增；`CacheEntry` 缺 `timezone`/`device`/`inode`；每轮打开所有 `conversations/*.db`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C258-antigravity-scan-errors-and-cache"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C258 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "单根缺席跳过与 DONE 计数修正",
+      "before": "CLI/IDE 中仅装一方时，`canonicalize(root)` 对缺席根报错计 `io_errors += 1`；`saw_completed` 在 `DONE` 判断前自增。",
+      "after": "对 `NotFound` 的未安装根直接 `continue`（仅真实权限/I/O 错误计入 `io_errors`）；`saw_completed` 移入 `step.status == Some(\"DONE\")` 之后。",
+      "impact": "消除单装 CLI 或 IDE 用户每轮的假错误提示与错报统计。"
+    },
+    {
+      "scope": "缓存身份、GC 与统计精度修复",
+      "before": "`CacheEntry` 缺 `timezone`/inode/GC；空行计畸形行；截断行 `bytes_read` 偏差；`native_db` 固定保留首根。",
+      "after": "补齐 `timezone`/`device`/`inode` 身份与过期窗口缓存 GC；跳过空行不计畸形；按实际读取字节累加 `bytes_read`；按更高 `step_index` 更新 `native_db`。",
+      "impact": "切时区不留陈旧日期归类、缓存目录不无限膨胀且统计精确。"
+    },
+    {
+      "scope": "热路径减负与原生 DB 缓存/取消检查",
+      "before": "命中路径两次 clone `steps`；每轮无条件重开所有历史 `conversations/<id>.db` 全扫描且无取消检查。",
+      "after": "通过所有权转移消除多余 clone；将步耗时元数据一并纳入缓存/按需查询并按窗口裁剪历史会话 DB 打开，在循环中补齐 `cancellation.check()?`。",
+      "impact": "大幅降低 Antigravity 历史会话增多后的热扫描 I/O 与延迟。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/15-Antigravity接入.md",
+    "topic": "AntigravityUsage",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；覆盖仅单根存在 `io_errors == 0`、非 `DONE` step 不计 `saw_completed`、空行不计 `malformed_lines`、时区变更与超期 GC、热扫描不重开窗口外/未变更原生 DB",
+        "false_if": "任一单测失败或缺少单根/时区/GC 回归用例",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "在仅存在单个 `~/.gemini/antigravity*/brain` 根的机器上刷新，诊断不再报“1 个会话读取失败”，且 Antigravity 用量与请求日志耗时一致",
+        "false_if": "仍报错跳过提示或漏记请求耗时",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Antigravity CLI+IDE 双根合并去重、模型继承与请求日志明细与设计 15 规格一致",
+        "false_if": "用量合并口径或请求键发生回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C264",
+  "title": "Windows 端对齐网络出口校验、请求日志与采集隔离/快照容灾能力",
+  "version": "0.19.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C264-win-feature-parity-and-collector-isolation",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win + docs/devel/todo/future.md",
+    "component": "src-tauri + apps/win/src + runtime_core / scheduler / collector",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "代码审查发现共享 Rust 采集引擎已完整实现的 2 项重要特性与关键容灾能力在 Windows 端严重失衡：(1) **网络出口国家校验（design/11）**：`collector-application/src/egress.rs` 与 `collector-bridge`（`egressRules`）及 macOS 端均已全链路落地，但 `apps/win/` 目录下 `rg -i egress` 为 **0 匹配**；且 `docs/devel/todo/future.md:11` 仍将 F-001 误列为“待立项”；(2) **请求粒度用量台账（design/14）**：`collector-request-log` 与 `collector-bridge` `module = \"request-log\"` 已由 T35–T38 交付给共享核心与 macOS 设置页，但 `apps/win/` 下 `rg -i \"request.log\"` 为 **0 匹配**；(3) **采集隔离、调度对齐与快照容灾**：Windows 进程内调用 `collector_bridge` 没有 macOS 子进程的硬超时熔断（`collector.rs:63`），卡死会永久锁死 `control.collection.lock()`；超时预算为 `30s/150s`（vs macOS `10s/90s`）；`quota_policy.rs:33` 硬编码 `suppress_external_quotas: false`，缺失锁屏抑制、唤醒去重与出口重试调度；`runtime_core.rs` 仅单文件 `snapshot.json`，缺少 macOS `ArtifactStore` 的 `previous` 灾备自动回滚。",
+  "precheck": {
+    "description": "核对 apps/win 缺席 egress 与 request-log、超时预算差异、quota_policy 硬编码及 SnapshotState 单文件存储现状",
+    "command": "rg -n \"external_request_seconds|suppress_external_quotas|SnapshotState|egress|request_log\" apps/win/src-tauri/src/ docs/devel/todo/future.md",
+    "expected": "`apps/win/` 无 `egress` 与 `request_log` 匹配；`collector.rs:65-67` 为 `30.0/150.0`；`quota_policy.rs:33` 为 `suppress_external_quotas: false`；`future.md:11` 仍列 F-001",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C264-win-feature-parity-and-collector-isolation"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C264 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Windows 接入网络出口国家校验与请求日志",
+      "before": "`apps/win/` 完全缺少出口规则配置/探测/问题卡以及请求日志侧栏页与详情弹窗；`future.md` 仍保留 F-001。",
+      "after": "对接共享引擎 `egressRules`（设置页出口双卡、仪表盘紧凑问题卡、快照保护与重试联动）及 `module = \"request-log\"`（设置侧栏「请求日志」页、筛选分页与详情面板）；同步清理/校准 `docs/devel/todo/future.md` 中过时的 F-001 状态。",
+      "impact": "Windows 与 macOS 功能与共享引擎能力达成一致。"
+    },
+    {
+      "scope": "采集看门狗熔断、调度策略对齐与双快照灾备",
+      "before": "进程内无超时熔断保护、超时预算 `30s/150s`、缺锁屏/唤醒去重/出口重试、单 `snapshot.json` 无损坏回滚。",
+      "after": "为 Windows 采集入口增加独立超时看门狗与可取消隔离机制（避免卡死 `collection.lock()`）；对齐超时预算、锁屏抑制（Win32 会话锁检测）与睡眠唤醒去重；为 `SnapshotState` 引入 `snapshot.previous.json` 损坏自动回退机制。",
+      "impact": "显著提升 Windows 长驻运行时的稳定性、抗断电能力与调度一致性。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 未涵盖 Windows 端网络出口国家校验、请求日志 UI 入口、锁屏/唤醒去重及双快照灾备回滚",
+      "after": "design/05 补齐 Windows 出口校验、请求日志界面、调度门禁对齐、采集超时看门狗及 `snapshot.previous.json` 灾备回滚规则"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Windows Rust 与前端测试全绿 + `verify-local.sh` 全绿；覆盖出口拦截下发、请求日志筛选分页、看门狗超时恢复及损坏 `snapshot.json` 自动回退 `previous`",
+        "false_if": "任一用例失败或仍缺核心容灾断言",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Windows 实机验证国内/代理出口检测卡片正常弹出、请求日志可查可点详情、人工破坏 `snapshot.json` 后冷启自动回退旧快照不白屏",
+        "false_if": "出口误判、请求日志为空或损坏快照导致白屏",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "macOS 与 Rust 共享引擎行为不变，既有 Windows 看板/设置功能正常",
+        "false_if": "造成采集异常或现有功能回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

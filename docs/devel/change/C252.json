@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C252",
+  "title": "Windows Codex 设备登录落盘修复、C092 异常凭据读写隔离与域名/存储加固",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C252-win-credentials-codex-and-security",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri + apps/win/src",
+    "component": "credentials / codex_device / stepfun_web / claude_local / settings-subscription",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "代码审查发现 Windows 凭据链路 5 处高/中危缺陷：(1) `codex_device.rs:117` 将 `expiry` 序列化为 JSON 整数（`i64`），而 `credentials.rs:182-186` 的 `validate_credential_payload` 要求 `expiry` 必须为字符串，导致 Windows Codex OAuth 设备登录保存必败（单测仅测 `to_payload` 未接入 `save_credential_account`）；且前端 `settings-subscription.js:903-905` 登录后未调用 `reverifyProvider(\"codex\")`，新账号将停留在 `none/disabled` 状态；(2) `save_credential_account`/`save_credentials_patch`/`remove_provider_credentials`/`import_codex_discovered`（`credentials.rs:395,492,573,642`）用 `read_raw_credentials` 保留 C092 畸形旧记录后却交给全量重校验的 `save_unlocked`，只要存在一条历史畸形记录就阻断全部无关 Provider 写操作；而 `remove_credential_account`（`:545`）与 `lifecycle.rs:206,269` 用 `load_credentials` 加载又会静默抹除所有旧畸形记录；(3) Windows 凭据以明文 JSON 存在漫游目录 `%APPDATA%\\Bruce\\credentials.json`（无 DPAPI `CryptProtectData` 加密保护），且 `connect_grok_bot`（`credentials.rs:753-768`）先删旧绑定再写新绑定不具原子性，失败时会丢失原绑定；(4) `zhipu_host_allowed`（`credentials.rs:244-256`）与 `stepfun_web.rs:119-153` 采用 `.contains()` 子串匹配域名且未校验 `https://`，可被 `https://evil.com/?stepfun.com` 或 `bigmodel.cn.attacker.com` 绕过；(5) `lib.rs:1089-1110` `async fn stepfun_web_login_poll` 直接在 Tokio 工作线程执行 8s 阻塞 HTTP 与 `STORE_LOCK`/`fsync`（逃逸了 `tests/command_threading.rs` 白名单），前端也缺少并发轮询互斥；同时 `claude_local.rs:153-164` 的 `oauth_expires_at` 未归一化秒/毫秒且对 RFC3339 返回 0。",
+  "precheck": {
+    "description": "确认 Codex expiry 类型错配、C092 写路径、域名子串检查及 stepfun_web_login_poll 线程调度现状",
+    "command": "rg -n \"expiry|zhipu_host_allowed|domain_keyword|stepfun_web_login_poll|oauth_expires_at|save_unlocked\" apps/win/src-tauri/src/",
+    "expected": "`codex_device.rs:117` 插入整数 `expiry`；`credentials.rs` 4 条写路径经 `save_unlocked` 全量重校验；`zhipu_host_allowed`/`stepfun_web` 用 `.contains()`；`stepfun_web_login_poll` 未使用 `off_main_thread`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C252-win-credentials-codex-and-security"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C252 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Codex 设备登录序列化与自动验证闭环",
+      "before": "`CodexLoginAccount::to_payload` 输出 `i64` 整数 `expiry`，保存时被 `validate_credential_payload` 拒绝；前端 `pollCodexLogin` 成功后漏调 `reverifyProvider(\"codex\")`。",
+      "after": "`to_payload` 统一输出 RFC3339 字符串 `expiry`，新增直接调用 `save_credential_account` 的集成回归测试；前端登录成功后调用 `reverifyProvider(\"codex\")`。",
+      "impact": "Windows Codex 设备登录全流程可用并立即刷新展示可用状态。"
+    },
+    {
+      "scope": "C092 畸形旧记录读写隔离与 Grok Bot 原子重绑",
+      "before": "4 条写路径在保留 C092 畸形记录后经 `save_unlocked` 全量重校验导致全面不可写；删账号与 token 轮换使用 `load_credentials` 抹除异常记录；`connect_grok_bot` 先删后写非原子。",
+      "after": "写路径统一在 `STORE_LOCK` 内基于 `read_raw_credentials` 仅校验本次修改的字段并经 `write_payloads_unchecked` 落盘，所有删改/轮换保留其他 Provider 原始记录；`connect_grok_bot` 在单次锁与单次原子写入中完成替旧换新。",
+      "impact": "历史畸形账号不再影响其他 Provider 读写且不会被意外清空。"
+    },
+    {
+      "scope": "DPAPI 加密保护与严格域名白名单",
+      "before": "Windows 凭据明文写入 Roaming `%APPDATA%` 仅靠 DACL；`zhipu_host_allowed` 与 `stepfun_web` 用子串匹配且不限 `https://`。",
+      "after": "Windows 凭据在落盘前通过 DPAPI（`CryptProtectData`）加密存储（兼容读取并平滑迁移旧明文文件，评估收口到 LocalAppData 或保留迁移兼容）；Zhipu 与 StepFun URL/Cookie 校验收紧为 `https` + 精确域名或 `.domain` 子域后缀匹配。",
+      "impact": "降低本地密钥静态泄露面，封堵自定义 Base URL 与 WebView Cookie 子串绕过面。"
+    },
+    {
+      "scope": "StepFun 轮询卸载与 Claude 时间戳统一",
+      "before": "`stepfun_web_login_poll` 阻塞 Tokio 工作线程且前端缺轮询互斥；`claude_local::oauth_expires_at` 秒/毫秒与 RFC3339 处理不一致。",
+      "after": "`stepfun_web_login_poll` 改用 `off_main_thread` 并补入 `tests/command_threading.rs` 强制守卫；JS 侧加轮询互斥；`oauth_expires_at` 复用秒/毫秒/RFC3339 统一毫秒解析。",
+      "impact": "消除异步运行时阻塞，修正 Claude 本地导入新旧凭据过期比对。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/02 中 Windows 凭据仅依赖 NTFS DACL 保护明文 JSON 落盘，Zhipu/StepFun 主机白名单未限定精确后缀与 https",
+      "after": "design/02 补充 Windows 凭据 DPAPI 加密保护与既有明文自动迁移规则，并将 Zhipu/StepFun 主机及 Cookie 校验收紧为 https 与精确域/子域后缀"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "覆盖 Codex 设备登录 `to_payload`→`save_credential_account`→`reverifyProvider`、C092 跨 Provider 隔离、DPAPI 加解密与明文迁移、畸形域名拒绝、`command_threading.rs` 守卫 `stepfun_web_login_poll` 及 `claude_local` 时间戳，Windows Rust/前端测试与 `verify-local.sh` 全绿",
+        "false_if": "任一用例失败或缺少安全/并发回归断言",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Windows 真机完成 Codex 设备码登录保存并自动验证生效；迁移后 `credentials.json` 密文落盘且全部已有订阅正常读取",
+        "false_if": "登录仍报错、无法解密既有凭据或新账号停留在禁用态",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "11 家 Provider 凭据读取、OAuth 刷新与 CC Switch 导入行为正常，macOS 端凭据格式保持兼容",
+        "false_if": "既有凭据读取失效或格式不兼容",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

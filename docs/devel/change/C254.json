@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C254",
+  "title": "采集器额度重试门禁、ClinePass 空真值与 Provider OAuth/限流重试修复",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C254-collector-provider-quota-and-retry-guards",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-provider / collector-application / collector-policy",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "代码审查发现云端额度查询与策略解析 7 处逻辑缺陷：(1) `quota_parsers.rs:729-737` 的 `cline_pass_entitled` 对 3 窗口键 `.filter_map(...).all(|cap| cap > 0.0)`，若 `inferenceCapThreshold` 为 `{}` 或缺失 2 个键，空迭代器/子集匹配 `.all` 将因空真值错误返回 `Some(true)`；(2) `collector-application/src/lib.rs:131-138` 处理 `quotaRetryOnly == Some(true)` 时直接进入 `collect_quota_retry_only(&context)`，绕过了 `gather()` 中的 `!local_usage_only(context) && context.capability_allowed(\"externalQuotas\")` 权限门禁；(3) `providers.rs:456-493` 与 `:744-772` 中 `ClaudeProvider` 与 `StepFunProvider` 将主动 `refresh_*_token` 包在 `if let Ok(...)` 中，吞掉取消、429 与 401（`invalid_grant`）错误后仍用过期 token 发一次注定 401 的请求，随即二次用同一失效 refresh_token 再刷新一次；(4) `providers.rs:169-196` `VolcEngineProvider` 在 `volc_secret_candidates`×2 动作的 6 次嵌套循环中对 429/5xx/超时均不短路，持续轰炸限流或故障端，且 `parse_volcengine_usage` 永不返回 `Ok(None)` 导致 `GetCodingPlanUsage` 返回空 `windows` 200 时直接返回而不尝试 `GetAFPUsage`；(5) `quota_parsers.rs:105-134` `parse_kimi_usage` 缺少 `clamp_percent`，负 `remaining` 时输出 `>100.0%`；(6) `quota_parsers.rs:401-429` `parse_stepfun_usage` 将 `0` 或负重置时间转为 `Some(0)` 而非 `None`；(7) `collector-provider/src/lib.rs:391,531` 直连默认允许 5 次 HTTP 重定向而代理路径 `.redirects(0)`，且 `collector-policy/src/quota.rs:120-126` `parse_ms` 不支持浮点毫秒并存在 `raw * 1000` 溢出风险。",
+  "precheck": {
+    "description": "核对 ClinePass 阈值校验、quotaRetryOnly 短路及 Claude/StepFun/VolcEngine/Kimi 解析重试逻辑",
+    "command": "rg -n \"cline_pass_entitled|collect_quota_retry_only|parse_volcengine_usage|parse_kimi_usage|parse_stepfun_usage|redirects\\(0\\)\" core/collector/crates/",
+    "expected": "`cline_pass_entitled` 使用 `.filter_map().all()`；`quotaRetryOnly` 在 `gather()` 门禁前返回；`ClaudeProvider`/`StepFunProvider` 用 `if let Ok` 吞刷新错；`VolcEngineProvider` 6 次循环不短路",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C254-collector-provider-quota-and-retry-guards"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C254 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "ClinePass 判定与 quotaRetryOnly 权限门禁",
+      "before": "`cline_pass_entitled` 遇空或部分缺失阈值时返回 `Some(true)`；`quotaRetryOnly: true` 绕过 `externalQuotas` 与 `localUsageOnly` 检查。",
+      "after": "强制要求 3 个窗口阈值键全部存在数值且均 `> 0.0` 才返回 `Some(true)`；`collect_quota_retry_only` 入口补齐 `!local_usage_only && capability_allowed(\"externalQuotas\")` 守卫（不允许时按既有门禁返回空/拒绝语义）。",
+      "impact": "防止无订阅额度误判与离线/禁用权限模式下误发外网额度请求。"
+    },
+    {
+      "scope": "OAuth 主动刷新与 VolcEngine 重试收敛",
+      "before": "主动刷新吞掉 401/429/取消并重放无效请求再刷第二次；VolcEngine 遇 429/5xx 不短路最多打 6 次且空 200 不回退 `GetAFPUsage`。",
+      "after": "主动刷新遇取消、401（凭证失效）或 429 立即返回对应失败态而不再重复请求和二次刷新；VolcEngine 仅对签名/鉴权字段相关错误切换候选密钥，遇 429/5xx/网络超时立即短路，且当 `GetCodingPlanUsage` 200 无窗口时尝试 `GetAFPUsage`。",
+      "impact": "减少限流放大与无效刷新请求，修复 VolcEngine 空配额回退路径。"
+    },
+    {
+      "scope": "解析百分比、重置时间、重定向与时间戳溢出修正",
+      "before": "Kimi 百分比未夹紧；StepFun `<=0` 重置时间戳转 `Some(0)`；直连与代理重定向不一致；`parse_ms` 缺浮点与防溢出。",
+      "after": "`parse_kimi_usage` 统一 `clamp_percent`；`parse_stepfun_usage` 将 `<=0` 映射为 `None`；直连与代理统一安全重定向上限策略（禁止跨敏感认证头自动跳转）；`parse_ms` 安全处理浮点及使用 `checked_mul`/`saturating_mul`。",
+      "impact": "消除异常百分比/1970 重置时间渲染和时间戳解析边界漏洞。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；针对 7 项逻辑缺陷全部补充单元测试并断言 mock HTTP 请求次数与错误类型",
+        "false_if": "任一用例失败或仍存在无意义重复 HTTP 请求",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "模拟 401 refresh failure、429 rate limit、空 windows 200、缺阈值 ClinePass 报文时均返回预期诊断状态与 `quota` 空/失败态",
+        "false_if": "出现二次刷新、6 次轰炸或误判 ClinePass 权益",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "既有 10+ 家 Provider 解析金值测试与共享策略契约测试全过",
+        "false_if": "既有正常订阅解析发生回归",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

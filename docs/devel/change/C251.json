@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C251",
+  "title": "Windows 导出目录 ACL 破坏、预警 AB-BA 死锁与快照/配置并发修复",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C251-win-export-acl-and-deadlock",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "runtime_core / scheduler / lib / windows_security",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "代码审查发现 Windows 端 2 项 P0 与 3 项 P1 并发/安全缺陷：(1) `runtime_core.rs:363-365` 的 `write_export` 复用 `credentials::atomic_private_write`，进而调用 `secure(root, true)`（`credentials.rs:1178`）对用户保存对话框选中的父目录（如 Desktop/Documents）执行 `SetNamedSecurityInfoW`（`PROTECTED_DACL` + `D:P(A;OICI;FA;;;{sid})`，`windows_security.rs:92-139`），关闭 ACL 继承并移除 `SYSTEM` 与 `Administrators` 权限，且 `SnapshotState::save`（`runtime_core.rs:445`）每轮刷新重复重设 `%APPDATA%\\Bruce` 的 `OICI` DACL；(2) `scheduler.rs:316-320` 持 `control.snapshot.lock()` 调用 `deliver_alerts` → `show_quota_alert`（`lib.rs:196-214`），后者在 Windows/Tao 上同步派发到 Win32 主线程，若主线程正在执行 `get_dashboard`/`get_runtime_info` 等待 `snapshot` 锁即发生 AB-BA 死锁；(3) `clear_snapshot_cache`（`lib.rs:412-416`）仅删除磁盘文件，未同步清空内存中的 `SchedulerControl.snapshot`，后续刷新仍基于陈旧内存态合并；(4) `settings.json` 在 `save_settings_command`（`lib.rs:580`）、`software_update.rs:222`、`pricing_sync.rs:361` 三处执行无锁 read-modify-write，并发场景会互相覆盖丢更新；(5) `scheduler.rs:415-458` 的 `refresh_agent_usage_local` 无在途防重入守卫，快速连续触发会无界创建 OS 线程排队等待 `control.collection.lock()`。",
+  "precheck": {
+    "description": "核对 Windows 导出写入、预警投递锁序、缓存清理、settings 读写及局部刷新路径在 HEAD 上仍存在对应问题",
+    "command": "rg -n \"atomic_private_write|deliver_alerts|clear_snapshot_cache|refresh_agent_usage_local|write_export\" apps/win/src-tauri/src/",
+    "expected": "`write_export` 仍调用 `credentials::atomic_private_write`；`scheduler.rs:316-320` 仍在 `snapshot.lock()` 作用域内调用 `deliver_alerts`；`clear_snapshot_cache` 未重置内存快照；`settings.json` 无并发写入锁；`refresh_agent_usage_local` 无在途守卫",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C251-win-export-acl-and-deadlock"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C251 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "导出文件原子写与 ACL 隔离",
+      "before": "`runtime_core::write_export` 调用 `credentials::atomic_private_write`，递归将 `D:P(A;OICI;FA;;;{sid})` 写入用户自选父目录并剥离继承及 SYSTEM/Administrators；`SnapshotState::save` 每轮重复施放 `OICI` DACL。",
+      "after": "新增仅做普通临时文件原子替换且不修改父目录 ACL 的 `atomic_export_write` 供 `write_export` 使用；目录级 `restrict(..., true)` 仅保留给应用私有受管数据/凭据目录且避免每轮重复递归覆盖。",
+      "impact": "所有 `export_billing`/`export_workbench_csv`/`export_workbench_json`/`export_diagnostics` 用户导出目标目录权限不再被破坏。"
+    },
+    {
+      "scope": "预警投递锁序修复",
+      "before": "`run_refresh_with_kind` 在持有 `control.snapshot.lock()` 期间同步调用 `deliver_alerts` -> `show_quota_alert`，与主线程窗口操作和 `get_dashboard` 形成 AB-BA 死锁。",
+      "after": "在 `snapshot` 互斥锁内克隆所需 `artifact` 后立即释放锁，再在无锁状态下调用 `deliver_alerts`；必要时将窗口展示异步派发避免阻塞调度线程。",
+      "impact": "`scheduler.rs` 与 `lib.rs` 预警弹窗调度消除了死锁风险。"
+    },
+    {
+      "scope": "快照内存清空、settings 串行化与局部刷新去重",
+      "before": "`clear_snapshot_cache` 只删磁盘不重置内存快照；`settings.json` 三处无锁 RMW 竞争；`refresh_agent_usage_local` 无在途标志并无界 spawn 线程。",
+      "after": "`clear_snapshot_cache` 在锁内同步清空内存 `SnapshotState` 并触发视图同步；为 `settings.json` 读写/更新提供进程内统一互斥与原子写入口；为 `refresh_agent_usage_local` 增加在途防重入/合并触发。",
+      "impact": "缓存重置语义彻底一致，设置持久化不再丢更新，局部刷新线程数有界。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Windows Rust 单测全绿，覆盖导出不改父目录继承与 SYSTEM/Administrators ACL、预警投递前释放 snapshot 锁、clear_snapshot_cache 清除内存态、settings 并发更新不丢字段、局部刷新防重入，且 verify-local 全绿",
+        "false_if": "任一单测/clippy 失败或未覆盖上述回归场景",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Windows 实机导出 CSV 到桌面/文档目录后 `icacls` 显示继承与系统 ACE 完好；触发高占用预警同时连续查询面板无卡死；清理快照缓存后立刻进入干净重建",
+        "false_if": "目录权限被修改、发生界面卡死或旧快照残留",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "凭证目录 `%APPDATA%\\Bruce\\credentials.json` 私有 ACL 保护不变，既有 `fixture_parity` 与看板刷新不受影响",
+        "false_if": "凭证文件安全边界减弱或双端对拍出现差异",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

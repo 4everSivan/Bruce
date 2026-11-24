@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C255",
+  "title": "macOS 异步探针忙等、主线程管道死锁、外部凭据白名单绕过与凭据并发修复",
+  "version": "0.19.0",
+  "type": "BugFix",
+  "status": "pending",
+  "branch": "fix/C255-macos-process-probe-credentials-and-reentrancy",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "BruceOnboardingCore / Diagnostics / StepFunWebLoginView / SubscriptionService / OnboardingCoordinator",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "代码审查发现 macOS 凭据、子进程探针与登录链路 6 处高/中危缺陷：(1) `AsyncProcessProbe.swift:186-228` 仅在 `Task.isCancelled == true` 时进入 `terminateAndReap`，但在已取消的 Swift Task 中 `Task.sleep` 会零挂起立即抛 `CancellationError`，被 `try?` 吞掉后 `gracePeriod`(2s) + `reapDeadline`(5s) 两段循环退化为最长 7 秒 **100% CPU 紧循环** 饿死协作线程池，且 `kill(process.processIdentifier, SIGKILL)` 未检查 `pid > 0`；(2) `ExternalCredentialReader.swift:46-65,85-119` 中 `.claudeCLI` 分支完全未检查 `accessController.allows(...)`（仅 `.grokCLI` 检查），且 `readClaudeKeychain()` 在 `@MainActor` 上同步 `process.waitUntilExit()` 后才读 `stdoutPipe` 且不排空 `stderrPipe`、无超时；`Diagnostics.swift:90-120` 同样在 `@MainActor` 对 `zip`/`unzip` 挂载双 `Pipe()` 却永不排空，输出超过 64 KB 即永久死锁；(3) `CodexTokenResolver.swift:140,346-354,421-444` 在 `await client.perform` 返回后不检查 `Task.isCancelled` 或重查 `caches[accountID]`，刷新期间若用户执行 `disconnect` 或重新登录，旧刷新完成仍调用 `store.saveRecord(record)` 复活已删账号或覆盖新 token/重命名；(4) `OnboardingConfiguration.swift:866-960` `ProtectedFileCredentialStore.loadPayloadLocked` 把瞬时 `Data(contentsOf:)` I/O 错误（如 `EMFILE`）与 JSON 损坏混为一谈，直接调用 `preserveCorruptedFile()` 挪走完好的 `credentials.json`，导致下次读取返回空 `Payload()` 静默清空全部凭据；同时 `.bak` 未强制 `0o600`、异常路径 `FileHandle` 漏 `defer { close }`、`AtomicJSONStore.backup` 先删后拷贝存在无备份时间窗；(5) `StepFunWebLoginView.swift:291-305,394-448,455-497` 在 `updateNSView` 内同步修改 `@Binding`、用 `.contains()` 子串匹配 URL/Cookie 域名、使用持久化 `.default()` `WKWebsiteDataStore` 致过期 Cookie 触发无限每 2s 一次外网 POST 轮询、强捕获 `self` 且 `dismantleNSView` 未停加载；(6) `SubscriptionService.swift:615,889-906,980-993` 中 `removeCodexProvider()` 写入空配置而非真移除且漏清 `model.codexAccountStatuses`、`removeSubscriptionProvider` 用 `try?` 吞删凭据错误、`grokKey(from:)` 遍历无序字典生成非确定性 `accountID`；`OnboardingCoordinator` 20+ 处使用 `configStore.load() ?? OnboardingConfiguration()` 遇读错存在整份覆盖风险且 `setPricingOverride` 先改 `@Published` 后存盘。",
+  "precheck": {
+    "description": "核对 AsyncProcessProbe、ExternalCredentialReader、Diagnostics、CodexTokenResolver、ProtectedFileCredentialStore、StepFunWebLoginView 与 SubscriptionService 对应行号",
+    "command": "rg -n \"terminateAndReap|readClaudeKeychain|preserveCorruptedFile|StepFunWebLoginView|removeCodexProvider|waitUntilExit\" apps/macos/Sources/",
+    "expected": "`AsyncProcessProbe` 在取消态下循环 `try? await Task.sleep`；`.claudeCLI` 无 `accessController.allows` 检查；`CodexTokenResolver` `await` 后无状态校验直接 `saveRecord`；`loadPayloadLocked` `try? Data(contentsOf:)` 与解码合并判断",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C255-macos-process-probe-credentials-and-reentrancy"
+    ],
+    "after": [
+      "swift build --package-path apps/macos --build-tests",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C255 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "AsyncProcessProbe 取消退避修复",
+      "before": "在已取消 Task 中循环调用 `try? await Task.sleep`，退化为 100% CPU 紧循环；`kill` 前未验 `pid > 0`。",
+      "after": "在 `terminateAndReap` 内使用不受父 Task 取消状态影响的等待原语（如脱离取消态的异步睡眠/非取消信号或 `terminationHandler` 唤醒）并确保 `pid > 0` 才发送 `SIGKILL`。",
+      "impact": "子进程取消或超时终止零忙等，不再饿死 Swift 并发线程池。"
+    },
+    {
+      "scope": "外部凭据白名单门禁与子进程管道防死锁",
+      "before": "`.claudeCLI` 跳过 `accessController.allows(...)`；`readClaudeKeychain()` 与 `Diagnostics` 同步 `waitUntilExit()` 且未排空双管道。",
+      "after": "为 `.claudeCLI` 补全 `accessController.allows(source: .external(.claudeCLI), intent: intent)` 守卫；`readClaudeKeychain` 与 `SystemDiagnosticArchiver` 迁移至后台执行并并发排空 stdout/stderr（或重定向无关输出至 `nullDevice`）加有界超时。",
+      "impact": "严格遵守外部源授权白名单并彻底消除主线程 64 KB 管道死锁风险。"
+    },
+    {
+      "scope": "CodexTokenResolver 防重入与文件凭据库容错收紧",
+      "before": "刷新返回后无条件落盘复活已删账号；瞬时读盘错误挪走完好 `credentials.json`；`.bak` 缺 `0o600` 与 `defer` 关闭。",
+      "after": "`performRefresh` 为每次请求绑定账号代次并在 `await` 后校验未取消且账号未断开/覆盖才允许落盘；`loadPayloadLocked` 显式区分文件读取 I/O 错误（直接抛错不挪文件）与 JSON 解析失败（才保留 `.corrupt` 备份）；`.bak` 补 `0o600` 权限、句柄补 `defer { try? handle.close() }`、`AtomicJSONStore.backup` 改先写临时再原子替换。",
+      "impact": "避免账号状态竞态覆盖与瞬时系统负载引发的凭据误清空。"
+    },
+    {
+      "scope": "StepFunWebLoginView、SubscriptionService 与 OnboardingCoordinator 修复",
+      "before": "`updateNSView` 同步改绑定、子串域名匹配、持久存储无限轮询、`removeCodexProvider` 残留与错序配置更新。",
+      "after": "异步调度状态更新、域名与 Cookie 检查收紧为 `https` + 精确后缀匹配、改用 `.nonPersistent()` 并在 `dismantleNSView` 停止加载/定时器、真移除 Codex 配置并清空 `codexAccountStatuses`、失败时拒绝静默覆盖配置且先成功存盘再更新 `@Published`、排序 `grokKey` 键序。",
+      "impact": "消除 SwiftUI 运行时告警、WebKit 状态残留与订阅删除/配置状态分叉。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "在 `BruceOnboardingCoreHarness`、`SubscriptionCredentialsHarness`、`DiagnosticsHarness` 新增取消无忙等耗时检查、`.claudeCLI` 白名单拦截、刷新期断开不复活、I/O 错误不挪 `credentials.json`、精确域名校验与 Codex 移除清空用例，全部 20 Harness 与 `verify-local.sh` 全绿",
+        "false_if": "任一 Harness 失败或新回归场景未验证",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "macOS 实测触发大量诊断日志打包不卡主线程、关闭 StepFun 登录窗后无遗留轮询、移除 Codex 后界面状态归零",
+        "false_if": "界面卡顿、仍有后台请求或移除状态残留",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "不引发任何 macOS 系统钥匙串授权弹窗；Claude/Grok/Codex/StepFun 正常读取与刷新行为不变",
+        "false_if": "触发钥匙串弹窗或破坏既有凭据链路",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

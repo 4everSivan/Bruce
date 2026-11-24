@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C262",
+  "title": "Windows 热路径磁盘 I/O 缓存、设置页 IPC 合并与看板 UI 状态保活",
+  "version": "0.19.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "fix/C262-win-hotpath-io-and-dom-state",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "src-tauri/src/{lib,scheduler,runtime_core,software_update,pricing_sync,collector,credentials} + apps/win/src/{app,settings*}",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "代码审查发现 Windows 端存在多处高频读盘、重复网络请求、启动 IPC 风暴及全量 DOM 重建：(1) `lib.rs:149-156,1374-1379` 当 `tray_hover_preview == false` 时，`preview_window.is_visible()` 恒为 `false`，导致每次鼠标划过托盘图标（`TrayIconEvent::Move`）逐像素同步从磁盘读取并 JSON 解析 `settings.json`；(2) `software_update.rs:411-420` 在下载进度回调内每 120ms 调用 `snapshot()` 重读一次 `settings.json`，且检查更新对 `latest.json` 先用 `ureq` 拉一次再用 `updater.check()` 拉第二次（`:267,314`）；`collector.rs:184-189` 调用 `pricing_sync::active_catalog_context_value` 每轮采集重读解析一次 `pricing-catalog.json`；(3) `scheduler.rs:185-237` 与 `runtime_core.rs:645-702` 的 `cached_panel` 每次 `get_dashboard`/`get_runtime_info`/`publish` 都重读 `settings.json` + `credentials.json`（含全量校验）、克隆整个 `artifact`、排序服务两次，且 `publish` 在 `:219` 重复提取配额摘要；`credentials.rs:1106` 在每次写盘前又再 `load_credentials` 重读校验一次；(4) 设置页启动产生 IPC 风暴：`settings-maintenance.js:917-922` 每次 `loadCredentials()` 调用 `get_credential_fields` 后直接丢弃返回值（每次重读 `credentials.json` 3 次并重拉静态白名单），打开设置窗还重复调用两次 `loadClaudeLocalStatus` 与两次 `get_usage_analytics`，单次打开读盘高达 13+ 次；(5) `app.js:283,404-441,1282-1286,1491` 每次 `dashboard-updated`/`settings-updated` 调用 `stack.replaceChildren()` 全量销毁重建 182 个热力图格与事件监听，因折叠态（`:283`）、月份切换与模型展开态（`:404-441`）仅保存在 DOM class/闭包里，每次后台刷新都会重置用户浏览状态；`selectTab`（`:1282-1286`）触发双次渲染；`settings-workbench.js:481-496` 拖拽时间轴每次 `mousemove` 全量 `replaceChildren`；跨窗跳转设置页签依靠 `localStorage` + `focus` 事件轮询。",
+  "precheck": {
+    "description": "核对托盘 Move 事件读盘、cached_panel、下载进度读盘、设置页空转 IPC 与 app.js replaceChildren 丢状态点",
+    "command": "rg -n \"TrayIconEvent::Move|cached_panel|get_credential_fields|replaceChildren|localStorage\" apps/win/src-tauri/src/ apps/win/src/",
+    "expected": "`lib.rs` 托盘 Move 路径读 `settings.json`；`cached_panel` 每次重读 `settings` 与 `credentials`；`settings-maintenance.js` 丢弃 `get_credential_fields` 结果；`app.js:1491` 全量 `replaceChildren`",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C262-win-hotpath-io-and-dom-state"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C262 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Windows 后端内存缓存与去重复请求",
+      "before": "托盘 Move/下载 120ms/每轮采集/panel 构造重复读盘，检查更新拉取两次 `latest.json`，`write_payloads_unchecked` 写前再读盘。",
+      "after": "引入进程内 `SettingsCache`（写时刷新）与 `PanelCache`（按 artifact/settings/credentials 版本脏失效）；缓存已加载活动价卡；`software_update` 复用同一次 `latest.json` 响应并缓存下载期设置；`write_payloads_unchecked` 直接从锁内既得旧快照对比 DeepSeek 账号变更。",
+      "impact": "托盘悬停、进度广播与界面打开热路径读盘降至接近零。"
+    },
+    {
+      "scope": "设置页启动 IPC 精简与时间轴拖拽优化",
+      "before": "丢弃 `get_credential_fields` 结果、重复调 `loadClaudeLocalStatus`/`get_usage_analytics`、拖拽时间轴每次 `mousemove` 全量重建。",
+      "after": "删除无意义 `get_credential_fields` 调用并合并静态白名单加载；去重设置窗初始化调用；时间轴缩放/拖拽仅更新视口 DOM 属性或复用 SVG 节点。",
+      "impact": "设置窗冷开响应显著提速，工作台时间轴拖拽流畅无卡顿。"
+    },
+    {
+      "scope": "看板 UI 状态保活与事件化跨窗导航",
+      "before": "后台刷新 `replaceChildren()` 重置卡片折叠、选中月份与模型展开态；`selectTab` 双重渲染；跨窗跳转靠 `localStorage` 轮询。",
+      "after": "将折叠集合、月度/明细展开状态提升至模块级 JS 状态并在渲染时恢复（及仅在数据变化时增量更新）；移除 `selectTab` 冗余同步重绘；改用 Tauri 事件/命令参数传递目标设置页签。",
+      "impact": "后台自动刷新再也不会打断或重置用户当前查看的卡片状态。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Windows Rust 单测与 `apps/win/tests/*.test.mjs` + `verify-local.sh` 全绿；覆盖刷新后保留卡片折叠/选中月份/展开态、设置初始化不发空转 IPC 与双渲染",
+        "false_if": "任一单测或前端 DOM 测试失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "关闭悬停预览滑过托盘不触发磁盘读；后台刷新期间已折叠卡片/所选月份保持原样；打开设置窗、拖拽时间轴及从看板直达设置页签丝滑无闪烁",
+        "false_if": "状态被刷新重置、时间轴拖拽卡顿或设置页加载冗余卡滞",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "全部 Tauri IPC 契约、双端 `fixture_parity` 与设置持久化语义保持一致",
+        "false_if": "造成设置保存失效或页面数据不同步",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
