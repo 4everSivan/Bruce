@@ -7,6 +7,7 @@
 //! fixture 的双端对拍测试锁定 (设计文档 `05-Windows平台适配.md` §5.3)。
 
 pub mod analytics;
+pub mod brand_registry;
 pub mod color;
 pub mod format;
 pub mod model_catalog;

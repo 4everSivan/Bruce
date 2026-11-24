@@ -106,33 +106,17 @@ impl PanelAgentColor {
         }
     }
 
-    /// Nothing 主题系列色: 呼吸灯绿 (#4A9E5C) 基色的 5 档绿阶。
-    /// 深色模式亮→暗 (高频 agent 更亮), 浅色模式反转保证白底可读;
-    /// 已知 agent 固定档位, 未知 agent 沿用 FNV-1a 散列稳定落档。
+    /// Nothing 主题系列色: 深色为呼吸灯绿 (#4A9E5C) 基色 5 档, 浅色为杏色 5 档 (C221/C263),
+    /// 档位与色值来自 `config/brand-registry.json` (三端代码生成);
+    /// 已知 agent 固定档位, 未知 agent 用 FNV-1a 散列稳定落档。
     pub fn nothing_ramp_hex(agent_id: &str, dark_mode: bool) -> &'static str {
         let ramp: &[&str] = if dark_mode {
-            &["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]
+            &crate::brand_registry::NOTHING_RAMP_DARK
         } else {
-            &["#2A6B3C", "#35854A", "#4A9E5C", "#5FAF6E", "#8CCB98"]
+            &crate::brand_registry::NOTHING_RAMP_LIGHT
         };
-        let index = match agent_id {
-            "kimi-code-cli" => 0,
-            "claude-code" => 1,
-            "codex" => 2,
-            "zcode" => 3,
-            "opencode" => 4,
-            "codebuddy" => 2,
-            // kimi-work 与 kimi-code-cli 高频同现, 落 4 档避免撞色;
-            // 与 opencode 共档是可接受取舍 (同现概率低)。
-            "kimi-work" => 4,
-            "grok" => 2,
-            "pi" => 4,
-            // DSH (DeepSeek Harness) 固定 1 档, 与 mac 同档位 (C189)。
-            "dsh" => 1,
-            // Antigravity 与 zcode 共用 3 档, 与 mac 同档位。
-            "antigravity" => 3,
-            other => (fnv1a64(other) % ramp.len() as u64) as usize,
-        };
+        let index = crate::brand_registry::nothing_agent_tier(agent_id)
+            .unwrap_or_else(|| (fnv1a64(agent_id) % ramp.len() as u64) as usize);
         ramp[index]
     }
 }
@@ -185,9 +169,9 @@ mod tests {
 
     #[test]
     fn nothing_ramp_pins_dsh_to_tier_one() {
-        // dsh 固定 1 档, 深色亮→暗与浅色反转两侧均与 mac 一致。
+        // dsh 固定 1 档: 深色为绿阶第 2 色, 浅色为杏色阶第 2 色 (C221/C263 对齐 mac)。
         assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", true), "#5FAF6E");
-        assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", false), "#35854A");
+        assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", false), "#B8860B");
     }
 
     #[test]
@@ -196,18 +180,29 @@ mod tests {
         let b = PanelAgentColor::resolve("totally-unknown-agent");
         assert_eq!(a, b);
         assert!(a.hex().starts_with('#'));
+        // C263: UTF-8 64-bit FNV-1a 与 Swift/JS 逐字节一致 (含多字节字符)。
+        assert_eq!(fnv1a64("codex"), 0x2ffb_778d_fae5_4384);
+        assert_eq!(fnv1a64("模型"), 0x641e_9277_a326_2aca);
     }
 
     #[test]
-    fn nothing_ramp_flips_direction_with_mode() {
-        // kimi-code-cli 固定 0 档: 深色模式最亮, 浅色模式最暗。
+    fn nothing_ramp_uses_generated_registry_values() {
+        // 深色档: 高频 agent 更亮; 浅色档为杏色 (C221), 不再是绿阶反转。
         assert_eq!(
             PanelAgentColor::nothing_ramp_hex("kimi-code-cli", true),
             "#8CCB98"
         );
         assert_eq!(
             PanelAgentColor::nothing_ramp_hex("kimi-code-cli", false),
-            "#2A6B3C"
+            "#946A08"
+        );
+        assert_eq!(
+            crate::brand_registry::NOTHING_RAMP_DARK,
+            ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]
+        );
+        assert_eq!(
+            crate::brand_registry::NOTHING_RAMP_LIGHT,
+            ["#946A08", "#B8860B", "#D4A843", "#E3BE6B", "#F0D69A"]
         );
     }
 }

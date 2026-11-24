@@ -94,14 +94,14 @@ fn distribution_hex_clamps_out_of_range_index() {
 
 #[test]
 fn nothing_ramp_covers_known_agents_and_modes() {
-    // 深色模式亮→暗, 浅色模式反转; kimi-code-cli 固定 0 档。
+    // 深色亮→暗；浅色为杏色阶 (C221/C263)，不是绿阶反转。
     assert_eq!(
         PanelAgentColor::nothing_ramp_hex("kimi-code-cli", true),
         "#8CCB98"
     );
     assert_eq!(
         PanelAgentColor::nothing_ramp_hex("kimi-code-cli", false),
-        "#2A6B3C"
+        "#946A08"
     );
     // kimi-work 特意落 4 档避免与 kimi-code-cli 撞色。
     assert_eq!(
@@ -110,7 +110,7 @@ fn nothing_ramp_covers_known_agents_and_modes() {
     );
     // dsh 固定 1 档 (C189), 与 mac 同档位。
     assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", true), "#5FAF6E");
-    assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", false), "#35854A");
+    assert_eq!(PanelAgentColor::nothing_ramp_hex("dsh", false), "#B8860B");
     // Antigravity 固定 3 档, 与 mac 同档位。
     assert_eq!(
         PanelAgentColor::nothing_ramp_hex("antigravity", true),

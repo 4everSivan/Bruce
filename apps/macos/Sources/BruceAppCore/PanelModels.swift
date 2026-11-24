@@ -133,41 +133,17 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
 
     /// Nothing 主题系列色: 深色为呼吸灯绿 (#4A9E5C) 基色的 5 档绿阶,
     /// 浅色为同序杏色阶 (#D4A843 基色, C221), 与浅色 hero / 热力图同源;
-    /// 深色模式亮→暗 (高频 agent 更亮, 黑底可读), 浅色模式反转保证白底可读;
-    /// 已知 agent 固定档位 (5 个高频 agent 各占一档, 其余按约定复用; dsh 复用第 1 档), 未知 agent 沿用 FNV-1a 散列稳定落档.
+    /// 深色模式亮→暗 (高频 agent 更亮, 黑底可读), 浅色模式深→浅;
+    /// 色值与已知 agent 档位来自 `config/brand-registry.json` (C263 三端代码生成),
+    /// 未知 agent 沿用 UTF-8 FNV-1a 64 散列稳定落档.
     package static func nothingRampHex(agentID: String, darkMode: Bool) -> String {
         let ramp = darkMode
-            ? ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]
-            : ["#946A08", "#B8860B", "#D4A843", "#E3BE6B", "#F0D69A"]
+            ? BrandRegistryGenerated.nothingRampDark
+            : BrandRegistryGenerated.nothingRampLight
         let index: Int
-        switch agentID {
-        case "kimi-code-cli":
-            index = 0
-        case "claude-code":
-            index = 1
-        case "codex":
-            index = 2
-        case "zcode":
-            index = 3
-        case "opencode":
-            index = 4
-        case "codebuddy":
-            index = 2
-        case "dsh":
-            // 与 claude-code 共用第 1 档: 两者同现概率低, 分段上色场景必须可读.
-            index = 1
-        case "antigravity":
-            // 与 zcode 共用第 3 档: 11 个已知 agent 超出 5 档上限, 取低频同现.
-            index = 3
-        case "kimi-work":
-            // 与 kimi-code-cli 高频同现, 从 0 档移到 4 档避免撞色;
-            // 与 opencode 共档是可接受取舍 (同现概率低), 分段上色场景必须可读.
-            index = 4
-        case "grok":
-            index = 2
-        case "pi":
-            index = 4
-        default:
+        if let tier = BrandRegistryGenerated.nothingAgentTiers[agentID] {
+            index = tier
+        } else {
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
                 hash ^= UInt64(byte)

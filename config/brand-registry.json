@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-11-24",
+  "nothingRamp": {
+    "dark": ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"],
+    "light": ["#946A08", "#B8860B", "#D4A843", "#E3BE6B", "#F0D69A"]
+  },
+  "agentTiers": {
+    "kimi-code-cli": 0,
+    "claude-code": 1,
+    "codex": 2,
+    "zcode": 3,
+    "opencode": 4,
+    "codebuddy": 2,
+    "kimi-work": 4,
+    "grok": 2,
+    "pi": 4,
+    "dsh": 1,
+    "antigravity": 3
+  }
+}

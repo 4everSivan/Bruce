@@ -2895,6 +2895,23 @@ test("background refresh preserves collapsed cards and the selected model month 
   assert.equal(usageCard().querySelector(".models-expand").getAttribute("aria-expanded"), "true", "重建后保持展开全部");
 });
 
+test("brand registry drives Nothing ramp and UTF-8 FNV-1a on all three ends (C263)", async () => {
+  const app = await boot();
+  const registry = app.window.BRUCE_BRAND_REGISTRY;
+  assert.ok(registry, "brand-registry.generated.js 必须先于 app.js 加载");
+  assert.deepEqual([...registry.nothingRamp.dark], ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]);
+  assert.deepEqual([...registry.nothingRamp.light], ["#946A08", "#B8860B", "#D4A843", "#E3BE6B", "#F0D69A"], "浅色档为杏色而非绿阶反转");
+  assert.equal(registry.agentTiers.dsh, 1);
+  assert.equal(registry.agentTiers["kimi-code-cli"], 0);
+  // 与 Rust viewmodel 单测 (`fnv1a64("codex"/"模型")`) 使用同一组向量。
+  assert.equal(registry.fnv1a64("codex"), 0x2ffb778dfae54384n);
+  assert.equal(registry.fnv1a64("模型"), 0x641e9277a3262acan);
+  // app.js 不再内联第二份图形/色阶表。
+  const appJs = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(appJs, /BEGIN GENERATED provider-glyphs/, "图形数据只保留 provider-brand.js 一份");
+  assert.match(appJs, /const PROVIDER_GLYPHS = window\.BRUCE_PROVIDER_GLYPHS/, "看板消费共享图形数据");
+});
+
 // ---------- C233: 看板只保留基础动效 ----------
 
 test("dashboard drops decorative update motion and keeps the title still (C233)", async () => {

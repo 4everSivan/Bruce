@@ -122,6 +122,9 @@ echo "运行模型价格表远端同步 Harness (T20)"
 echo "校验 Provider 品牌图形产物与源文件一致"
 node "$BRUCE_REPO_ROOT/scripts/gen-provider-glyphs.mjs" --check
 
+echo "校验跨端品牌注册表产物与 config/brand-registry.json 一致 (C263)"
+node "$BRUCE_REPO_ROOT/scripts/gen-brand-registry.mjs" --check
+
 echo "校验 mac 内置价卡与采集端价卡同源 (C108)"
 node "$BRUCE_REPO_ROOT/scripts/gen-pricing-catalog.mjs" --check
 

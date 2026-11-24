@@ -4,7 +4,9 @@
 // 输入: docs/assets/provider-icons/*.svg (逐图标来源/许可证见 SOURCES.json)
 // 输出:
 //   - apps/macos/Sources/BruceAppCore/ProviderBrandGlyphData.swift
-//   - apps/win/src/app.js 内的 PROVIDER_GLYPHS 生成块 (markers 包裹)
+//   - apps/win/src/provider-brand.js（window.BRUCE_PROVIDER_GLYPHS）
+//
+// C263 起不再在 app.js 内联第二份图形数据：看板与设置页都消费 provider-brand.js。
 //
 // 归一化口径: 所有几何统一为绝对 M/L/C/Z 命令 (圆弧与简写曲线在生成期展开为
 // 三次贝塞尔), 使 SwiftUI 端只需一个极小的解析器, 两端共享同一份路径数据。
@@ -24,9 +26,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const assetsDir = join(repoRoot, "docs/assets/provider-icons");
 const swiftOut = join(repoRoot, "apps/macos/Sources/BruceAppCore/ProviderBrandGlyphData.swift");
-const winJs = join(repoRoot, "apps/win/src/app.js");
-// 设置窗口 (settings.js) 的订阅额度行需要与看板同一套品牌图形, 但两页不共享脚本;
-// 该产物由 window 挂载, 与 app.js 内联块同源生成, 由 --check 一起锁定 (C031)。
+// 看板与设置窗口共用同一份品牌图形（window 挂载），由 --check 锁定 (C031/C263)。
 const winBrand = join(repoRoot, "apps/win/src/provider-brand.js");
 
 const BEGIN_MARK = "// BEGIN GENERATED provider-glyphs";
@@ -409,35 +409,6 @@ function renderSwift(icons) {
   return lines.join("\n");
 }
 
-function renderJs(icons) {
-  const lines = [
-    `${BEGIN_MARK} (scripts/gen-provider-glyphs.mjs, C026 — 请勿手改)`,
-    "// 源文件与许可证: docs/assets/provider-icons/SOURCES.json",
-    "// 几何口径: 绝对 M/L/C/Z, 由浏览器原生解析; vb=viewBox, shapes=[[d, opacity]]",
-    "const PROVIDER_GLYPHS = {",
-  ];
-  for (const [pid, glyph] of Object.entries(icons).sort(([a], [b]) => a.localeCompare(b))) {
-    const shapes = glyph.shapes.map((s) => `["${s.d}", ${s.opacity}]`).join(", ");
-    lines.push(`  ${pid}: { vb: "${glyph.viewBox}", shapes: [${shapes}] },`);
-  }
-  lines.push("};");
-  lines.push(END_MARK);
-  return lines.join("\n");
-}
-
-function patchAppJs(newBlock) {
-  const text = readFileSync(winJs, "utf8");
-  if (text.includes(BEGIN_MARK)) {
-    const head = text.split(BEGIN_MARK)[0];
-    const tail = text.split(END_MARK)[1];
-    return head + newBlock + tail;
-  }
-  const anchor = text.match(/^const PROVIDER_COLORS = .*$/m);
-  if (!anchor) throw new Error("app.js 中未找到 PROVIDER_COLORS 锚点, 无法插入生成块");
-  const insertAt = anchor.index + anchor[0].length;
-  return text.slice(0, insertAt) + "\n" + newBlock + text.slice(insertAt);
-}
-
 function renderBrandJs(icons) {
   const lines = [
     `${BEGIN_MARK} (scripts/gen-provider-glyphs.mjs, C026 — 请勿手改)`,
@@ -497,13 +468,11 @@ function main() {
   }
 
   const swift = renderSwift(icons);
-  const js = patchAppJs(renderJs(icons));
   const brand = renderBrandJs(icons);
 
   if (args.includes("--check")) {
     const drift = [];
     if (readFileSync(swiftOut, "utf8") !== swift) drift.push(swiftOut);
-    if (readFileSync(winJs, "utf8") !== js) drift.push(winJs);
     if (readFileSync(winBrand, "utf8") !== brand) drift.push(winBrand);
     if (drift.length > 0) {
       console.error(
@@ -516,14 +485,13 @@ function main() {
   }
 
   writeFileSync(swiftOut, swift);
-  writeFileSync(winJs, js);
   writeFileSync(winBrand, brand);
   const total = Object.values(icons).reduce(
     (sum, glyph) => sum + glyph.shapes.reduce((s, shape) => s + shape.d.length, 0),
     0
   );
   console.log(
-    `已生成 ${Object.keys(icons).length} 个 provider 图形 -> Swift + app.js + provider-brand.js (路径数据 ${total} bytes)`
+    `已生成 ${Object.keys(icons).length} 个 provider 图形 -> Swift + provider-brand.js (路径数据 ${total} bytes)`
   );
   return 0;
 }
