@@ -4,7 +4,7 @@
   "title": "Antigravity 双根缺席误报、step 计数修正与会话缓存生命周期完善",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C258-antigravity-scan-errors-and-cache",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"canonicalize\\(root\\)|saw_completed|struct CacheEntry|conversations|malformed_lines\" core/collector/crates/collector-local/src/sources/antigravity.rs",
     "expected": "双根循环中未跳过 `NotFound`；`saw_completed` 在 `status != Some(\"DONE\")` 之前自增；`CacheEntry` 缺 `timezone`/`device`/`inode`；每轮打开所有 `conversations/*.db`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：双根 canonicalize 未区分 NotFound；saw_completed 在 DONE 判断前自增；CacheEntry 缺 timezone/device/inode 与 GC；截断行用 line_buffer.len() 计 bytes_read 且空行计畸形；native_db 仅首根生效；load_steps 命中/写盘多次 clone，且每轮对所有会话打开 conversations/*.db 全表扫描。"
   },
   "callback": {
     "before": [

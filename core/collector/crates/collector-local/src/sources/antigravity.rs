@@ -23,7 +23,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const ANTIGRAVITY_CACHE_VERSION: u32 = 2;
+const ANTIGRAVITY_CACHE_VERSION: u32 = 3;
 const TRANSCRIPT_RELATIVE: &str = ".system_generated/logs/transcript_full.jsonl";
 const KIND_USER: u8 = 1;
 const KIND_PLANNER: u8 = 2;
@@ -60,7 +60,40 @@ struct CacheEntry {
     version: u32,
     mtime_ns: u64,
     size: u64,
+    /// C258: 时区影响 ISO 时间戳换算，必须进缓存身份；切时区时整体重建。
+    #[serde(default)]
+    timezone: String,
+    #[serde(default)]
+    device: u64,
+    #[serde(default)]
+    inode: u64,
     steps: Vec<CachedStep>,
+}
+
+/// 写缓存时借用 steps，避免为了落盘再 clone 一整份步骤列表 (C258)。
+#[derive(Serialize)]
+struct CacheEntryRef<'a> {
+    version: u32,
+    mtime_ns: u64,
+    size: u64,
+    timezone: &'a str,
+    device: u64,
+    inode: u64,
+    steps: &'a [CachedStep],
+}
+
+/// 文件身份 (unix 为 dev/ino；其他平台为 0)。
+fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        (metadata.dev(), metadata.ino())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        (0, 0)
+    }
 }
 
 struct MergedStep {
@@ -72,6 +105,8 @@ struct SessionData {
     steps: BTreeMap<u64, MergedStep>,
     project: Option<String>,
     native_db: Option<PathBuf>,
+    /// C258: native_db 对应的最大 step 序号 —— 多根合并时取 step 更新的一方。
+    native_step: Option<u64>,
     copies: usize,
     conflict: bool,
 }
@@ -100,12 +135,18 @@ pub fn scan_antigravity_cached(
 
     let cache_dir = cache_root.join("antigravity");
     let mut sessions: BTreeMap<String, SessionData> = BTreeMap::new();
+    let mut seen_caches = std::collections::BTreeSet::new();
 
     for (root_index, root) in roots.iter().enumerate() {
         cancellation.check()?;
-        let Ok(canonical_root) = fs::canonicalize(root) else {
-            stats.io_errors = stats.io_errors.saturating_add(1);
-            continue;
+        // C258: 双根中只安装一方时，另一根不存在属正常缺席，不得每轮虚报 I/O 错误。
+        let canonical_root = match fs::canonicalize(root) {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+                continue;
+            }
         };
         let projects = read_projects(root);
         let entries = match fs::read_dir(root) {
@@ -148,10 +189,14 @@ pub fn scan_antigravity_cached(
             let mtime_ns = modified_ns(&metadata);
             let size = metadata.len();
             let cache_path = cache_path(&cache_dir, &canonical_transcript);
+            seen_caches.insert(cache_path.clone());
+            let (device, inode) = file_identity(&metadata);
             let steps = match load_steps(
                 &canonical_transcript,
                 mtime_ns,
                 size,
+                device,
+                inode,
                 &cache_path,
                 window,
                 cancellation,
@@ -172,15 +217,24 @@ pub fn scan_antigravity_cached(
             let session = sessions.entry(session_id).or_insert_with(|| SessionData {
                 steps: BTreeMap::new(),
                 project: project.clone(),
-                native_db: native_db.clone(),
+                native_db: None,
+                native_step: None,
                 copies: 0,
                 conflict: false,
             });
             if session.project.is_none() {
                 session.project = project;
             }
-            if session.native_db.is_none() {
-                session.native_db = native_db;
+            // C258: 多根同名会话取 step 更新的那一方 native DB（不再固定首根）。
+            if let Some(native_db) = native_db {
+                let candidate = steps.iter().map(|step| step.step).max().unwrap_or(0);
+                if session
+                    .native_step
+                    .is_none_or(|current| candidate >= current)
+                {
+                    session.native_db = Some(native_db);
+                    session.native_step = Some(candidate);
+                }
             }
             session.copies = session.copies.saturating_add(1);
             for step in steps {
@@ -208,6 +262,9 @@ pub fn scan_antigravity_cached(
             }
         }
     }
+
+    // C258: 清理不再被任何现存 transcript 使用的过期缓存，避免缓存目录无限膨胀。
+    gc_stale_antigravity_caches(&cache_dir, &seen_caches, cancellation, &mut stats)?;
 
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut saw_completed = 0u64;
@@ -238,11 +295,23 @@ pub fn scan_antigravity_cached(
                     .then_some(step.step)
             })
             .collect();
-        let timings = session
-            .native_db
-            .as_deref()
-            .map(|path| read_native_timing(path, &wanted_steps))
-            .unwrap_or_default();
+        // C258: 只有存在请求日志保留期内的 step 时才打开原生 DB；
+        // 历史会话不再每轮逐一全表扫描，且循环内响应取消。
+        let wanted_set: std::collections::HashSet<u64> = wanted_steps.iter().copied().collect();
+        let newest_wanted_ts = session
+            .steps
+            .values()
+            .filter(|merged| wanted_set.contains(&merged.step.step))
+            .filter_map(|merged| merged.step.timestamp)
+            .max();
+        let native_cutoff =
+            collector_domain::request_log_cutoff_millis(window.now.timestamp_millis());
+        let timings = match session.native_db.as_deref() {
+            Some(path) if newest_wanted_ts.is_some_and(|ts| ts >= native_cutoff) => {
+                read_native_timing(path, &wanted_steps, cancellation)?
+            }
+            _ => HashMap::new(),
+        };
         let mut current_model: Option<String> = None;
         let mut current_raw_model: Option<String> = None;
         for merged in session.steps.values() {
@@ -255,10 +324,11 @@ pub fn scan_antigravity_cached(
                     }
                 }
                 KIND_PLANNER => {
-                    saw_completed = saw_completed.saturating_add(1);
+                    // C258: 只有 DONE 的规划响应才计「已完成」，进行中/失败不污染统计。
                     if step.status.as_deref() != Some("DONE") {
                         continue;
                     }
+                    saw_completed = saw_completed.saturating_add(1);
                     let total = step
                         .input
                         .saturating_add(step.output)
@@ -357,16 +427,21 @@ fn antigravity_request_key(session_id: &str, step: u64) -> String {
 /// Read exact first-token / total latency from Antigravity's native conversation
 /// database when it is available. Missing or locked native stores are ignored:
 /// the request still imports with token counters and a `—` speed.
-fn read_native_timing(path: &Path, wanted_steps: &[u64]) -> HashMap<u64, NativeTiming> {
+fn read_native_timing(
+    path: &Path,
+    wanted_steps: &[u64],
+    cancellation: &CancellationToken,
+) -> Result<HashMap<u64, NativeTiming>, SourceScanError> {
+    cancellation.check()?;
     let mut result = HashMap::new();
     if wanted_steps.is_empty() || !path.is_file() {
-        return result;
+        return Ok(result);
     }
     let Ok(connection) = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     ) else {
-        return result;
+        return Ok(result);
     };
     let _ = connection.busy_timeout(Duration::from_millis(300));
     let wanted: std::collections::HashSet<u64> = wanted_steps.iter().copied().collect();
@@ -376,6 +451,7 @@ fn read_native_timing(path: &Path, wanted_steps: &[u64]) -> HashMap<u64, NativeT
             Ok((row.get::<_, i64>(0)?, row.get::<_, Option<Vec<u8>>>(1)?))
         }) {
             for row in rows.flatten() {
+                cancellation.check()?;
                 let Ok(step) = u64::try_from(row.0) else {
                     continue;
                 };
@@ -391,13 +467,14 @@ fn read_native_timing(path: &Path, wanted_steps: &[u64]) -> HashMap<u64, NativeT
         }
     }
     if generations.is_empty() {
-        return result;
+        return Ok(result);
     }
     let mut generation_ids: Vec<u64> = generations.values().copied().collect();
     generation_ids.sort_unstable();
     generation_ids.dedup();
     let mut timings = HashMap::new();
     for chunk in generation_ids.chunks(400) {
+        cancellation.check()?;
         let placeholders = vec!["?"; chunk.len()].join(", ");
         let values: Vec<SqlValue> = chunk
             .iter()
@@ -413,6 +490,7 @@ fn read_native_timing(path: &Path, wanted_steps: &[u64]) -> HashMap<u64, NativeT
             continue;
         };
         for row in rows.flatten() {
+            cancellation.check()?;
             let Ok(index) = u64::try_from(row.0) else {
                 continue;
             };
@@ -428,7 +506,37 @@ fn read_native_timing(path: &Path, wanted_steps: &[u64]) -> HashMap<u64, NativeT
             result.insert(step, *timing);
         }
     }
-    result
+    Ok(result)
+}
+
+/// 删除 30 天未更新的 Antigravity 缓存文件 (C258)；仍被本轮引用的条目保留。
+fn gc_stale_antigravity_caches(
+    cache_dir: &Path,
+    seen: &std::collections::BTreeSet<PathBuf>,
+    cancellation: &CancellationToken,
+    stats: &mut ScanStats,
+) -> Result<(), SourceScanError> {
+    let Ok(entries) = fs::read_dir(cache_dir) else {
+        return Ok(());
+    };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        cancellation.check()?;
+        let path = entry.path();
+        if seen.contains(&path) {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|metadata| metadata.modified()) else {
+            continue;
+        };
+        let Ok(age) = now.duration_since(modified) else {
+            continue;
+        };
+        if age > Duration::from_secs(30 * 24 * 60 * 60) && fs::remove_file(&path).is_ok() {
+            stats.cache_deletions = stats.cache_deletions.saturating_add(1);
+        }
+    }
+    Ok(())
 }
 
 /// `steps.metadata` -> field 20 (generation reference) -> field 3 index.
@@ -529,44 +637,50 @@ fn read_varint(bytes: &[u8], position: &mut usize) -> Option<u64> {
     None
 }
 
+#[allow(clippy::too_many_arguments)]
 fn load_steps(
     transcript: &Path,
     mtime_ns: u64,
     size: u64,
+    device: u64,
+    inode: u64,
     cache_path: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
     stats: &mut ScanStats,
 ) -> Result<Vec<CachedStep>, SourceScanError> {
-    let loaded = load_json_cache::<CacheEntry>(cache_path);
-    let old_steps = match &loaded {
+    // C258: 命中时直接移出 steps（不再 clone 两份）；未命中时保留旧步骤作解析失败兜底。
+    let mut old_steps = None;
+    match load_json_cache::<CacheEntry>(cache_path) {
         CacheLoad::Entry(entry) if entry.version == ANTIGRAVITY_CACHE_VERSION => {
-            Some(entry.steps.clone())
+            if entry.mtime_ns == mtime_ns
+                && entry.size == size
+                && entry.device == device
+                && entry.inode == inode
+                && entry.timezone == window.timezone_name
+            {
+                stats.cache_hits = stats.cache_hits.saturating_add(1);
+                return Ok(entry.steps);
+            }
+            old_steps = Some(entry.steps);
         }
         CacheLoad::Corrupt => {
             stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
-            None
         }
-        _ => None,
-    };
-    if let CacheLoad::Entry(entry) = &loaded {
-        if entry.version == ANTIGRAVITY_CACHE_VERSION
-            && entry.mtime_ns == mtime_ns
-            && entry.size == size
-        {
-            stats.cache_hits = stats.cache_hits.saturating_add(1);
-            return Ok(entry.steps.clone());
-        }
+        _ => {}
     }
     stats.cache_invalidations = stats.cache_invalidations.saturating_add(1);
     match parse_transcript(transcript, window, cancellation, stats) {
         Ok(steps) => {
             stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
-            let entry = CacheEntry {
+            let entry = CacheEntryRef {
                 version: ANTIGRAVITY_CACHE_VERSION,
                 mtime_ns,
                 size,
-                steps: steps.clone(),
+                timezone: &window.timezone_name,
+                device,
+                inode,
+                steps: &steps,
             };
             if let Err(error) = write_json_atomic(cache_path, &entry, cancellation) {
                 match error {
@@ -607,12 +721,18 @@ fn parse_transcript(
             break;
         };
         stats.lines_seen = stats.lines_seen.saturating_add(1);
-        stats.bytes_read = stats.bytes_read.saturating_add(line_buffer.len() as u64);
+        // C258: 截断行按真实读取字节计（旧实现记的是被截断后的缓冲长度）。
+        stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
             stats.truncated_lines = stats.truncated_lines.saturating_add(1);
             continue;
         }
-        let value: Value = match serde_json::from_slice(trim_line_end(&line_buffer)) {
+        let trimmed = trim_line_end(&line_buffer);
+        // C258: 空行不是畸形行。
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value: Value = match serde_json::from_slice(trimmed) {
             Ok(value) => value,
             Err(_) => {
                 stats.malformed_lines = stats.malformed_lines.saturating_add(1);
@@ -1183,7 +1303,7 @@ mod tests {
             )
             .unwrap();
         drop(connection);
-        let timings = read_native_timing(&path, &[5, 6]);
+        let timings = read_native_timing(&path, &[5, 6], &CancellationToken::new()).unwrap();
         assert_eq!(timings.len(), 1);
         let timing = timings.get(&5).unwrap();
         assert_eq!(timing.first_token_ms, 800);
@@ -1203,5 +1323,145 @@ mod tests {
         );
         assert_eq!(normalize_model("Orchestrator Carbon"), None);
         assert_eq!(normalize_model("gemini-api"), None);
+    }
+    fn window_with_timezone(timezone: &str) -> CollectionWindow {
+        let context = json!({
+            "now": "2026-11-19T12:00:00Z",
+            "timezone": timezone,
+            "days": 2
+        });
+        CollectionWindow::from_context(context.as_object().unwrap()).unwrap()
+    }
+
+    /// C258: 双根只安装一方时，缺席根的 NotFound 不得计入 io_errors 或弹出读取失败提示。
+    #[test]
+    fn missing_secondary_root_is_silent() {
+        let root = temp_dir("single-root");
+        let cache = temp_dir("single-root-cache");
+        write_transcript(&root, "session-a", &[planner(1, 100, 0, 0)]);
+        let missing = root.parent().unwrap().join("antigravity-not-installed");
+        let roots = vec![root.clone(), missing];
+        let scan =
+            scan_antigravity_cached(&roots, &window(), &cache, &CancellationToken::new()).unwrap();
+        assert_eq!(scan.stats.io_errors, 0, "缺席根不是读取失败");
+        assert!(
+            !scan
+                .notice
+                .as_deref()
+                .unwrap_or_default()
+                .contains("读取失败"),
+            "不得弹出假失败提示: {:?}",
+            scan.notice
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// C258: 未 DONE 的 PLANNER_RESPONSE 不算「已完成响应」，不得触发「未记录 Token」提示。
+    #[test]
+    fn non_done_planner_is_not_counted_as_completed() {
+        let root = temp_dir("non-done");
+        let cache = temp_dir("non-done-cache");
+        write_transcript(
+            &root,
+            "session-a",
+            &[
+                planner(1, 100, 0, 0),
+                json!({
+                    "step_index": 2,
+                    "type": "PLANNER_RESPONSE",
+                    "status": "RUNNING",
+                    "created_at": "2026-11-19T10:05:00Z",
+                    "input_tokens": 0,
+                    "output_tokens": 0
+                }),
+            ],
+        );
+        let scan = scan_antigravity_cached(
+            std::slice::from_ref(&root),
+            &window(),
+            &cache,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert!(
+            !scan
+                .notice
+                .as_deref()
+                .unwrap_or_default()
+                .contains("未记录 Token"),
+            "进行中的响应不得被当成缺 Token 的完成响应: {:?}",
+            scan.notice
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// C258: 空行不是畸形行。
+    #[test]
+    fn blank_lines_are_not_malformed() {
+        let root = temp_dir("blank-lines");
+        let cache = temp_dir("blank-lines-cache");
+        let transcript = write_transcript(&root, "session-a", &[planner(1, 100, 0, 0)]);
+        let mut body = fs::read_to_string(&transcript).unwrap();
+        body.push_str("\n\n");
+        fs::write(&transcript, body).unwrap();
+        let scan = scan_antigravity_cached(
+            std::slice::from_ref(&root),
+            &window(),
+            &cache,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(scan.stats.malformed_lines, 0, "空行不得计为畸形行");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// C258: 时区进入缓存身份，切换时区必须整体重建而不是复用旧日期归类。
+    #[test]
+    fn timezone_change_invalidates_the_cache() {
+        let root = temp_dir("timezone-cache");
+        let cache = temp_dir("timezone-cache-root");
+        write_transcript(&root, "session-a", &[planner(1, 100, 0, 0)]);
+        let first = scan_antigravity_cached(
+            std::slice::from_ref(&root),
+            &window(),
+            &cache,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(first.stats.cache_rebuilds, 1);
+        let second = scan_antigravity_cached(
+            std::slice::from_ref(&root),
+            &window_with_timezone("Asia/Shanghai"),
+            &cache,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(second.stats.cache_hits, 0, "切时区不得命中旧条目");
+        assert_eq!(second.stats.cache_rebuilds, 1, "切时区必须整体重建");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// C258: 超过 30 天且不再被引用的缓存文件由 GC 清理。
+    #[test]
+    fn stale_cache_files_are_collected() {
+        let root = temp_dir("gc-root");
+        let cache = temp_dir("gc-cache");
+        let cache_dir = cache.join("antigravity");
+        fs::create_dir_all(&cache_dir).unwrap();
+        let stale = cache_dir.join("stale.json");
+        let file = fs::File::create(&stale).unwrap();
+        file.set_modified(SystemTime::now() - Duration::from_secs(40 * 24 * 3600))
+            .unwrap();
+        drop(file);
+        let scan = scan_antigravity_cached(
+            std::slice::from_ref(&root),
+            &window(),
+            &cache,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert!(!stale.exists(), "过期缓存应被清理");
+        assert_eq!(scan.stats.cache_deletions, 1);
+        let _ = fs::remove_dir_all(root);
     }
 }

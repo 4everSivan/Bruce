@@ -170,7 +170,7 @@
     },
     "C258": {
       "title": "Antigravity 双根缺席误报、step 计数修正与会话缓存生命周期完善",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C258-antigravity-scan-errors-and-cache",
       "topic": "AntigravityUsage",
       "file": "docs/devel/change/C258.json"
