@@ -16,10 +16,10 @@ vm.createContext(context);
 vm.runInContext(readFileSync(join(siteRoot, "js", "data.js"), "utf8"), context);
 const data = context.window.BRUCE_DATA;
 
-test("UT-website-001: 官网 10 类本地会话与 10 家云端订阅数据源及图标完整", () => {
+test("UT-website-001: 官网 11 类本地会话与 11 家云端订阅数据源及图标完整", () => {
   assert.ok(data, "BRUCE_DATA 应挂载到 window");
-  assert.equal(data.sources.agents.length, 10, "应覆盖 10 类本机会话源");
-  assert.equal(data.sources.providers.length, 10, "应覆盖 10 家云端订阅源");
+  assert.equal(data.sources.agents.length, 11, "应覆盖 11 类本机会话源");
+  assert.equal(data.sources.providers.length, 11, "应覆盖 11 家云端订阅源");
 
   for (const row of [...data.sources.agents, ...data.sources.providers]) {
     assert.ok(row.name && row.tag, `${row.name} 应同时声明名称与路径/窗口说明标签`);
