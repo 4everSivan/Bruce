@@ -16,4 +16,4 @@
 
 | 债务编号 | 模块 | 债务风险说明 | 发现日期 | 建议处置方案 |
 |---|---|---|---|---|
-| TD-013 | docs/official、docs/assets/km | 文档生成工具的中间产物入库：`docs/official/.staging/`（99 个文件）与 `docs/assets/km/.staging/`（46 个文件）共 145 个暂存文件被 Git 跟踪，`docs/official` 共 341 个文件 5.6 MB，超过 `core/` 全部源码体积；暂存物随每次生成漂移，增大评审噪音与仓库体积 | 2026-10-31 | 人工确认生成工具对 `.staging/` 的依赖后，加入 `.gitignore` 并移出索引（不删除工作区文件）；是否保留 `runs/` 历次产物另行定口径 |
+| TD-013 | docs/official、docs/assets/km | 文档生成工具的产物入库：`docs/official/.staging/`、`docs/official/.cards/` 与 `docs/assets/km/.staging/` 被 Git 跟踪；其中 `.cards/` 是 `km` 知识库的确认清单、卡片与图定义（状态库），`.staging/` 是候选稿；未发布候选（网络出口校验、价格表远端同步）只存在于暂存目录 | 2026-10-31 | **已决 (2026-11-24)**：维护者确认 km 生成物需同步进仓库，**不移出索引、不 ignore**；由维护者后续重新生成并更新内容。不再按“212 个中间产物”口径清理。 |

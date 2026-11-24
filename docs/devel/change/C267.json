@@ -19,7 +19,7 @@
     "command": "rg -n \"10 Agents|NSIS 安装包筹备中|claude-fable|\\.kimi/history\" website/ && git ls-files docs/official/.staging docs/official/.cards docs/assets/km/.staging | wc -l",
     "expected": "`website/` 存在 10 Agents、虚构模型与禁用 Windows 按钮文案；`git ls-files` 统计 `.staging`/`.cards` 为 212 个",
     "is_completed": false,
-    "evidence": "HEAD 复核命中：官网仍写十类/十家、Kimi 路径 ~/.kimi/history、StepFun 标按量余额、Windows 下载禁用；data.js 缺 Antigravity/Grok Bot。注：claude-fable-5-1 与 gpt-6.1-sol 经核对已在 config/pricing-catalog.json 中，属真实目录项，未替换。TD-013 的 212 个跟踪暂存文件与 3 个无引用 demo 待人类确认后处理。"
+    "evidence": "HEAD 复核命中：官网仍写十类/十家、Kimi 路径 ~/.kimi/history、StepFun 标按量余额、Windows 下载禁用；data.js 缺 Antigravity/Grok Bot。注：claude-fable-5-1 与 gpt-6.1-sol 经核对是 config/pricing-catalog.json 的真实目录项，未替换。.cards 经核对为 km 知识库状态库（manifest/11 张卡/31 个图定义），.staging 为候选稿，其中 网络出口国家校验设计.md 与 模型价格表远端同步设计.md 尚无正式版；维护者 2026-11-24 决定全部保留在仓库。"
   },
   "callback": {
     "before": [
@@ -41,10 +41,10 @@
       "impact": "官网产品信息、交互示例与真实 v0.18+/v0.19 版本保持一致。"
     },
     {
-      "scope": "落地 TD-013 移除 212 个跟踪暂存文件并刷新 `docs/official/`",
-      "before": "212 个 `.staging`/`.cards` 中间文件被 Git 跟踪，`docs/official/` 停在 2026-10-20。",
-      "after": "在向人类确认生成工具对 `.staging`/`.cards` 依赖口径后，将 `docs/official/.staging/`、`docs/official/.cards/`、`docs/assets/km/.staging/` 加入 `.gitignore` 并通过 `git rm --cached` 移出版本索引（保留工作区本地文件），刷新 `docs/official/` 落后内容并关闭 `future.md` TD-013。",
-      "impact": "显著瘦身 Git 仓库与 PR 评审噪音。"
+      "scope": "TD-013 口径确认与 km 产物同步策略",
+      "before": "C267 原计划在确认生成工具依赖后，将 `.staging`/`.cards` 加入 `.gitignore` 并移出索引。",
+      "after": "维护者 2026-11-24 决定：km 生成物（`.cards` 状态库、`.staging` 候选稿）属于知识库资产，继续纳入仓库并随生成同步；不移出索引、不 ignore。TD-013 按此口径关闭，未发布候选待下次生成时发布。",
+      "impact": "避免把 km 状态库与未发布候选稿移出版本备份；后续更新由维护者重新生成。"
     },
     {
       "scope": "清理 `apps/win/demo/` 无引用预览 HTML",
@@ -70,7 +70,7 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "`u_website_contract.test.mjs`、`build-site.mjs`、`geometry-parity.test.mjs` 与 `verify-local.sh` 全绿；`git ls-files` 中 `.staging`/`.cards` 文件数为 0",
+        "true_if": "`u_website_contract.test.mjs`、`build-site.mjs`、`geometry-parity.test.mjs` 与 `verify-local.sh` 全绿；`git ls-files` 继续跟踪 `.cards`/`.staging`（按 2026-11-24 口径），未发布候选文件仍在工作区。",
         "false_if": "官网构建/契约测试失败、索引仍跟踪暂存文件或破坏现有 demo 测试",
         "evidence": "",
         "result": null
