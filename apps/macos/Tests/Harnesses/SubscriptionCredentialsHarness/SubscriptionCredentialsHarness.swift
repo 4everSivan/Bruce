@@ -65,11 +65,13 @@ struct SubscriptionCredentialsHarness {
         try await zhipuNotInjectedWithoutCredential()
         try await clineInjectedWhenCredentialPresent()
         try await clineNotInjectedWithoutCredential()
+        try await grokBotInjectsBoundAccountWithoutDataDir()
+        try await grokBotNotInjectedWhenDisabledOrInvalid()
         try providerAccountStoreCorruptedIndexFailsClosed()
         try providerAccountStoreCorruptedRecordFailsClosed()
         try enabledQuotaProvidersFollowEnabledFlag()
         try await scopedInputCarriesOnlyLiveContractFields()
-        print("Subscription credentials tests passed: 38")
+        print("Subscription credentials tests passed: 40")
     }
 
     /// C123: 定向刷新输入只携带 capabilities (= externalQuotas) 与目标凭证, 不再发送
@@ -394,6 +396,59 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             credentials["clineQuotaAccounts"] == nil,
             "无凭证时不应注入 clineQuotaAccounts"
+        )
+    }
+
+    /// T39: Grok Bot 只注入已连接账号标识 (账号键 = sha256 前 16 位), 数据目录由 Collector
+    /// 注入, 本端不得携带 data_dir 或读取 Grok Bot 文件 (design/02 规则 18).
+    private static func grokBotInjectsBoundAccountWithoutDataDir() async throws {
+        let (provider, store, _) = try makeProvider(enabled: [.grokBot], credentials: [:])
+        let accounts = ProviderAccountStore(provider: .grokBot, credentialStore: store)
+        let accountKey = GrokBotAccountIdentity.accountKey(for: "grok|user_01")
+        _ = try accounts.addAccount(
+            accountID: accountKey,
+            displayName: "Grok Bot · 账号 1",
+            credentialJSON: "grok|user_01"
+        )
+        let (_, credentials) = try await runInput(provider)
+        guard case .object(let injected)? = credentials["grokBotQuotaAccounts"],
+              case .object(let payload)? = injected["f827599c055f9a8a"] else {
+            throw CredentialsTestFailure.expectation(
+                "grokBotQuotaAccounts 未按账号键注入: \(credentials.keys.sorted())"
+            )
+        }
+        try credentialsExpect(accountKey == "f827599c055f9a8a", "账号键应与 Collector 锚点一致")
+        try credentialsExpect(
+            payload["account"] == .string("grok|user_01"),
+            "应透传客户端账号标识"
+        )
+        try credentialsExpect(
+            payload["display_name"] == .string("Grok Bot · 账号 1"),
+            "应透传显示名"
+        )
+        try credentialsExpect(
+            Set(payload.keys) == ["account", "display_name"],
+            "Grok Bot 账号条目只允许 account / display_name: \(payload.keys.sorted())"
+        )
+    }
+
+    private static func grokBotNotInjectedWhenDisabledOrInvalid() async throws {
+        let (disabled, disabledStore, _) = try makeProvider(enabled: [], credentials: [:])
+        _ = try ProviderAccountStore(provider: .grokBot, credentialStore: disabledStore)
+            .addAccount(accountID: "f827599c055f9a8a", displayName: "Grok Bot", credentialJSON: "grok|user_01")
+        let (_, disabledCredentials) = try await runInput(disabled)
+        try credentialsExpect(
+            disabledCredentials["grokBotQuotaAccounts"] == nil,
+            "停用时不应注入 grokBotQuotaAccounts"
+        )
+
+        let (invalid, invalidStore, _) = try makeProvider(enabled: [.grokBot], credentials: [:])
+        _ = try ProviderAccountStore(provider: .grokBot, credentialStore: invalidStore)
+            .addAccount(accountID: "0000000000000000", displayName: "Grok Bot", credentialJSON: "bad\naccount")
+        let (_, invalidCredentials) = try await runInput(invalid)
+        try credentialsExpect(
+            invalidCredentials["grokBotQuotaAccounts"] == nil,
+            "账号标识无效时不应注入"
         )
     }
 

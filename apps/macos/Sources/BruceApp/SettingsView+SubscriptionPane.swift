@@ -58,7 +58,11 @@ extension SettingsView {
             Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序")
                 .font(.system(size: 11.5))
                 .foregroundStyle(SettingsDemoTokens.text3)
-            EgressSettingsCard(coordinator: coordinator, providers: visibleSubscriptionProviders)
+            // Grok Bot 只读本机读数、不出站 (T39), 不参与出口保护。
+            EgressSettingsCard(
+                coordinator: coordinator,
+                providers: visibleSubscriptionProviders.filter { $0 != .grokBot }
+            )
                 .id("egress-settings")
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
@@ -166,6 +170,7 @@ extension SettingsView {
         case .codex: kind = "OAuth 设备码"
         case .claude, .grok: kind = "CLI 登录态"
         case .opencodeGo: kind = "API Key"
+        case .grokBot: kind = "本机客户端读数"
         }
         let count = model.providerAccountSummaries[id]?.count ?? 0
         return count > 1 ? "\(kind) · \(count) 个账号" : kind
@@ -225,7 +230,7 @@ extension SettingsView {
         switch id {
         case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline, .opencodeGo:
             apiKeyProviderDialog(id)
-        case .codex, .claude, .grok:
+        case .codex, .claude, .grok, .grokBot:
             genericProviderConfigSheet(id)
         }
     }
@@ -673,6 +678,10 @@ extension SettingsView {
                 grokPasteText: $grokPasteText,
                 grokEditing: $grokEditing,
                 onRemove: { removeSubscriptionProvider(.grok) }
+            )
+        case .grokBot:
+            GrokBotProviderSettingsSection(
+                onRemove: { removeSubscriptionProvider(.grokBot) }
             )
         }
     }

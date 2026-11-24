@@ -27,6 +27,9 @@ public enum InjectionKind: Sendable, Equatable {
     case jevAPIKeyEnv
     /// 顶层 `clineQuotaAccounts` = {accountID: {api_key, display_name}} 映射
     case clineQuotaAccounts
+    /// 顶层 `grokBotQuotaAccounts` = {accountKey: {account, display_name}} 映射 (T39);
+    /// 数据目录由 Collector 注入, 本端不传路径.
+    case grokBotQuotaAccounts
 }
 
 // MARK: - ConfiguredRule
@@ -239,6 +242,13 @@ public enum ProviderRegistry {
                 id: .cline,
                 credentialAccounts: [SubscriptionCredentialAccount.clineAPIKey],
                 injectionKind: .clineQuotaAccounts,
+                configuredRule: .allCredentialAccountsNonEmpty
+            )
+        case .grokBot:
+            return ProviderDescriptor(
+                id: .grokBot,
+                credentialAccounts: [SubscriptionCredentialAccount.grokBotAccount],
+                injectionKind: .grokBotQuotaAccounts,
                 configuredRule: .allCredentialAccountsNonEmpty
             )
         }

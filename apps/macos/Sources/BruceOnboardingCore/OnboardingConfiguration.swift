@@ -17,6 +17,8 @@ public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
     case stepfun
     case jev
     case cline
+    /// Grok Bot 订阅周用量 (T39): 只读客户端本机读数, 不出站.
+    case grokBot
 }
 
 // MARK: - SubscriptionVerificationStatus
@@ -595,6 +597,8 @@ public enum SubscriptionCredentialAccount {
     public static let jevAPIKey = "jev:api-key"
     /// Cline / ClinePass API key 字符串 (app.cline.bot Settings > API Keys 创建)
     public static let clineAPIKey = "cline:api-key"
+    /// Grok Bot 已连接的客户端账号标识 (非密钥, T39 / design/02 规则 18)
+    public static let grokBotAccount = "grok-bot:account"
 }
 
 /// Codex 旧 Keychain 键别名 (旧键只供迁移读取; 其余 v2 键直接经 CodexCredentialKeys 引用).

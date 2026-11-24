@@ -798,6 +798,7 @@ struct WelcomeOnboardingView: View {
         case .grok: return "本机 CLI / OAuth"
         case .cline: return "Bearer 令牌 · 三窗口"
         case .jev: return "API Key"
+        case .grokBot: return "本机客户端 · 每周用量"
         }
     }
 

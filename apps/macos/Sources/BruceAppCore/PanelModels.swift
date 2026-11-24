@@ -261,6 +261,8 @@ package enum PanelFormat {
                 // 避免多行周窗口被归一成同一文案后不可区分 (C058);
                 // "每周窗口"/裸"每周"等无后缀形态仍归一。
                 if rawLabel.hasPrefix("每周 ") { return rawLabel }
+                // Grok Bot 共享池 / 旧版独立周额度 (T39) 以 label 区分口径, 原样保留.
+                if rawLabel.hasSuffix("每周用量") { return rawLabel }
                 return "每周"
             }
             if approximately(minutes, 43200) {

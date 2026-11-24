@@ -147,6 +147,9 @@ public enum ProviderAccountKeys {
             return [SubscriptionCredentialAccount.jevAPIKey]
         case .cline:
             return [SubscriptionCredentialAccount.clineAPIKey]
+        case .grokBot:
+            // T39 新增 provider, 自始即走多账号存储, 无旧单条键.
+            return []
         }
     }
 }
@@ -643,6 +646,8 @@ public final class ProviderAccountStore: @unchecked Sendable {
             credentialJSON = key
         case .codex:
             return false // Codex 已有独立的多账号体系
+        case .grokBot:
+            return false // 无旧单条键 (legacyKeys 为空, 上方已提前返回)
         }
 
         let added = try addAccount(

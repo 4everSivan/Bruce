@@ -56,8 +56,8 @@ public enum CredentialRotationMerge {
         guard !tokens.isEmpty else { return nil }
 
         switch providerID {
-        case .kimi, .zhipu, .jev, .cline:
-            // Kimi / 智谱 / Jev / Cline API key 不参与 OAuth 轮换, 无令牌写回.
+        case .kimi, .zhipu, .jev, .cline, .grokBot:
+            // Kimi / 智谱 / Jev / Cline API key 与 Grok Bot 账号绑定不参与 OAuth 轮换, 无令牌写回.
             return nil
 
         case .stepfun:

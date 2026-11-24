@@ -145,6 +145,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "stepfun": return "StepFun"
         case "jev": return "Jev"
         case "cline": return "Cline"
+        case "grokBot", "grok-bot": return "Grok Bot"
         default: return providerID
         }
     }
@@ -243,6 +244,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
     package static func failureTitle(for kind: String?) -> String {
         switch kind {
         case "credential": return "凭据读取失败"
+        case "accountMismatch": return "账号不一致"
         case "storage": return "凭据存储异常"
         case "auth": return "凭据失效"
         case "permission": return "权限不足"
@@ -271,15 +273,16 @@ package enum SubscriptionPresentationPolicy: Sendable {
     private static func failureTitleRank(_ kind: String?) -> Int {
         switch kind {
         case "credential": return 0
-        case "storage": return 1
-        case "auth": return 2
-        case "permission": return 3
-        case "rateLimit": return 4
-        case "network": return 5
-        case "server": return 6
-        case "invalidResponse": return 7
-        case "tokenUnavailable": return 8
-        default: return 9
+        case "accountMismatch": return 1
+        case "storage": return 2
+        case "auth": return 3
+        case "permission": return 4
+        case "rateLimit": return 5
+        case "network": return 6
+        case "server": return 7
+        case "invalidResponse": return 8
+        case "tokenUnavailable": return 9
+        default: return 10
         }
     }
 }

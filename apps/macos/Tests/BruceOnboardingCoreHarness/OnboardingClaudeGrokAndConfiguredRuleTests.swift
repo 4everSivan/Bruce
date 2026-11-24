@@ -439,6 +439,7 @@ extension BruceOnboardingCoreHarness {
             .stepfun: .allCredentialAccountsNonEmpty,
             .jev: .allCredentialAccountsNonEmpty,
             .cline: .allCredentialAccountsNonEmpty,
+            .grokBot: .allCredentialAccountsNonEmpty,
         ]
         for id in SubscriptionProviderID.allCases {
             let rule = ProviderRegistry.descriptor(for: id).configuredRule

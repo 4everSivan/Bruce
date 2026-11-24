@@ -259,6 +259,7 @@ struct PanelViewModelHarness {
         try windowWordingMatrixMapsMinutes()
         try windowWordingFallsBackToKnownLabels()
         try windowWordingKeepsSuffixedWeeklyLabels()
+        try grokBotWeeklyLabelsArePreserved()
         try ownRowFlagIsPreserved()
         try balanceSinksToBottom()
         try kimiDisabledBoosterExtraIsHidden()
@@ -331,7 +332,7 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatePolicyContracts()
         try balanceRowAmountMatchesTextContracts()
         try timelineAxisAndViewportMatchSharedParityFixture()
-        print("PanelViewModel tests passed: 73")
+        print("PanelViewModel tests passed: 74")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -398,6 +399,24 @@ struct PanelViewModelHarness {
         try expect(
             labels == ["每 5 小时", "每周", "每周 Fable", "每周 Opus", "每周 Sonnet", "每周"],
             "模型专属周窗口文案保留失败: \(labels)"
+        )
+    }
+
+    // T39: Grok Bot 共享池 / 旧版独立周额度以 label 区分口径, 10080 分钟窗口不得归一为「每周」.
+    private static func grokBotWeeklyLabelsArePreserved() throws {
+        let service = makeService(
+            id: "grokbot_f827599c055f9a8a",
+            name: "Grok Bot · 账号 1",
+            windows: [
+                makeWindow(label: "共享每周用量", usedPercent: 31, windowMinutes: 10080),
+                makeWindow(label: "Grok Bot 每周用量", usedPercent: 12, windowMinutes: 10080),
+            ]
+        )
+        let vm = try subscriptionSections(services: [service])
+        let labels = vm[0].windows.map(\.label)
+        try expect(
+            labels == ["共享每周用量", "Grok Bot 每周用量"],
+            "Grok Bot 周用量文案保留失败: \(labels)"
         )
     }
 

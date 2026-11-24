@@ -786,6 +786,25 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 if !accounts.isEmpty {
                     credentials["clineQuotaAccounts"] = .object(accounts)
                 }
+
+            case .grokBotQuotaAccounts:
+                // T39: 只注入已连接的客户端账号标识; 数据目录、读数读取与账号比对
+                // 由 Collector 完成 (design/02 规则 18), 本端不读 Grok Bot 文件.
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID),
+                          GrokBotLocalClient.isValidAccount(record.credentialJSON) else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "account": .string(record.credentialJSON),
+                    ])
+                }
+                if !accounts.isEmpty {
+                    credentials["grokBotQuotaAccounts"] = .object(accounts)
+                }
             }
         }
 

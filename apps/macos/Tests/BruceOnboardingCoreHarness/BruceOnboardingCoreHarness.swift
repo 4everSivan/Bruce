@@ -186,7 +186,10 @@ struct BruceOnboardingCoreHarness {
         try codexCustomNameOverridesAndBackwardCompatibility()
         try welcomeOnboardingConfigPersistenceAndUpgradeRules()
         try launchAtLoginConfigPersistenceRoundTrip()
-        print("BruceOnboardingCore tests passed: 180")
+        try grokBotSliceNameAndAccountKeyMatchRustContract()
+        try grokBotActiveAccountReaderBoundaries()
+        try grokBotRegistryAndDispatch()
+        print("BruceOnboardingCore tests passed: 183")
     }
 
     static func launchAtLoginConfigPersistenceRoundTrip() throws {

@@ -52,6 +52,7 @@ extension SubscriptionProviderID {
         case .stepfun: return "StepFun"
         case .jev: return "Jev"
         case .cline: return "Cline"
+        case .grokBot: return "Grok Bot"
         }
     }
 

@@ -318,6 +318,11 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.importGrokFromPaste(paste)
     }
 
+    /// Grok Bot (T39): 绑定客户端当前登录账号.
+    func connectGrokBot() {
+        subscriptions.connectGrokBot()
+    }
+
     /// OpenCode: 表单录入 API Key 与可选 Workspace ID (C205).
     func saveAndVerifyOpenCodeGo(apiKey: String, workspaceId: String) {
         subscriptions.saveAndVerifyOpenCodeGo(apiKey: apiKey, workspaceId: workspaceId)

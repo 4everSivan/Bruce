@@ -470,6 +470,13 @@ extension SubscriptionService {
             case .expired:
                 finishVerification(.grok, status: .needsRelogin)
             }
+        case .grokBot:
+            // T39: 连接记录只含账号标识; 账号是否仍为客户端当前账号由每轮采集判定.
+            if GrokBotLocalClient.isValidAccount(record.credentialJSON) {
+                finishVerification(.grokBot, status: .ok)
+            } else {
+                model.setSettingsError("Grok Bot 连接记录无效, 请重新连接", for: .grokBot)
+            }
         case .opencodeGo:
             switch SubscriptionCredentialEvaluator.opencodeGoStatus(
                 of: record.credentialJSON
