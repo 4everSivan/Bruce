@@ -359,9 +359,9 @@ pub fn resolve_export_path(
     Ok(target.to_string_lossy().into_owned())
 }
 
-/// 写入导出文件 (沿用凭证模块的原子私有写: 临时文件 + 替换, 权限限定当前用户)。
+/// 写入导出文件 (临时文件 + 原子替换; 不改用户目标目录 ACL, C251)。
 pub fn write_export(path: &str, bytes: &[u8]) -> Result<(), String> {
-    crate::credentials::atomic_private_write(Path::new(path), bytes)
+    crate::credentials::atomic_export_write(Path::new(path), bytes)
         .map_err(|_| "EXPORT_WRITE_FAILED".to_owned())
 }
 
@@ -442,7 +442,7 @@ impl SnapshotState {
 
     pub fn save(&self, root: &Path) -> Result<(), String> {
         let bytes = serde_json::to_vec(self).map_err(|_| "SNAPSHOT_WRITE_FAILED".to_owned())?;
-        crate::credentials::atomic_private_write(&root.join("snapshot.json"), &bytes)
+        crate::credentials::atomic_managed_write(&root.join("snapshot.json"), &bytes)
             .map_err(|_| "SNAPSHOT_WRITE_FAILED".to_owned())
     }
 

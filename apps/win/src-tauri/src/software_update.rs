@@ -221,14 +221,15 @@ pub mod desktop_impl {
     /// 持久化更新字段: `skipped` 三态 —— None 不动 / Some(None) 清除 / Some(Some(v)) 记录。
     fn persist_update_fields(last_check_at: Option<String>, skipped: Option<Option<String>>) {
         let root = paths::data_root();
-        let mut current = settings::load_settings(&root);
-        if let Some(at) = last_check_at {
-            current.update_last_check_at = Some(at);
-        }
-        if let Some(value) = skipped {
-            current.update_skipped_version = value;
-        }
-        let _ = settings::save_settings(&root, &current);
+        // C251: 只触碰更新相关字段，在设置写锁内完成读-改-写。
+        let _ = settings::update_settings(&root, |current| {
+            if let Some(at) = last_check_at {
+                current.update_last_check_at = Some(at);
+            }
+            if let Some(value) = skipped {
+                current.update_skipped_version = value;
+            }
+        });
     }
 
     /// 启动或检查时清理已追平/过期的跳过版本 (07 §4.2 R4)。

@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
@@ -283,10 +284,43 @@ pub fn load_settings(root: &Path) -> AppSettings {
     }
 }
 
+/// settings.json 进程内写入互斥 (C251): 后台的更新检查 / 价卡同步与设置页保存
+/// 都会「读整份 → 改自己的字段 → 写回」，无锁时并发写会互相覆盖丢字段。
+static SETTINGS_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_settings_writes() -> MutexGuard<'static, ()> {
+    // 写盘是原子替换，持锁线程 panic 不会留下半份文件；毒化后继续服务更符合桌面常驻预期。
+    SETTINGS_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+/// 只更新个别字段的读-改-写入口: 加载与写回在同一把进程锁内完成，
+/// 并发调用不会互相丢弃对方刚写入的字段。
+pub fn update_settings(root: &Path, update: impl FnOnce(&mut AppSettings)) -> Result<(), String> {
+    let _guard = lock_settings_writes();
+    let mut current = load_settings(root);
+    update(&mut current);
+    save_settings_locked(root, &current)
+}
+
+/// 需要把「读取基线 → 校验/注册 → 写回」作为一个整体串行的调用方使用
+/// (设置页保存命令: 热键注册与落盘必须基于同一份基线)。
+pub fn with_settings_lock<T>(operation: impl FnOnce() -> T) -> T {
+    let _guard = lock_settings_writes();
+    operation()
+}
+
 /// 原子写入设置 (临时文件 + rename)。
 /// 落盘前按原样校验 (未知 Provider 仍一律拒绝), 再把启用集合归一为
 /// `subscription_providers` 的派生投影 (C090), 保证文件内两处口径一致。
 pub fn save_settings(root: &Path, settings: &AppSettings) -> Result<(), String> {
+    let _guard = lock_settings_writes();
+    save_settings_locked(root, settings)
+}
+
+/// 已持有 `SETTINGS_WRITE_LOCK` 时的落盘实现 (不再重复取锁)。
+pub(crate) fn save_settings_locked(root: &Path, settings: &AppSettings) -> Result<(), String> {
     validate_settings(settings)?;
     let mut normalized = settings.clone();
     sync_enabled_providers(&mut normalized);
@@ -704,5 +738,45 @@ mod tests {
             ..AppSettings::default()
         })
         .is_err());
+    }
+
+    #[test]
+    fn concurrent_field_updates_serialize_and_keep_both_fields() {
+        let root = temp_root();
+        save_settings(&root, &AppSettings::default()).unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        with_settings_lock(|| {
+            let background = root.clone();
+            std::thread::spawn(move || {
+                update_settings(&background, |settings| {
+                    settings.pricing_last_sync_at = Some("2026-11-24T00:00:00+08:00".into());
+                })
+                .unwrap();
+                done_tx.send(()).unwrap();
+            });
+            assert!(
+                done_rx
+                    .recv_timeout(std::time::Duration::from_millis(100))
+                    .is_err(),
+                "并发的读-改-写必须在同一把进程锁上串行 (C251)"
+            );
+        });
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("释放锁后后台更新应完成");
+
+        update_settings(&root, |settings| {
+            settings.update_skipped_version = Some("9.9.9".into());
+        })
+        .unwrap();
+
+        let loaded = load_settings(&root);
+        assert_eq!(loaded.update_skipped_version.as_deref(), Some("9.9.9"));
+        assert_eq!(
+            loaded.pricing_last_sync_at.as_deref(),
+            Some("2026-11-24T00:00:00+08:00"),
+            "两次更新各自只改自己的字段，不得互相覆盖"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

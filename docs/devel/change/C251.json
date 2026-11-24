@@ -4,7 +4,7 @@
   "title": "Windows 导出目录 ACL 破坏、预警 AB-BA 死锁与快照/配置并发修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C251-win-export-acl-and-deadlock",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"atomic_private_write|deliver_alerts|clear_snapshot_cache|refresh_agent_usage_local|write_export\" apps/win/src-tauri/src/",
     "expected": "`write_export` 仍调用 `credentials::atomic_private_write`；`scheduler.rs:316-320` 仍在 `snapshot.lock()` 作用域内调用 `deliver_alerts`；`clear_snapshot_cache` 未重置内存快照；`settings.json` 无并发写入锁；`refresh_agent_usage_local` 无在途守卫",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：runtime_core.rs:363 write_export 走 atomic_private_write；scheduler.rs:383-388 在 snapshot 锁内调用 deliver_alerts；lib.rs:412 clear_snapshot_cache 只删磁盘；settings.json 三处无锁 RMW（lib.rs:566、software_update.rs:224、pricing_sync.rs:362）；refresh_agent_usage_local 无在途守卫。"
   },
   "callback": {
     "before": [

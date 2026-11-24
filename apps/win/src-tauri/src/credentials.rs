@@ -44,11 +44,11 @@ pub use stepfun_web::{
 use collector_bridge::ALLOWED_CREDENTIAL_FIELDS;
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, OnceLock},
 };
 
 pub type CredentialPayloads = BTreeMap<String, Value>;
@@ -1166,6 +1166,41 @@ pub(crate) fn atomic_private_write(path: &Path, body: &[u8]) -> Result<(), Strin
     write_path_with_permissions(path, body, restrict_permissions)
 }
 
+/// 应用私有受管数据 (快照 / 预警状态): 文件同样私有 + 原子替换，但目录级 ACL
+/// 每个进程只施放一次 —— 每轮刷新重复重设 `%APPDATA%\Bruce` 的 DACL 会反复覆盖
+/// 受管目录的继承规则 (C251)。
+pub(crate) fn atomic_managed_write(path: &Path, body: &[u8]) -> Result<(), String> {
+    write_path_with_permissions(path, body, |target, directory| {
+        if directory {
+            secure_directory_once(target)
+        } else {
+            restrict_permissions(target, false)
+        }
+    })
+}
+
+/// 用户可见导出文件 (账单 CSV / 工作台 JSON / 诊断报告) 的原子替换：只做临时文件 +
+/// rename，不修改用户选中目录的 ACL —— 导出目标是桌面/文档等用户目录，绝不能像
+/// 凭证那样剥离继承与 SYSTEM/Administrators (C251)。
+pub(crate) fn atomic_export_write(path: &Path, body: &[u8]) -> Result<(), String> {
+    write_path_with_permissions(path, body, |_, _| Ok(()))
+}
+
+/// 目录级私有 ACL 每进程只施放一次 (C251)；施放失败不记为已完成，下次仍会重试。
+fn secure_directory_once(directory: &Path) -> Result<(), String> {
+    static SECURED_DIRECTORIES: OnceLock<Mutex<BTreeSet<PathBuf>>> = OnceLock::new();
+    let mut secured = SECURED_DIRECTORIES
+        .get_or_init(|| Mutex::new(BTreeSet::new()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if secured.contains(directory) {
+        return Ok(());
+    }
+    restrict_permissions(directory, true)?;
+    secured.insert(directory.to_path_buf());
+    Ok(())
+}
+
 fn write_path_with_permissions(
     path: &Path,
     body: &[u8],
@@ -1244,5 +1279,67 @@ mod tests {
         save_credentials(&root, &CredentialPayloads::new()).unwrap();
         windows_security::assert_current_sid_only(&root).unwrap();
         windows_security::assert_current_sid_only(&credentials_path(&root)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn set_mode(path: &Path, mode: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn export_write_does_not_tighten_the_user_directory() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        set_mode(&root, 0o755);
+        let target = root.join("Bruce-billing.csv");
+        atomic_export_write(&target, b"a,b\n").unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"a,b\n");
+        #[cfg(unix)]
+        assert_eq!(mode_of(&root), 0o755, "导出不得像凭证那样收紧用户目录权限");
+        #[cfg(windows)]
+        assert!(
+            windows_security::assert_current_sid_only(&root).is_err(),
+            "导出不得把用户目录改成仅当前 SID 的受保护 DACL"
+        );
+        let leftovers = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with('.'))
+            .count();
+        assert_eq!(leftovers, 0, "导出失败/成功都不得残留临时文件");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn managed_write_secures_the_private_directory_only_once() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        set_mode(&root, 0o755);
+        let target = root.join("snapshot.json");
+        atomic_managed_write(&target, b"{}").unwrap();
+        #[cfg(unix)]
+        assert_eq!(mode_of(&root), 0o700, "首次写入应收紧应用私有目录");
+        #[cfg(windows)]
+        windows_security::assert_current_sid_only(&root).unwrap();
+        #[cfg(windows)]
+        windows_security::assert_current_sid_only(&target).unwrap();
+
+        #[cfg(unix)]
+        {
+            // 目录被外部调整后，后续每轮快照写入不得再次重设 ACL。
+            set_mode(&root, 0o755);
+            atomic_managed_write(&target, b"{}").unwrap();
+            assert_eq!(mode_of(&root), 0o755, "每轮刷新不得重复重设目录 ACL");
+        }
+        let _ = fs::remove_dir_all(&root);
     }
 }

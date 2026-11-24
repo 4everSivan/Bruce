@@ -40,6 +40,16 @@ fn load_alert_state(path: &std::path::Path) -> Option<AlertState> {
     (state.version == collector_policy::alerts::ALERT_STATE_VERSION).then_some(state)
 }
 
+/// C251: 局部刷新在途状态 —— 只有 Idle 才起线程；Running 期间的重复触发合并为
+/// 一次后续执行，避免连点无界创建 OS 线程排队等待 collection 锁。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum LocalRefreshState {
+    #[default]
+    Idle,
+    Running,
+    RunningPending,
+}
+
 #[derive(Default)]
 pub struct SchedulerControl {
     manual_refresh: Mutex<Option<mpsc::SyncSender<()>>>,
@@ -51,6 +61,7 @@ pub struct SchedulerControl {
     pub collection: Mutex<()>,
     /// 定向刷新进行中的 Provider (UI 契约: 目标按钮显示进度并禁用)。
     pub refreshing_providers: Mutex<BTreeSet<String>>,
+    local_refresh: Mutex<LocalRefreshState>,
 }
 
 impl SchedulerControl {
@@ -99,6 +110,60 @@ impl SchedulerControl {
             *guard = Some(sender);
         }
         receiver
+    }
+
+    /// 局部刷新的防重入闸门 (C251): 返回 true 表示调用方应启动执行线程。
+    pub fn begin_local_refresh(&self) -> bool {
+        let mut state = self
+            .local_refresh
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match *state {
+            LocalRefreshState::Idle => {
+                *state = LocalRefreshState::Running;
+                true
+            }
+            LocalRefreshState::Running => {
+                *state = LocalRefreshState::RunningPending;
+                false
+            }
+            LocalRefreshState::RunningPending => false,
+        }
+    }
+
+    /// 一轮局部刷新结束: 返回 true 表示在途期间收到过合并请求，应再执行一轮。
+    pub fn finish_local_refresh(&self) -> bool {
+        let mut state = self
+            .local_refresh
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match *state {
+            LocalRefreshState::RunningPending => {
+                *state = LocalRefreshState::Running;
+                true
+            }
+            _ => {
+                *state = LocalRefreshState::Idle;
+                false
+            }
+        }
+    }
+
+    /// 清理用量缓存时磁盘与内存快照必须同时清空 (C251): 只删文件会让下一轮刷新
+    /// 继续以陈旧内存 artifact 作为合并基线。
+    pub fn reset_snapshot(&self, root: &std::path::Path) -> Result<(), String> {
+        crate::runtime_core::clear_snapshot(root)?;
+        if let Ok(mut state) = self.snapshot.lock() {
+            *state = SnapshotState::default();
+        }
+        Ok(())
+    }
+
+    /// 在快照锁内克隆 artifact 后立即释放，再执行回调 (C251)。回调可能同步派发到
+    /// Win32 主线程；持锁调用会与主线程的看板查询形成 AB-BA 死锁。
+    pub fn with_artifact<T>(&self, action: impl FnOnce(&serde_json::Value) -> T) -> Option<T> {
+        let artifact = self.snapshot.lock().ok()?.artifact().cloned()?;
+        Some(action(&artifact))
     }
 }
 
@@ -165,8 +230,8 @@ mod desktop {
             (alerts, state)
         };
         if let Ok(data) = serde_json::to_vec(&state) {
-            // 非敏感状态快照: 复用 credentials 的 ACL + 原子替换语义 (T31).
-            let _ = credentials::atomic_private_write(&path, &data);
+            // 非敏感状态快照: 私有 ACL + 原子替换, 目录级 ACL 每进程只施放一次 (C251).
+            let _ = credentials::atomic_managed_write(&path, &data);
         }
         if !to_notify.is_empty() {
             // C159: 退役 Windows Toast 弹窗通知, 改为向托盘气泡浮层派发并展现
@@ -313,11 +378,9 @@ mod desktop {
                     })
                     .unwrap_or_else(|_| Err("SNAPSHOT_LOCK_FAILED".into()));
                 if applied.is_ok() {
-                    if let Ok(state) = control.snapshot.lock() {
-                        if let Some(artifact) = state.artifact() {
-                            deliver_alerts(app, artifact, manual);
-                        }
-                    }
+                    // C251: 先在快照锁内克隆 artifact 并释放锁，再投递预警 —— 弹窗会
+                    // 同步派发到 Win32 主线程，持锁调用会与主线程的看板查询 AB-BA 死锁。
+                    control.with_artifact(|artifact| deliver_alerts(app, artifact, manual));
                     RefreshOutcome::Success
                 } else {
                     RefreshOutcome::Failed { rate_limited }
@@ -412,51 +475,72 @@ mod desktop {
 
     /// C212: Agent 卡内刷新只跑本机会话采集; 不查询订阅额度, 上一份 services
     /// 由 `plan_local_only` + 共享 merge 原样回填。与全量/定向刷新共用采集互斥。
+    ///
+    /// C251: 在途期间的重复触发只记为一次合并请求，不再每次点击各起一个线程
+    /// 排队等待 `collection` 锁。
     pub fn refresh_agent_usage_local(app: &AppHandle) -> Result<(), String> {
-        let app = app.clone();
-        std::thread::spawn(move || {
-            let control = app.state::<SchedulerControl>();
-            let _collection = control.collection.lock();
-            let root = paths::data_root();
-            let settings = load_settings(&root);
-            let now_ms = chrono::Utc::now().timestamp_millis();
-            let interval_secs = settings.refresh_interval_secs as i64;
-            if let Ok(mut state) = control.snapshot.lock() {
-                state.begin_refresh();
-            }
-            publish(&app);
-            let policy = {
-                let previous = control
-                    .snapshot
-                    .lock()
-                    .ok()
-                    .and_then(|state| state.artifact().cloned());
-                crate::quota_policy::plan_local_only(previous.as_ref())
-            };
-            // 空凭证: capabilities 仅 localSessions, collector 不发起外部额度请求。
-            let result = collector::run_configured_collection(
-                credentials::CredentialPayloads::new(),
-                &settings,
-            );
-            if let Ok(mut state) = control.snapshot.lock() {
-                match &result {
-                    Ok(response) => {
-                        let _ = state.apply_response_with_policy(
-                            response,
-                            Some(&policy),
-                            now_ms,
-                            interval_secs,
-                        );
-                    }
-                    Err(_) => state.fail("COLLECTION_FAILED"),
+        let control = app.state::<SchedulerControl>();
+        if !control.begin_local_refresh() {
+            return Ok(());
+        }
+        let thread_app = app.clone();
+        let spawned = std::thread::Builder::new()
+            .name("bruce-local-refresh".into())
+            .spawn(move || loop {
+                run_local_refresh(&thread_app);
+                if !thread_app
+                    .state::<SchedulerControl>()
+                    .finish_local_refresh()
+                {
+                    break;
                 }
-                if state.save(&root).is_err() {
-                    state.fail("SNAPSHOT_WRITE_FAILED");
-                }
-            }
-            publish(&app);
-        });
+            });
+        if let Err(error) = spawned {
+            app.state::<SchedulerControl>().finish_local_refresh();
+            return Err(error.to_string());
+        }
         Ok(())
+    }
+
+    fn run_local_refresh(app: &AppHandle) {
+        let control = app.state::<SchedulerControl>();
+        let _collection = control.collection.lock();
+        let root = paths::data_root();
+        let settings = load_settings(&root);
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let interval_secs = settings.refresh_interval_secs as i64;
+        if let Ok(mut state) = control.snapshot.lock() {
+            state.begin_refresh();
+        }
+        publish(app);
+        let policy = {
+            let previous = control
+                .snapshot
+                .lock()
+                .ok()
+                .and_then(|state| state.artifact().cloned());
+            crate::quota_policy::plan_local_only(previous.as_ref())
+        };
+        // 空凭证: capabilities 仅 localSessions, collector 不发起外部额度请求。
+        let result =
+            collector::run_configured_collection(credentials::CredentialPayloads::new(), &settings);
+        if let Ok(mut state) = control.snapshot.lock() {
+            match &result {
+                Ok(response) => {
+                    let _ = state.apply_response_with_policy(
+                        response,
+                        Some(&policy),
+                        now_ms,
+                        interval_secs,
+                    );
+                }
+                Err(_) => state.fail("COLLECTION_FAILED"),
+            }
+            if state.save(&root).is_err() {
+                state.fail("SNAPSHOT_WRITE_FAILED");
+            }
+        }
+        publish(app);
     }
 
     pub fn spawn(app: AppHandle) {
@@ -592,5 +676,79 @@ mod alert_state_tests {
         assert_eq!(load_alert_state(&path), None, "损坏状态按 bootstrap 处理");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod concurrency_tests {
+    use super::*;
+
+    fn temp_root() -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "bruce-scheduler-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn populated_snapshot() -> SnapshotState {
+        serde_json::from_value(serde_json::json!({
+            "artifact": {"schemaVersion": 1, "module": "agent-usage"},
+            "phase": "ok"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn local_refresh_bursts_collapse_to_one_follow_up() {
+        let control = SchedulerControl::new();
+        assert!(control.begin_local_refresh(), "空闲时首个触发应启动线程");
+        assert!(!control.begin_local_refresh(), "在途触发不得再起线程");
+        assert!(!control.begin_local_refresh(), "在途触发不得再起线程");
+        assert!(
+            control.finish_local_refresh(),
+            "在途期间的触发合并为一次后续执行"
+        );
+        assert!(!control.finish_local_refresh(), "后续执行结束后回到空闲");
+        assert!(control.begin_local_refresh(), "空闲后可再次启动");
+    }
+
+    #[test]
+    fn with_artifact_releases_the_snapshot_lock_before_the_callback() {
+        let control = SchedulerControl::new();
+        *control.snapshot.lock().unwrap() = populated_snapshot();
+        let lock_available = control.with_artifact(|_| control.snapshot.try_lock().is_ok());
+        assert_eq!(
+            lock_available,
+            Some(true),
+            "投递预警前必须释放 snapshot 锁 (AB-BA 死锁回归)"
+        );
+    }
+
+    #[test]
+    fn reset_snapshot_clears_disk_and_memory() {
+        let root = temp_root();
+        std::fs::write(root.join("snapshot.json"), b"{}").unwrap();
+        let control = SchedulerControl::new();
+        *control.snapshot.lock().unwrap() = populated_snapshot();
+        assert!(control.snapshot.lock().unwrap().artifact().is_some());
+
+        control.reset_snapshot(&root).unwrap();
+        assert!(
+            !root.join("snapshot.json").exists(),
+            "清理缓存后磁盘快照必须删除"
+        );
+        assert!(
+            control.snapshot.lock().unwrap().artifact().is_none(),
+            "清理缓存后内存快照必须同时清空"
+        );
+
+        control.reset_snapshot(&root).unwrap(); // 幂等
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

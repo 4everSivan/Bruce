@@ -121,7 +121,7 @@
     },
     "C251": {
       "title": "Windows 导出目录 ACL 破坏、预警 AB-BA 死锁与快照/配置并发修复",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C251-win-export-acl-and-deadlock",
       "topic": "WindowsCompat",
       "file": "docs/devel/change/C251.json"

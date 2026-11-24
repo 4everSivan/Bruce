@@ -410,7 +410,10 @@ mod desktop {
     /// 凭证与账单统计); 随后请求一次刷新以重建快照。
     #[tauri::command]
     fn clear_snapshot_cache(app: tauri::AppHandle) -> Result<(), String> {
-        crate::runtime_core::clear_snapshot(&paths::data_root())?;
+        // C251: 磁盘与内存必须一起清空，只删文件会让下一轮刷新继续以陈旧内存态为合并基线。
+        app.state::<SchedulerControl>()
+            .reset_snapshot(&paths::data_root())?;
+        scheduler::publish(&app);
         app.state::<SchedulerControl>().request_manual_refresh();
         Ok(())
     }
@@ -563,24 +566,29 @@ mod desktop {
         // 启用集合恒由 subscription_providers 派生 (C090 / 设计规则 22): 归一后落盘并回传,
         // 前端据此刷新本地缓存, 避免两处启用口径漂移。
         settings::sync_enabled_providers(&mut settings);
-        let previous = settings::load_settings(&paths::data_root());
-        let registered = app.state::<RegisteredHotkey>();
-        let mut current = registered.0.lock().map_err(|_| "HOTKEY_LOCK_FAILED")?;
-        // 录制态下旧热键处于注销状态: 先恢复登记, 替换流程才能按原语义注销旧键。
-        let _ = apply_hotkey_recording(&app, &mut current, false);
-        replace_hotkey(
-            &current,
-            &settings.hotkey,
-            |key| register_hotkey(&app, key),
-            |key| {
-                app.global_shortcut()
-                    .unregister(key)
-                    .map_err(|_| "HOTKEY_UNREGISTER_FAILED".into())
-            },
-            || settings::save_settings(&paths::data_root(), &settings),
-        )?;
-        *current = settings.hotkey.clone();
-        drop(current);
+        // C251: 「读取基线 → 热键注册 → 落盘」必须作为整体串行，否则后台的
+        // 更新检查 / 价卡同步并发写回时，任一方刚写的字段会被整份覆盖丢失。
+        let root = paths::data_root();
+        let previous = settings::with_settings_lock(|| -> Result<AppSettings, String> {
+            let previous = settings::load_settings(&root);
+            let registered = app.state::<RegisteredHotkey>();
+            let mut current = registered.0.lock().map_err(|_| "HOTKEY_LOCK_FAILED")?;
+            // 录制态下旧热键处于注销状态: 先恢复登记, 替换流程才能按原语义注销旧键。
+            let _ = apply_hotkey_recording(&app, &mut current, false);
+            replace_hotkey(
+                &current,
+                &settings.hotkey,
+                |key| register_hotkey(&app, key),
+                |key| {
+                    app.global_shortcut()
+                        .unregister(key)
+                        .map_err(|_| "HOTKEY_UNREGISTER_FAILED".into())
+                },
+                || settings::save_settings_locked(&root, &settings),
+            )?;
+            *current = settings.hotkey.clone();
+            Ok(previous)
+        })?;
         let _ = app.emit("settings-updated", &settings);
         scheduler::publish(&app);
         // 设置即时生效 (C069): 只有采集输入变化才触发全量采集, 其余变更仅重新发布看板

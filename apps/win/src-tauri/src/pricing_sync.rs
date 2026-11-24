@@ -357,11 +357,11 @@ impl PricingSyncManager {
 
         match result {
             Ok(stage) => {
-                // 更新设置持久化上次同步时间
+                // 更新设置持久化上次同步时间 (C251: 只改本字段，避免整份覆盖丢更新)
                 let root = crate::paths::data_root();
-                let mut settings = crate::settings::load_settings(&root);
-                settings.pricing_last_sync_at = Some(Local::now().to_rfc3339());
-                let _ = crate::settings::save_settings(&root, &settings);
+                let _ = crate::settings::update_settings(&root, |settings| {
+                    settings.pricing_last_sync_at = Some(Local::now().to_rfc3339());
+                });
 
                 {
                     let mut stage_guard = self.stage.lock().unwrap();
