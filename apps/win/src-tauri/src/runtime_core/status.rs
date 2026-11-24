@@ -85,6 +85,7 @@ pub fn runtime_error_text(code: &str) -> Option<&'static str> {
     Some(match code {
         "COLLECTION_PARTIAL" => "部分来源未能采集",
         "COLLECTION_FAILED" => "本次采集失败",
+        "COLLECTION_WATCHDOG_TIMEOUT" => "采集超时已隔离",
         "SNAPSHOT_RESTORED" => "显示上次保存的数据",
         "SNAPSHOT_WRITE_FAILED" => "本地快照写入失败",
         "SNAPSHOT_INVALID" | "SNAPSHOT_READ_FAILED" => "本地快照无法读取",

@@ -1735,7 +1735,7 @@ fn runtime_error_text_matches_frontend_table() {
         assert_eq!(runtime_error_text(code), Some(text), "{code}");
         entries += 1;
     }
-    assert_eq!(entries, 9, "前端表登记 9 个机器码");
+    assert_eq!(entries, 10, "前端表登记 10 个机器码");
     assert_eq!(runtime_error_text("SOME_FUTURE_CODE"), None);
 }
 

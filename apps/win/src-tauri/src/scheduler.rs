@@ -1,8 +1,9 @@
 //! One collector channel, bounded manual wakeups and a single interruptible retry wait.
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "desktop")]
 use serde_json::Value;
@@ -83,9 +84,10 @@ pub struct SchedulerControl {
     pub retry_count: Mutex<u32>,
     pub alert_state: Mutex<QuotaAlertRuntimeState>,
     pub snapshot: Mutex<SnapshotState>,
-    /// 采集通道互斥: 全量周期与 Provider 定向刷新串行执行, 快照写入不交错
-    /// (mac RefreshScheduler 同一容量约束)。
-    pub collection: Mutex<()>,
+    /// 采集通道租约 (C264): 原子忙标志 + 代数取代原 `Mutex<()>`。看门狗超时后
+    /// 放弃租约（代数递增、忙标志放开），卡死的采集线程不得再锁死后续刷新。
+    collection_busy: AtomicBool,
+    collection_generation: AtomicU64,
     /// 定向刷新进行中的 Provider (UI 契约: 目标按钮显示进度并禁用)。
     pub refreshing_providers: Mutex<BTreeSet<String>>,
     local_refresh: Mutex<LocalRefreshState>,
@@ -93,9 +95,87 @@ pub struct SchedulerControl {
     panel_cache: Mutex<PanelCache>,
 }
 
+/// 采集预算：mac 外层 `moduleSeconds + externalRequestSeconds + 5s 宽限` = 105s。
+pub const COLLECTION_WATCHDOG_SECS: u64 = 105;
+
+/// 采集租约 (C264): 同一时刻只允许一个全量/定向/局部采集。
+/// `abandon` 用于看门狗超时：立即放开忙标志并递增代数，让后续刷新继续，
+/// 卡死的采集线程被隔离（其结果由父线程丢弃）。
+pub struct CollectionLease<'a> {
+    control: &'a SchedulerControl,
+    generation: u64,
+    finished: bool,
+}
+
+impl CollectionLease<'_> {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// 放弃租约（看门狗超时）：后续刷新不再等待本线程。
+    pub fn abandon(mut self) {
+        self.finished = true;
+        self.control
+            .collection_generation
+            .fetch_add(1, Ordering::SeqCst);
+        self.control.collection_busy.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Drop for CollectionLease<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.control.collection_busy.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+/// 在独立线程执行采集并在超时后隔离：返回 `Err(())` 表示超时/线程失败/panic，
+/// 调用方必须放弃租约并写入可见失败态；子线程结果直接丢弃。
+pub(crate) fn run_with_watchdog<T, F>(name: &str, timeout: Duration, job: F) -> Result<T, ()>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let spawned = std::thread::Builder::new()
+        .name(format!("bruce-{name}"))
+        .spawn(move || {
+            if let Ok(value) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)) {
+                let _ = sender.send(value);
+            }
+        });
+    if spawned.is_err() {
+        return Err(());
+    }
+    receiver.recv_timeout(timeout).map_err(|_| ())
+}
+
 impl SchedulerControl {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 取得采集租约；已有采集在途时返回 None (调用方按冲突处理)。
+    pub fn begin_collection(&self) -> Option<CollectionLease<'_>> {
+        if self
+            .collection_busy
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return None;
+        }
+        let generation = self.collection_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        Some(CollectionLease {
+            control: self,
+            generation,
+            finished: false,
+        })
+    }
+
+    /// 采集是否在途 (诊断/测试用)。
+    pub fn collection_in_flight(&self) -> bool {
+        self.collection_busy.load(Ordering::SeqCst)
     }
 
     pub fn request_manual_refresh(&self) {
@@ -375,9 +455,13 @@ mod desktop {
         manual: bool,
     ) -> RefreshOutcome {
         let root = paths::data_root();
-        // 与定向刷新串行: 进行中的定向刷新结束后再开始全量采集。
+        // 与定向刷新串行: 进行中的采集结束后再开始全量采集 (C264: 租约 + 看门狗)。
         let control = app.state::<SchedulerControl>();
-        let _collection = control.collection.lock();
+        let Some(lease) = control.begin_collection() else {
+            return RefreshOutcome::Failed {
+                rate_limited: false,
+            };
+        };
         if let Ok(mut state) = app.state::<SchedulerControl>().snapshot.lock() {
             state.begin_refresh();
         }
@@ -409,21 +493,30 @@ mod desktop {
         let payloads = credentials::load_credentials(&root);
         // C075: 采集前自动跟随本机 Claude CLI 登录态 (零配置, 不落盘)。
         let home = paths::home_root();
-        let mut first = true;
-        let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
-            let payloads = credentials::with_local_claude(payloads, &home);
-            // C085: 同范式跟随本机 Grok CLI 登录态 (零配置, 不落盘)。
-            let payloads = credentials::with_local_grok(payloads, &home);
-            if first {
-                first = false;
-                collector::run_configured_collection(payloads, &effective_settings)
-            } else {
-                collector::run_codex_retry(payloads, &effective_settings)
-            }
-        });
+        // C264: 采集在独立线程执行, 超时后父线程放弃租约并写失败态; 子线程结果丢弃。
+        let job_root = root.clone();
+        let job_settings = effective_settings.clone();
+        let result = run_with_watchdog(
+            "collect-full",
+            Duration::from_secs(COLLECTION_WATCHDOG_SECS),
+            move || {
+                let mut first = true;
+                credentials::collect_with_recovery(&job_root, payloads, |payloads| {
+                    let payloads = credentials::with_local_claude(payloads, &home);
+                    // C085: 同范式跟随本机 Grok CLI 登录态 (零配置, 不落盘)。
+                    let payloads = credentials::with_local_grok(payloads, &home);
+                    if first {
+                        first = false;
+                        collector::run_configured_collection(payloads, &job_settings)
+                    } else {
+                        collector::run_codex_retry(payloads, &job_settings)
+                    }
+                })
+            },
+        );
         let control = app.state::<SchedulerControl>();
         let outcome = match result {
-            Ok(response) => {
+            Ok(Ok(response)) => {
                 let rate_limited = classify_rate_limited(&response);
                 let applied = control
                     .snapshot
@@ -450,11 +543,22 @@ mod desktop {
                     RefreshOutcome::Failed { rate_limited }
                 }
             }
-            Err(_) => {
+            Ok(Err(_)) => {
                 if let Ok(mut state) = control.snapshot.lock() {
                     state.fail("COLLECTION_FAILED");
                     let _ = state.save(&root);
                 }
+                RefreshOutcome::Failed {
+                    rate_limited: false,
+                }
+            }
+            Err(()) => {
+                // C264: 看门狗超时/线程失败 — 放弃租约, 后续刷新不再等待卡死线程。
+                if let Ok(mut state) = control.snapshot.lock() {
+                    state.fail("COLLECTION_WATCHDOG_TIMEOUT");
+                    let _ = state.save(&root);
+                }
+                lease.abandon();
                 RefreshOutcome::Failed {
                     rate_limited: false,
                 }
@@ -495,41 +599,58 @@ mod desktop {
         let app = app.clone();
         std::thread::spawn(move || {
             let control = app.state::<SchedulerControl>();
-            {
-                let _collection = control.collection.lock();
-                let root = paths::data_root();
-                let settings = load_settings(&root);
-                let payloads = credentials::load_credentials(&root);
-                // C075: 定向刷新同样跟随本机 Claude CLI 登录态。
-                let home = paths::home_root();
-                let mut first = true;
-                let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
-                    let payloads = credentials::with_local_claude(payloads, &home);
-                    // C085: 定向刷新同样跟随本机 Grok CLI 登录态。
-                    let payloads = credentials::with_local_grok(payloads, &home);
-                    if first {
-                        first = false;
-                        collector::run_scoped_collection(payloads, &settings, &provider)
-                    } else {
-                        collector::run_codex_retry(payloads, &settings)
-                    }
-                });
-                if let Ok(mut state) = control.snapshot.lock() {
-                    match &result {
-                        Ok(response) => {
-                            // C077: 定向刷新写回目标 provider 的额度尝试时间戳。
-                            let _ = state.apply_scoped_response_with_policy(
-                                response,
-                                &provider,
-                                chrono::Utc::now().timestamp_millis(),
-                            );
+            let Some(lease) = control.begin_collection() else {
+                // 全量采集刚启动/仍在途：本次定向刷新按冲突结束, 释放按钮进度态。
+                control.end_provider_refresh(&provider);
+                publish(&app);
+                return;
+            };
+            let root = paths::data_root();
+            let settings = load_settings(&root);
+            let payloads = credentials::load_credentials(&root);
+            // C075: 定向刷新同样跟随本机 Claude CLI 登录态。
+            let home = paths::home_root();
+            // C264: 单 Provider 采集同样走看门狗；超时后隔离线程并标记 stale。
+            let job_root = root.clone();
+            let job_settings = settings.clone();
+            let job_provider = provider.clone();
+            let result = run_with_watchdog(
+                "collect-scoped",
+                Duration::from_secs(COLLECTION_WATCHDOG_SECS),
+                move || {
+                    let mut first = true;
+                    credentials::collect_with_recovery(&job_root, payloads, |payloads| {
+                        let payloads = credentials::with_local_claude(payloads, &home);
+                        // C085: 定向刷新同样跟随本机 Grok CLI 登录态。
+                        let payloads = credentials::with_local_grok(payloads, &home);
+                        if first {
+                            first = false;
+                            collector::run_scoped_collection(payloads, &job_settings, &job_provider)
+                        } else {
+                            collector::run_codex_retry(payloads, &job_settings)
                         }
-                        Err(_) => state.mark_provider_stale(&provider),
+                    })
+                },
+            );
+            let timed_out = result.is_err();
+            if let Ok(mut state) = control.snapshot.lock() {
+                match &result {
+                    Ok(Ok(response)) => {
+                        // C077: 定向刷新写回目标 provider 的额度尝试时间戳。
+                        let _ = state.apply_scoped_response_with_policy(
+                            response,
+                            &provider,
+                            chrono::Utc::now().timestamp_millis(),
+                        );
                     }
-                    if state.save(&root).is_err() {
-                        state.fail("SNAPSHOT_WRITE_FAILED");
-                    }
+                    Ok(Err(_)) | Err(()) => state.mark_provider_stale(&provider),
                 }
+                if state.save(&root).is_err() {
+                    state.fail("SNAPSHOT_WRITE_FAILED");
+                }
+            }
+            if timed_out {
+                lease.abandon();
             }
             control.end_provider_refresh(&provider);
             publish(&app);
@@ -568,7 +689,11 @@ mod desktop {
 
     fn run_local_refresh(app: &AppHandle) {
         let control = app.state::<SchedulerControl>();
-        let _collection = control.collection.lock();
+        let Some(lease) = control.begin_collection() else {
+            // 全量/定向采集在途：本轮局部刷新让路；合并闸门会决定是否需要再跑。
+            std::thread::sleep(Duration::from_millis(250));
+            return;
+        };
         let root = paths::data_root();
         let settings = load_settings(&root);
         let now_ms = chrono::Utc::now().timestamp_millis();
@@ -586,11 +711,22 @@ mod desktop {
             crate::quota_policy::plan_local_only(previous.as_ref())
         };
         // 空凭证: capabilities 仅 localSessions, collector 不发起外部额度请求。
-        let result =
-            collector::run_configured_collection(credentials::CredentialPayloads::new(), &settings);
+        // C264: 采集在独立线程执行, 超时后放弃租约并写失败态。
+        let job_settings = settings.clone();
+        let result = run_with_watchdog(
+            "collect-local",
+            Duration::from_secs(COLLECTION_WATCHDOG_SECS),
+            move || {
+                collector::run_configured_collection(
+                    credentials::CredentialPayloads::new(),
+                    &job_settings,
+                )
+            },
+        );
+        let timed_out = result.is_err();
         if let Ok(mut state) = control.snapshot.lock() {
             match &result {
-                Ok(response) => {
+                Ok(Ok(response)) => {
                     let _ = state.apply_response_with_policy(
                         response,
                         Some(&policy),
@@ -598,11 +734,15 @@ mod desktop {
                         interval_secs,
                     );
                 }
-                Err(_) => state.fail("COLLECTION_FAILED"),
+                Ok(Err(_)) => state.fail("COLLECTION_FAILED"),
+                Err(()) => state.fail("COLLECTION_WATCHDOG_TIMEOUT"),
             }
             if state.save(&root).is_err() {
                 state.fail("SNAPSHOT_WRITE_FAILED");
             }
+        }
+        if timed_out {
+            lease.abandon();
         }
         publish(app);
     }
@@ -814,5 +954,44 @@ mod concurrency_tests {
 
         control.reset_snapshot(&root).unwrap(); // 幂等
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// C264: 采集租约同一时刻只允许一个采集者; 看门狗放弃后立即可重新获取,
+    /// 且代数递增 (卡死线程被隔离)。
+    #[test]
+    fn collection_lease_is_exclusive_and_abandon_releases() {
+        let control = SchedulerControl::new();
+        let lease = control.begin_collection().expect("首个租约应成功");
+        assert!(control.collection_in_flight());
+        assert!(control.begin_collection().is_none(), "并发租约必须被拒绝");
+        let generation = lease.generation();
+        lease.abandon();
+        assert!(!control.collection_in_flight(), "放弃后忙标志必须释放");
+        let next = control.begin_collection().expect("放弃后应可重新获取");
+        assert!(next.generation() > generation, "代数必须递增以隔离旧线程");
+        drop(next);
+        assert!(!control.collection_in_flight());
+    }
+
+    /// C264: 看门狗正常返回结果; 超时返回 Err 且不等待子线程。
+    #[test]
+    fn watchdog_returns_values_and_times_out() {
+        assert_eq!(
+            run_with_watchdog("watchdog-ok", Duration::from_millis(200), || 7u8),
+            Ok(7)
+        );
+        let started = std::time::Instant::now();
+        assert!(
+            run_with_watchdog("watchdog-timeout", Duration::from_millis(20), || {
+                std::thread::sleep(Duration::from_millis(200));
+                1u8
+            })
+            .is_err()
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(150),
+            "超时必须在预算内返回, elapsed={elapsed:?}"
+        );
     }
 }
