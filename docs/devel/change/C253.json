@@ -4,7 +4,7 @@
   "title": "Rust 采集器 JSONL 缓存 TOCTOU 重复计费、空模型定价劫持与动态分档价卡修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C253-collector-cache-toctou-and-pricing-bugs",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"model_matches|rate_class_for|tiered_rules|cache_payload_entry|fingerprint_head_tail|total_cost > 0\\.0\" core/collector/crates/",
     "expected": "`jsonl_cache.rs:693` 在 `parse_file` 前读 `metadata` 并回传；`model_matches` 未检查 `!model.is_empty()`；`rate_class_for` 使用静态 `OnceLock` 且 `.find()`；`fingerprint_head_tail` 单次 `read`；`total_cost > 0.0` 判已计价",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：jsonl_cache.rs 解析前取 metadata 后回传 cache_payload_entry；model_matches 未检 model 空串；rate_class_for 走静态 tiered_rules + find；fingerprint_head_tail 头块单次 read；codex 回退键按 input+cache_read；collector-aggregate:185 与 collector-application:288 用 total_cost > 0.0 判已计价。"
   },
   "callback": {
     "before": [
@@ -93,7 +93,7 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": false,
     "commit": "",
     "tag": ""

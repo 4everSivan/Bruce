@@ -488,6 +488,8 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         cancellation,
         #[cfg(test)]
         None,
+        #[cfg(test)]
+        None,
     )
 }
 
@@ -506,6 +508,28 @@ pub(crate) fn scan_cached_jsonl_tree_with_hook<A: JsonlCacheAdapter>(
         adapter,
         cancellation,
         Some(Box::new(|path: &Path| before_file(path))),
+        #[cfg(test)]
+        None,
+    )
+}
+
+/// 测试专用: stat 之后、解析之前回调 (C253: 模拟解析窗口内的追加写)。
+#[cfg(test)]
+pub(crate) fn scan_cached_jsonl_tree_with_stat_hook<A: JsonlCacheAdapter>(
+    root: &Path,
+    config: &JsonlCacheConfig,
+    adapter: &A,
+    cancellation: &CancellationToken,
+    after_stat: &mut dyn FnMut(&Path),
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree_impl(
+        root,
+        config,
+        adapter,
+        cancellation,
+        #[cfg(test)]
+        None,
+        Some(Box::new(|path: &Path| after_stat(path))),
     )
 }
 
@@ -515,6 +539,7 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
     adapter: &A,
     cancellation: &CancellationToken,
     #[cfg(test)] before_file: Option<FileHook<'_>>,
+    #[cfg(test)] after_stat: Option<FileHook<'_>>,
 ) -> Result<SourceScan, SourceScanError> {
     cancellation.check()?;
     if config.source_id != adapter.source_id() {
@@ -547,6 +572,8 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
         visited_dirs: std::collections::BTreeSet::new(),
         #[cfg(test)]
         before_file,
+        #[cfg(test)]
+        after_stat,
     };
     let mut aggregator = adapter.aggregator(&config.window);
     visit_tree(root, &mut state, &mut aggregator, 0)?;
@@ -597,6 +624,9 @@ struct TreeState<'a, A> {
     visited_dirs: std::collections::BTreeSet<PathBuf>,
     #[cfg(test)]
     before_file: Option<FileHook<'a>>,
+    /// C253: 每个文件 stat 之后、解析之前回调 (模拟活跃 CLI 在 stat 与解析之间追加)。
+    #[cfg(test)]
+    after_stat: Option<FileHook<'a>>,
 }
 
 /// 测试专用的逐文件回调 (C196)。
@@ -702,6 +732,11 @@ fn process_file<A: JsonlCacheAdapter>(
         }
     };
     let current_file = JsonlFileSignature::from_metadata(&metadata);
+    // C253 测试钩子: stat 之后、解析之前 (模拟活跃 CLI 在两者之间追加)。
+    #[cfg(test)]
+    if let Some(hook) = state.after_stat.as_deref_mut() {
+        hook(path);
+    }
     let loaded: CacheLoad<JsonlCacheEntry> = load_json_cache(&cache_path);
     if matches!(loaded, CacheLoad::Corrupt) {
         state.stats.cache_corruptions = state.stats.cache_corruptions.saturating_add(1);
@@ -737,16 +772,24 @@ fn process_file<A: JsonlCacheAdapter>(
                     let probe = previous.probe.then(appended.probe);
                     let mut merged = state.adapter.merge_append(previous, appended, modified);
                     merged.probe = probe;
-                    if let Err(error) = cache_payload_entry(
-                        path,
-                        &metadata,
-                        state.config,
-                        source_path_digest.as_str(),
-                        merged.clone(),
-                        &cache_path,
-                        state.cancellation,
-                    ) {
-                        record_cache_write_error(error, &mut state.stats)?;
+                    // C253: 解析期间文件若被追加，payload 已含新字节但旧 metadata 的
+                    // safe_offset 不含它们；写回会让下一轮从旧 offset 重复解析该段。
+                    // 本轮结果照常返回，缓存条目保持原样，下一轮按追加正常结算。
+                    if file_unchanged_since(path, &current_file) {
+                        if let Err(error) = cache_payload_entry(
+                            path,
+                            &metadata,
+                            state.config,
+                            source_path_digest.as_str(),
+                            merged.clone(),
+                            &cache_path,
+                            state.cancellation,
+                        ) {
+                            record_cache_write_error(error, &mut state.stats)?;
+                        }
+                    } else {
+                        state.stats.cache_invalidations =
+                            state.stats.cache_invalidations.saturating_add(1);
                     }
                     state.stats.cache_appends = state.stats.cache_appends.saturating_add(1);
                     return Ok(Some(merged));
@@ -784,19 +827,32 @@ fn process_file<A: JsonlCacheAdapter>(
             return Ok(stale);
         }
     };
-    if let Err(error) = cache_payload_entry(
-        path,
-        &metadata,
-        state.config,
-        source_path_digest.as_str(),
-        payload.clone(),
-        &cache_path,
-        state.cancellation,
-    ) {
-        record_cache_write_error(error, &mut state.stats)?;
+    // C253: 解析期间被追加时不写缓存 —— 旧 metadata 的 safe_offset 无法覆盖实际读到的
+    // 新字节；保留旧条目让下一轮从旧 offset 追加，避免追加段被永久重复累计。
+    if file_unchanged_since(path, &current_file) {
+        if let Err(error) = cache_payload_entry(
+            path,
+            &metadata,
+            state.config,
+            source_path_digest.as_str(),
+            payload.clone(),
+            &cache_path,
+            state.cancellation,
+        ) {
+            record_cache_write_error(error, &mut state.stats)?;
+        }
+    } else {
+        state.stats.cache_invalidations = state.stats.cache_invalidations.saturating_add(1);
     }
     state.stats.cache_rebuilds = state.stats.cache_rebuilds.saturating_add(1);
     Ok(Some(payload))
+}
+
+/// C253: 解析前 stat 与解析后复 stat 必须一致才允许落缓存 (size/mtime/inode/device)。
+fn file_unchanged_since(path: &Path, before: &JsonlFileSignature) -> bool {
+    fs::metadata(path)
+        .map(|metadata| JsonlFileSignature::from_metadata(&metadata) == *before)
+        .unwrap_or(false)
 }
 
 fn cache_payload_is_valid(entry: &JsonlCacheEntry) -> bool {

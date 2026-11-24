@@ -1025,3 +1025,17 @@ fn request_log_reports_truncation_and_stores_the_matched_price_key() {
 
     std::fs::remove_dir_all(&home).ok();
 }
+
+/// C253: artifact 总额只在「无任何已计价 agent」时为 None；$0 定价仍算已计价。
+#[test]
+fn artifact_total_cost_keeps_zero_priced_agents() {
+    assert_eq!(
+        crate::total_cost_of([Some(0.0), None].into_iter()),
+        Some(0.0)
+    );
+    assert_eq!(crate::total_cost_of([None, None].into_iter()), None);
+    assert_eq!(
+        crate::total_cost_of([Some(1.5), Some(0.0)].into_iter()),
+        Some(1.5)
+    );
+}

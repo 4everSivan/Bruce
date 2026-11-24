@@ -267,6 +267,17 @@ fn assemble(context: &RunContext<'_>, gathered: Gathered) -> Result<Assembled, C
     })
 }
 
+/// C253: 汇总已计价 agent 的费用 —— 任一 agent 已计价即保留总额，合法 $0 输出 Some(0.0)。
+fn total_cost_of(costs: impl Iterator<Item = Option<f64>>) -> Option<f64> {
+    let mut total = 0.0;
+    let mut has_cost = false;
+    for cost in costs.flatten() {
+        total += cost;
+        has_cost = true;
+    }
+    has_cost.then_some(total)
+}
+
 /// Phase 3: fence, serialize and fence again before handing the artifact out.
 fn publish(
     context: &RunContext<'_>,
@@ -274,18 +285,15 @@ fn publish(
 ) -> Result<CollectionOutput, CollectionFailure> {
     let updates = &assembled.credential_updates;
     cancellation_fence(context, updates)?;
-    let total_cost = assembled
-        .agents
-        .iter()
-        .filter_map(|agent| agent.today_cost_usd)
-        .sum::<f64>();
+    // C253: 已计价但合计为 $0 的模型仍要输出 `Some(0.0)`，`> 0.0` 会把它误报为未计价。
+    let total_cost = total_cost_of(assembled.agents.iter().map(|agent| agent.today_cost_usd));
     let artifact = AgentUsageArtifact {
         schema_version: AGENT_USAGE_SCHEMA_VERSION,
         module: AGENT_USAGE_MODULE.to_owned(),
         generated_at: context.window.generated_at(),
         agents: assembled.agents,
         services: assembled.services,
-        total_cost_usd: (total_cost > 0.0).then_some(total_cost),
+        total_cost_usd: total_cost,
     };
     let artifact = serde_json::to_value(artifact).map_err(|_| {
         run_failure(
@@ -617,8 +625,8 @@ fn request_cost(pricing: &PricingTable, request: &RequestRecord) -> (Option<f64>
         cache_creation_1h: request.cache_creation_1h,
         project: request.project.as_deref(),
     };
-    let rate_class =
-        collector_domain::pricing::rate_class_for(model, request.timestamp_millis, request.input);
+    // C253: 用请求级价卡分类，`context.pricingCatalog` 热更新的峰谷/长上下文档才生效。
+    let rate_class = pricing.rate_class(model, request.timestamp_millis, request.input);
     let mut bucket = TokenBucket::default();
     bucket.add_sample_classified(&sample, rate_class);
     (

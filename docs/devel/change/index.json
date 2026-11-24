@@ -135,7 +135,7 @@
     },
     "C253": {
       "title": "Rust 采集器 JSONL 缓存 TOCTOU 重复计费、空模型定价劫持与动态分档价卡修复",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C253-collector-cache-toctou-and-pricing-bugs",
       "topic": "TokenUsage",
       "file": "docs/devel/change/C253.json"

@@ -390,7 +390,12 @@ fn observation_dedupe_key(observation: &CachedUsageObservation) -> Cow<'_, str> 
         Some(key) => Cow::Borrowed(key),
         None => Cow::Owned(codex_signature_key(
             observation.timestamp_millis,
-            observation.input.saturating_add(observation.cache_read),
+            // C253: 存储的 input 已扣除 cache_read 与 cache_creation，回退键必须把两者
+            // 都加回才能还原旧版 rollout 的原始输入 (此前漏加 cache_creation)。
+            observation
+                .input
+                .saturating_add(observation.cache_read)
+                .saturating_add(observation.cache_creation),
             observation.cache_read,
             observation.output,
         )),
@@ -1148,4 +1153,30 @@ pub(super) fn test_parse(
     )
     .unwrap()
     .observations
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// C253: 旧版 rollout 的回退去重键必须把 cache_creation 也加回原始输入，
+    /// 否则带缓存写入的记录会与解析期生成的键分叉。
+    #[test]
+    fn legacy_dedupe_fallback_restores_cache_creation() {
+        let observation = CachedUsageObservation {
+            dedupe_key: None,
+            timestamp_millis: 1_000,
+            model: None,
+            input: 100,
+            output: 10,
+            cache_read: 30,
+            cache_creation: 20,
+            cache_creation_1h: 0,
+            project: None,
+        };
+        assert_eq!(
+            observation_dedupe_key(&observation).as_ref(),
+            "t:1000:150:30:10"
+        );
+    }
 }

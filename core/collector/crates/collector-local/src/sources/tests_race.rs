@@ -1,7 +1,7 @@
 //! C196: JSONL 引擎的单文件竞态 —— 文件在列目录与 stat / 读指纹之间被删除或改动时只跳过该文件,
 //! 不中止整个来源; 解析失败沿用该路径旧条目的陈旧载荷 (与 dsh / Codex 同口径)。
 
-use super::jsonl_adapters::scan_claude_cached_with_hook;
+use super::jsonl_adapters::{scan_claude_cached_with_hook, scan_claude_cached_with_stat_hook};
 use super::scan_claude_cached;
 use super::tests_cache::{temp_root, window};
 use collector_runtime::CancellationToken;
@@ -123,5 +123,39 @@ fn unreadable_changed_file_keeps_stale_payload_and_other_files() {
         "旧条目仍在, 恢复后按追加计入"
     );
     assert!(recovered.notice.is_none(), "恢复后说明消失");
+    fs::remove_dir_all(root).ok();
+}
+
+/// C253: stat 与解析之间被活跃 CLI 追加时，追加段只能在下一轮正常计入一次。
+/// 旧实现把旧长度写回缓存，下一轮从旧 `safe_offset` 重复解析追加段，Token 永久翻倍。
+#[test]
+fn append_between_stat_and_parse_is_counted_exactly_once() {
+    let root = temp_root("c253-append-race");
+    let cache_root = root.join("cache");
+    let projects = root.join("projects");
+    fs::create_dir_all(projects.join("demo")).unwrap();
+    let live = projects.join("demo/live.jsonl");
+    fs::write(&live, claude_line("first", 0, 100)).unwrap();
+
+    let mut appended = false;
+    let mut hook = |path: &Path| {
+        if !appended && path.ends_with("live.jsonl") {
+            appended = true;
+            let mut content = fs::read_to_string(path).unwrap();
+            content.push_str(&claude_line("second", 1, 50));
+            fs::write(path, content).unwrap();
+        }
+    };
+    let raced =
+        scan_claude_cached_with_stat_hook(&projects, &window(), &cache_root, &mut hook).unwrap();
+    assert_eq!(today_total(&raced), 150, "本轮读到的新增行计入");
+    assert_eq!(raced.stats.cache_invalidations, 1, "解析期间变更不写缓存");
+
+    let next =
+        scan_claude_cached(&projects, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert_eq!(today_total(&next), 150, "下一轮不得重复累计追加段");
+    let again =
+        scan_claude_cached(&projects, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert_eq!(today_total(&again), 150, "稳定命中缓存后仍保持一致");
     fs::remove_dir_all(root).ok();
 }

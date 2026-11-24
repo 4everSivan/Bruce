@@ -161,10 +161,16 @@ pub(crate) fn fingerprint_head_tail(
     let mut hasher = Sha256::new();
     hasher.update(size.to_le_bytes());
     let mut buffer = vec![0u8; chunk_bytes as usize];
-    // 头部块 (整文件不足一块时即全部内容).
-    let head_len = io::Read::by_ref(&mut file)
-        .take(chunk_bytes)
-        .read(&mut buffer)?;
+    // 头部块 (整文件不足一块时即全部内容). C253: `read` 允许短读 (文件系统/网络卷),
+    // 单次 read 会让同文件在不同轮次得到不同指纹，必须循环读满或读到 EOF。
+    let mut head_len = 0usize;
+    while head_len < buffer.len() {
+        let read = io::Read::by_ref(&mut file).read(&mut buffer[head_len..])?;
+        if read == 0 {
+            break;
+        }
+        head_len += read;
+    }
     hasher.update(&buffer[..head_len]);
     // 中段存在时直接 seek 到末块前读取, 不重读中段.
     if size > chunk_bytes {

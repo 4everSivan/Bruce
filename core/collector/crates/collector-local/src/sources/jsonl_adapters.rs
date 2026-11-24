@@ -566,6 +566,23 @@ pub(super) fn scan_claude_cached_with_hook(
     )
 }
 
+/// 测试专用 (C253): stat 之后、解析之前回调, 用于模拟活跃 CLI 的追加写竞态。
+#[cfg(test)]
+pub(super) fn scan_claude_cached_with_stat_hook(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    after_stat: &mut dyn FnMut(&Path),
+) -> Result<SourceScan, SourceScanError> {
+    crate::jsonl_cache::scan_cached_jsonl_tree_with_stat_hook(
+        root,
+        &jsonl_cache_config(cache_root, "claude-code", window),
+        &ClaudeJsonlAdapter,
+        &CancellationToken::new(),
+        after_stat,
+    )
+}
+
 pub fn scan_claude_cached(
     root: &Path,
     window: &CollectionWindow,

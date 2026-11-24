@@ -182,7 +182,8 @@ impl UsageAccumulator {
                 has_cost = true;
             }
         }
-        let today_cost_usd = if has_cost && total_today_cost > 0.0 {
+        // C253: has_cost 只表示「价卡命中」，合法 $0 定价仍是已计价 (Some(0.0))。
+        let today_cost_usd = if has_cost {
             Some(total_today_cost)
         } else {
             None
@@ -388,6 +389,47 @@ mod tests {
         let cost = agent.today_cost_usd.unwrap();
         assert!((cost - 4.65).abs() < 1e-4);
         assert_eq!(agent.today_models[0].cost_usd, Some(cost));
+    }
+
+    /// C253: 合法 $0 定价仍是「已计价」，不得因合计为 0 被误报为未计价。
+    #[test]
+    fn zero_priced_model_keeps_priced_semantics() {
+        let mut builder = UsageContributionBuilder::new(window());
+        assert!(builder.record(UsageSample {
+            timestamp_millis: 1_785_211_200_000,
+            model: Some("free-model"),
+            input: 10_000,
+            output: 1_000,
+            cache_read: 0,
+            cache_creation: 0,
+            cache_creation_1h: 0,
+            project: Some("Bruce"),
+        }));
+        let contribution = builder.contribution();
+        let mut aggregate = UsageAccumulator::new(window());
+        assert!(aggregate.merge_delta(&contribution));
+        let catalog = vec![collector_domain::CatalogModel {
+            model: "free-model".to_string(),
+            display_name: "Free".to_string(),
+            vendor: "Free".to_string(),
+            input: 0.0,
+            output: 0.0,
+            cache_read: None,
+            cache_write: None,
+            note: "Free tier".to_string(),
+            listed: true,
+            peak: None,
+            long_context: None,
+        }];
+        let pricing = collector_domain::PricingTable::with_catalog(
+            &catalog,
+            std::collections::HashMap::new(),
+        );
+        let agent = aggregate.finalize_with_pricing("fixture", "Fixture", &pricing);
+        assert_eq!(agent.today_cost_usd, Some(0.0));
+        assert_eq!(agent.today_models[0].cost_usd, Some(0.0));
+        let encoded = serde_json::to_value(&agent).unwrap();
+        assert_eq!(encoded["todayCostUsd"], 0.0);
     }
 
     /// C070: 工作台明细桶 —— 最近 31 天 日期×模型、全部月份 月×模型、今日 小时×模型,

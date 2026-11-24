@@ -492,8 +492,18 @@ impl PricingTable {
         map: &'a HashMap<String, V>,
         normalized: &str,
     ) -> Option<(&'a String, &'a V)> {
+        Self::best_prefix_match_where(map, normalized, |_| true)
+    }
+
+    /// 与 [`Self::best_prefix_match`] 相同的确定性排序，但只考虑 `predicate` 通过的条目
+    /// (C253: 分档规则只在声明了 peak / long_context 的行里找最长前缀命中)。
+    fn best_prefix_match_where<'a, V>(
+        map: &'a HashMap<String, V>,
+        normalized: &str,
+        predicate: impl Fn(&V) -> bool,
+    ) -> Option<(&'a String, &'a V)> {
         map.iter()
-            .filter(|(key, _)| Self::model_matches(normalized, key))
+            .filter(|(key, value)| predicate(value) && Self::model_matches(normalized, key))
             .map(|(key, value)| {
                 let target = Self::normalize_model_name(key);
                 let base_of_model = normalized.starts_with(&target);
@@ -512,9 +522,28 @@ impl PricingTable {
             .map(|(_, entry)| entry)
     }
 
+    /// TD-002 / C253: 用本实例的价卡（含 `context.pricingCatalog` 热更新）分类样本。
+    /// 静态 `OnceLock` 版本无法看到远端同步的分档规则，且 `.find()` 首次命中会违背
+    /// `best_prefix_match` 的最长前缀优先规则。
+    pub fn rate_class(
+        &self,
+        raw_model_name: &str,
+        timestamp_millis: i64,
+        input_tokens: u64,
+    ) -> Option<&'static str> {
+        let normalized = Self::normalize_model_name(raw_model_name);
+        let (_, pricing) = Self::best_prefix_match_where(&self.builtin, &normalized, |pricing| {
+            pricing.peak.is_some() || pricing.long_context.is_some()
+        })?;
+        rate_class_from(pricing, timestamp_millis, input_tokens)
+    }
+
     fn model_matches(model: &str, target: &str) -> bool {
         let t = Self::normalize_model_name(target);
-        !t.is_empty() && (model == t || model.starts_with(&t) || t.starts_with(model))
+        // C253: 归一化后为空的模型名不得命中任意键 (`""` / `"openai/"` / `"[fast]"`)。
+        !model.is_empty()
+            && !t.is_empty()
+            && (model == t || model.starts_with(&t) || t.starts_with(model))
     }
 
     /// Calculates token cost in USD for a given bucket and pricing rule.
@@ -688,16 +717,29 @@ fn savings_for_counts(counts: &Counts, rates: RateCard) -> f64 {
 
 /// TD-002: 按模型价卡的时间窗与单请求长度对样本分类。
 /// 返回 `None` 表示样本落在基础档 (非峰值 / ≤ 阈值), 也是无分档价卡模型的唯一结果。
+///
+/// C253: 此入口固定使用内置价卡（本机会话聚合在拿到请求级价卡前分类）；持有
+/// `PricingTable` 的调用方应改用 [`PricingTable::rate_class`] 以让热更新价卡生效。
 pub fn rate_class_for(
     model: &str,
     timestamp_millis: i64,
     input_tokens: u64,
 ) -> Option<&'static str> {
-    let normalized = PricingTable::normalize_model_name(model);
-    let (_, peak, long_context) = tiered_rules()
-        .iter()
-        .find(|(key, _, _)| normalized == *key || normalized.starts_with(key.as_str()))?;
-    let peak = peak.as_ref().is_some_and(|peak| {
+    builtin_rate_table().rate_class(model, timestamp_millis, input_tokens)
+}
+
+/// 内置价卡只构建一次，供无请求上下文的聚合路径复用。
+fn builtin_rate_table() -> &'static PricingTable {
+    static TABLE: OnceLock<PricingTable> = OnceLock::new();
+    TABLE.get_or_init(PricingTable::default)
+}
+
+fn rate_class_from(
+    pricing: &ModelPricing,
+    timestamp_millis: i64,
+    input_tokens: u64,
+) -> Option<&'static str> {
+    let peak = pricing.peak.as_ref().is_some_and(|peak| {
         let minute = ((timestamp_millis.rem_euclid(86_400_000)) / 60_000) as u32;
         if peak.start_minute_utc <= peak.end_minute_utc {
             minute >= peak.start_minute_utc && minute < peak.end_minute_utc
@@ -705,7 +747,8 @@ pub fn rate_class_for(
             minute >= peak.start_minute_utc || minute < peak.end_minute_utc
         }
     });
-    let long = long_context
+    let long = pricing
+        .long_context
         .as_ref()
         .is_some_and(|tier| input_tokens > tier.threshold);
     match (peak, long) {
@@ -714,27 +757,6 @@ pub fn rate_class_for(
         (false, true) => Some("long"),
         (false, false) => None,
     }
-}
-
-/// 只有声明了峰值或长上下文档的价卡行才参与逐样本分类; 缓存一次避免热路径
-/// 每条样本都遍历完整目录。
-type TieredRule = (String, Option<PeakPricing>, Option<LongContextPricing>);
-
-fn tiered_rules() -> &'static [TieredRule] {
-    static RULES: OnceLock<Vec<TieredRule>> = OnceLock::new();
-    RULES.get_or_init(|| {
-        catalog()
-            .iter()
-            .filter(|entry| entry.peak.is_some() || entry.long_context.is_some())
-            .map(|entry| {
-                (
-                    PricingTable::normalize_model_name(&entry.model),
-                    entry.peak.clone(),
-                    entry.long_context.clone(),
-                )
-            })
-            .collect()
-    })
 }
 
 #[cfg(test)]
@@ -1372,6 +1394,66 @@ mod tests {
         // 短上下文 1M: 0.40 + 1.60; 长上下文 1M: 1.20 + 4.80
         let cost = table.calculate_cost(&bucket, &rule);
         assert!((cost - 8.0).abs() < 1e-9, "cost = {cost}");
+    }
+
+    /// C253: 归一化为空的模型名不得命中任意价卡键 (旧实现 `starts_with("")` 恒真,
+    /// 会匹配到最短键并误计费)。
+    #[test]
+    fn empty_normalized_model_never_matches_a_catalog_row() {
+        let table = PricingTable::default();
+        for raw in ["", "openai/", "[fast]", "   "] {
+            assert!(
+                table.resolve(raw).is_none(),
+                "归一化为空的模型不得命中任意价卡行: {raw:?}"
+            );
+        }
+    }
+
+    /// C253: 分档规则来自活动 `PricingTable`，热更新的峰谷/长上下文档必须生效。
+    #[test]
+    fn tiered_rate_class_follows_the_active_catalog() {
+        let peak = utc_millis("2026-08-21T08:00:00Z");
+        let off_peak = utc_millis("2026-08-21T20:00:00Z");
+        let custom = vec![CatalogModel {
+            model: "dynamic-tiered".to_string(),
+            display_name: "Dynamic Tiered".to_string(),
+            vendor: "Dynamic".to_string(),
+            input: 1.0,
+            output: 2.0,
+            cache_read: None,
+            cache_write: None,
+            note: "Synced".to_string(),
+            listed: true,
+            peak: Some(PeakPricing {
+                input: 2.0,
+                output: 4.0,
+                cache_read: None,
+                start_minute_utc: 0,
+                end_minute_utc: 720,
+            }),
+            long_context: Some(LongContextPricing {
+                threshold: 200_000,
+                input: 1.5,
+                output: 3.0,
+                cache_read: None,
+            }),
+        }];
+        let table = PricingTable::with_catalog(&custom, HashMap::new());
+        assert_eq!(
+            table.rate_class("dynamic-tiered", peak, 1_000),
+            Some("peak")
+        );
+        assert_eq!(
+            table.rate_class("dynamic-tiered", peak, 200_001),
+            Some("peak_long")
+        );
+        assert_eq!(
+            table.rate_class("dynamic-tiered", off_peak, 200_001),
+            Some("long")
+        );
+        assert_eq!(table.rate_class("dynamic-tiered", off_peak, 1_000), None);
+        // 内置价卡没有该模型：无上下文的自由函数不会凭空给出分档。
+        assert_eq!(rate_class_for("dynamic-tiered", peak, 1_000), None);
     }
 
     /// TD-002: 峰值窗口按 UTC `[00:30, 16:30)` 判定, 边界分钟不越界。
