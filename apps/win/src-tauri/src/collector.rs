@@ -71,6 +71,51 @@ pub fn build_local_request(
     }
 }
 
+/// `module=request-log` 查询入参 (design/14, C264): 与 mac `RequestLogClient` 同一契约。
+pub struct RequestLogQuery<'a> {
+    pub home: &'a str,
+    pub start: i64,
+    pub end: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub agent_ids: &'a [String],
+    pub model: Option<&'a str>,
+}
+
+/// 构造请求日志只读查询 (C264): 不启动全量刷新, 不携带凭据; 时间窗/分页由调用方校验。
+pub fn build_request_log_request(query: &RequestLogQuery<'_>) -> Result<BridgeRequest, String> {
+    if query.end <= query.start {
+        return Err("REQUEST_LOG_RANGE_INVALID".into());
+    }
+    let mut context = Map::new();
+    context.insert("home".to_owned(), Value::String(query.home.to_owned()));
+    context.insert("start".to_owned(), Value::from(query.start));
+    context.insert("end".to_owned(), Value::from(query.end));
+    context.insert("page".to_owned(), Value::from(query.page));
+    context.insert("pageSize".to_owned(), Value::from(query.page_size));
+    if !query.agent_ids.is_empty() {
+        context.insert(
+            "agentIds".to_owned(),
+            Value::Array(query.agent_ids.iter().cloned().map(Value::String).collect()),
+        );
+    }
+    if let Some(model) = query.model.filter(|model| !model.trim().is_empty()) {
+        context.insert("model".to_owned(), Value::String(model.to_owned()));
+    }
+    Ok(BridgeRequest {
+        schema_version: BRIDGE_SCHEMA_VERSION,
+        run_id: uuid::Uuid::new_v4().to_string(),
+        module: "request-log".to_owned(),
+        // 只读本机台账, 不发起外部请求; 与 mac RequestLogClient 的 1s/10s 预算一致。
+        timeouts: BridgeTimeouts {
+            external_request_seconds: 1.0,
+            module_seconds: 10.0,
+        },
+        context,
+        credentials: Map::new(),
+    })
+}
+
 /// 进程内执行一次采集, 返回标准 BridgeResponse (artifact schema 与 mac 一致)。
 pub fn run_local_collection(credentials: CredentialPayloads) -> Result<BridgeResponse, String> {
     run_configured_collection(credentials, &AppSettings::default())

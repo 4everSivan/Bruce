@@ -458,6 +458,46 @@ mod desktop {
         Ok(serde_json::json!({ "path": target }))
     }
 
+    /// 设置页「请求日志」只读查询 (C264, design/14): 不启动全量刷新、不携带凭据。
+    #[tauri::command]
+    async fn get_request_log(
+        start: i64,
+        end: i64,
+        page: u32,
+        page_size: u32,
+        agent_ids: Option<Vec<String>>,
+        model: Option<String>,
+    ) -> Result<serde_json::Value, String> {
+        let home = paths::home_root().to_string_lossy().into_owned();
+        let agents = agent_ids.unwrap_or_default();
+        let query = crate::collector::RequestLogQuery {
+            home: &home,
+            start,
+            end,
+            page: page.max(1),
+            page_size: page_size.clamp(1, 200),
+            agent_ids: &agents,
+            model: model.as_deref(),
+        };
+        let request = crate::collector::build_request_log_request(&query)?;
+        // 只读 SQLite 可能阻塞, 放到后台线程执行 (C109: 同步 command 不得占用主线程)。
+        let response = tauri::async_runtime::spawn_blocking(move || {
+            collector_bridge::run_request_panic_safe(request)
+        })
+        .await
+        .map_err(|_| "REQUEST_LOG_JOIN_FAILED".to_owned())?;
+        if response.status == collector_domain::ResponseStatus::Error {
+            return Err(response
+                .diagnostics
+                .first()
+                .map(|diagnostic| diagnostic.code.clone())
+                .unwrap_or_else(|| "REQUEST_LOG_FAILED".to_owned()));
+        }
+        response
+            .artifact
+            .ok_or_else(|| "REQUEST_LOG_ARTIFACT_MISSING".to_owned())
+    }
+
     /// 设置页「Agent 用量」工作台快照 (C070): 计算见 viewmodel `analytics` (mac golden 对拍)。
     #[tauri::command]
     fn get_usage_analytics(
@@ -1549,6 +1589,7 @@ mod desktop {
                 export_billing,
                 export_diagnostics,
                 get_usage_analytics,
+                get_request_log,
                 export_workbench_csv,
                 export_workbench_json,
                 get_model_prices,

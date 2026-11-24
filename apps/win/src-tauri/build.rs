@@ -12,6 +12,7 @@ fn main() {
                 "export_billing",
                 "export_diagnostics",
                 "get_usage_analytics",
+                "get_request_log",
                 "export_workbench_csv",
                 "export_workbench_json",
                 "get_model_prices",

@@ -368,3 +368,31 @@ fn refresh_policy_matches_shared_fixture() {
         );
     }
 }
+
+/// C264: request-log 查询与 mac RequestLogClient 同契约 (module/timeouts/context/无凭据)。
+#[test]
+fn request_log_request_matches_mac_contract() {
+    let agents = vec!["codex".to_owned(), "claude-code".to_owned()];
+    let make = |start: i64, end: i64| bruce_win_lib::collector::RequestLogQuery {
+        home: "C:/Users/demo",
+        start,
+        end,
+        page: 2,
+        page_size: 50,
+        agent_ids: &agents,
+        model: Some("gpt-5"),
+    };
+    let request = bruce_win_lib::collector::build_request_log_request(&make(10, 20)).unwrap();
+    assert_eq!(request.module, "request-log");
+    assert_eq!(request.timeouts.external_request_seconds, 1.0);
+    assert_eq!(request.timeouts.module_seconds, 10.0);
+    assert!(request.credentials.is_empty(), "查询不得携带凭据");
+    let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(value["context"]["start"], 10);
+    assert_eq!(value["context"]["end"], 20);
+    assert_eq!(value["context"]["page"], 2);
+    assert_eq!(value["context"]["pageSize"], 50);
+    assert_eq!(value["context"]["agentIds"][1], "claude-code");
+    assert_eq!(value["context"]["model"], "gpt-5");
+    assert!(bruce_win_lib::collector::build_request_log_request(&make(20, 10)).is_err());
+}
