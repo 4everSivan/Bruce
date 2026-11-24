@@ -474,7 +474,8 @@ mod desktop {
             home: &home,
             start,
             end,
-            page: page.max(1),
+            // mac RequestLogQuery 的 page 为 0-based；不要抬高到 1。
+            page,
             page_size: page_size.clamp(1, 200),
             agent_ids: &agents,
             model: model.as_deref(),
