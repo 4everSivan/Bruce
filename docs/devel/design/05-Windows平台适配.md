@@ -459,7 +459,8 @@ Windows Tauri 后端 (Rust)
     - `SnapshotState::save` 在覆盖 `snapshot.json` 前，把当前可解析的主快照原子轮换为 `snapshot.previous.json`；`load` 在主文件缺失 / 损坏 / 不可读时回退灾备（仍按 `SNAPSHOT_RESTORED` 呈现），两份都不可用才报 `SNAPSHOT_INVALID` / `SNAPSHOT_READ_FAILED`；`clear_snapshot` 同时删除两份。
     - 采集请求超时预算与 mac `CollectorTimeouts.default` 对齐为 `externalRequestSeconds=10` / `moduleSeconds=90`（原 30 / 150）。
     - **采集看门狗**：采集通道由 `CollectionLease`（原子忙标志 + 代数）取代 `Mutex<()>`；全量 / 定向 / 局部采集均在独立 `bruce-collect-*` 线程执行，父线程以 `COLLECTION_WATCHDOG_SECS=105`（mac 外层预算）等待。超时 / 线程失败 / panic 时父线程写 `COLLECTION_WATCHDOG_TIMEOUT`、放弃租约（代数递增、忙标志释放），卡死线程结果丢弃且不得再锁死后续刷新；同一时刻仍只允许一个采集。**残余限制**：子线程不可强杀，连续黑洞可能每轮泄漏一个线程，但其内部 Bridge deadline 通常在 90s 内自返；后续批次可评估以进程外采集彻底解决。
-    - 网络出口国家校验（`egressRules` / 设置双卡 / 仪表盘问题卡）、请求日志界面、锁屏抑制与睡眠唤醒去重仍待后续批次，本卡尚未完成。
+    - **锁屏抑制**：`session_state::session_locked()` 经 `WTSQuerySessionInformationW(WTSSessionInfoEx)` 读取 `SessionFlags`；全量门禁 `plan_with_suppression` 在锁屏时等价于「上一份全部 provider 进入 skip」，不发起外部额度查询，解锁后由下一轮调度恢复。查询失败按未锁屏处理，不误抑制采集。
+    - 网络出口国家校验（`egressRules` / 设置双卡 / 仪表盘问题卡）、请求日志界面、睡眠唤醒去重仍待后续批次，本卡尚未完成。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

@@ -11,6 +11,7 @@ pub mod pricing_sync;
 pub mod quota_policy;
 pub mod reachability;
 pub mod scheduler;
+pub mod session_state;
 pub mod settings;
 pub mod software_update;
 pub mod startup_diagnostics;

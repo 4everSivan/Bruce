@@ -476,13 +476,15 @@ mod desktop {
                 .lock()
                 .ok()
                 .and_then(|state| state.artifact().cloned());
-            let policy = crate::quota_policy::plan(
+            // C264: 锁屏期间抑制外部额度查询 (与 mac ScreenLockStateProviding 同语义)。
+            let policy = crate::quota_policy::plan_with_suppression(
                 previous.as_ref(),
                 &settings.enabled_providers,
                 now_ms,
                 interval_secs,
                 manual,
                 manual,
+                crate::session_state::session_locked(),
             );
             let mut scoped = settings.clone();
             scoped
