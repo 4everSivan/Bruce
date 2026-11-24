@@ -19,7 +19,7 @@
     "command": "rg -n \"terminateAndReap|readClaudeKeychain|preserveCorruptedFile|StepFunWebLoginView|removeCodexProvider|waitUntilExit\" apps/macos/Sources/",
     "expected": "`AsyncProcessProbe` 在取消态下循环 `try? await Task.sleep`；`.claudeCLI` 无 `accessController.allows` 检查；`CodexTokenResolver` `await` 后无状态校验直接 `saveRecord`；`loadPayloadLocked` `try? Data(contentsOf:)` 与解码合并判断",
     "is_completed": false,
-    "evidence": "HEAD 复核命中：AsyncProcessProbe.terminateAndReap 在取消态用 try? await Task.sleep（空转）；SystemExternalCredentialReader.readClaudeKeychain 在调用线程 waitUntilExit 且只事后读 stdout、Diagnostics 双 Pipe 不排空；CodexTokenResolver.performRefresh await 后无取消/代次校验直接 saveRecord；ProtectedFileCredentialStore.loadPayloadLocked 用 try? Data(contentsOf:) 与解码合并判定；StepFunWebLoginView 用 .default() 与 contains 域名匹配且在 updateNSView 同步改绑定；SubscriptionService.removeCodexProvider 写入空配置、grokKey 遍历无序字典。"
+    "evidence": "HEAD 复核命中：AsyncProcessProbe.terminateAndReap 在取消态用 try? await Task.sleep（空转）；SystemExternalCredentialReader.readClaudeKeychain 在调用线程 waitUntilExit 且只事后读 stdout、Diagnostics 双 Pipe 不排空；CodexTokenResolver.performRefresh await 后无取消/代次校验直接 saveRecord；ProtectedFileCredentialStore.loadPayloadLocked 用 try? Data(contentsOf:) 与解码合并判定；StepFunWebLoginView 用 .default() 与 contains 域名匹配且在 updateNSView 同步改绑定；SubscriptionService.removeCodexProvider 写入空配置、grokKey 遍历无序字典。 维护者 2026-11-24 确认：C255 要求的 .claudeCLI 外部源白名单门禁与 design/02 规则 2（C060「Claude Keychain 无条件静默读取，externalSources 仅约束 Grok」）冲突，按现行设计保持无条件读取，该子项不实施；其余 C255 子项按卡实施。"
   },
   "callback": {
     "before": [
