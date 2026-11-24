@@ -297,6 +297,12 @@
           "markdownDescription": "Enables the get_pricing_catalog_state command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_request_log command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-request-log",
+          "markdownDescription": "Enables the get_request_log command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_runtime_info command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-runtime-info",
@@ -679,6 +685,12 @@
           "type": "string",
           "const": "deny-get-pricing-catalog-state",
           "markdownDescription": "Denies the get_pricing_catalog_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_request_log command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-request-log",
+          "markdownDescription": "Denies the get_request_log command without any pre-configured scope."
         },
         {
           "description": "Denies the get_runtime_info command without any pre-configured scope.",
