@@ -44,6 +44,13 @@
       "license": "CC0-1.0",
       "url": "https://api.iconify.design/logos/grok-icon.svg"
     },
+    "grokBot": {
+      "file": "grok-icon.svg",
+      "library": "SVG Logos (Gil Barbara, Iconify set: logos)",
+      "license": "CC0-1.0",
+      "url": "https://api.iconify.design/logos/grok-icon.svg",
+      "note": "T39: Grok Bot 同属 xAI 品牌, 复用 Grok 图形"
+    },
     "opencodeGo": {
       "file": "opencode.svg",
       "library": "Simple Icons",

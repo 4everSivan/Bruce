@@ -23,7 +23,7 @@ package enum ProviderBrandPalette {
             return "#10a37f"
         case "claude":
             return "#d97757"
-        case "grok":
+        case "grok", "grokBot":
             return "#111111"
         case "opencodeGo", "opencode-go", "opencode":
             return "#8a63d2"
@@ -38,11 +38,11 @@ package enum ProviderBrandPalette {
         }
     }
 
-    /// 深色品牌色 (grok / zhipu / cline): Nothing 主题深色表面不可读,
+    /// 深色品牌色 (grok / grokBot / zhipu / cline): Nothing 主题深色表面不可读,
     /// 图形与字母退回 secondary 灰 (定稿于 grok, C026 起覆盖同色系品牌)。
     package static func isDarkBrand(_ providerID: String) -> Bool {
         switch providerID {
-        case "grok", "zhipu", "cline":
+        case "grok", "grokBot", "zhipu", "cline":
             return true
         default:
             return false

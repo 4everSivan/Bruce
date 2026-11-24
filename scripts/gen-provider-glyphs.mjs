@@ -42,6 +42,8 @@ const ICONS = {
   codex: ["openai-icon.svg", null, null],
   claude: ["claude.svg", null, null],
   grok: ["grok-icon.svg", null, null],
+  // Grok Bot (T39) 同属 xAI 品牌, 复用 Grok 图形; 卡片标题区分两者。
+  grokBot: ["grok-icon.svg", null, null],
   opencodeGo: ["opencode.svg", null, null],
   stepfun: ["stepfun.svg", null, null],
   cline: ["cline.svg", null, null],
