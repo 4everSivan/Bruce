@@ -4,7 +4,7 @@
   "title": "macOS 采集管道主线程阻塞、热键悬垂指针、调度器状态机与更新/同步并发修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C256-macos-runtime-lifecycle-and-scheduler-races",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"passUnretained|stdinPipe\\.fileHandleForWriting\\.write|applyCompleted|uniqueKeysWithValues|cancelDownload|withCheckedThrowingContinuation\" apps/macos/Sources/",
     "expected": "`GlobalHotkeyMonitor` 无 `deinit`；`CollectorRunner` 在 `@MainActor` 同步写 stdin 且 `complete` 仅按 `module` 索引；`RefreshScheduler` 跨 `await` 回写值拷贝 `state`；`PricingCatalogSyncService` 用 `uniqueKeysWithValues`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：GlobalHotkeyMonitor 无 deinit 反注册；CollectorRunner @MainActor 同步写 stdin、terminationHandler 仅按 module 收口、readDataToEndOfFile 无界；RefreshScheduler 跨 await 回写 state、stop 不取消 runningTasks、首次取消落 .disabled；PricingCatalogSyncService 定时同步不置 syncing 且 uniqueKeysWithValues；SoftwareUpdateService.cancelDownload 立即删暂存目录；ApplicationLifecycle 退出未停 updates/pricingSync；RequestLogClient 无取消传播；玻璃面板缺 addChild。"
   },
   "callback": {
     "before": [

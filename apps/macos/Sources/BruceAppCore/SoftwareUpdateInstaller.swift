@@ -12,24 +12,48 @@ package protocol UpdateCommandRunning: Sendable {
 }
 
 package struct SystemUpdateCommandRunner: UpdateCommandRunning {
+    /// C256: 系统命令（解包/校验）必须有时限，避免流程永久悬挂。
+    package static let timeout: TimeInterval = 30
+
     package init() {}
 
     package func run(_ executablePath: String, _ arguments: [String]) async -> Bool {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executablePath)
-            process.arguments = arguments
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.terminationHandler = { finished in
-                continuation.resume(returning: finished.terminationStatus == 0)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let gate = UpdateCommandCompletion()
+        let box = UpdateProcessBox(process: process)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                gate.attach(continuation)
+                process.terminationHandler = { finished in
+                    gate.resume(finished.terminationStatus == 0)
+                }
+                if Task.isCancelled {
+                    process.terminationHandler = nil
+                    gate.resume(false)
+                    return
+                }
+                do {
+                    try process.run()
+                } catch {
+                    process.terminationHandler = nil
+                    gate.resume(false)
+                    return
+                }
+                DispatchQueue.global(qos: .utility).asyncAfter(
+                    deadline: .now() + Self.timeout
+                ) {
+                    box.terminateIfRunning()
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
+                        box.forceTerminateIfRunning()
+                    }
+                }
             }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                continuation.resume(returning: false)
-            }
+        } onCancel: {
+            box.terminateIfRunning()
         }
     }
 
@@ -41,6 +65,53 @@ package struct SystemUpdateCommandRunner: UpdateCommandRunning {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
+    }
+}
+
+/// 只允许首次恢复 continuation 的线程安全闸门 (C256)。
+private final class UpdateCommandCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var resumed = false
+
+    func attach(_ continuation: CheckedContinuation<Bool, Never>) {
+        lock.lock()
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func resume(_ value: Bool) {
+        lock.lock()
+        guard !resumed else {
+            lock.unlock()
+            return
+        }
+        resumed = true
+        let continuation = continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(returning: value)
+    }
+}
+
+/// 供取消 / 超时回调跨隔离域安全终止子进程 (C256)。
+private final class UpdateProcessBox: @unchecked Sendable {
+    private let process: Process
+
+    init(process: Process) {
+        self.process = process
+    }
+
+    func terminateIfRunning() {
+        guard process.isRunning else { return }
+        process.terminate()
+    }
+
+    func forceTerminateIfRunning() {
+        guard process.isRunning else { return }
+        let pid = process.processIdentifier
+        guard pid > 0 else { return }
+        kill(pid, SIGKILL)
     }
 }
 

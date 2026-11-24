@@ -249,7 +249,10 @@ final class SystemCollectorProcessHandle: CollectorProcessHandling {
 
     func forceTerminate() {
         guard process.isRunning else { return }
-        Darwin.kill(process.processIdentifier, SIGKILL)
+        let pid = process.processIdentifier
+        // C256: pid <= 0 时 kill 会命中进程组/自身，必须先校验。
+        guard pid > 0 else { return }
+        Darwin.kill(pid, SIGKILL)
     }
 }
 
@@ -287,16 +290,12 @@ struct SystemCollectorProcessLauncher: CollectorProcessLaunching {
 
         readers.enter()
         DispatchQueue.global(qos: .utility).async {
-            stdoutData.set(
-                stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            )
+            stdoutData.set(Self.drain(stdoutPipe.fileHandleForReading))
             readers.leave()
         }
         readers.enter()
         DispatchQueue.global(qos: .utility).async {
-            stderrData.set(
-                stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            )
+            stderrData.set(Self.drain(stderrPipe.fileHandleForReading))
             readers.leave()
         }
 
@@ -315,15 +314,36 @@ struct SystemCollectorProcessLauncher: CollectorProcessLaunching {
 
         do {
             try process.run()
-            try stdinPipe.fileHandleForWriting.write(contentsOf: input)
-            try stdinPipe.fileHandleForWriting.close()
         } catch {
-            if process.isRunning {
-                process.terminate()
-            }
+            try? stdinPipe.fileHandleForWriting.close()
             throw error
         }
+        // C256: 大请求 (含 512 KB 价卡) 的写入移出主线程 —— 超过 64 KB 管道缓冲时
+        // 同步写会阻塞主线程，子进程早退时还可能触发 SIGPIPE。
+        let stdinHandle = stdinPipe.fileHandleForWriting
+        DispatchQueue.global(qos: .utility).async {
+            defer { try? stdinHandle.close() }
+            do {
+                try stdinHandle.write(contentsOf: input)
+            } catch {
+                // 子进程已退出 / 管道关闭：由 terminationHandler 按真实退出码收口。
+            }
+        }
         return SystemCollectorProcessHandle(process: process)
+    }
+
+    /// 有界读取管道直到 EOF：超出上限后继续排空但不再保留，避免无界内存。
+    nonisolated private static func drain(_ handle: FileHandle) -> Data {
+        let limit = 64 * 1024 * 1024
+        var data = Data()
+        while true {
+            let chunk = autoreleasepool { handle.availableData }
+            if chunk.isEmpty { break }
+            if data.count < limit {
+                data.append(chunk.prefix(limit - data.count))
+            }
+        }
+        return data
     }
 }
 
@@ -512,7 +532,9 @@ package final class CollectorRunner {
                 arguments: executableArguments,
                 input: input
             ) { [weak self] result in
-                self?.complete(module: module, result: result)
+                // C256: 回调必须绑定本次 runId —— 旧子进程的终止回调不得完结/错杀
+                // 之后启动的新运行。
+                self?.complete(module: module, runId: runId, result: result)
             }
             let active = ActiveRun(
                 runId: runId,
@@ -566,11 +588,13 @@ package final class CollectorRunner {
 
     private func complete(
         module: CollectorModule,
+        runId: String,
         result: Result<CollectorProcessOutput, Error>
     ) {
-        guard let active = activeRuns.removeValue(forKey: module) else {
+        guard let active = activeRuns[module], active.runId == runId else {
             return
         }
+        activeRuns.removeValue(forKey: module)
         active.timeoutTimer?.cancel()
         active.forceTimer?.cancel()
         guard let continuation = active.continuation else { return }

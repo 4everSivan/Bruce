@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: MenuBarStatusItemController?
     private var hotkeyMonitor: GlobalHotkeyMonitor?
     private var startApplication: (@MainActor () -> Void)?
+    private var stopServices: (@MainActor () -> Void)?
 
     func configure(
         runtime: ApplicationRuntimeControlling,
@@ -18,7 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeWindowController: WelcomeWindowController? = nil,
         statusItemController: MenuBarStatusItemController? = nil,
         hotkeyMonitor: GlobalHotkeyMonitor? = nil,
-        startApplication: (@MainActor () -> Void)? = nil
+        startApplication: (@MainActor () -> Void)? = nil,
+        stopServices: (@MainActor () -> Void)? = nil
     ) {
         if lifecycle == nil {
             lifecycle = ApplicationLifecycleCoordinator(
@@ -39,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let startApplication {
             self.startApplication = startApplication
+        }
+        if let stopServices {
+            self.stopServices = stopServices
         }
     }
 
@@ -98,6 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 退出时注销全局快捷键并清理状态项.
     func applicationWillTerminate(_ notification: Notification) {
+        // C256: 联动停止价卡同步与软件更新调度，避免退出阶段后台任务继续写盘。
+        stopServices?()
         hotkeyMonitor?.unregister()
         statusItemController?.teardown()
     }

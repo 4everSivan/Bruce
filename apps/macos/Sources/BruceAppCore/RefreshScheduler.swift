@@ -112,8 +112,9 @@ package final class RefreshScheduler {
     /// 最近一次发布 artifact 中最早的瞬态出口探测重试时刻 (C236):
     /// 定时唤醒只据此提前, 不改写 30 分钟正常额度周期.
     private var pendingEgressRetryAt: Date?
-    private var wakeObserver: NSObjectProtocol?
-    private var reactivationObserver: NSObjectProtocol?
+    // C256: deinit 为非隔离上下文，观察者 token 以非隔离存储便于析构兜底移除。
+    nonisolated(unsafe) private var wakeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var reactivationObserver: NSObjectProtocol?
     private let logger = Logger(
         subsystem: "io.bruce.dashboard",
         category: "refresh-scheduler"
@@ -261,6 +262,10 @@ package final class RefreshScheduler {
         stopped = true
         for (_, timer) in timers { timer.cancel() }
         timers.removeAll()
+        // C256: 停止时取消在途任务，避免 stop→start 竞态把取消结果当成新周期失败；
+        // 完成回调由 stopped 闸门转为取消语义。
+        for (_, task) in runningTasks { task.cancel() }
+        runningTasks.removeAll()
         executor.cancelAll()
 
         networkReachability?.onReachabilityChange = nil
@@ -276,6 +281,16 @@ package final class RefreshScheduler {
         if let observer = reactivationObserver {
             NotificationCenter.default.removeObserver(observer)
             reactivationObserver = nil
+        }
+    }
+
+    deinit {
+        // C256: 兜底移除通知观察者，避免调度器释放后系统继续向已销毁对象投递。
+        if let observer = wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        if let observer = reactivationObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -814,6 +829,20 @@ package final class RefreshScheduler {
                 )
             }
 
+            // C256: decide 期间可能发生 disableModule / setAutoRefresh / 新 pendingIntent。
+            // 只把本轮完成态合并回当前 state，不覆盖挂起期间的开关与意图。
+            if var latest = states[module] {
+                latest.lastSuccessAt = state.lastSuccessAt
+                latest.backoffRetryCount = state.backoffRetryCount
+                latest.lastErrorCategory = state.lastErrorCategory
+                latest.offlinePaused = state.offlinePaused
+                latest.egressBlockedServiceIDs = state.egressBlockedServiceIDs
+                if latest.phase == .running {
+                    latest.phase = .idle
+                }
+                state = latest
+            }
+
             // 网络出口阻断预警: 边沿跳变触发 (Edge-Triggered Anti-Spam T24/C185)
             // 仅当网络状态由「放行」跳变至「阻断」时弹出一次气泡；
             // 持续阻断期间静默更新快照不弹窗；手动重测失败或网络恢复后再度异常重新激活。
@@ -938,7 +967,11 @@ package final class RefreshScheduler {
 
     private func handleCancellation(for module: CollectorModule) {
         guard var state = states[module] else { return }
-        state.phase = state.lastSuccessAt != nil ? .idle : .disabled
+        // C256: 启用中的模块首次取消必须回到 idle 才能再次调度；只有停用模块
+        // 才进入 disabled（旧实现把 enabled=true 的模块永久卡在 disabled）。
+        state.phase = state.enabled
+            ? .idle
+            : .disabled
         state.pendingIntent = nil
         states[module] = state
         runningTasks[module] = nil

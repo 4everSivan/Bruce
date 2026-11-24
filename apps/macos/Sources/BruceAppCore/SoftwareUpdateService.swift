@@ -122,6 +122,11 @@ package final class SoftwareUpdateService: ObservableObject {
     package func stop() {
         scheduleTask?.cancel()
         scheduleTask = nil
+        // C256: 退出时取消在途检查与下载，避免后台任务在进程收尾阶段继续写盘。
+        checkTask?.cancel()
+        checkTask = nil
+        downloadTask?.cancel()
+        downloadTask = nil
     }
 
     /// 自动检查到期判定 + 执行; 调度循环与测试共用. 关闭开关、检查进行中或用户正在下载/安装时不打扰.
@@ -340,10 +345,18 @@ package final class SoftwareUpdateService: ObservableObject {
     package func cancelDownload() {
         guard case .downloading(let release, _) = phase else { return }
         downloadGeneration += 1
-        downloadTask?.cancel()
+        let generation = downloadGeneration
+        let task = downloadTask
         downloadTask = nil
-        installer?.removeStaleArtifacts()
+        task?.cancel()
         phase = .available(release)
+        // C256: 等下载/解包任务真正退出后再清理暂存目录，避免与其并发删写；
+        // 期间若已开始新下载（代次变化）则跳过清理。
+        Task { [weak self] in
+            _ = await task?.value
+            guard let self, self.downloadGeneration == generation else { return }
+            self.installer?.removeStaleArtifacts()
+        }
     }
 
     /// 「稍后」: 保留已下载的暂存包, 回到 available; 再次检查同版本时直接回到就绪态.

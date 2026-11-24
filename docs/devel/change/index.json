@@ -156,7 +156,7 @@
     },
     "C256": {
       "title": "macOS 采集管道主线程阻塞、热键悬垂指针、调度器状态机与更新/同步并发修复",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C256-macos-runtime-lifecycle-and-scheduler-races",
       "topic": "SystemOverview",
       "file": "docs/devel/change/C256.json"

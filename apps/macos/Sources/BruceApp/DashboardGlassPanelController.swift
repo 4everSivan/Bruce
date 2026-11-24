@@ -30,6 +30,9 @@ final class DashboardGlassPanelController: NSViewController {
         )
         self.preferredColorScheme = preferredColorScheme
         super.init(nibName: nil, bundle: nil)
+        // C256: NSHostingController 作为子控制器纳入 AppKit 控制器树，
+        // 保证生命周期与外观环境正确传递（此前仅 addSubview，违反嵌套契约）。
+        addChild(hostingController)
     }
 
     @available(*, unavailable)

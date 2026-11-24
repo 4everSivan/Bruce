@@ -63,15 +63,25 @@ package final class URLSessionPricingCatalogTransport: PricingCatalogTransport {
     package static let requestTimeout: TimeInterval = 10
 
     private let session: URLSession
+    private let ownsSession: Bool
 
     package init(session: URLSession? = nil) {
         if let session {
             self.session = session
+            self.ownsSession = false
         } else {
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = Self.requestTimeout
             config.timeoutIntervalForResource = Self.requestTimeout
             self.session = URLSession(configuration: config)
+            self.ownsSession = true
+        }
+    }
+
+    deinit {
+        // C256: 自建 URLSession 在传输层释放时失效，避免挂起连接与回调闭包泄漏。
+        if ownsSession {
+            session.invalidateAndCancel()
         }
     }
 
@@ -137,6 +147,9 @@ package final class PricingCatalogSyncService: ObservableObject {
     private var lastAttemptAt: Date?
     private var syncTask: Task<Void, Never>?
     private var scheduleTask: Task<Void, Never>?
+    /// C256: 在途互斥标记 —— 自动同步失败必须保持静默（stage 不变），
+    /// 不能靠 stage == .syncing 判定在途，否则定时同步会被 UI 当成手动同步。
+    private var syncInFlight = false
     private var postedStatusLine: String?
 
     package init(
@@ -185,6 +198,10 @@ package final class PricingCatalogSyncService: ObservableObject {
     package func stop() {
         scheduleTask?.cancel()
         scheduleTask = nil
+        // C256: 停止时取消在途同步，避免退出/重启期间后台继续写价卡文件。
+        syncTask?.cancel()
+        syncTask = nil
+        stage = .idle
     }
 
     private func secondsUntilNextAutoSync() -> TimeInterval {
@@ -209,7 +226,7 @@ package final class PricingCatalogSyncService: ObservableObject {
             return
         }
 
-        if stage == .syncing {
+        if syncInFlight {
             lastAttemptAt = current
             return
         }
@@ -226,7 +243,7 @@ package final class PricingCatalogSyncService: ObservableObject {
     // MARK: - 手动同步与恢复
 
     package func syncNow() {
-        guard stage != .syncing else { return }
+        guard !syncInFlight else { return }
         clearStatusLine()
         syncTask?.cancel()
         syncTask = Task { [weak self] in
@@ -250,6 +267,9 @@ package final class PricingCatalogSyncService: ObservableObject {
     // MARK: - 执行同步核心流程
 
     private func runSync(manual: Bool) async {
+        // C256: 在途互斥用独立标记，自动同步失败不改变 UI stage（保持静默）。
+        syncInFlight = true
+        defer { syncInFlight = false }
         if manual {
             stage = .syncing
         }
@@ -269,8 +289,10 @@ package final class PricingCatalogSyncService: ObservableObject {
             // 比对是否与当前生效目录一致
             let isIdentical: Bool
             if parsed.updatedAt == currentUpdatedAt && parsed.models.count == currentModelCount {
+                // C256: 仅大小写不同的模型名会触发 uniqueKeysWithValues 崩溃；保留首条。
                 let currentMap = Dictionary(
-                    uniqueKeysWithValues: BuiltinModelPricingCatalog.allModels.map { ($0.modelName.lowercased(), $0) }
+                    BuiltinModelPricingCatalog.allModels.map { ($0.modelName.lowercased(), $0) },
+                    uniquingKeysWith: { first, _ in first }
                 )
                 var matches = true
                 for m in parsed.models {
@@ -301,7 +323,8 @@ package final class PricingCatalogSyncService: ObservableObject {
                 // 计算新增与调价差异
                 let prevModels = BuiltinModelPricingCatalog.allModels
                 let prevMap = Dictionary(
-                    uniqueKeysWithValues: prevModels.map { ($0.modelName.lowercased(), $0) }
+                    prevModels.map { ($0.modelName.lowercased(), $0) },
+                    uniquingKeysWith: { first, _ in first }
                 )
                 var added = 0
                 var adjusted = 0

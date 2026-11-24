@@ -78,33 +78,49 @@ package final class RequestLogClient {
 
     private func run(executableURL: URL, input: Data) async throws -> CollectorProcessOutput {
         let gate = QueryGate()
-        return try await withCheckedThrowingContinuation { continuation in
-            do {
-                let handle = try launcher.launch(
-                    executableURL: executableURL,
-                    arguments: [],
-                    input: input
-                ) { result in
-                    guard !gate.settled else { return }
-                    gate.settled = true
-                    gate.timeoutTask?.cancel()
-                    switch result {
-                    case let .success(output):
-                        continuation.resume(returning: output)
-                    case .failure:
-                        continuation.resume(throwing: RequestLogClientError.launchFailed)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                gate.continuation = continuation
+                do {
+                    let handle = try launcher.launch(
+                        executableURL: executableURL,
+                        arguments: [],
+                        input: input
+                    ) { result in
+                        guard !gate.settled else { return }
+                        gate.settled = true
+                        gate.timeoutTask?.cancel()
+                        let continuation = gate.continuation
+                        gate.continuation = nil
+                        switch result {
+                        case let .success(output):
+                            continuation?.resume(returning: output)
+                        case .failure:
+                            continuation?.resume(throwing: RequestLogClientError.launchFailed)
+                        }
                     }
-                }
-                gate.handle = handle
-                gate.timeoutTask = Task { @MainActor in
-                    try? await Task.sleep(for: Self.queryTimeout)
-                    guard !gate.settled else { return }
+                    gate.handle = handle
+                    gate.timeoutTask = Task { @MainActor in
+                        try? await Task.sleep(for: Self.queryTimeout)
+                        guard !gate.settled else { return }
+                        gate.settled = true
+                        gate.handle?.forceTerminate()
+                        let continuation = gate.continuation
+                        gate.continuation = nil
+                        continuation?.resume(throwing: RequestLogClientError.timedOut)
+                    }
+                } catch {
                     gate.settled = true
-                    gate.handle?.forceTerminate()
-                    continuation.resume(throwing: RequestLogClientError.timedOut)
+                    let continuation = gate.continuation
+                    gate.continuation = nil
+                    continuation?.resume(throwing: RequestLogClientError.launchFailed)
                 }
-            } catch {
-                continuation.resume(throwing: RequestLogClientError.launchFailed)
+            }
+        } onCancel: {
+            // C256: 快速切换筛选/翻页会取消前一次查询；必须终止已启动的采集子进程，
+            // 否则并行残留多个 `Bruce-collector` 进程。
+            Task { @MainActor in
+                gate.cancel()
             }
         }
     }
@@ -115,6 +131,18 @@ private final class QueryGate {
     var settled = false
     var handle: CollectorProcessHandling?
     var timeoutTask: Task<Void, Never>?
+    var continuation: CheckedContinuation<CollectorProcessOutput, Error>?
+
+    func cancel() {
+        guard !settled else { return }
+        settled = true
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        handle?.forceTerminate()
+        let continuation = continuation
+        self.continuation = nil
+        continuation?.resume(throwing: CancellationError())
+    }
 }
 
 private struct RequestLogBridgeRequest: Encodable {

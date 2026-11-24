@@ -236,6 +236,12 @@ struct BruceApp: App {
                         }
                     }
                 }
+            },
+            stopServices: {
+                // C256: 退出时联动停止后台调度与在途任务。
+                updates.stop()
+                pricingSync.stop()
+                runtime.stopScheduling()
             }
         )
     }
