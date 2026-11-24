@@ -396,6 +396,8 @@ impl SnapshotState {
             let prefix = match provider {
                 "kimi" => "kimi_coding_".to_owned(),
                 "opencodeGo" => "opencode_go_".to_owned(),
+                // T39: collector 前缀为小写 `grokbot_`, 与 rawValue 大小写不同。
+                "grokBot" => "grokbot_".to_owned(),
                 _ => format!("{provider}_"),
             };
             if let Some(account_id) = id.strip_prefix(&prefix) {

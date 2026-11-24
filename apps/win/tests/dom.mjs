@@ -157,7 +157,7 @@ export function memoryStorage(initial = {}) {
   };
 }
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, pricingCatalogState = null, storage = null } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, grokBotConnect = { status: "connected" }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, pricingCatalogState = null, storage = null } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
@@ -197,6 +197,16 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     // C085: Grok 本机只读跟随。
     if (command === "grok_local_status") return structuredClone(grokLocal);
     if (command === "import_grok_from_local") return { status: grokLocal.status };
+    // T39: Grok Bot 绑定客户端当前登录账号 (连接成功后写入一条账号记录)。
+    if (command === "connect_grok_bot") {
+      if (grokBotConnect.status === "connected") {
+        state.accounts = [
+          ...state.accounts.filter(a => a.field !== "grokBotQuotaAccounts"),
+          { field: "grokBotQuotaAccounts", accountId: "f827599c055f9a8a", displayName: "Grok Bot · 账号 1", authorizationState: "connected", usable: true },
+        ];
+      }
+      return structuredClone(grokBotConnect);
+    }
     if (command === "verify_subscription") return structuredClone(typeof verify === "function" ? verify(args) : verify);
     if (command === "ccswitch_status") return { available: true };
     if (command === "import_volcengine_from_ccswitch") return { status: "ok", reason: null };

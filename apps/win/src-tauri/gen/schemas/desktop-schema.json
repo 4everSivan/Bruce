@@ -219,6 +219,12 @@
           "markdownDescription": "Enables the codex_import_discovered command without any pre-configured scope."
         },
         {
+          "description": "Enables the connect_grok_bot command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-connect-grok-bot",
+          "markdownDescription": "Enables the connect_grok_bot command without any pre-configured scope."
+        },
+        {
           "description": "Enables the credential_allowlist command without any pre-configured scope.",
           "type": "string",
           "const": "allow-credential-allowlist",
@@ -583,6 +589,12 @@
           "type": "string",
           "const": "deny-codex-import-discovered",
           "markdownDescription": "Denies the codex_import_discovered command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the connect_grok_bot command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-connect-grok-bot",
+          "markdownDescription": "Denies the connect_grok_bot command without any pre-configured scope."
         },
         {
           "description": "Denies the credential_allowlist command without any pre-configured scope.",

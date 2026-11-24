@@ -15,7 +15,7 @@
   const PROVIDER_COLORS = {
     kimi: "#0a84ff", deepseek: "#4d6bfe", volcengine: "#ff6a00", zhipu: "#2D2D2D",
     codex: "#10a37f", claude: "#d97757", grok: "#111111", opencodeGo: "#8a63d2",
-    stepfun: "#0c5efc", cline: "#18181b",
+    stepfun: "#0c5efc", cline: "#18181b", grokBot: "#111111",
   };
   // 品牌图形来自 provider-brand.js 生成产物 (与 app.js 内联块同源, 由 --check 锁定)。
   const PROVIDER_GLYPHS = window.BRUCE_PROVIDER_GLYPHS || {};
@@ -42,7 +42,7 @@
   // 凭证形态副标题 (mac subscriptionRowSubtitle)
   const CREDENTIAL_FORMS = {
     kimi: "Web 令牌", codex: "OAuth 设备码", claude: "CLI 登录态", grok: "CLI 登录态",
-    opencodeGo: "API Key", stepfun: "Step Plan Token",
+    opencodeGo: "API Key", stepfun: "Step Plan Token", grokBot: "本机客户端读数",
   };
   function providerDescriptor(id) { return providers.find(value => value[0] === id) || [id, id, "", ""]; }
   /// 该 Provider 的账号记录。形状不合规的账号在读取侧即被丢弃 (规则 21 fail-closed),
@@ -297,6 +297,13 @@
       kind: "localFollow",
       guide: "未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json)",
       pasteLabel: "粘贴 Grok 访问令牌或凭证 JSON",
+    },
+    // T39 / 设计规则 18 (对齐 mac GrokBotProviderSettingsSection): 只绑定客户端当前登录账号,
+    // 额度由采集端读取 Grok Bot 本机周用量缓存; 无粘贴 / 密钥字段。
+    grokBot: {
+      kind: "clientConnect",
+      guide: "需先在本机打开 Grok Bot 并登录",
+      footnote: "共享池显示「共享每周用量」, 旧版套餐显示「Grok Bot 每周用量」; 读数超过 30 分钟未被 Grok Bot 刷新时标为陈旧",
     },
     opencodeGo: {
       kind: "apiKey",
@@ -652,6 +659,16 @@
       loadGrokLocalStatus();
     }
 
+    // T39: Grok Bot 连接区 (只读客户端账号分片, 不读令牌、不出站)。
+    if (config.kind === "clientConnect" && id === "grokBot") {
+      body.append(node("p", configured
+        ? "已连接 Grok Bot 账号。Grok Bot 切换到其他账号时停止展示, 需在此重新连接。"
+        : "连接 Grok Bot 当前登录的账号, 读取其本机缓存的周用量（%APPDATA%\\Grok Bot）; 不读取登录令牌, 不联网查询。", { class: "hint" }));
+      const act = actions(body);
+      button(act, "cfg-grok-bot-connect", configured ? "重新连接" : "连接当前账号", connectGrokBot, "btn primary");
+      act.append(node("span", null, { id: "cfg-grok-bot-status", role: "status", class: "status-msg" }));
+    }
+
     // 字段组 / 粘贴区
     if (config.kind === "apiKey") {
       for (const [key, label2, placeholder] of config.fields) {
@@ -740,12 +757,15 @@
     }
     foot.append(node("div", null, { class: "cfg-spacer" }));
     button(foot, `cfg-cancel-${id}`, "取消", closeProviderDialog);
-    const saveButton = button(foot, `cfg-save-${id}`, "保存并验证", () => saveProviderCredential(id), "btn primary");
-    // C096: 必填字段未填齐时「保存并验证」置灰 (对齐 mac), 填齐即启用 —— 不再点后才报错。
-    const syncSaveDisabled = () => { saveButton.disabled = !providerFieldsFilled(id); };
-    syncSaveDisabled();
-    for (const field of dialog.querySelectorAll("input") || []) field.addEventListener("input", syncSaveDisabled);
-    for (const field of dialog.querySelectorAll("textarea") || []) field.addEventListener("input", syncSaveDisabled);
+    // T39: 连接类 (Grok Bot) 由「连接当前账号」完成保存与验证, 不提供密钥表单的保存按钮。
+    if (config.kind !== "clientConnect") {
+      const saveButton = button(foot, `cfg-save-${id}`, "保存并验证", () => saveProviderCredential(id), "btn primary");
+      // C096: 必填字段未填齐时「保存并验证」置灰 (对齐 mac), 填齐即启用 —— 不再点后才报错。
+      const syncSaveDisabled = () => { saveButton.disabled = !providerFieldsFilled(id); };
+      syncSaveDisabled();
+      for (const field of dialog.querySelectorAll("input") || []) field.addEventListener("input", syncSaveDisabled);
+      for (const field of dialog.querySelectorAll("textarea") || []) field.addEventListener("input", syncSaveDisabled);
+    }
     dialog.append(foot);
     host.append(dialog);
   }
@@ -1414,6 +1434,20 @@
     if (byId("consent-list") || byId("setting-providers")) renderConsentSummary();
   }
 
+  /// Grok Bot (T39): 绑定客户端当前登录账号, 成功后走统一验证 → 启用 → 定向刷新。
+  async function connectGrokBot() {
+    try {
+      const result = await invoke("connect_grok_bot");
+      if (result?.status === "notSignedIn") {
+        message(byId("cfg-grok-bot-status"), "未检测到 Grok Bot 登录态，请先打开 Grok Bot 并登录", "warn");
+        return;
+      }
+      await loadCredentials();
+      await reverifyProvider("grokBot");
+      renderProviderDialog("grokBot");
+    } catch (error) { message(byId("cfg-grok-bot-status"), `连接失败：${error.message || error}`, "warn"); }
+  }
+
   async function importGrokFromLocal() {
     try {
       const result = await invoke("import_grok_from_local");
@@ -1440,6 +1474,6 @@
     removeProvider, sitePickerRow, siteValue, dialogValues, saveProviderCredential,
     reverifyProvider, localTime, renderProviderAddRow, addProvider, reorderProviders,
     buildSubscription, renderClaudeLocalState, loadClaudeLocalStatus, importClaudeFromLocal, renderGrokLocalState,
-    loadGrokLocalStatus, importGrokFromLocal,
+    loadGrokLocalStatus, importGrokFromLocal, connectGrokBot,
   });
 })();

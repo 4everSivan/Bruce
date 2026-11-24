@@ -13,7 +13,7 @@ pub const DEFAULT_REFRESH_INTERVAL_SECS: u64 = 1800;
 /// 首次启动欢迎向导契约版本 (T22, 对齐 mac `OnboardingConfiguration.currentWelcomeVersion`)。
 pub const CURRENT_WELCOME_VERSION: u32 = 1;
 /// 界面可见的 Provider 清单 (对齐 mac 设置页可见范围: SubscriptionProviderID.allCases
-/// 的 11 家中 Jev 官方未开放查额 API 双端界面隐藏, 其余 10 家含 Cline 全部可配)。
+/// 的 12 家中 Jev 官方未开放查额 API 双端界面隐藏, 其余 11 家含 Cline、Grok Bot (T39) 全部可配)。
 pub const PROVIDERS: &[&str] = &[
     "kimi",
     "deepseek",
@@ -25,6 +25,7 @@ pub const PROVIDERS: &[&str] = &[
     "opencodeGo",
     "stepfun",
     "cline",
+    "grokBot",
 ];
 
 /// 订阅 Provider 的验证状态 (C082, 对齐 mac `SubscriptionVerificationStatus`)。

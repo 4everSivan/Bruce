@@ -137,6 +137,8 @@ pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), S
             "claudeQuotaAccounts" | "grokQuotaAccounts" | "opencodeGoQuotaAccounts" => {
                 (&["display_name", "oauth"], &[])
             }
+            // T39: 只存已连接的 Grok Bot 客户端账号标识 (非密钥), 数据目录由 Collector 注入。
+            "grokBotQuotaAccounts" => (&["display_name", "account"], &["account"]),
             _ => return Err("凭证字段不受支持".to_owned()),
         };
         if account.keys().any(|key| !allowed.contains(&key.as_str()))
@@ -148,6 +150,18 @@ pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), S
             })
         {
             return Err("凭证账号字段无效或缺少必填值".to_owned());
+        }
+        // T39: 账号键必须由账号标识派生 (与 Collector / mac 同算法), 防止键与账号错位。
+        if field == "grokBotQuotaAccounts" {
+            let bound = account
+                .get("account")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !collector_provider::is_valid_grok_bot_account(bound)
+                || collector_provider::grok_bot_account_key(bound) != *id
+            {
+                return Err("Grok Bot 账号记录无效".to_owned());
+            }
         }
         // C084: 只读发现写入的是 metadata-only 记录 (authorization_state = reauthRequired,
         // 无令牌), 故 access_token 必填放宽为「非元数据记录才必填」; 可出站的账号形状
@@ -394,6 +408,7 @@ fn provider_display_prefix(field: &str) -> &'static str {
         "stepfunQuotaAccounts" => "StepFun",
         "jevQuotaAccounts" => "Jev",
         "clineQuotaAccounts" => "Cline",
+        "grokBotQuotaAccounts" => "Grok Bot",
         _ => "Account",
     }
 }
@@ -701,6 +716,56 @@ pub fn follow_local_grok(root: &Path, home: &Path) -> Result<GrokLocalStatus, St
         &grok_local::grok_cli_account(&oauth),
     )?;
     Ok(grok_local::status_of(&oauth, now_ms))
+}
+
+/// Grok Bot 连接结果 (T39)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrokBotConnectStatus {
+    /// 已绑定客户端当前登录账号。
+    Connected,
+    /// 未安装或未登录 Grok Bot, 未写入任何记录。
+    NotSignedIn,
+}
+
+impl GrokBotConnectStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Connected => "connected",
+            Self::NotSignedIn => "notSignedIn",
+        }
+    }
+}
+
+/// 绑定 Grok Bot 客户端当前登录账号 (T39, design/02 规则 18; 对齐 mac `connectGrokBot`)。
+///
+/// 只读客户端 `client-meta.account-slot` (经共享 `collector-provider`, 与 Collector 同一份
+/// 定位与解析), 不读加密会话与凭据库。单账号语义: 重新连接替换旧绑定, 旧服务 ID 随之消失。
+/// `data_dir` 由调用方按 `collector_provider::grok_bot_data_dir` 解析 (测试注入临时目录,
+/// 不触碰本机真实 %APPDATA%)。
+pub fn connect_grok_bot(root: &Path, data_dir: &Path) -> Result<GrokBotConnectStatus, String> {
+    const FIELD: &str = "grokBotQuotaAccounts";
+    let account = collector_provider::read_grok_bot_active_account(data_dir)
+        .map_err(|error| format!("Grok Bot 登录态读取失败: {}", error.diagnostic.message))?;
+    let Some(account) = account else {
+        return Ok(GrokBotConnectStatus::NotSignedIn);
+    };
+    let account_id = collector_provider::grok_bot_account_key(&account);
+    let stale = read_raw_credentials(root)
+        .get(FIELD)
+        .and_then(Value::as_object)
+        .map(|accounts| {
+            accounts
+                .keys()
+                .filter(|id| **id != account_id)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    for id in stale {
+        remove_credential_account(root, FIELD, &id)?;
+    }
+    save_credential_account(root, FIELD, &account_id, &json!({ "account": account }))?;
+    Ok(GrokBotConnectStatus::Connected)
 }
 
 /// 订阅 Provider 的验证结果 (C082)。

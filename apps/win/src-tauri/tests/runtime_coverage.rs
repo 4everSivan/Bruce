@@ -635,6 +635,37 @@ fn credential_pruning_uses_shared_hashed_codex_service_identity() {
         .is_empty());
 }
 
+/// T39: Grok Bot 服务 ID 前缀 `grokbot_` 与 rawValue 大小写不同; 恢复快照时只保留
+/// 当前绑定账号的服务, 重新连接其他账号后旧账号读数不得残留 (design/02 规则 18)。
+#[test]
+fn credential_pruning_keeps_only_bound_grok_bot_account() {
+    let mut artifact = valid_artifact();
+    let template = artifact["services"][0].clone();
+    let mut bound = template.clone();
+    bound["id"] = json!("grokbot_f827599c055f9a8a");
+    bound["provider"] = json!("grokBot");
+    let mut stale = template;
+    stale["id"] = json!("grokbot_0000000000000000");
+    stale["provider"] = json!("grokBot");
+    artifact["services"] = json!([bound, stale]);
+    let mut state = SnapshotState::default();
+    state
+        .apply_response(&response(artifact, ResponseStatus::Success))
+        .unwrap();
+    let credentials = std::collections::BTreeMap::from([(
+        "grokBotQuotaAccounts".into(),
+        json!({"f827599c055f9a8a": {"display_name": "Grok Bot · 账号 1", "account": "grok|user_01"}}),
+    )]);
+    state.prune_credentials(&credentials);
+    let ids = state.artifact().unwrap()["services"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|service| service["id"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, ["grokbot_f827599c055f9a8a"]);
+}
+
 #[test]
 fn manual_origin_survives_backoff_without_leaking_into_next_normal_cycle() {
     use bruce_win_lib::runtime_core::manual_alert_reason;

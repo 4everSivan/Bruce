@@ -8,15 +8,16 @@ use std::path::PathBuf;
 
 use base64::Engine;
 use bruce_win_lib::credentials::{
-    app_data_root_with, capture_stepfun_cookie_with, credential_accounts, credential_rejections,
-    follow_local_claude, follow_local_grok, import_codex_discovered,
+    app_data_root_with, capture_stepfun_cookie_with, connect_grok_bot, credential_accounts,
+    credential_rejections, follow_local_claude, follow_local_grok, import_codex_discovered,
     import_volcengine_from_cc_switch, load_credentials, local_claude_status, local_grok_status,
     merge_credentials, read_raw_credentials, remove_provider_credentials,
     rename_credential_account, save_credential_account, save_credentials, stepfun_account_id,
     validate_credential_payload, verify_subscription, verify_subscription_following_local,
     verify_subscription_with, with_local_claude, ClaudeLocalStatus, CredentialPayloads,
-    DeepSeekProbe, GrokLocalStatus, StepFunCaptureOutcome, StepFunCookieCandidate,
-    StepFunRemoteTransport, StepFunSite, StepFunVerifyRequest, SubscriptionVerification,
+    DeepSeekProbe, GrokBotConnectStatus, GrokLocalStatus, StepFunCaptureOutcome,
+    StepFunCookieCandidate, StepFunRemoteTransport, StepFunSite, StepFunVerifyRequest,
+    SubscriptionVerification,
 };
 use bruce_win_lib::runtime_core::{window_action, WindowAction};
 use serde_json::json;
@@ -1571,4 +1572,93 @@ fn save_credential_account_defaults_and_preserves_custom_name() {
         json!("Codex · user")
     );
     let _ = fs::remove_dir_all(&root);
+}
+
+// MARK: - Grok Bot 账号连接 (T39 / 设计规则 18)
+
+const GROK_BOT_SLOT_FILE: &str =
+    "onqw4zbomnwgszlooqxhg3djmnss4y3mnfsw45bnnvsxiyjomfrwg33vnz2c243mn52a.blob";
+
+/// 临时 Grok Bot 数据目录; `account` 为 None 时只建目录 (未登录)。不触碰本机真实 %APPDATA%。
+fn grok_bot_data_dir(root: &std::path::Path, account: Option<&str>) -> PathBuf {
+    let dir = root.join("Grok Bot");
+    let slices = dir.join("sand-client-persistence");
+    fs::create_dir_all(&slices).unwrap();
+    if let Some(account) = account {
+        fs::write(
+            slices.join(GROK_BOT_SLOT_FILE),
+            json!({"schemaVersion": 1, "value": account}).to_string(),
+        )
+        .unwrap();
+    }
+    dir
+}
+
+#[test]
+fn grok_bot_connect_binds_active_account_and_replaces_previous_binding() {
+    let root = temp_root();
+    let data_dir = grok_bot_data_dir(&root, None);
+    assert_eq!(
+        connect_grok_bot(&root, &data_dir).unwrap(),
+        GrokBotConnectStatus::NotSignedIn
+    );
+    assert!(!load_credentials(&root).contains_key("grokBotQuotaAccounts"));
+
+    let data_dir = grok_bot_data_dir(&root, Some("grok|user_01"));
+    assert_eq!(
+        connect_grok_bot(&root, &data_dir).unwrap(),
+        GrokBotConnectStatus::Connected
+    );
+    let loaded = load_credentials(&root);
+    let accounts = loaded["grokBotQuotaAccounts"].as_object().unwrap();
+    assert_eq!(accounts.len(), 1);
+    // 账号键与 Collector / mac 对拍锚点一致。
+    assert_eq!(
+        accounts["f827599c055f9a8a"]["account"],
+        json!("grok|user_01")
+    );
+    assert_eq!(verify_subscription(&root, "grokBot").status, "ok");
+
+    // 客户端切换账号后重新连接: 旧绑定被替换, 不保留两份。
+    grok_bot_data_dir(&root, Some("grok|user_02"));
+    connect_grok_bot(&root, &data_dir).unwrap();
+    let loaded = load_credentials(&root);
+    let accounts = loaded["grokBotQuotaAccounts"].as_object().unwrap();
+    assert_eq!(accounts.len(), 1);
+    let key = collector_provider::grok_bot_account_key("grok|user_02");
+    assert_eq!(accounts[&key]["account"], json!("grok|user_02"));
+
+    // 格式漂移时报错, 不写入任何记录。
+    fs::write(
+        data_dir
+            .join("sand-client-persistence")
+            .join(GROK_BOT_SLOT_FILE),
+        r#"{"schemaVersion":9,"value":"grok|user_03"}"#,
+    )
+    .unwrap();
+    assert!(connect_grok_bot(&root, &data_dir).is_err());
+    assert!(load_credentials(&root)["grokBotQuotaAccounts"]
+        .as_object()
+        .unwrap()
+        .contains_key(&key));
+}
+
+#[test]
+fn grok_bot_records_must_derive_key_from_account() {
+    validate_credential_payload(
+        "grokBotQuotaAccounts",
+        &json!({"f827599c055f9a8a": {"account": "grok|user_01", "display_name": "Grok Bot · 账号 1"}}),
+    )
+    .expect("键由账号派生的记录必须可保存");
+    for invalid in [
+        json!({"0000000000000000": {"account": "grok|user_01"}}),
+        json!({"f827599c055f9a8a": {"account": "grok|user_01", "data_dir": "/elsewhere"}}),
+        json!({"f827599c055f9a8a": {"display_name": "Grok Bot"}}),
+        json!({"f827599c055f9a8a": {"account": "grok|user_01\n"}}),
+    ] {
+        assert!(
+            validate_credential_payload("grokBotQuotaAccounts", &invalid).is_err(),
+            "{invalid}"
+        );
+    }
 }

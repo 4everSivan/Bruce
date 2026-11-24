@@ -888,6 +888,15 @@ mod desktop {
         Ok(serde_json::json!({"status": status.as_str()}))
     }
 
+    /// 绑定 Grok Bot 客户端当前登录账号 (T39): 只读客户端账号分片, 不读会话、不回写。
+    /// 刷新由设置页的验证 → 启用 → 定向刷新统一触发 (连接时尚未启用, 此处不刷新)。
+    #[tauri::command]
+    fn connect_grok_bot() -> Result<serde_json::Value, String> {
+        let data_dir = collector_provider::grok_bot_data_dir(&paths::home_root());
+        let status = credentials::connect_grok_bot(&paths::data_root(), &data_dir)?;
+        Ok(serde_json::json!({"status": status.as_str()}))
+    }
+
     /// 订阅 Provider 验证 (C082): 结构校验口径与写入路径一致, 返回
     /// `{status, reason}`; 前端据此落 `subscriptionProviders` 的验证状态。
     /// DeepSeek 在结构校验通过后追加一次真实试查 (C083)。
@@ -1500,6 +1509,7 @@ mod desktop {
                 import_claude_from_local,
                 grok_local_status,
                 import_grok_from_local,
+                connect_grok_bot,
                 get_settings,
                 save_settings_command,
                 credential_allowlist,

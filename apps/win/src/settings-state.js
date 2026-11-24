@@ -17,6 +17,8 @@
     ["opencodeGo", "OpenCode", "opencodeGoQuotaAccounts"],
     ["stepfun", "StepFun", "stepfunQuotaAccounts"],
     ["cline", "Cline", "clineQuotaAccounts"],
+    // T39: Grok Bot 只读客户端本机周用量读数 (design/02 规则 18)。
+    ["grokBot", "Grok Bot", "grokBotQuotaAccounts"],
   ];
   const CATEGORIES = {
     general: { title: "通用", crumb: "设置 / 通用" },

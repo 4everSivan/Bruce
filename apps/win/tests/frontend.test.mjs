@@ -943,7 +943,7 @@ test("each provider row opens its own config dialog with mac texts (C082)", asyn
 
   // 添加服务只列尚未添加的 Provider
   const options = [...app.document.querySelectorAll("#provider-add-row .cfg-picker-option")];
-  assert.equal(options.length, 4, "10 家减去已添加的 6 家");
+  assert.equal(options.length, 5, "11 家 (含 T39 Grok Bot) 减去已添加的 6 家");
 });
 
 test("volcengine dialog imports from CC Switch behind a read-only confirm (C083)", async () => {
@@ -2363,6 +2363,40 @@ test("codex dialog hides discovery entries when no local account files exist (C0
   assert.match(app.node("provider-dialog").textContent, /未发现本机 Codex CLI/, "给出缺失说明");
 });
 
+test("grok bot dialog connects the client account without key form (T39)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [],
+    settings: { ...defaults, enabledProviders: [], subscriptionProviders: { grokBot: { enabled: false, verificationStatus: "none" } } },
+  });
+  await app.node("provider-configure-grokBot").click();
+  const dialog = app.node("provider-dialog");
+  assert.match(dialog.textContent, /不读取登录令牌, 不联网查询/, "说明只读本机读数");
+  assert.equal(app.node("cfg-save-grokBot"), null, "连接类不提供密钥表单保存按钮");
+  assert.equal(app.node("cfg-grokBot-paste"), null, "无粘贴入口");
+  assert.equal(app.node("cfg-grok-bot-connect").textContent, "连接当前账号");
+  await app.node("cfg-grok-bot-connect").click();
+  const commands = app.calls.map(c => c.command);
+  const connectAt = commands.indexOf("connect_grok_bot");
+  assert.ok(connectAt >= 0, "点击连接调用 connect_grok_bot");
+  const verifyAt = commands.findIndex((c, i) => i > connectAt && c === "verify_subscription");
+  assert.ok(verifyAt > connectAt, "连接后走统一验证");
+  assert.equal(app.calls[verifyAt].args.provider, "grokBot");
+  assert.ok(commands.slice(verifyAt).includes("refresh_subscription"), "验证通过后定向刷新");
+  assert.equal(app.node("cfg-grok-bot-connect").textContent, "重新连接", "已连接后改为重新连接");
+
+  const signedOut = await boot({
+    html: "settings.html",
+    accounts: [],
+    grokBotConnect: { status: "notSignedIn" },
+    settings: { ...defaults, enabledProviders: [], subscriptionProviders: { grokBot: { enabled: false, verificationStatus: "none" } } },
+  });
+  await signedOut.node("provider-configure-grokBot").click();
+  await signedOut.node("cfg-grok-bot-connect").click();
+  assert.match(signedOut.node("cfg-grok-bot-status").textContent, /未检测到 Grok Bot 登录态/);
+  assert.ok(!signedOut.calls.some(c => c.command === "verify_subscription"), "未登录不验证、不启用");
+});
+
 test("grok dialog follows the local CLI login and counts as configured (C085)", async () => {
   const app = await boot({
     html: "settings.html",
@@ -3187,7 +3221,7 @@ test("first-launch welcome wizard auto-presents on fresh install, walks 3 steps 
 
   // Step 2: 呈现本机发现与 10 家服务商网格, 可直接跳过至 Step 3
   assert.match(overlay.textContent, /STEP 02 · SUBSCRIPTION QUOTA/);
-  assert.equal(overlay.querySelectorAll(".welcome-provider-card").length, 10, "Step 2 展示 10 家订阅服务");
+  assert.equal(overlay.querySelectorAll(".welcome-provider-card").length, 11, "Step 2 展示 11 家订阅服务 (含 T39 Grok Bot)");
   await app.node("welcome-step2-skip").click();
   await settle();
 

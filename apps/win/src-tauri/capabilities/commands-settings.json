@@ -14,6 +14,7 @@
     "allow-codex-device-start",
     "allow-codex-discovery-sources",
     "allow-codex-import-discovered",
+    "allow-connect-grok-bot",
     "allow-credential-allowlist",
     "allow-expand-dashboard",
     "allow-export-billing",

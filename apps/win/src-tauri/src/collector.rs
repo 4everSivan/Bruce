@@ -90,6 +90,7 @@ pub fn quota_credential_field(provider: &str) -> Option<&'static str> {
         "codex" => Some("codexQuotaAccounts"),
         "stepfun" => Some("stepfunQuotaAccounts"),
         "cline" => Some("clineQuotaAccounts"),
+        "grokBot" => Some("grokBotQuotaAccounts"),
         _ => None,
     }
 }

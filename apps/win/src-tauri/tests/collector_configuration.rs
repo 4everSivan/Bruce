@@ -107,3 +107,32 @@ fn configured_local_request_crosses_real_bridge_with_price_overrides() {
     let response = collector_bridge::run_bytes(&serde_json::to_vec(&request).unwrap());
     assert!(response.artifact.is_some(), "{:?}", response.diagnostics);
 }
+
+/// T39: Grok Bot 启用后只装配已连接账号 (account / display_name), 不携带数据目录;
+/// 数据目录由 Collector 注入 (design/02 规则 18)。未启用时不装配。
+#[test]
+fn grok_bot_assembles_bound_account_only_when_enabled() {
+    let credentials: CredentialPayloads = serde_json::from_value(json!({
+        "grokBotQuotaAccounts": {
+            "f827599c055f9a8a": {"account": "grok|user_01", "display_name": "Grok Bot · 账号 1"}
+        }
+    }))
+    .unwrap();
+    let mut settings = AppSettings {
+        consent_version: 1,
+        ..AppSettings::default()
+    };
+    let request = build_configured_request(chrono::Local::now(), &credentials, &settings);
+    assert!(!request.credentials.contains_key("grokBotQuotaAccounts"));
+
+    settings.enabled_providers = vec!["grokBot".into()];
+    let request = build_configured_request(chrono::Local::now(), &credentials, &settings);
+    assert_eq!(
+        request.credentials["grokBotQuotaAccounts"],
+        json!({"f827599c055f9a8a": {"account": "grok|user_01", "display_name": "Grok Bot · 账号 1"}})
+    );
+    assert!(!serde_json::to_string(&request)
+        .unwrap()
+        .contains("data_dir"));
+    assert!(!request.credentials.contains_key("providerMeta"));
+}

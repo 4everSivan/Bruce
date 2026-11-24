@@ -30,6 +30,7 @@ fn main() {
                 "import_claude_from_local",
                 "grok_local_status",
                 "import_grok_from_local",
+                "connect_grok_bot",
                 "get_settings",
                 "save_settings_command",
                 "credential_allowlist",

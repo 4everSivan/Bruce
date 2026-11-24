@@ -86,7 +86,7 @@ pub struct SubscriptionViewModel {
 // MARK: - Provider 展示策略 (对齐 SubscriptionPresentationPolicy)
 
 /// SubscriptionProviderID rawValues (BruceOnboardingCore); 分组前缀匹配依赖顺序。
-const PROVIDER_IDS: [&str; 11] = [
+const PROVIDER_IDS: [&str; 12] = [
     "kimi",
     "deepseek",
     "volcengine",
@@ -98,6 +98,7 @@ const PROVIDER_IDS: [&str; 11] = [
     "stepfun",
     "jev",
     "cline",
+    "grokBot",
 ];
 
 /// 暂时屏蔽的 Provider (对齐 mac isProviderTemporarilyDisabled):
@@ -136,6 +137,10 @@ pub fn gate_verified_services(
 pub fn provider_id_for_service(service_id: &str) -> String {
     if service_id == "kimi_coding" {
         return "kimi".to_owned();
+    }
+    // T39: collector 前缀 `grokbot_` 与 rawValue `grokBot` 大小写不同, 单列。
+    if service_id.starts_with("grokbot_") {
+        return "grokBot".to_owned();
     }
     for provider in PROVIDER_IDS {
         let prefix = format!("{provider}_");
@@ -190,6 +195,7 @@ fn group_display_name(provider_id: &str) -> String {
         "stepfun" => "StepFun",
         "jev" => "Jev",
         "cline" => "Cline",
+        "grokBot" => "Grok Bot",
         other => other,
     }
     .to_owned()
@@ -275,6 +281,10 @@ pub fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
             // 避免多行周窗口被归一成同一文案后不可区分 (C058);
             // "每周窗口"/裸"每周"等无后缀形态仍归一。
             if raw_label.starts_with("每周 ") {
+                return raw_label.to_owned();
+            }
+            // Grok Bot 共享池 / 旧版独立周额度 (T39) 以 label 区分口径, 原样保留 (mac 同口径)。
+            if raw_label.ends_with("每周用量") {
                 return raw_label.to_owned();
             }
             return "每周".to_owned();
@@ -651,6 +661,12 @@ mod tests {
         assert_eq!(
             window_label("\u{6bcf}\u{5468}\u{7a97}\u{53e3}", Some(10080)),
             "\u{6bcf}\u{5468}"
+        );
+        // T39: Grok Bot 两种口径的周用量 label 原样保留。
+        assert_eq!(window_label("共享每周用量", Some(10080)), "共享每周用量");
+        assert_eq!(
+            window_label("Grok Bot 每周用量", Some(10080)),
+            "Grok Bot 每周用量"
         );
     }
 

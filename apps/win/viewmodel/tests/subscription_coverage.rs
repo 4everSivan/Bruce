@@ -368,3 +368,35 @@ fn single_account_stale_section_carries_last_success_like_mac() {
         "多账号 stale 账号仍由子卡携带"
     );
 }
+
+/// T39: Grok Bot 服务 ID 前缀 `grokbot_` 归入 `grokBot` 分组 (不得落入 Grok), 两种口径的
+/// 周用量 label 原样保留 (mac PanelViewModelHarness 同口径)。
+#[test]
+fn grok_bot_service_groups_separately_and_keeps_weekly_labels() {
+    let services = json!([
+        {
+            "id": "grokbot_f827599c055f9a8a", "name": "Grok Bot · 账号 1", "provider": "grokBot",
+            "status": "ok", "kind": "windows", "plan": "Premium",
+            "windows": [{"label": "共享每周用量", "windowKey": "weekly_shared", "windowMode": "block",
+                         "windowMinutes": 10080, "usedPercent": 31.03, "resetsAt": null}]
+        },
+        {
+            "id": "grok", "name": "Grok", "provider": "grok", "status": "ok", "kind": "windows",
+            "windows": [{"label": "每周", "windowMinutes": 10080, "usedPercent": 10.0}]
+        }
+    ]);
+    let (subscription, _) = map(services);
+    let subscription = subscription.unwrap();
+    assert_eq!(subscription.sections.len(), 2);
+    assert_eq!(subscription.sections[0].name, "Grok Bot");
+    assert_eq!(subscription.sections[0].windows[0].label, "共享每周用量");
+    assert_eq!(subscription.sections[1].name, "Grok");
+    assert_eq!(
+        bruce_win_viewmodel::subscription::provider_id_for_service("grokbot_f827599c055f9a8a"),
+        "grokBot"
+    );
+    assert_eq!(
+        bruce_win_viewmodel::subscription::provider_id_for_service("grok_a1"),
+        "grok"
+    );
+}
