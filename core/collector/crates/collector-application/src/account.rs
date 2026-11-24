@@ -1,10 +1,11 @@
 use collector_domain::{BridgeRequest, Diagnostic};
 use collector_provider::{
-    catalog_entries, catalog_entry_for_app, codex_service_id, resolve_service_catalog,
-    AccountDescriptor, CatalogInput, ServiceDescriptor,
+    catalog_entries, catalog_entry_for_app, codex_service_id, local_client_data_dir,
+    resolve_service_catalog, AccountDescriptor, CatalogEntry, CatalogInput, ServiceDescriptor,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 const CODEX_QUOTA_ACCOUNT_MAX: usize = 64;
 const CODEX_QUOTA_ACCOUNT_ID_MAX: usize = 256;
@@ -229,7 +230,11 @@ pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountP
                 .and_then(|prefix| service.id.strip_prefix(prefix))
                 .map(str::to_owned);
             AccountPlan {
-                credential: credential_for_service(&request.credentials, &service),
+                credential: credential_for_service(
+                    &request.credentials,
+                    &request.context,
+                    &service,
+                ),
                 account_id,
                 service,
             }
@@ -352,13 +357,17 @@ pub(crate) fn build_codex_account_plans(
 
 fn credential_for_service(
     credentials: &serde_json::Map<String, Value>,
+    context: &serde_json::Map<String, Value>,
     service: &ServiceDescriptor,
 ) -> Option<Value> {
     let entry = catalog_entry_for_app(&service.app)?;
     if let Some(account_id) = service.id.strip_prefix(entry.prefix) {
-        let payload = provider_accounts(credentials, entry.credential_field)?
+        let mut payload = provider_accounts(credentials, entry.credential_field)?
             .get(account_id)?
             .clone();
+        if entry.local_client_state {
+            inject_local_client_dir(&mut payload, context, &entry);
+        }
         if entry.unwraps_oauth_payload {
             return payload
                 .as_object()
@@ -370,6 +379,45 @@ fn credential_for_service(
     }
     let direct_field = entry.direct_credential_field?;
     credentials.get(direct_field).cloned()
+}
+
+/// T39: 读取官方客户端本机状态的 provider 由编排层注入数据目录 (design/02 规则 18):
+/// `context.paths.<prefix>data` 覆盖优先, 否则按 `context.home` 取平台默认; 两者皆无时
+/// 移除该字段, 由 provider 报未登录。应用传入的同名字段一律被覆盖, 不能指向任意路径。
+fn inject_local_client_dir(
+    payload: &mut Value,
+    context: &serde_json::Map<String, Value>,
+    entry: &CatalogEntry,
+) {
+    let Some(object) = payload.as_object_mut() else {
+        return;
+    };
+    let override_key = format!("{}data", entry.prefix);
+    let dir = context
+        .get("paths")
+        .and_then(Value::as_object)
+        .and_then(|paths| paths.get(&override_key))
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            context
+                .get("home")
+                .and_then(Value::as_str)
+                .filter(|home| !home.is_empty())
+                .and_then(|home| local_client_data_dir(entry.app, Path::new(home)))
+        });
+    match dir {
+        Some(dir) => {
+            object.insert(
+                "data_dir".to_owned(),
+                Value::String(dir.to_string_lossy().into_owned()),
+            );
+        }
+        None => {
+            object.remove("data_dir");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -404,6 +452,49 @@ mod tests {
         assert_eq!(plans[1].service.id, "grok_a");
         assert_eq!(plans[1].credential.as_ref().unwrap()["key"], "secret");
         assert_eq!(plans[2].service.id, "grok_z");
+    }
+
+    #[test]
+    fn grok_bot_plan_injects_collector_owned_data_dir() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {"externalRequestSeconds": 10, "moduleSeconds": 90},
+            "context": {
+                "capabilities": ["externalQuotas"],
+                "home": "/fixture-home",
+                "paths": {"grokbot_data": "/fixture-grok-bot"}
+            },
+            "credentials": {
+                "grokBotQuotaAccounts": {
+                    "f827599c055f9a8a": {
+                        "display_name": "Grok Bot",
+                        "account": "grok|user_01",
+                        "data_dir": "/elsewhere"
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let plans = build_account_plan(&request).unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].service.id, "grokbot_f827599c055f9a8a");
+        assert_eq!(plans[0].service.app, "grok-bot");
+        let credential = plans[0].credential.as_ref().unwrap();
+        assert_eq!(credential["data_dir"], "/fixture-grok-bot");
+        assert_eq!(credential["account"], "grok|user_01");
+
+        let mut without_paths = request.clone();
+        without_paths.context.remove("paths");
+        without_paths.context.remove("home");
+        let plans = build_account_plan(&without_paths).unwrap();
+        assert!(plans[0]
+            .credential
+            .as_ref()
+            .unwrap()
+            .get("data_dir")
+            .is_none());
     }
 
     #[test]

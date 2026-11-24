@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 3,
+  "value": {
+    "kind": "present",
+    "selectedTeamId": null,
+    "reading": {
+      "usage": {
+        "percentUsed": 31.029252437703143,
+        "nextResetMs": 1796047061228,
+        "isSandTrial": false,
+        "hasNonZeroIncludedLimit": true,
+        "isTeamSeat": false,
+        "onDemand": null,
+        "prepaidBalanceCents": 0,
+        "wouldRefuseSend": false,
+        "grokPlanLabel": "Grok Bot Plan",
+        "unifiedPlanName": "Premium",
+        "readForTeamId": null
+      },
+      "readAtMs": 1795491707158
+    },
+    "expiresAtMs": 1795578108717
+  }
+}

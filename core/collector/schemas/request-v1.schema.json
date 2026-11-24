@@ -228,6 +228,36 @@
         "maxLength": 256
       }
     },
+    "grokBotQuotaAccounts": {
+      "type": "object",
+      "description": "T39: 已连接的 Grok Bot 客户端账号 (design/02 规则 18); 键为 sha256(account) 十六进制前 16 位, data_dir 由 Collector 注入, 不由调用方提供",
+      "minProperties": 1,
+      "maxProperties": 64,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "display_name",
+          "account"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "account": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{16}$"
+      }
+    },
     "codexQuotaAccount": {
       "type": "object",
       "additionalProperties": false,
@@ -291,6 +321,9 @@
         },
         "clineQuotaAccounts": {
           "$ref": "#/$defs/quotaAccounts"
+        },
+        "grokBotQuotaAccounts": {
+          "$ref": "#/$defs/grokBotQuotaAccounts"
         },
         "providerMeta": {
           "type": "object"

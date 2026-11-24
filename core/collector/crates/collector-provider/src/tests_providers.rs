@@ -531,7 +531,7 @@ fn cline_live_plan_payload_shape_is_supported() {
 #[test]
 fn catalog_entries_are_complete_and_unique() {
     let entries = catalog_entries();
-    assert_eq!(entries.len(), 10, "目录表应含 10 家 provider");
+    assert_eq!(entries.len(), 11, "目录表应含 11 家 provider");
 
     let mut apps = std::collections::BTreeSet::new();
     let mut prefixes = std::collections::BTreeSet::new();
@@ -887,6 +887,7 @@ fn services_carry_explicit_provider_and_failure_kind() {
         "stepfun",
         "jev",
         "cline",
+        "grokBot",
     ];
     let mut apps = catalog_entries()
         .into_iter()

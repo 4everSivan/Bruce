@@ -66,6 +66,7 @@ pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "stepfunQuotaAccounts",
     "jevQuotaAccounts",
     "clineQuotaAccounts",
+    "grokBotQuotaAccounts",
     "providerMeta",
 ];
 

@@ -236,7 +236,7 @@
               },
               "windowKey": {
                 "type": "string",
-                "description": "稳定语义身份 (five_hour / weekly / monthly / weekly_scoped:<model> / credits / topup_credits / extra_usage / generic); 同一 service 内唯一"
+                "description": "稳定语义身份 (five_hour / weekly / weekly_shared / monthly / weekly_scoped:<model> / credits / topup_credits / extra_usage / generic); 同一 service 内唯一"
               },
               "windowMode": {
                 "type": "string",
@@ -273,12 +273,13 @@
             "server",
             "invalidResponse",
             "credential",
+            "accountMismatch",
             "network",
             "storage",
             "tokenUnavailable",
             null
           ],
-          "description": "失败分类 (C118): 成功为 null; 应用据此判定限流冷却, 不再匹配 note 文案. storage / tokenUnavailable 仅由 mac Codex 合并器在应用侧写入, collector 不产出"
+          "description": "失败分类 (C118): 成功为 null; 应用据此判定限流冷却, 不再匹配 note 文案. storage / tokenUnavailable 仅由 mac Codex 合并器在应用侧写入, collector 不产出; accountMismatch (T39) 为本机客户端账号与已连接账号不一致, 回填策略不借用旧读数"
         },
         "egress": {
           "type": "object",

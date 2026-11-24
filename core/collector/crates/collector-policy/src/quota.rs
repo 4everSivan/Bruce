@@ -234,7 +234,9 @@ pub fn provider_id(service: &Value) -> &str {
 /// service ID (如 `zhipu_9be9…`), 多账号分组 section 的 ID 即 provider 本身 (如 `cline`),
 /// 两者经同一前缀规则归一; 无法识别时原样返回。
 pub fn provider_of_id(id: &str) -> &str {
-    const PREFIXES: [(&str, &str); 12] = [
+    // `grokBot` / `grokbot` 必须先于 `grok`: 前缀按序首个命中 (T39)。前者覆盖 rawValue
+    // 与 Windows 设置页按凭证字段 (`grokBotQuotaAccounts`) 发起的定向刷新, 后者覆盖服务 ID。
+    const PREFIXES: [(&str, &str); 14] = [
         ("codex", "codex"),
         ("claude", "claude"),
         ("kimi", "kimi"),
@@ -242,6 +244,8 @@ pub fn provider_of_id(id: &str) -> &str {
         ("volc", "volcengine"),
         ("zhipu", "zhipu"),
         ("glm", "zhipu"),
+        ("grokBot", "grokBot"),
+        ("grokbot", "grokBot"),
         ("grok", "grok"),
         ("opencode", "opencodeGo"),
         ("step", "stepfun"),
@@ -449,8 +453,19 @@ pub fn is_qualified_previous(service: &Value) -> bool {
     }
 }
 
-/// 本轮 service 的新鲜度: 失败时借用合格旧展示字段并标 stale, 无合格历史标
-/// unavailable 并去掉 `capturedAt`; 成功且未带 freshness 时补 fresh (已带的保留)。
+/// 不借用旧读数的失败类型 (T39): 本机客户端账号与已连接账号不一致时, 旧读数属于
+/// 另一个登录现场, 不得冒充当前账号展示 (design/02 规则 18)。
+const NON_BORROWING_FAILURE_KINDS: [&str; 1] = ["accountMismatch"];
+
+fn object_forbids_borrowing(object: &Map<String, Value>) -> bool {
+    object
+        .get("failureKind")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| NON_BORROWING_FAILURE_KINDS.contains(&kind))
+}
+
+/// 本轮 service 的新鲜度: 失败时借用合格旧展示字段并标 stale, 无合格历史 (或失败类型
+/// 禁止借用) 标 unavailable 并去掉 `capturedAt`; 成功且未带 freshness 时补 fresh (已带的保留)。
 fn apply_freshness(object: &mut Map<String, Value>, previous: Option<&Value>) {
     if !object_failed(object) {
         object
@@ -458,6 +473,7 @@ fn apply_freshness(object: &mut Map<String, Value>, previous: Option<&Value>) {
             .or_insert_with(|| Value::String("fresh".to_owned()));
         return;
     }
+    let previous = previous.filter(|_| !object_forbids_borrowing(object));
     match previous.filter(|previous| is_qualified_previous(previous)) {
         Some(previous) => {
             for field in BORROWED_FIELDS {

@@ -152,6 +152,45 @@ fn round_merge_keeps_current_order_without_timestamps() {
         .all(|service| service.get("quotaAttemptedAt").is_none()));
 }
 
+/// T39 (design/02 规则 18): 账号不一致的失败不得借用同 ID 旧读数, 其余失败照常借用。
+#[test]
+fn account_mismatch_failure_never_borrows_previous_reading() {
+    let mut previous_service = service("grokbot_a", "grokBot", "2026-10-26T11:00:00Z");
+    previous_service["windows"] =
+        json!([{"label": "共享每周用量", "windowKey": "weekly_shared", "usedPercent": 31.0}]);
+    previous_service["plan"] = json!("Premium");
+    let previous = json!({"services": [previous_service]});
+    let mismatch = json!({"services": [
+        {"id": "grokbot_a", "provider": "grokBot", "status": "error", "failureKind": "accountMismatch",
+         "kind": null, "plan": null, "windows": [], "capturedAt": "2026-10-26T12:00:00Z"},
+    ]});
+    for merged in [
+        merge_round(Some(&previous), &mismatch),
+        merge(
+            Some(&previous),
+            &mismatch,
+            &QuotaRunPolicy::include_all(),
+            epoch_ms("2026-10-26T12:00:00Z"),
+            1800,
+        ),
+    ] {
+        let service = &merged["services"][0];
+        assert_eq!(service["freshness"], "unavailable");
+        assert!(service.get("capturedAt").is_none());
+        assert_eq!(service["windows"], json!([]));
+        assert_eq!(service["plan"], Value::Null);
+    }
+
+    let mut missing = mismatch.clone();
+    missing["services"][0]["failureKind"] = json!("credential");
+    let merged = merge_round(Some(&previous), &missing);
+    assert_eq!(
+        merged["services"][0]["freshness"], "stale",
+        "其他失败仍借用"
+    );
+    assert_eq!(merged["services"][0]["plan"], "Premium");
+}
+
 #[test]
 fn scoped_annotation_stamps_only_selected_services() {
     let now_ms = epoch_ms("2026-10-26T12:00:00Z");
@@ -201,6 +240,11 @@ fn legacy_service_ids_resolve_to_providers() {
         ("opencode_go_a1", "opencodeGo"),
         ("stepfun_a1", "stepfun"),
         ("jev_a1", "jev"),
+        ("grok_a1", "grok"),
+        ("grokbot_f827599c055f9a8a", "grokBot"),
+        ("grokBotQuotaAccounts", "grokBot"),
+        ("grokQuotaAccounts", "grok"),
+        ("clineQuotaAccounts", "cline"),
         ("cline", "cline"),
         ("unknown_x", "unknown_x"),
     ] {

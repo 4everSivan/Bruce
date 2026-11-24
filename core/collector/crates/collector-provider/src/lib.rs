@@ -4,6 +4,7 @@
 //! Submodules split protocol decoders, signing helpers, quota parsers, and
 //! provider implementations by single responsibility (C053).
 
+mod grok_bot;
 mod protobuf;
 mod providers;
 mod quota_parsers;
@@ -15,6 +16,11 @@ mod tests_providers;
 #[cfg(test)]
 mod tests_proxy;
 
+pub use grok_bot::{
+    grok_bot_account_key, grok_bot_data_dir, is_valid_grok_bot_account, parse_grok_bot_usage_cache,
+    read_active_account as read_grok_bot_active_account, GrokBotProvider,
+    GROK_BOT_MAX_ACCOUNT_BYTES,
+};
 pub use protobuf::parse_grok_usage;
 pub use providers::{
     ClaudeProvider, ClineProvider, CodexProvider, DeepSeekProvider, GrokProvider, JevProvider,
@@ -49,6 +55,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: true,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "kimi",
@@ -59,6 +66,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "deepseek",
@@ -69,6 +77,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "zhipu",
@@ -79,6 +88,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "volcengine",
@@ -89,6 +99,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "claude",
@@ -99,6 +110,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: Some("claudeOAuth"),
         missing_credential_source: Some("Swift 注入"),
         unwraps_oauth_payload: true,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "grok",
@@ -109,6 +121,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: Some("grokOAuth"),
         missing_credential_source: Some("Swift 注入"),
         unwraps_oauth_payload: true,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "stepfun",
@@ -119,6 +132,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
     },
     CatalogSpec {
         provider: "jev",
@@ -129,6 +143,18 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
+    },
+    CatalogSpec {
+        provider: "grok-bot",
+        prefix: "grokbot_",
+        display_prefix: "Grok Bot",
+        app: "grok-bot",
+        credential_field: "grokBotQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
+        local_client_state: true,
     },
     CatalogSpec {
         provider: "cline",
@@ -139,6 +165,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         direct_credential_field: None,
         missing_credential_source: None,
         unwraps_oauth_payload: false,
+        local_client_state: false,
     },
 ];
 
@@ -157,6 +184,9 @@ struct CatalogSpec {
     missing_credential_source: Option<&'static str>,
     /// 账号条目是否内嵌 `oauth` 子对象需解包 (C048)。
     unwraps_oauth_payload: bool,
+    /// 是否读取官方客户端本机状态 (T39): 编排层为账号条目注入数据目录 `data_dir`,
+    /// 应用传入的同名字段一律被覆盖。
+    local_client_state: bool,
 }
 
 /// 目录表对外只读投影 (C049 / C048): 前缀 / app / 凭据字段与凭据需求的唯一事实源。
@@ -170,6 +200,7 @@ pub struct CatalogEntry {
     pub direct_credential_field: Option<&'static str>,
     pub missing_credential_source: Option<&'static str>,
     pub unwraps_oauth_payload: bool,
+    pub local_client_state: bool,
 }
 
 /// 返回目录表全部条目 (顺序即定义顺序)。
@@ -185,6 +216,7 @@ pub fn catalog_entries() -> Vec<CatalogEntry> {
             direct_credential_field: spec.direct_credential_field,
             missing_credential_source: spec.missing_credential_source,
             unwraps_oauth_payload: spec.unwraps_oauth_payload,
+            local_client_state: spec.local_client_state,
         })
         .collect()
 }
@@ -203,7 +235,7 @@ pub struct AccountDescriptor {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CatalogInput {
     /// Keys use stable app/provider IDs: `opencode-go`, `kimi`, `deepseek`,
-    /// `zhipu`, `volcengine`, `claude`, `grok`, `stepfun`, `jev`, or `cline`.
+    /// `zhipu`, `volcengine`, `claude`, `grok`, `stepfun`, `jev`, `grok-bot`, or `cline`.
     pub accounts: BTreeMap<String, Vec<AccountDescriptor>>,
     pub enabled_official: BTreeSet<String>,
 }
@@ -648,6 +680,7 @@ pub fn bounded_http_body(
 pub fn subscription_provider_id(app: &str) -> &str {
     match app {
         "opencode-go" => "opencodeGo",
+        "grok-bot" => "grokBot",
         other => other,
     }
 }
@@ -662,6 +695,8 @@ pub fn failure_kind_for_code(code: &str) -> &'static str {
         "PROVIDER_INVALID_JSON" | "PROVIDER_INVALID_PAYLOAD" | "PROVIDER_RESPONSE_TOO_LARGE" => {
             "invalidResponse"
         }
+        // T39: 账号不一致不得借用旧读数, 单列一类供回填策略识别。
+        "CREDENTIAL_ACCOUNT_MISMATCH" => "accountMismatch",
         code if code.starts_with("CREDENTIAL_") => "credential",
         _ => "network",
     }
@@ -1145,6 +1180,14 @@ pub(crate) fn provider_headers(entries: &[(&str, String)]) -> BTreeMap<String, S
         .collect()
 }
 
+/// 读取官方客户端本机状态的 provider (目录表 `local_client_state`) 的平台默认数据目录 (T39)。
+pub fn local_client_data_dir(app: &str, home: &std::path::Path) -> Option<std::path::PathBuf> {
+    match app {
+        "grok-bot" => Some(grok_bot_data_dir(home)),
+        _ => None,
+    }
+}
+
 /// Return the read-only quota adapter for a stable provider app ID.
 pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
     match app {
@@ -1159,6 +1202,7 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
         "stepfun" => Some(Box::new(StepFunProvider)),
         "jev" => Some(Box::new(JevProvider)),
         "cline" => Some(Box::new(ClineProvider)),
+        "grok-bot" => Some(Box::new(GrokBotProvider)),
         _ => None,
     }
 }
