@@ -426,8 +426,17 @@ public actor CodexTokenResolver {
             client.refreshRequest(refreshToken: refreshToken),
             session: nil
         )
+        // C255: 刷新期间被取消、账号被断开或状态已换代 (重新登录 / 标记重授权) 时，
+        // 旧结果不得落盘 — 否则会复活已删账号或覆盖新 token / 重命名。
+        if Task.isCancelled {
+            return .failure(.refreshFailed(accountID: accountID, reason: .cancelled))
+        }
+        guard let latest = caches[accountID],
+              latest.state.revision == cache.state.revision else {
+            return .failure(.refreshFailed(accountID: accountID, reason: .cancelled))
+        }
         let applied = CredentialStateReducer.applyRefreshResult(
-            state: cache.state,
+            state: latest.state,
             accountID: accountID,
             result: result,
             now: now

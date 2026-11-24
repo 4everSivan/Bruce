@@ -1096,6 +1096,54 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(remainingValue == "deepseek-key", "其余账号未被影响")
     }
 
+    /// C255: 读取 I/O 失败不得把完好的 credentials.json 当作损坏挪走。
+    static func protectedFileCredentialStoreReadErrorKeepsFile() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-file-cred-read-error-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("credentials.json")
+        try Data(#"{"version":1,"credentials":{"a":"secret"}}"#.utf8).write(to: fileURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: fileURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: fileURL.path
+            )
+        }
+
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: KeychainAccessConfiguration(bruceStoreConfigured: true)
+            )
+        )
+        let store = ProtectedFileCredentialStore(
+            fileURL: fileURL,
+            accessController: accessController
+        )
+
+        var readFailed = false
+        do {
+            _ = try store.loadCredential(forAccount: "a")
+        } catch let error as ProtectedFileCredentialStoreError {
+            if case .readFailed = error {
+                readFailed = true
+            }
+        }
+        try coreExpect(readFailed, "瞬时 I/O 读取失败应报 readFailed, 而不是 corrupted")
+        try coreExpect(
+            FileManager.default.fileExists(atPath: fileURL.path),
+            "读取失败不得挪走原凭据文件"
+        )
+        let corruptCopies = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.contains("credentials.json.corrupt-") }
+        try coreExpect(corruptCopies.isEmpty, "读取失败不得产生损坏现场副本: \(corruptCopies)")
+    }
+
     /// C042: 损坏的凭据文件不得被静默折叠为空 payload.
     ///
     /// 缺陷形态 (修复前): loadPayloadLocked 用 try? 把损坏转为空 Payload,

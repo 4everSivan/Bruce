@@ -215,15 +215,29 @@ public struct AsyncProcessProbe: Sendable {
         process.terminate()
         let deadline = Date().addingTimeInterval(gracePeriod)
         while process.isRunning && Date() < deadline {
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            // C255: 调用方 Task 已取消时 `try? await Task.sleep` 会零挂起立即返回，
+            // 退化成 100% CPU 紧循环；必须使用与父 Task 取消态无关的等待。
+            await sleepIgnoringCancellation(0.05)
         }
         if process.isRunning {
-            kill(process.processIdentifier, SIGKILL)
+            let pid = process.processIdentifier
+            if pid > 0 {
+                kill(pid, SIGKILL)
+            }
         }
         // 有界等待回收, 不用 waitUntilExit (见 runProcess 中的竞态说明)
         let reapDeadline = Date().addingTimeInterval(5)
         while process.isRunning && Date() < reapDeadline {
-            try? await Task.sleep(nanoseconds: 10_000_000)
+            await sleepIgnoringCancellation(0.01)
+        }
+    }
+
+    /// 不受调用方 Task 取消状态影响的短等待 (C255)。
+    private func sleepIgnoringCancellation(_ seconds: TimeInterval) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds) {
+                continuation.resume()
+            }
         }
     }
 

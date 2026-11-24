@@ -149,7 +149,7 @@
     },
     "C255": {
       "title": "macOS 异步探针忙等、主线程管道死锁、外部凭据白名单绕过与凭据并发修复",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C255-macos-process-probe-credentials-and-reentrancy",
       "topic": "SubscriptionQuota",
       "file": "docs/devel/change/C255.json"

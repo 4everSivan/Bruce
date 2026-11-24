@@ -905,36 +905,42 @@ final class OnboardingCoordinator: ObservableObject {
     func setPricingOverride(modelName: String, override: ModelPricingOverride) {
         var updated = pricingOverrides
         updated[modelName] = override
+        // C255: 先成功存盘再更新 @Published；保存失败不得让界面显示未落盘的值。
+        guard persistPricingOverrides(updated) else { return }
         pricingOverrides = updated
-        persistPricingOverrides()
     }
 
     func removePricingOverride(modelName: String) {
         var updated = pricingOverrides
         updated.removeValue(forKey: modelName)
+        guard persistPricingOverrides(updated) else { return }
         pricingOverrides = updated
-        persistPricingOverrides()
     }
 
     func resetAllPricingOverrides() {
+        guard persistPricingOverrides([:]) else { return }
         pricingOverrides = [:]
-        persistPricingOverrides()
     }
 
-    private func persistPricingOverrides() {
+    /// 保存指定校准表；返回是否已成功落盘。
+    private func persistPricingOverrides(
+        _ overrides: [String: ModelPricingOverride]
+    ) -> Bool {
         guard let configStore else {
             model.setSettingsError("配置存储不可用, 无法保存模型价格校准")
-            return
+            return false
         }
         var config = configStore.load() ?? OnboardingConfiguration()
-        config.pricingOverrides = pricingOverrides.isEmpty ? nil : pricingOverrides
+        config.pricingOverrides = overrides.isEmpty ? nil : overrides
         do {
             try configStore.save(config)
             model.setSettingsError(nil)
             // 立即触发 agent-usage 重新聚合与折算
             scheduler.refresh(.agentUsage)
+            return true
         } catch {
             model.setSettingsError("模型单价配置保存失败")
+            return false
         }
     }
 

@@ -87,8 +87,9 @@ struct SystemDiagnosticArchiver: DiagnosticArchiving {
             "PATH": "/usr/bin:/bin",
             "LC_ALL": "C",
         ]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        // C255: ditto 输出无需消费；接 Pipe 而不排空会在输出超过 64 KB 时永久死锁。
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()
@@ -113,8 +114,9 @@ struct SystemDiagnosticArchiver: DiagnosticArchiving {
             "PATH": "/usr/bin:/bin",
             "LC_ALL": "C",
         ]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        // C255: ditto 输出无需消费；接 Pipe 而不排空会在输出超过 64 KB 时永久死锁。
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()

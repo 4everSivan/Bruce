@@ -90,6 +90,7 @@ struct BruceOnboardingCoreHarness {
         }
         try protectedFileCredentialStoreRoundTripAndPermissions()
         try protectedFileCredentialStoreCorruptionIsNotSilentlyErased()
+        try protectedFileCredentialStoreReadErrorKeepsFile()
         try protectedFileCredentialStoreWriteHardening()
         try protectedFileCredentialStoreDeleteLeavesNoBackupResidue()
         try protectedFileCredentialStoreKeepsOnlyLatestCorruptCopy()

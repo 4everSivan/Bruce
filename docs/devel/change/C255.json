@@ -4,7 +4,7 @@
   "title": "macOS 异步探针忙等、主线程管道死锁、外部凭据白名单绕过与凭据并发修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C255-macos-process-probe-credentials-and-reentrancy",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"terminateAndReap|readClaudeKeychain|preserveCorruptedFile|StepFunWebLoginView|removeCodexProvider|waitUntilExit\" apps/macos/Sources/",
     "expected": "`AsyncProcessProbe` 在取消态下循环 `try? await Task.sleep`；`.claudeCLI` 无 `accessController.allows` 检查；`CodexTokenResolver` `await` 后无状态校验直接 `saveRecord`；`loadPayloadLocked` `try? Data(contentsOf:)` 与解码合并判断",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：AsyncProcessProbe.terminateAndReap 在取消态用 try? await Task.sleep（空转）；SystemExternalCredentialReader.readClaudeKeychain 在调用线程 waitUntilExit 且只事后读 stdout、Diagnostics 双 Pipe 不排空；CodexTokenResolver.performRefresh await 后无取消/代次校验直接 saveRecord；ProtectedFileCredentialStore.loadPayloadLocked 用 try? Data(contentsOf:) 与解码合并判定；StepFunWebLoginView 用 .default() 与 contains 域名匹配且在 updateNSView 同步改绑定；SubscriptionService.removeCodexProvider 写入空配置、grokKey 遍历无序字典。"
   },
   "callback": {
     "before": [
@@ -60,8 +60,11 @@
   "design": {
     "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "topic": "SubscriptionQuota",
-    "modified": false,
-    "rule_diff": null
+    "modified": true,
+    "rule_diff": {
+      "before": "design/02 规则 1 只区分「文件存在但读/解码失败保留损坏现场」，未区分瞬时 I/O 错误与 JSON 损坏；未约束 .bak 权限与备份时间窗",
+      "after": "规则 1 新增读取 I/O 错误与损坏分离（readFailed 不挪文件）、.bak 0600 与原子备份、StepFun 登录窗非持久化存储"
+    }
   },
   "verification": {
     "result": null,
@@ -94,7 +97,7 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": false,
     "commit": "",
     "tag": ""

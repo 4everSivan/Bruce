@@ -611,8 +611,9 @@ final class SubscriptionService {
                     intent: .userInitiated
                 )
             }
+            // C255: 账号库删除失败同样必须 fail-closed，不得静默保留账号后移除配置。
             let store = accountStore(for: id)
-            try? store.removeAllAccounts()
+            try store.removeAllAccounts()
             model.setProviderAccountSummaries([], for: id)
         } catch {
             model.setSettingsError(
@@ -899,9 +900,10 @@ final class SubscriptionService {
             return
         }
         publishCodexSummaryFromIndex()
-        guard persistSubscription(.codex, mutate: {
-            $0 = SubscriptionProviderConfiguration()
-        }) else { return }
+        // C255: 真移除配置条目（而非写入空配置），并清空界面状态，回到「未添加」。
+        guard removeSubscriptionFromConfig(.codex) else { return }
+        model.setCodexAccountStatuses([])
+        model.setCodexAccountSummary(nil)
         model.setSettingsError(nil)
     }
 
@@ -983,8 +985,9 @@ final class SubscriptionService {
               let dict = object as? [String: Any] else {
             return nil
         }
-        for (_, value) in dict {
-            guard let entry = value as? [String: Any],
+        // C255: 字典遍历顺序不稳定，按 key 排序保证同一 JSON 总生成同一 accountID。
+        for name in dict.keys.sorted() {
+            guard let entry = dict[name] as? [String: Any],
                   let key = entry["key"] as? String,
                   !key.isEmpty else { continue }
             return key

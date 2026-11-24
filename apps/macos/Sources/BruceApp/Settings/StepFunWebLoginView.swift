@@ -39,6 +39,29 @@ public enum StepFunSite: String, CaseIterable, Identifiable, Sendable {
         case .global: return URL(string: "https://platform.stepfun.ai")!
         }
     }
+
+    /// C255: 页面 URL 必须是 https 且主机精确等于本站域名或为其子域。
+    /// 禁止用 `contains` 子串匹配（`stepfun.com.attacker.com` 会被误判）。
+    public func matches(url: URL?) -> Bool {
+        guard let url,
+              url.scheme?.lowercased() == "https",
+              let host = url.host else {
+            return false
+        }
+        return matches(host: host)
+    }
+
+    /// Cookie 域匹配: 浏览器常写入 `.stepfun.com` 形式的前导点。
+    public func matches(cookieDomain: String) -> Bool {
+        matches(host: cookieDomain)
+    }
+
+    private func matches(host raw: String) -> Bool {
+        let host = raw.lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard !host.isEmpty else { return false }
+        return host == domainKeyword || host.hasSuffix(".\(domainKeyword)")
+    }
 }
 
 enum StepFunWebAction: Equatable {
@@ -267,7 +290,9 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
     @MainActor
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
+        // C255: 登录窗是一次性会话，使用非持久化存储，关闭即丢弃 Cookie，
+        // 避免过期登录态让后台每 2 秒轮询一次外网 POST。
+        config.websiteDataStore = .nonPersistent()
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -291,17 +316,25 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         if context.coordinator.currentLoadedSite != selectedSite {
             context.coordinator.currentLoadedSite = selectedSite
-            isLoading = true
-            statusText = "正在加载 \(selectedSite.displayName)..."
+            let site = selectedSite
+            // C255: 视图更新期间不得同步修改 @Binding，否则触发 SwiftUI 运行时告警。
+            DispatchQueue.main.async {
+                isLoading = true
+                statusText = "正在加载 \(site.displayName)..."
+            }
             nsView.load(URLRequest(url: selectedSite.baseURL))
         }
         if clearSessionTrigger {
-            clearSessionTrigger = false
             context.coordinator.clearSessionAndReload()
+            DispatchQueue.main.async {
+                clearSessionTrigger = false
+            }
         }
         if manualTrigger {
-            manualTrigger = false
             context.coordinator.performManualExtraction()
+            DispatchQueue.main.async {
+                manualTrigger = false
+            }
         }
         switch webAction {
         case .goBack:
@@ -324,6 +357,9 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
 
     @MainActor
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        // C255: 关窗即停止加载与定时器，避免后台遗留请求。
+        nsView.stopLoading()
+        nsView.navigationDelegate = nil
         coordinator.cleanup()
     }
 
@@ -389,9 +425,8 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
                 return
             }
 
-            // 严格要求当前 Web 页面属于当前目标站点域名
-            let targetKeyword = parent.selectedSite.domainKeyword
-            guard urlString.contains(targetKeyword) else {
+            // C255: https + 精确域/子域匹配，不再用 `contains` 子串判定。
+            guard parent.selectedSite.matches(url: currentWebView?.url) else {
                 return
             }
 
@@ -413,12 +448,12 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
         /// 清理当前站点的登录 Cookie 并重新加载
         func clearSessionAndReload() {
             guard let cookieStore = cookieStore else { return }
-            let targetKeyword = parent.selectedSite.domainKeyword
+            let targetSite = parent.selectedSite
             cookieStore.getAllCookies { [weak self] cookies in
                 Task { @MainActor in
                     guard let self = self else { return }
                     for cookie in cookies {
-                        if cookie.domain.lowercased().contains(targetKeyword) {
+                        if targetSite.matches(cookieDomain: cookie.domain) {
                             // 等删除真正完成再重载, 否则旧 Cookie 可能被新页面重新读取。
                             await cookieStore.deleteCookie(cookie)
                         }
@@ -435,7 +470,6 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
         private func extractTokenAndSubmit(successPrompt: String, isManual: Bool = false) {
             guard !isValidating else { return }
             let targetSite = parent.selectedSite
-            let targetKeyword = targetSite.domainKeyword
 
             cookieStore?.getAllCookies { [weak self] cookies in
                 Task { @MainActor in
@@ -443,9 +477,8 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
 
                     for cookie in cookies {
                         guard cookie.name == "Oasis-Token" else { continue }
-                        let domain = cookie.domain.lowercased()
-                        // 1. 严格过滤 Cookie 域名: 国内站只提取 stepfun.com, 国际站只提取 stepfun.ai
-                        guard domain.contains(targetKeyword) else { continue }
+                        // C255: 严格过滤 Cookie 域名: 精确域或子域，禁止子串匹配。
+                        guard targetSite.matches(cookieDomain: cookie.domain) else { continue }
 
                         let val = cookie.value.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !val.isEmpty && val.count > 10 else { continue }
@@ -474,9 +507,11 @@ private struct StepFunWKWebViewWrapper: NSViewRepresentable {
             successPrompt: String,
             isManual: Bool
         ) {
-            Task {
+            // C255: 弱引用 coordinator，避免远程校验在途时视图已销毁仍被强持有。
+            Task { [weak self] in
                 let isValid = await StepFunRemoteVerifier.verify(token: token, site: site)
                 await MainActor.run {
+                    guard let self else { return }
                     self.isValidating = false
                     // 如果在验证等待期间用户切换了站点，则丢弃过时结果
                     guard self.parent.selectedSite == site else { return }

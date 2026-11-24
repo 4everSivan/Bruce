@@ -713,6 +713,8 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
 public enum ProtectedFileCredentialStoreError: Error, Equatable {
     /// 文件存在但无法读取或解码. `backupPath` 为损坏现场副本 (尽力而为, 可能为 nil).
     case corrupted(backupPath: String?)
+    /// 读取文件本身失败 (瞬时 I/O 错误, 如 `EMFILE`): 文件可能完好, 不得挪走或视为损坏.
+    case readFailed(String)
     /// 写入流程失败 (临时文件/属性设置/替换), 失败原因摘要.
     case writeFailed(String)
 }
@@ -867,8 +869,14 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
         guard fileManager.fileExists(atPath: fileURL.path) else {
             return Payload()
         }
-        guard let data = try? Data(contentsOf: fileURL),
-              let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            // C255: 瞬时 I/O 错误不代表文件损坏 — 直接上抛，绝不挪走完好的 credentials.json。
+            throw ProtectedFileCredentialStoreError.readFailed(String(describing: error))
+        }
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
             let backup = preserveCorruptedFile()
             throw ProtectedFileCredentialStoreError.corrupted(backupPath: backup?.path)
         }
@@ -928,6 +936,8 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
                 throw ProtectedFileCredentialStoreError.writeFailed("无法创建临时文件")
             }
             let handle = try FileHandle(forWritingTo: tempURL)
+            // C255: 任一写入/同步步骤抛错也要关闭句柄，避免泄漏。
+            defer { try? handle.close() }
             try handle.write(contentsOf: data)
             try handle.synchronize()
             try handle.close()
@@ -943,6 +953,11 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
                         try? fileManager.removeItem(at: backupURL)
                     }
                     try fileManager.copyItem(at: fileURL, to: backupURL)
+                    // C255: .bak 同样含明文凭据，必须与主文件同权限。
+                    try fileManager.setAttributes(
+                        [Self.posixPermissionsKey: 0o600],
+                        ofItemAtPath: backupURL.path
+                    )
                 case .writtenVersion:
                     // 旧备份可能含被删凭据: 清不掉就不删, 整体失败交由调用方重试
                     if fileManager.fileExists(atPath: backupURL.path) {
@@ -957,7 +972,12 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
             try fileManager.setAttributes([Self.posixPermissionsKey: 0o600], ofItemAtPath: fileURL.path)
             if backup == .writtenVersion {
                 // 主文件已替换, 删除已生效: 备份重建失败只是少一份备份, 不回报为删除失败
-                try? fileManager.copyItem(at: fileURL, to: backupURL)
+                if (try? fileManager.copyItem(at: fileURL, to: backupURL)) != nil {
+                    try? fileManager.setAttributes(
+                        [Self.posixPermissionsKey: 0o600],
+                        ofItemAtPath: backupURL.path
+                    )
+                }
             }
         } catch let error as ProtectedFileCredentialStoreError {
             try? fileManager.removeItem(at: tempURL)

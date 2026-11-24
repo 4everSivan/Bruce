@@ -82,6 +82,9 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
     /// - 通过 /usr/bin/security 执行读取, 绝不唤起 SecurityAgent 系统密码弹窗;
     /// - 条目不存在 / 被系统拦截 (非 0 退出码): 静默返回 nil 走文件回退;
     /// - 拦截时不 markBlocked — 外部条目是可选来源, 不得污染 Bruce 自有存储策略。
+    ///
+    /// C255: stdout 在后台并发排空、stderr 直接丢弃，避免输出超过管道缓冲时永久
+    /// 死锁；等待退出有界（超时后 terminate → SIGKILL），不再无条件 `waitUntilExit`。
     private func readClaudeKeychain() -> String? {
         let securityURL = URL(fileURLWithPath: securityExecutablePath)
         guard FileManager.default.isExecutableFile(atPath: securityURL.path) else {
@@ -95,26 +98,55 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
             "-w",
         ]
         let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+        process.standardError = FileHandle.nullDevice
 
         do {
             try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else {
-                return nil
-            }
-            let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-                !output.isEmpty
-            else {
-                return nil
-            }
-            return output
         } catch {
             return nil
+        }
+
+        let output = PipeBuffer()
+        let drained = DispatchSemaphore(value: 0)
+        let stdoutHandle = stdoutPipe.fileHandleForReading
+        DispatchQueue.global(qos: .utility).async {
+            output.store(stdoutHandle.readDataToEndOfFile())
+            drained.signal()
+        }
+
+        waitForExit(process, timeout: 3)
+        if process.isRunning {
+            process.terminate()
+            waitForExit(process, timeout: 1)
+        }
+        if process.isRunning {
+            let pid = process.processIdentifier
+            if pid > 0 {
+                kill(pid, SIGKILL)
+            }
+            waitForExit(process, timeout: 1)
+        }
+        _ = drained.wait(timeout: .now() + 1)
+        try? stdoutHandle.close()
+
+        guard !process.isRunning, process.terminationStatus == 0 else {
+            return nil
+        }
+        guard let text = String(data: output.snapshot(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !text.isEmpty
+        else {
+            return nil
+        }
+        return text
+    }
+
+    /// 轮询等待子进程退出（同步 API 内的有界等待）。
+    private func waitForExit(_ process: Process, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
         }
     }
 
@@ -163,5 +195,23 @@ public final class InMemoryExternalCredentialReader: ExternalCredentialReader,
         lock.lock()
         defer { lock.unlock() }
         return requests.map { $0.0 }
+    }
+}
+
+/// 子进程 stdout 的线程安全缓冲 (C255): 排空线程写入、调用方读取。
+private final class PipeBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func store(_ value: Data) {
+        lock.lock()
+        data = value
+        lock.unlock()
+    }
+
+    func snapshot() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
     }
 }

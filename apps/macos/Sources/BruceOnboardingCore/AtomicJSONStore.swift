@@ -241,16 +241,23 @@ package struct AtomicJSONStore {
             return false
         }
         let backupURL = self.backupURL(for: url)
+        // C255: 先写临时文件再原子替换 —— 旧实现先删备份再复制, 中间存在无备份时间窗；
+        // 复制失败时旧备份也已丢失。
+        let tempURL = backupURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(backupURL.lastPathComponent).\(UUID().uuidString).tmp")
         do {
             try prepareDirectory(at: backupURL.deletingLastPathComponent())
-            if fileManager.fileExists(atPath: backupURL.path) {
-                try fileManager.removeItem(at: backupURL)
-            }
-            try fileManager.copyItem(at: url, to: backupURL)
+            defer { try? fileManager.removeItem(at: tempURL) }
+            try fileManager.copyItem(at: url, to: tempURL)
             try fileManager.setAttributes(
                 [.posixPermissions: filePermissions],
-                ofItemAtPath: backupURL.path
+                ofItemAtPath: tempURL.path
             )
+            if fileManager.fileExists(atPath: backupURL.path) {
+                _ = try fileManager.replaceItemAt(backupURL, withItemAt: tempURL)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: backupURL)
+            }
             return true
         } catch {
             return false
