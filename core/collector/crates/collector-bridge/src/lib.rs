@@ -82,9 +82,34 @@ pub fn run_id_of(input: &[u8]) -> String {
 ///
 /// 已预期/已降级的错误不经过此路径 —— 只有真正的 bug 才会落到这里 (C043)。
 pub fn run_bytes_panic_safe(input: &[u8]) -> BridgeResponse {
-    let fallback_run_id = run_id_of(input);
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_bytes(input))).unwrap_or_else(
-        |_| {
+    if input.len() > MAX_REQUEST_BYTES {
+        return error_response(
+            new_run_id(),
+            "BRIDGE_INPUT_TOO_LARGE",
+            "protocol",
+            "request",
+            "Bridge request exceeds the input limit",
+            false,
+        );
+    }
+    match serde_json::from_slice::<BridgeRequest>(input) {
+        Ok(request) => run_request_panic_safe(request),
+        Err(_) => error_response(
+            new_run_id(),
+            "BRIDGE_INVALID_JSON",
+            "protocol",
+            "request",
+            "输入不是有效的 JSON 文档",
+            false,
+        ),
+    }
+}
+
+/// 进程内强类型入口 (C260): Windows 直接传 `BridgeRequest`，不再序列化后重复解析。
+pub fn run_request_panic_safe(request: BridgeRequest) -> BridgeResponse {
+    let fallback_run_id = request.run_id.clone();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || run_request(request)))
+        .unwrap_or_else(|_| {
             error_response(
                 fallback_run_id,
                 "BRIDGE_INTERNAL_PANIC",
@@ -93,129 +118,120 @@ pub fn run_bytes_panic_safe(input: &[u8]) -> BridgeResponse {
                 "采集进程内部错误 (已捕获 panic), 本轮未产出 artifact",
                 true,
             )
-        },
-    )
+        })
 }
 
 pub fn run_bytes(input: &[u8]) -> BridgeResponse {
+    if input.len() > MAX_REQUEST_BYTES {
+        return error_response(
+            new_run_id(),
+            "BRIDGE_INPUT_TOO_LARGE",
+            "protocol",
+            "request",
+            "Bridge request exceeds the input limit",
+            false,
+        );
+    }
+    match serde_json::from_slice::<BridgeRequest>(input) {
+        Ok(request) => run_request(request),
+        Err(_) => error_response(
+            new_run_id(),
+            "BRIDGE_INVALID_JSON",
+            "protocol",
+            "request",
+            "输入不是有效的 JSON 文档",
+            false,
+        ),
+    }
+}
+
+/// 单次解析后的采集执行与指标收尾 (C260)：JSON 只解析一次，指标仅在启用时采样。
+fn run_request(request: BridgeRequest) -> BridgeResponse {
     let started = Instant::now();
-    let resource_start = metrics::process_resource_snapshot();
-    let (response, stats, metrics, source_metrics) = if input.len() > MAX_REQUEST_BYTES {
-        (
-            error_response(
-                new_run_id(),
-                "BRIDGE_INPUT_TOO_LARGE",
-                "protocol",
-                "request",
-                "Bridge request exceeds the input limit",
-                false,
-            ),
-            CollectionScanStats::default(),
-            CollectionMetrics::default(),
-            Vec::new(),
-        )
-    } else {
-        let request: BridgeRequest = match serde_json::from_slice(input) {
-            Ok(value) => value,
-            Err(_) => {
-                let response = error_response(
-                    new_run_id(),
-                    "BRIDGE_INVALID_JSON",
-                    "protocol",
-                    "request",
-                    "输入不是有效的 JSON 文档",
-                    false,
-                );
-                return finish_metrics(
-                    started,
+    let metrics_enabled = std::env::var_os("BRUCE_COLLECTOR_METRICS_PATH").is_some();
+    let resource_start = metrics_enabled
+        .then(metrics::process_resource_snapshot)
+        .flatten();
+    let (response, stats, metrics, source_metrics) = match validate_request(&request) {
+        Ok(()) => {
+            if request.module == "request-log" {
+                let generated = generated_at();
+                let response = match query_request_log_artifact(&request, &generated) {
+                    Ok(artifact) => BridgeResponse {
+                        schema_version: BRIDGE_SCHEMA_VERSION,
+                        run_id: request.run_id.clone(),
+                        generated_at: generated,
+                        status: ResponseStatus::Success,
+                        artifact: Some(artifact),
+                        credential_updates: Vec::new(),
+                        credential_challenges: Vec::new(),
+                        diagnostics: Vec::new(),
+                    },
+                    Err(diagnostic) => {
+                        BridgeResponse::error(request.run_id.clone(), generated, diagnostic)
+                    }
+                };
+                (
                     response,
                     CollectionScanStats::default(),
                     CollectionMetrics::default(),
                     Vec::new(),
-                    resource_start,
-                    metrics::process_resource_snapshot(),
-                );
-            }
-        };
-        match validate_request(&request) {
-            Ok(()) => {
-                if request.module == "request-log" {
-                    let generated = generated_at();
-                    let response = match query_request_log_artifact(&request, &generated) {
-                        Ok(artifact) => BridgeResponse {
+                )
+            } else {
+                match collect_agent_usage(&request) {
+                    Ok(CollectionOutput {
+                        artifact,
+                        diagnostics,
+                        generated_at,
+                        scan_stats,
+                        metrics,
+                        source_metrics,
+                        credential_updates,
+                        credential_challenges,
+                    }) => {
+                        let response = BridgeResponse {
                             schema_version: BRIDGE_SCHEMA_VERSION,
                             run_id: request.run_id.clone(),
-                            generated_at: generated,
-                            status: ResponseStatus::Success,
+                            generated_at,
+                            status: response_status(true, &diagnostics),
                             artifact: Some(artifact),
-                            credential_updates: Vec::new(),
-                            credential_challenges: Vec::new(),
-                            diagnostics: Vec::new(),
-                        },
-                        Err(diagnostic) => {
-                            BridgeResponse::error(request.run_id.clone(), generated, diagnostic)
+                            credential_updates,
+                            credential_challenges,
+                            diagnostics,
+                        };
+                        match validate_response_credentials(response) {
+                            Ok(response) => (response, scan_stats, metrics, source_metrics),
+                            Err(diagnostic) => (
+                                BridgeResponse::error(
+                                    request.run_id,
+                                    crate::generated_at(),
+                                    diagnostic,
+                                ),
+                                CollectionScanStats::default(),
+                                CollectionMetrics::default(),
+                                Vec::new(),
+                            ),
                         }
-                    };
-                    (
-                        response,
+                    }
+                    Err(failure) => (
+                        failure_response(request.run_id, failure),
                         CollectionScanStats::default(),
                         CollectionMetrics::default(),
                         Vec::new(),
-                    )
-                } else {
-                    match collect_agent_usage(&request) {
-                        Ok(CollectionOutput {
-                            artifact,
-                            diagnostics,
-                            generated_at,
-                            scan_stats,
-                            metrics,
-                            source_metrics,
-                            credential_updates,
-                            credential_challenges,
-                        }) => {
-                            let response = BridgeResponse {
-                                schema_version: BRIDGE_SCHEMA_VERSION,
-                                run_id: request.run_id.clone(),
-                                generated_at,
-                                status: response_status(true, &diagnostics),
-                                artifact: Some(artifact),
-                                credential_updates,
-                                credential_challenges,
-                                diagnostics,
-                            };
-                            match validate_response_credentials(response) {
-                                Ok(response) => (response, scan_stats, metrics, source_metrics),
-                                Err(diagnostic) => (
-                                    BridgeResponse::error(
-                                        request.run_id,
-                                        crate::generated_at(),
-                                        diagnostic,
-                                    ),
-                                    CollectionScanStats::default(),
-                                    CollectionMetrics::default(),
-                                    Vec::new(),
-                                ),
-                            }
-                        }
-                        Err(failure) => (
-                            failure_response(request.run_id, failure),
-                            CollectionScanStats::default(),
-                            CollectionMetrics::default(),
-                            Vec::new(),
-                        ),
-                    }
+                    ),
                 }
             }
-            Err(diagnostic) => (
-                BridgeResponse::error(request.run_id, generated_at(), diagnostic),
-                CollectionScanStats::default(),
-                CollectionMetrics::default(),
-                Vec::new(),
-            ),
         }
+        Err(diagnostic) => (
+            BridgeResponse::error(request.run_id, generated_at(), diagnostic),
+            CollectionScanStats::default(),
+            CollectionMetrics::default(),
+            Vec::new(),
+        ),
     };
-    let resource_end = metrics::process_resource_snapshot();
+    let resource_end = metrics_enabled
+        .then(metrics::process_resource_snapshot)
+        .flatten();
     finish_metrics(
         started,
         response,
@@ -545,6 +561,22 @@ mod tests {
 
     fn request() -> String {
         r#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"/tmp","capabilities":["localSessions"]},"credentials":{}}"#.to_owned()
+    }
+
+    /// C260: 进程内强类型入口与字节入口必须产出同一结果（不再重复解析）。
+    #[test]
+    fn typed_entry_matches_byte_entry() {
+        let raw = request();
+        let typed: collector_domain::BridgeRequest = serde_json::from_str(&raw).unwrap();
+        let by_bytes = run_bytes(raw.as_bytes());
+        let by_typed = crate::run_request_panic_safe(typed);
+        assert_eq!(by_bytes.run_id, by_typed.run_id);
+        assert_eq!(by_bytes.status, by_typed.status);
+        assert_eq!(
+            by_bytes.diagnostics.len(),
+            by_typed.diagnostics.len(),
+            "诊断数量应一致"
+        );
     }
 
     #[test]

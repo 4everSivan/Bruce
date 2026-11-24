@@ -585,37 +585,87 @@ impl HistoryStore {
         let mut has_data = false;
         let mut months_seen = BTreeSet::new();
 
-        for date in &window.day_list {
-            let date = date.as_str();
-            let day_json: Option<String> = self
-                .connection
-                .query_row(
-                    "SELECT bucket_json FROM agent_day WHERE agent_id = ?1 AND date = ?2",
-                    params![agent_id, date],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if let Some(json) = day_json {
-                has_data = true;
-                let bucket: TokenBucket = serde_json::from_str(&json)?;
-                if bucket.total > 0 {
-                    contribution.by_day.insert(date.to_owned(), bucket);
+        // C260: 按窗口日期区间一次拉取日桶 / 日×模型 / 月×模型，替代逐日逐月
+        // 无缓存 prepare（366 天 × 10 Agent 曾达 7,300+ 次查询）。
+        if let (Some(first_date), Some(last_date)) =
+            (window.day_list.first(), window.day_list.last())
+        {
+            let mut buckets: BTreeMap<String, TokenBucket> = BTreeMap::new();
+            {
+                let mut statement = self.connection.prepare(
+                    "SELECT date, bucket_json FROM agent_day
+                     WHERE agent_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date",
+                )?;
+                let mut rows = statement.query(params![agent_id, first_date, last_date])?;
+                while let Some(row) = rows.next()? {
+                    let date: String = row.get(0)?;
+                    let json: String = row.get(1)?;
+                    buckets.insert(date, serde_json::from_str(&json)?);
                 }
             }
 
-            let models = self.load_day_models(agent_id, date)?;
-            if !models.is_empty() {
-                contribution.models_by_day.insert(date.to_owned(), models);
+            let mut day_models: BTreeMap<String, BTreeMap<String, TokenBucket>> = BTreeMap::new();
+            {
+                let mut statement = self.connection.prepare(
+                    "SELECT date, model, bucket_json FROM agent_day_model
+                     WHERE agent_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date, ordinal",
+                )?;
+                let mut rows = statement.query(params![agent_id, first_date, last_date])?;
+                while let Some(row) = rows.next()? {
+                    let date: String = row.get(0)?;
+                    let model: String = row.get(1)?;
+                    let json: String = row.get(2)?;
+                    let bucket: TokenBucket = serde_json::from_str(&json)?;
+                    if bucket.total > 0 {
+                        day_models.entry(date).or_default().insert(model, bucket);
+                    }
+                }
             }
-            if let Some(month) = date.get(..7) {
-                months_seen.insert(month.to_owned());
-            }
-        }
 
-        for month in &months_seen {
-            let models = self.load_month_models(agent_id, month)?;
-            if !models.is_empty() {
-                contribution.models_by_month.insert(month.clone(), models);
+            for date in &window.day_list {
+                if let Some(bucket) = buckets.remove(date.as_str()) {
+                    has_data = true;
+                    if bucket.total > 0 {
+                        contribution.by_day.insert(date.clone(), bucket);
+                    }
+                }
+                if let Some(models) = day_models.remove(date.as_str()) {
+                    if !models.is_empty() {
+                        contribution.models_by_day.insert(date.clone(), models);
+                    }
+                }
+                if let Some(month) = date.get(..7) {
+                    months_seen.insert(month.to_owned());
+                }
+            }
+
+            if let (Some(first_month), Some(last_month)) = (first_date.get(..7), last_date.get(..7))
+            {
+                let mut month_models: BTreeMap<String, BTreeMap<String, TokenBucket>> =
+                    BTreeMap::new();
+                let mut statement = self.connection.prepare(
+                    "SELECT month, model, bucket_json FROM agent_month_model
+                     WHERE agent_id = ?1 AND month BETWEEN ?2 AND ?3 ORDER BY month, ordinal",
+                )?;
+                let mut rows = statement.query(params![agent_id, first_month, last_month])?;
+                while let Some(row) = rows.next()? {
+                    let month: String = row.get(0)?;
+                    let model: String = row.get(1)?;
+                    let json: String = row.get(2)?;
+                    let bucket: TokenBucket = serde_json::from_str(&json)?;
+                    if bucket.total > 0 {
+                        month_models.entry(month).or_default().insert(model, bucket);
+                    }
+                }
+                drop(rows);
+                drop(statement);
+                for month in &months_seen {
+                    if let Some(models) = month_models.remove(month.as_str()) {
+                        if !models.is_empty() {
+                            contribution.models_by_month.insert(month.clone(), models);
+                        }
+                    }
+                }
             }
         }
 
@@ -686,50 +736,6 @@ impl HistoryStore {
         } else {
             Err(HistoryError::UnsupportedSchema(version))
         }
-    }
-
-    fn load_day_models(
-        &self,
-        agent_id: &str,
-        date: &str,
-    ) -> Result<BTreeMap<String, TokenBucket>, HistoryError> {
-        let mut statement = self.connection.prepare(
-            "SELECT model, bucket_json FROM agent_day_model
-             WHERE agent_id = ?1 AND date = ?2 ORDER BY ordinal",
-        )?;
-        let mut rows = statement.query(params![agent_id, date])?;
-        let mut models = BTreeMap::new();
-        while let Some(row) = rows.next()? {
-            let model: String = row.get(0)?;
-            let json: String = row.get(1)?;
-            let bucket: TokenBucket = serde_json::from_str(&json)?;
-            if bucket.total > 0 {
-                models.insert(model, bucket);
-            }
-        }
-        Ok(models)
-    }
-
-    fn load_month_models(
-        &self,
-        agent_id: &str,
-        month: &str,
-    ) -> Result<BTreeMap<String, TokenBucket>, HistoryError> {
-        let mut statement = self.connection.prepare(
-            "SELECT model, bucket_json FROM agent_month_model
-             WHERE agent_id = ?1 AND month = ?2 ORDER BY ordinal",
-        )?;
-        let mut rows = statement.query(params![agent_id, month])?;
-        let mut models = BTreeMap::new();
-        while let Some(row) = rows.next()? {
-            let model: String = row.get(0)?;
-            let json: String = row.get(1)?;
-            let bucket: TokenBucket = serde_json::from_str(&json)?;
-            if bucket.total > 0 {
-                models.insert(model, bucket);
-            }
-        }
-        Ok(models)
     }
 
     fn load_today_models(

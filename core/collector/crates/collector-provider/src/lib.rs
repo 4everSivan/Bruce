@@ -499,6 +499,35 @@ impl UreqHttpClient {
     }
 }
 
+/// 按回环代理端口缓存 Agent (C260): 复用连接池，避免每次探针/请求重建 TLS 根证书。
+fn loopback_proxy_agent(port: u16) -> Result<ureq::Agent, ProviderError> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static AGENTS: OnceLock<Mutex<HashMap<u16, ureq::Agent>>> = OnceLock::new();
+    let mut agents = AGENTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(agent) = agents.get(&port) {
+        return Ok(agent.clone());
+    }
+    let proxy = ureq::Proxy::new(format!("http://127.0.0.1:{port}")).map_err(|_| {
+        ProviderError::new(
+            "EGRESS_CONFIG_INVALID",
+            "request",
+            "专用代理端口无效",
+            false,
+        )
+    })?;
+    let agent = ureq::AgentBuilder::new()
+        .https_only(true)
+        .redirects(0)
+        .proxy(proxy)
+        .build();
+    agents.insert(port, agent.clone());
+    Ok(agent)
+}
+
 impl HttpClient for UreqHttpClient {
     fn send(
         &self,
@@ -522,20 +551,9 @@ impl HttpClient for UreqHttpClient {
                 false,
             ));
         }
-        let proxy = ureq::Proxy::new(format!("http://127.0.0.1:{port}")).map_err(|_| {
-            ProviderError::new(
-                "EGRESS_CONFIG_INVALID",
-                "request",
-                "专用代理端口无效",
-                false,
-            )
-        })?;
         let client = UreqHttpClient {
-            agent: ureq::AgentBuilder::new()
-                .https_only(true)
-                .redirects(0)
-                .proxy(proxy)
-                .build(),
+            // C260: 按端口复用 Agent —— 出口探针与代理请求不再重复加载 TLS 根证书。
+            agent: loopback_proxy_agent(port)?,
         };
         client.send_with(request, cancellation, true)
     }

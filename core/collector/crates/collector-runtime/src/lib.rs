@@ -3,7 +3,7 @@
 //! Shared resource budgets and cancellation primitives for collector refreshes.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const WAIT_SLICE: Duration = Duration::from_millis(10);
@@ -69,7 +69,8 @@ pub struct CancellationToken {
 #[derive(Debug, Default)]
 struct CancellationState {
     cancelled: AtomicBool,
-    deadline: Mutex<Option<Instant>>,
+    /// C260: 截止时间创建后不可变，用 OnceLock 取代热循环里的 Mutex。
+    deadline: OnceLock<Instant>,
 }
 
 impl CancellationToken {
@@ -79,11 +80,7 @@ impl CancellationToken {
 
     pub fn with_deadline(deadline: Instant) -> Self {
         let token = Self::new();
-        *token
-            .inner
-            .deadline
-            .lock()
-            .expect("cancellation deadline mutex poisoned") = Some(deadline);
+        let _ = token.inner.deadline.set(deadline);
         token
     }
 
@@ -102,9 +99,8 @@ impl CancellationToken {
         let expired = self
             .inner
             .deadline
-            .lock()
-            .expect("cancellation deadline mutex poisoned")
-            .is_some_and(|deadline| Instant::now() >= deadline);
+            .get()
+            .is_some_and(|deadline| Instant::now() >= *deadline);
         if expired {
             self.cancel();
             return Err(RuntimeError::DeadlineExceeded);

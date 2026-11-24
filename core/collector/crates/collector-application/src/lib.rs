@@ -331,10 +331,11 @@ fn resolve_pricing_table(request: &BridgeRequest) -> PricingTable {
     let Some(raw) = request.context.get("pricingCatalog") else {
         return PricingTable::new(pricing_overrides);
     };
-    let bytes = serde_json::to_vec(raw).unwrap_or_default();
-    match collector_domain::pricing::CatalogFile::parse_and_validate(&bytes) {
+    // C260: 直接从 Value 反序列化，避免 to_vec → from_slice 的二次序列化。
+    match serde_json::from_value::<collector_domain::pricing::CatalogFile>(raw.clone()) {
         Ok(catalog_file)
-            if !catalog_file.is_older_than(collector_domain::pricing::builtin_updated_at()) =>
+            if catalog_file.validate().is_ok()
+                && !catalog_file.is_older_than(collector_domain::pricing::builtin_updated_at()) =>
         {
             PricingTable::with_catalog(&catalog_file.models, pricing_overrides)
         }

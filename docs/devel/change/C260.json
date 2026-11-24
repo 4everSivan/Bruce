@@ -4,7 +4,7 @@
   "title": "采集引擎热路径优化：历史库批量查询、写放大短路、请求日志按需持久化与代理连接池",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C260-collector-hotpath-perf",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"load_day_models|send_via_loopback_proxy|run_id_of|persist_request_logs|fill_buf|Mutex<Option<Instant>>\" core/collector/crates/",
     "expected": "`HistoryStore::load` 逐日单条 SQL 查询；`send_via_loopback_proxy` 每次 `AgentBuilder::new()`；`run_bytes_panic_safe` 两次 `from_slice`；`CancellationState::deadline` 为 `Mutex`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：HistoryStore::load 逐日 query_row + 每日 prepare；桥接入口先 run_id_of 再 run_bytes 双解析；Windows 进程内先 to_vec 再双解析；send_via_loopback_proxy 每次新建 Agent；CancellationState.deadline 为 Mutex；read_bounded_line 用 iter().position；resolve_pricing_table 先 to_vec 再 from_slice。"
   },
   "callback": {
     "before": [

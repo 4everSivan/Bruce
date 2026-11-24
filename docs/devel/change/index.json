@@ -184,7 +184,7 @@
     },
     "C260": {
       "title": "采集引擎热路径优化：历史库批量查询、写放大短路、请求日志按需持久化与代理连接池",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C260-collector-hotpath-perf",
       "topic": "TokenUsage",
       "file": "docs/devel/change/C260.json"

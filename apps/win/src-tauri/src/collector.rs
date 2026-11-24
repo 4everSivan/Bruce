@@ -5,7 +5,7 @@
 //! 红线: 严禁在模块初始化阶段触发采集; 采集仅由用户刷新/调度显式发起。
 
 use chrono::{Local, SecondsFormat};
-use collector_bridge::run_bytes_panic_safe;
+use collector_bridge::run_request_panic_safe;
 use collector_domain::{BridgeRequest, BridgeResponse, BridgeTimeouts, BRIDGE_SCHEMA_VERSION};
 use serde_json::{Map, Value};
 
@@ -195,8 +195,8 @@ pub fn run_configured_collection(
     settings: &AppSettings,
 ) -> Result<BridgeResponse, String> {
     let request = build_configured_request(Local::now(), &credentials, settings);
-    let input = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
-    Ok(run_bytes_panic_safe(&input))
+    // C260: 进程内强类型入口，省去序列化 + 两次反序列化。
+    Ok(run_request_panic_safe(request))
 }
 
 /// 定向刷新单个订阅 Provider 的请求 (mac `CollectorRunInput.scopedRunInput` 同契约):
@@ -240,8 +240,7 @@ pub fn run_scoped_collection(
     provider: &str,
 ) -> Result<BridgeResponse, String> {
     let request = build_scoped_request(Local::now(), &credentials, settings, provider)?;
-    let input = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
-    Ok(run_bytes_panic_safe(&input))
+    Ok(run_request_panic_safe(request))
 }
 
 /// OAuth challenge recovery queries only Codex quotas; local sessions and other providers are not repeated.
@@ -262,9 +261,7 @@ pub fn run_codex_retry(
     if request.credentials.is_empty() {
         return Err("CODEX_RETRY_UNAUTHORIZED".into());
     }
-    Ok(run_bytes_panic_safe(
-        &serde_json::to_vec(&request).map_err(|_| "CODEX_RETRY_INVALID")?,
-    ))
+    Ok(run_request_panic_safe(request))
 }
 
 #[cfg(test)]

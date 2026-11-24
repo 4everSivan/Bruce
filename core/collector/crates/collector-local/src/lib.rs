@@ -443,7 +443,8 @@ fn read_bounded_line<R: BufRead>(
                 }
                 (0, None)
             } else {
-                let newline_at = chunk.iter().position(|byte| *byte == b'\n');
+                // C260: 逐字节 position 在长行上是热点，改用已依赖的 memchr。
+                let newline_at = memchr::memchr(b'\n', chunk);
                 (
                     newline_at.map(|index| index + 1).unwrap_or(chunk.len()),
                     newline_at,
