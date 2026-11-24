@@ -4,7 +4,7 @@
   "title": "Grok Bot 订阅用量适配",
   "version": "0.19.0",
   "milestone": "M19-Grok Bot订阅用量",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "main",
   "depends_on": [],
   "target": {
@@ -38,8 +38,8 @@
       "id": "T39-1",
       "title": "核对真实响应和套餐口径",
       "capability": "先比较获授权的同一账号在 Grok Bot 产品界面上的读数, 记录套餐口径、已用比例、窗口重置时间与额度归属; 确认登录源、账号切换及平台适用性。取不到可信读数或口径无法确认的场景按设计降级。",
-      "done": false,
-      "note": "2026-11-24: 平台适用性已核实 (接口方案在 macOS 必触发钥匙串弹窗, 维护者改选客户端缓存方案); X Subscription Premium 共享池已与官方界面对照一致 (31% / 11-30 21:57 CST / Premium); 旧版套餐尚无真实账号对照, Windows 侧未核实。"
+      "done": true,
+      "note": "2026-11-24: 平台适用性已核实 (接口方案在 macOS 必触发钥匙串弹窗, 维护者改选客户端缓存方案); X Subscription Premium 共享池已与官方界面对照一致 (31% / 11-30 21:57 CST / Premium); 旧版套餐尚无真实账号对照 (按设计走降级空态), Windows 侧未核实。收口时按维护者确认以 mac 实机为准。"
     },
     {
       "id": "T39-2",
@@ -56,7 +56,7 @@
     {
       "id": "T39-4",
       "title": "接入双端设置与订阅卡",
-      "capability": "沿用添加、启停、移除及定向刷新入口。新版套餐显示「共享每周用量」, 旧版显示「Grok Bot 每周用量」; 账号不一致不借用旧读数, 切换绑定或移除后旧读数随服务 ID 清除, 其他订阅照常刷新。",
+      "capability": "沿用添加、启停、移除、拖拽排序及定向刷新入口。Collector artifact 保留「共享每周用量」(weekly_shared) /「Grok Bot 每周用量」(weekly) 口径, 两端仪表盘统一显示「每周」; 账号不一致不借用旧读数, 切换绑定或移除后旧读数随服务 ID 一并清除, 其他订阅照常刷新。",
       "done": true
     },
     {
@@ -64,53 +64,55 @@
       "title": "补齐自动化与实机验收证据",
       "capability": "保留脱敏 fixture 和双端自动化结果, 分别在 macOS 和 Windows 用真实同账号对照官方界面的已用比例及重置时间。覆盖异账号、未登录、读数陈旧与格式漂移的状态, 两端都验收后再完成本卡。",
       "done": false,
-      "note": "自动化与脱敏 fixture (tests/fixtures/grok-bot/) 已完成; 双端实机对照待执行。"
+      "note": "自动化与脱敏 fixture (tests/fixtures/grok-bot/) 已完成; macOS 实机已由维护者走通连接、展示、图标与定向刷新, 并据此修复三轮问题; Windows 实机对照仍待执行, 本次收尾如实记 false 并保留 ADVISORY。"
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "local-20261124-T39-r4",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261124-07",
+    "user_quote": "我确认收尾 t39",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "套餐与显示口径",
         "true_if": "已支持的套餐均用同账号与官方界面对照, 已用比例、剩余比例和重置时间一致, 共享池与旧版独立周额度标注正确。",
         "false_if": "用历史团队支出、API 余额或 Grok Build 读数替代, 或将共享池当成独立额度。",
-        "evidence": "2026-11-24 维护者在 Grok Bot「Settings → Usage & billing」对照同刻本机缓存: 31% / 重置 2026-11-30 21:57 (北京时间) / X Subscription Premium 共享池, 一致 (会话原话选项「Matches, X Premium shared」)。共享 Collector 以真实本机读数端到端运行 (target/debug/Bruce-collector): status ok、plan Premium、窗口「共享每周用量」windowKey weekly_shared、resetsAt 1796047061、usedPercent 随使用从 34.47 升至 38.59。未覆盖: 旧版套餐 (「Grok Bot 每周用量」) 无真实账号对照; Windows 未对照。",
-        "result": null
+        "evidence": "2026-11-24 维护者在 Grok Bot「Settings → Usage & billing」对照同刻本机缓存: 31% / 重置 2026-11-30 21:57 (北京时间) / X Subscription Premium 共享池, 一致 (会话原话选项「Matches, X Premium shared」)。共享 Collector 以真实本机读数端到端运行 (target/debug/Bruce-collector): 全量与仅含 externalQuotas + home 的定向刷新均返回 status ok、plan Premium、窗口「共享每周用量」windowKey weekly_shared、resetsAt 1796047061、usedPercent 42.49 (随使用变化); 包内 release collector 定向刷新实测同样 ok (48.32%)。未覆盖: 旧版套餐 (「Grok Bot 每周用量」) 无真实账号对照; Windows 未对照。收口: 维护者确认以 mac 实测收尾, 上述两项如实记 false (ADVISORY)。",
+        "result": false
       },
       {
         "item": "授权、账号与凭据边界",
         "true_if": "用户主动连接后只绑定 Grok Bot 客户端当前登录账号; 客户端账号不一致、未登录时提示切回该账号或在 Bruce 重新连接且不展示数值。未连接、停用和移除后均不读取; 不读 sand-secrets.json 与钥匙串、不出站、不回写, 原始账号标识不进入 artifact、日志与 fixture。",
         "false_if": "以未经绑定的账号读数替代目标账号, 触发系统鉴权弹窗, 读取加密会话或钥匙串, 回写外部文件, 或将原始账号标识写入日志和 artifact。",
-        "evidence": "自动化: collector-provider grok_bot 13 项 (异账号 → CREDENTIAL_ACCOUNT_MISMATCH / failureKind accountMismatch 且 note 不含账号; 未登录 / 无数据目录 → CREDENTIAL_MISSING; 全程 NoHttp 断言零出站); account.rs 用例证明调用方传入的 data_dir 被 Collector 覆盖; mac SubscriptionCredentialsHarness 40 项 (仅注入 account/display_name, 停用与无效账号不注入) 与 OnboardingCore 183 项 (account-slot 读取边界、账号键对拍锚点 f827599c055f9a8a); Windows credentials_coverage (连接 / 重新连接替换旧绑定 / 格式漂移不写入 / 键必须由账号派生) 与 collector_configuration (未启用不装配、不含 data_dir)。实机 (mac): 真实读数绑定账号 ok、异账号 accountMismatch, 输出均不含原始账号标识。代码不读取 sand-secrets.json、不访问钥匙串、不调用 api2.cursor.sh。未覆盖: mac/Windows 应用内连接、停用、移除的实机操作。",
-        "result": null
+        "evidence": "自动化: collector-provider grok_bot 14 项 (异账号 → CREDENTIAL_ACCOUNT_MISMATCH / failureKind accountMismatch 且 note 不含账号; 未登录 / 无数据目录 → CREDENTIAL_MISSING; 并发写入瞬态半包经有界短重试恢复; 全程 NoHttp 断言零出站); account.rs 用例证明调用方传入的 data_dir 被 Collector 覆盖; mac SubscriptionCredentialsHarness 41 项 (仅注入 account/display_name, scopedRunInput 携带 home 与 externalQuotas, 停用与无效账号不注入) 与 OnboardingCore 183 项 (account-slot 读取边界与瞬态半包重试、账号键对拍锚点 f827599c055f9a8a); Windows credentials_coverage (连接 / 重新连接替换旧绑定 / 格式漂移不写入 / 键必须由账号派生) 与 collector_configuration (未启用不装配、不含 data_dir)。实机 (mac): 维护者已在应用内连接并绑定真实账号, 首刷与定向刷新均 ok, 输出不含原始账号标识; 停用/移除的应用内点击未单独演练, 由凭证注入与清除用例覆盖。代码不读取 sand-secrets.json、不访问钥匙串、不调用 api2.cursor.sh。",
+        "result": true
       },
       {
         "item": "数值边界与降级",
         "true_if": "自动化覆盖 0%、100%、越界钳制、无内含额度、团队/企业池、试用期、读数早于本周期重置、字段缺失与格式漂移、文件缺失/超限/非 JSON、读数陈旧和账号切换。旧读数仅在同账号同口径下标为陈旧, 账号不一致不借用旧读数。",
         "false_if": "把缺失或错误显示为 0%, 切换账号沿用旧读数, 或单 Provider 错误阻塞其他订阅。",
-        "evidence": "collector-provider grok_bot 测试: 0% / 100% / 越界钳制 (130→100, -5→0)、hasNonZeroIncludedLimit=false、isTeamSeat / readForTeamId、isSandTrial、nextResetMs 早于本轮、kind≠present 均为 empty 且无数值; percentUsed 缺失或为字符串、hasNonZeroIncludedLimit 缺失、nextResetMs 非数值、schemaVersion≠3、readAtMs 缺失均为 PROVIDER_INVALID_PAYLOAD (不显示 0%); 分片缺失 → empty、非 JSON → PROVIDER_INVALID_JSON、超 64 KiB → PROVIDER_RESPONSE_TOO_LARGE; 读数超 30 分钟 → freshness stale。collector-policy account_mismatch_failure_never_borrows_previous_reading: 账号不一致不借用旧读数 (unavailable), 其他失败照常借用 (stale)。Windows runtime_coverage: 恢复快照只保留当前绑定账号。zsh scripts/verify-local.sh 2026-11-24 Exit 0 (local/verify-T39-r4.log)。",
+        "evidence": "collector-provider grok_bot 14 项测试: 0% / 100% / 越界钳制 (130→100, -5→0)、hasNonZeroIncludedLimit=false、isTeamSeat / readForTeamId、isSandTrial、nextResetMs 早于本轮、kind≠present 均为 empty 且无数值; percentUsed 缺失或为字符串、hasNonZeroIncludedLimit 缺失、nextResetMs 非数值、schemaVersion≠3、readAtMs 缺失均为 PROVIDER_INVALID_PAYLOAD (不显示 0%); 分片缺失 → empty、非 JSON → PROVIDER_INVALID_JSON (并发半包经有界短重试恢复)、超 64 KiB → PROVIDER_RESPONSE_TOO_LARGE; 读数超 30 分钟 → freshness stale。collector-policy account_mismatch_failure_never_borrows_previous_reading: 账号不一致不借用旧读数 (unavailable), 其他失败照常借用 (stale)。Windows runtime_coverage: 恢复快照只保留当前绑定账号。zsh scripts/verify-local.sh 2026-11-24 Exit 0。",
         "result": true
       },
       {
         "item": "双端正常入口与回归",
         "true_if": "两端使用同一 Collector Provider 与 Bridge 契约, macOS 和 Windows 分别完成在真实环境中的连接、启停、移除、定向刷新和额度对照。现有 Grok Build 及其他订阅的刷新回归检查通过。",
         "false_if": "任一端缺少产品入口或实机证据, 两端各维护一套读数定位与解析, 或现有 Grok Build 的标识、额度及刷新发生回归。",
-        "evidence": "zsh scripts/verify-local.sh 2026-11-24 Exit 0 (local/verify-T39-r4.log, 末行「Bruce 本地验证全部通过」): Rust fmt/test/clippy 全绿、fixture 扫描 files=50 secretFindings=[]、20 个 Swift Harness 全过 (OnboardingCore 183、PanelViewModel 74、SubscriptionCredentials 40、SubscriptionBrandGlyph 12 等)、Windows 前端 131/131、gen-provider-glyphs --check 12 个 provider 一致。callback.after 另行执行: cargo test apps/win/viewmodel 与 apps/win/src-tauri 全绿、clippy -D warnings Exit 0。现有 Grok (Grok Build) 用例 (grok_a1→grok、服务分组独立) 回归通过。未覆盖: macOS 与 Windows 应用内真实连接、启停、移除、定向刷新与看板展示的实机验收。",
-        "result": null
+        "evidence": "2026-11-24 修复白色球形图标 (grok-bot.svg) 与 macOS 定向刷新 home 上下文后执行: zsh scripts/verify-local.sh Exit 0 (末行「Bruce 本地验证全部通过」): Rust fmt/test/clippy 全绿、fixture 扫描 files=50 secretFindings=[]、Swift Harness 全过 (OnboardingCore 183、PanelViewModel 75、SubscriptionCredentials 41、SubscriptionBrandGlyph 12 等)、Windows 前端 132/132 与顶层契约 27/27、gen-provider-glyphs --check 12 个 provider 一致。另行执行: cargo test apps/win/viewmodel 与 apps/win/src-tauri 全绿 Exit 0; 导出 PNG 视觉核对球形图标与双胶囊眼镂空无误; Bruce-collector 定向刷新端到端实测返回 status ok。实机: macOS 应用内连接、展示、图标与定向刷新已由维护者实测, 并据此完成三轮修复。未覆盖: Windows 实机, 以及 macOS 应用内启停/移除的点击演练。收口: 维护者确认以 mac 实机收尾, 未覆盖项如实记 false (ADVISORY), 待 Windows 环境补证后回填 true。",
+        "result": false
       }
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "65eba3fe32d4da282529d57e09dc1ebbe1289404"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-24",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   },
   "decisions": [
     {
@@ -125,6 +127,27 @@
       "topic": "执行分支",
       "decision": "在 main 上执行, 不建 feat/T39-grok-bot-quota 分支。",
       "source": "维护者原话「do it on main」"
+    },
+    {
+      "date": "2026-11-24",
+      "topic": "仪表盘标签、图标与排序口径",
+      "decision": "仪表盘周窗口统一显示「每周」(Collector artifact 保留 weekly_shared / weekly 语义区分), 并修复 grokbot_ 服务 ID 归一及设置页/看板顺序同步。",
+      "reason": "维护者实机反馈: 仪表盘「共享每周用量」需改回「每周」, grokbot_ 前缀未在展示策略与 Windows 前端归一导致图标缺失与排序无效, 以及 macOS 设置页向下拖拽排序逻辑缺陷。",
+      "source": "维护者在会话中反馈「把共享每周用量改为每周，缺少 grokbot 的图标，配置里调整了 grok bot 的顺序也没有发生改动」"
+    },
+    {
+      "date": "2026-11-24",
+      "topic": "白色球形图标与定向刷新 context.home / 瞬态重试",
+      "decision": "新增 Grok Bot 专属白色球形 SVG 图标 (grok-bot.svg) 并在 Nothing 深色主题保持 #FFFFFF；macOS scopedRunInput 补齐 context.home 并为本机分片读取加有界短重试 (15ms/40ms)。",
+      "reason": "维护者实机反馈 Grok Bot 应为白色球形图标且本地凭据经常读取失败提示重新登录。经排查，原实现复用 grok-icon.svg 且 Nothing 主题降灰；macOS 定向刷新漏传 context.home 导致 Collector 剥除 data_dir 误报 CREDENTIAL_MISSING。",
+      "source": "维护者在会话中反馈并确认修复方案「grok bot 订阅中图标不对，应该是一个白色的球形图标，然后本地凭据经常读取失败提示要重新登录」→「认可」"
+    },
+    {
+      "date": "2026-11-24",
+      "topic": "收口范围",
+      "decision": "按维护者确认收尾: macOS 侧实机验收 (连接、展示、图标、定向刷新) 作为本次收口依据; 旧版套餐对照、Windows 实机与 mac 应用内启停/移除点击如实记 false 并保留 ADVISORY, 待 Windows 环境补证后回填。",
+      "reason": "本机无 Windows 环境; 旧版套餐无真实账号。维护者要求收尾 T39, mac 侧已完整走通。",
+      "source": "维护者原话「我确认收尾 t39」"
     }
   ]
 }

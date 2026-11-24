@@ -332,7 +332,7 @@
     },
     "T39": {
       "title": "Grok Bot 订阅用量适配",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "milestone": "M19-Grok Bot订阅用量",
