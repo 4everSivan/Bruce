@@ -207,7 +207,7 @@
   var agentSources = [
     { name: "Claude Code", icon: "claude", tile: "#d97757", tag: "~/.claude/projects" },
     { name: "Codex", image: "agent-codex", tile: "#0a0a0a", tag: "~/.codex · 含 Orca" },
-    { name: "Kimi Code CLI", icon: "kimi", tile: "#0a84ff", tag: "~/.kimi/history" },
+    { name: "Kimi Code CLI", icon: "kimi", tile: "#0a84ff", tag: "~/.kimi-code/sessions" },
     { name: "Kimi Work", icon: "kimi", tile: "#0a84ff", tag: "本地工作区会话" },
     { name: "OpenCode", icon: "opencode", tile: "#8a63d2", tag: "SQLite · mode=ro" },
     { name: "DeepSeek Harness", icon: "deepseek", tile: "#4d6bfe", tag: "zstd JSONL" },
@@ -215,6 +215,7 @@
     { name: "CodeBuddy", image: "agent-codebuddy", tile: "#5b3df5", tag: "~/.codebuddy" },
     { name: "Grok", icon: "grok-icon", tile: "#111111", tag: "~/.grok" },
     { name: "Pi", logo: "pi", tile: "#ff6482", tag: "~/.pi/agent" },
+    { name: "Antigravity", tile: "#1B1B1B", tag: "~/.gemini/antigravity/brain · CLI/IDE" },
   ];
 
   var providerSources = [
@@ -225,9 +226,10 @@
     { name: "Cline", icon: "cline", tile: "#18181b", tag: "5 小时 · 7 天 · 30 天" },
     { name: "Volcengine", icon: "volcengine", tile: "#ff6a00", tag: "5 小时 · 每周 · 每月" },
     { name: "Z.ai", icon: "zai-mark", tile: "#2d2d2d", tag: "5 小时 · 每周" },
-    { name: "StepFun", icon: "stepfun", tile: "#0c5efc", tag: "按量余额" },
+    { name: "StepFun", icon: "stepfun", tile: "#0c5efc", tag: "5 小时 · 每周" },
     { name: "OpenCode", icon: "opencode", tile: "#8a63d2", tag: "5 小时 · 每周 · 每月" },
     { name: "Grok", icon: "grok-icon", tile: "#111111", tag: "每月配额" },
+    { name: "Grok Bot", icon: "grok-icon", tile: "#111111", tag: "每周 · 本机缓存" },
   ];
 
   /* ---------- pricing rows, from the built-in catalog ------------ */

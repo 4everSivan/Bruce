@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Bruce — 常驻菜单栏的本机 AI 用量与订阅账本</title>
-<meta name="description" content="Bruce 常驻 macOS 菜单栏与 Windows 托盘，本机只读扫描十类 AI Agent 会话，拆分核算输入与缓存成本，实时跟进十家云端订阅窗口额度。无账号、无服务端。" />
+<meta name="description" content="Bruce 常驻 macOS 菜单栏与 Windows 托盘，本机只读扫描十一类 AI Agent 会话，拆分核算输入与缓存成本，实时跟进十一家云端订阅窗口额度。无账号、无服务端。" />
 <meta name="theme-color" content="#f1efe9" />
 <link rel="icon" href="assets/bruce-icon.png" />
 <link rel="stylesheet" href="css/base.css" />
@@ -57,7 +57,7 @@
           <span><b class="hl">都记在账上</b></span>
         </h1>
 
-        <p class="hero__lede">常驻 Mac 菜单栏与 Windows 托盘的本地 AI 账本。只读扫描本机十类编码 Agent 会话，按模型价卡拆算输入与缓存开销，顺带盯住十家云端订阅的窗口余量。不设账号，数据留在硬盘上。</p>
+        <p class="hero__lede">常驻 Mac 菜单栏与 Windows 托盘的本地 AI 账本。只读扫描本机十一类编码 Agent 会话，按模型价卡拆算输入与缓存开销，顺带盯住十一家云端订阅的窗口余量。不设账号，数据留在硬盘上。</p>
 
         <div class="hero__action">
           <div class="hero__dl">
@@ -68,11 +68,12 @@
               <span class="cta__arrow" aria-hidden="true">→</span>
             </a>
             <span class="cta-stack">
-              <button class="cta cta--disabled" type="button" disabled aria-disabled="true">
+              <a class="cta" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce_{{VERSION}}_x64-setup.exe" aria-label="下载 Windows x64 版 Bruce_{{VERSION}}_x64-setup.exe（{{EXE_SIZE}}）" rel="noopener">
                 <svg class="cta__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449 9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
                 <span>Windows 版</span>
-              </button>
-              <span class="cta-note">NSIS 安装包筹备中</span>
+                <span class="cta__size num">{{EXE_SIZE}}</span>
+                <span class="cta__arrow" aria-hidden="true">→</span>
+              </a>
             </span>
           </div>
           <p class="aside">MIT 开源 · Universal 2（Apple Silicon &amp; Intel）· 未签名预览版首次启动需在「系统设置 › 隐私与安全性」放行。</p>
@@ -208,7 +209,7 @@
           <span class="section__meta">SQLite mode=ro · POSIX 0600 · 无自有云端</span>
         </div>
         <div class="section__title">
-          <h2 class="h2" id="sources-title"><b class="hl">十类本地会话</b>与十家云端订阅</h2>
+          <h2 class="h2" id="sources-title"><b class="hl">十类本地会话</b>与十一家云端订阅</h2>
         </div>
       </div>
 
@@ -463,12 +464,12 @@
         <span class="dl-line__meta">Universal 2 · {{DMG_SIZE}}</span>
         <span class="dl-line__go" aria-hidden="true">→</span>
       </a>
-      <span class="dl-line dl-line--soon" aria-disabled="true">
+      <a class="dl-line" href="https://github.com/4everSivan/Bruce/releases/download/v{{VERSION}}/Bruce_{{VERSION}}_x64-setup.exe" aria-label="下载 Windows x64 安装包 Bruce_{{VERSION}}_x64-setup.exe，大小 {{EXE_SIZE}}" rel="noopener">
         <span class="dl-line__os">Windows 10+</span>
-        <span class="dl-line__file">NSIS 安装包准备中</span>
-        <span class="dl-line__meta">x64 · 即将推出</span>
-      </span>
-      <!-- Windows x64 安装包 {{EXE_SIZE}} 随发布启用 -->
+        <span class="dl-line__file">Bruce_{{VERSION}}_x64-setup.exe</span>
+        <span class="dl-line__meta">x64 · {{EXE_SIZE}}</span>
+        <span class="dl-line__go" aria-hidden="true">→</span>
+      </a>
       <div class="colophon__download-foot">
         <span>液态玻璃材质需 macOS 26+（低版本自动回落经典材质）· MIT 许可证</span>
         <span>

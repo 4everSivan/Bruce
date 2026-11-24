@@ -4,7 +4,7 @@
   "title": "官网产品数据同步、仓库暂存脏文件清理（TD-013）与废弃 Demo 整理",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C267-website-sync-and-repo-hygiene",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"10 Agents|NSIS 安装包筹备中|claude-fable|\\.kimi/history\" website/ && git ls-files docs/official/.staging docs/official/.cards docs/assets/km/.staging | wc -l",
     "expected": "`website/` 存在 10 Agents、虚构模型与禁用 Windows 按钮文案；`git ls-files` 统计 `.staging`/`.cards` 为 212 个",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：官网仍写十类/十家、Kimi 路径 ~/.kimi/history、StepFun 标按量余额、Windows 下载禁用；data.js 缺 Antigravity/Grok Bot。注：claude-fable-5-1 与 gpt-6.1-sol 经核对已在 config/pricing-catalog.json 中，属真实目录项，未替换。TD-013 的 212 个跟踪暂存文件与 3 个无引用 demo 待人类确认后处理。"
   },
   "callback": {
     "before": [
@@ -93,7 +93,7 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": false,
     "commit": "",
     "tag": ""

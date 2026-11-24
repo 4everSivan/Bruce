@@ -233,7 +233,7 @@
     },
     "C267": {
       "title": "官网产品数据同步、仓库暂存脏文件清理（TD-013）与废弃 Demo 整理",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C267-website-sync-and-repo-hygiene",
       "topic": "OfficialWebsite",
       "file": "docs/devel/change/C267.json"

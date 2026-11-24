@@ -179,7 +179,7 @@
   var SESSION_PROBES = [
     { id: "claude-code", name: "Claude Code", path: "~/.claude/projects", status: "ready", label: "就绪" },
     { id: "codex", name: "ChatGPT / Codex", path: "~/.codex/sessions（含 Orca）", status: "ready", label: "就绪" },
-    { id: "kimi-code-cli", name: "Kimi Code", path: "~/.kimi/history", status: "ready", label: "就绪" },
+    { id: "kimi-code-cli", name: "Kimi Code", path: "~/.kimi-code/sessions", status: "ready", label: "就绪" },
     { id: "opencode", name: "OpenCode", path: "~/.local/share/opencode", status: "ready", label: "就绪" },
     { id: "dsh", name: "DSH", path: "~/.dsh/sessions（zstd JSONL）", status: "ready", label: "就绪" },
     { id: "grok", name: "Grok", path: "~/.grok", status: "empty", label: "未发现会话记录" },
