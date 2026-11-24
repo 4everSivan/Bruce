@@ -1,6 +1,6 @@
 # 版本与阶段归档库 (archive/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-18 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-24 ｜ **status**: active
 
 ## 1. 简介
 
@@ -97,7 +97,7 @@ git tag -a <version> -m "Release <version>"
 
 ## 附：项目既有约定（升级保留）
 
-> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.8.0。
+> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.8.1。
 
 **归档实况（2026-11-18，随 v0.18.0 tag 封箱）**
 

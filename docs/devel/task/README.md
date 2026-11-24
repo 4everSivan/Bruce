@@ -1,6 +1,6 @@
 # 阶段任务卡池 (task/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-06 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-24 ｜ **status**: active
 
 ## 1. 简介
 
@@ -22,7 +22,13 @@ T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends
 
 ## 3. 建卡与依赖规则
 
-建卡前先运行 `scripts/adflow-verify --scaffold new-card --plan --track task --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> --milestone <里程碑> [--todo <待办文本>] --json`；`executable` 为 true 后按 `writes` / `topics` 创建卡片与总账登记、按 `todo` 删除待办行，禁止手抄模板或手写登记；为 false 时先补齐 `missing` 输入再重跑。这些命令由 Agent 执行，人类只需用自然语言提出需求。
+### Grill-me
+
+用户提出按 T 卡推进后，围绕提案与用户完成至少一轮对抗性讨论。结合现行设计、代码和已有任务，主动找出可能遗漏且足以改变方案的假设、边界或失败场景。提出你的判断和理由，请用户修正或确认方案。提问方式随提案和讨论进展调整。把讨论结论用于设计、任务拆解、依赖和验收定义。
+
+### 只读建卡计划（A6）
+
+讨论后，运行 `scripts/adflow-verify --scaffold new-card --plan --track task --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> --milestone <里程碑> [--todo <待办文本>] --json`；`executable` 为 true 后按 `writes` / `topics` 创建卡片与总账登记、按 `todo` 删除待办行，禁止手抄模板或手写登记；为 false 时先补齐 `missing` 输入再重跑。这些命令由 Agent 执行，人类只需用自然语言提出需求。
 
 卡号由计划给出（口径同 `scripts/adflow-verify --next-id task`），如 `T01`：它覆盖现行总账、各归档批次总账与归档目录，以及本机其他工作树和本地/远端跟踪分支中的最大编号，跨版本不重置。该结果不提供原子预占，合入主干前须在合并结果上校验（见 [AGENTS.md](../../../AGENTS.md) 五.1），核对重复号与 Git 冲突；改号时同步卡内子任务编号、索引和依赖引用，不覆盖已有事项。
 
@@ -47,7 +53,7 @@ T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends
 
 ## 4. 执行与完成
 
-1. **设计与建卡**：确认对应设计，按阶段或里程碑拆解 T 卡，在总账登记。来自 todo 的事项在建卡登记后同步删除原行，不因仅完成设计就丢失执行事项。
+1. **讨论、设计与建卡**：按 [Grill-me](#grill-me) 讨论提案，再确认对应设计，按阶段或里程碑拆解 T 卡，在总账登记。来自 todo 的事项在建卡登记后同步删除原行，不因仅完成设计就丢失执行事项。
 2. **选择就绪任务**：从 `pending` 卡中筛选所有依赖均已 `completed` 的任务，同步卡片与索引为 `in_progress`；不跨过未完成依赖。
 3. **预检与实现**：运行授权范围内的 `precheck.command`。已实现时记录证据并跳过重复编码，仍做验收；否则执行适用回调、能力实现与对应测试。
 4. **逐项验收与确认**：核对 `tasks[].done` 与 `acceptance.checks`，保存真实命令、输出和 `run_id`。业务验收项须全部满足后运行 `scripts/adflow-verify --card <卡号> --receipt`，以节点回执汇报并请求确认；人工明确确认后摘录真实 `acceptance.user_quote` 与 `signoff`，不得用测试输出代替确认。工具的 `ADVISORY`（如 `TASK_SIGNOFF_MISSING`、`TASKS_NOT_ALL_DONE`）不代替业务判断，也不新增硬门槛。

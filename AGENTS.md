@@ -1,7 +1,7 @@
 # AGENTS.md
 
-<!-- @ad-flow: initialized v1.8.0 -->
-> Bruce 研发与 AI 协作规范 (ad-flow v1.8.0)。文档导航与机器总账位于 [docs/README.md](docs/README.md) 与 [docs/index.json](docs/index.json)。首次初始化后，日常研发遵循本项目内规范；仅在希望同步新版治理规范时再次调用 `$ad-flow` 或 `/ad-flow`。
+<!-- @ad-flow: initialized v1.8.1 -->
+> Bruce 研发与 AI 协作规范 (ad-flow v1.8.1)。文档导航与机器总账位于 [docs/README.md](docs/README.md) 与 [docs/index.json](docs/index.json)。首次初始化后，日常研发遵循本项目内规范；仅在希望同步新版治理规范时再次调用 `$ad-flow` 或 `/ad-flow`。
 
 ## 执行入口与规则作用范围
 
@@ -41,14 +41,15 @@
 
 ### 1. 功能设计入口 (新功能 / 大需求 / 阶段里程碑)
 1. **方向登记**：在 `docs/devel/todo/` 登记方向级灵感与事项；
-2. **设计基线定稿**：在 `docs/devel/design/` 撰写或修订对应微设计文档（`01~99-[功能名].md`，结构参考 `design/README.md`），批准后状态置为 `baseline`（现行基线），草稿保持 `draft`，并标明概念主题锚标 `<!-- @topic: TopicName -->`；未实现能力由下一步的 T 卡明确记录，不能仅凭设计认定已实现；完成设计并建卡登记后从 `todo/` 移除对应项；
-3. **任务拆解（先跑只读计划）**：建卡前必须运行 `scripts/adflow-verify --scaffold new-card --plan --track task --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> [--design-doc <设计文档>] [--milestone <里程碑>] [--todo <待办文本>] --json`；`executable` 为 true 后，严格按 `writes` / `topics` 创建 `Txx.json` 与 `task/index.json` 登记（卡号取自计划 `card_id`；`--next-id`/计划卡号都不是原子预占，合入前按五.1 复核），再补全 `depends_on`、`precheck`、`callback` 与验收契约；`executable` 为 false 时先补齐 `missing` 输入再重跑；
-4. **预检与回调执行流**：
+2. **Grill-me 对抗性讨论**。用户提出按 T 卡推进后，按[任务卡提示词](docs/devel/task/README.md#grill-me)与用户至少讨论一轮，再进入设计定稿与 A6 建卡计划。
+3. **设计基线定稿**：在 `docs/devel/design/` 撰写或修订对应微设计文档（`01~99-[功能名].md`，结构参考 `design/README.md`），批准后状态置为 `baseline`（现行基线），草稿保持 `draft`，并标明概念主题锚标 `<!-- @topic: TopicName -->`；未实现能力由下一步的 T 卡明确记录，不能仅凭设计认定已实现；完成设计并建卡登记后从 `todo/` 移除对应项；
+4. **任务拆解（先跑只读计划）**：建卡前必须运行 `scripts/adflow-verify --scaffold new-card --plan --track task --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> [--design-doc <设计文档>] [--milestone <里程碑>] [--todo <待办文本>] --json`；`executable` 为 true 后，严格按 `writes` / `topics` 创建 `Txx.json` 与 `task/index.json` 登记（卡号取自计划 `card_id`；`--next-id`/计划卡号都不是原子预占，合入前按五.1 复核），再补全 `depends_on`、`precheck`、`callback` 与验收契约；`executable` 为 false 时先补齐 `missing` 输入再重跑；
+5. **预检与回调执行流**：
    * **预检 (Precheck)**：开工前在授权范围内执行 `precheck.command`，检测该任务是否已在代码库中实现（若已完成则记录 `is_completed: true` 并跳过重复开发）；
    * **前置回调 (`callback.before`)**：按序执行卡内声明的前置脚本或环境准备命令；
    * **按拓扑编码**：按依赖拓扑顺序完成核心能力交付；
    * **后置回调 (`callback.after`)**：按序执行代码格式化、Lint 扫描或构建检查等收尾脚本；
-5. **核验与代签**：跑通测试并逐项验收，以节点回执（见二.3）在会话中请求人工确认；人工明确确认后，AI 代为在卡内 `acceptance` 写入人类原话 `user_quote` 与 `signoff`，再回填 `sync.commit`、预检 `completed` 并在 `task/index.json` 中闭环，阶段发版时执行归档。
+6. **核验与代签**：跑通测试并逐项验收，以节点回执（见二.3）在会话中请求人工确认；人工明确确认后，AI 代为在卡内 `acceptance` 写入人类原话 `user_quote` 与 `signoff`，再回填 `sync.commit`、预检 `completed` 并在 `task/index.json` 中闭环，阶段发版时执行归档。
 
 ### 2. Bug 修复入口 (缺陷 / 功能回调 / 参数微调 / 重构)
 1. **登记并移出 (零沉淀)**：在 `docs/devel/todo/now.md` 登记；建卡前必须运行 `scripts/adflow-verify --scaffold new-card --plan --track change --design-topic <主题> --title <标题> --card-version <批次> --branch <分支> [--design-doc <设计文档>] --todo <待办行文本> --json`；`executable` 为 true 后按 `writes` / `topics` / `todo` 创建 `Cxxx.json`、登记 `change/index.json` 并删除待办行（落地即删除）；`executable` 为 false 时先补齐 `missing` 输入再重跑；禁止手抄模板或手写登记条目；
@@ -219,4 +220,4 @@ scripts/adflow-verify --card <卡号> --receipt
 
 - **红线**：仓库内严禁引入任何 Python 资产（`*.py` / `*.pyc` / `pyproject.toml`），由 `scripts/verify-local.sh` 调用的 `scripts/check-no-python-assets.zsh` 强制拦截并 `exit 1`（C231：以 `git ls-files --cached --others --exclude-standard` 只检查已跟踪与未被忽略的文件，`.agent/` 等被忽略的本机 AI 工具目录不是仓库资产、不再误拦；已强制跟踪的被忽略文件照常拦截；脚本先在临时仓库自检 4 项再查本仓库）；AI 工具脚本一律用 Node 或项目原生语言编写。
 - **唯一例外（2026-10-22 登记，2026-11-02 随 v1.6.0、2026-11-06 随 v1.7.0 升级复核）**：`scripts/adflow_verify.py` —— ad-flow 治理规范要求逐字安装的校验器，其 `--mode init` 会校验自身版本与 `docs/index.json` 的 `adflow_version` 一致。该文件属**治理工具链**而非 Python 构建/工具资产，故在门禁中按精确路径白名单放行；除此路径外任何 Python 资产仍一律禁止。**改动该文件即视为改动治理基线**，须同步 `docs/index.json.adflow_version` 与 `AGENTS.md` 顶部标记。
-- **本地判据补丁（2026-10-22 维护者决定，2026-11-02 随 v1.6.0、2026-11-06 随 v1.7.0 升级重施，2026-11-18 随 v1.8.0 升级重施）**：`scripts/adflow_verify.py` 内含一处以 `LOCAL PATCH` 标注的本地覆盖 —— 上游（1.5.0–1.7.0）的 `user_quote` 套话判据把中文确认词（`确认`/`已确认`/`同意`/`已通过`）列入套话集合，且长度门槛为 6 字；本项目维护者的确认天然简短（会话存档实测原话为「确认」「确认，推送」「签收」），逐字记录也一律误报，且该门槛无法在不伪造原话的前提下满足。现调整为：套话集合仅保留不含实质确认的通用英文填充词，长度门槛降为 2（空值仍由 `EVIDENCE_QUOTE` 硬拦）。**重新安装或升级校验器副本后必须重新施加本补丁**；`VERSION` 常量与治理版本同步为 `1.8.0`（与 `docs/index.json.adflow_version` 一致）。
+- **本地判据补丁（2026-10-22 维护者决定，2026-11-02 随 v1.6.0、2026-11-06 随 v1.7.0 升级重施，2026-11-18 随 v1.8.0 升级重施）**：`scripts/adflow_verify.py` 内含一处以 `LOCAL PATCH` 标注的本地覆盖 —— 上游（1.5.0–1.7.0）的 `user_quote` 套话判据把中文确认词（`确认`/`已确认`/`同意`/`已通过`）列入套话集合，且长度门槛为 6 字；本项目维护者的确认天然简短（会话存档实测原话为「确认」「确认，推送」「签收」），逐字记录也一律误报，且该门槛无法在不伪造原话的前提下满足。现调整为：套话集合仅保留不含实质确认的通用英文填充词，长度门槛降为 2（空值仍由 `EVIDENCE_QUOTE` 硬拦）。**重新安装或升级校验器副本后必须重新施加本补丁**；`VERSION` 常量与治理版本同步为 `1.8.1`（与 `docs/index.json.adflow_version` 一致）。

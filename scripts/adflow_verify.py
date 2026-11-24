@@ -42,7 +42,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 
 # ---- 常量 ----
 TOPIC_RE = re.compile(r"<!--\s*@topic:\s*([A-Za-z0-9_]+)\s*-->")
@@ -54,7 +54,7 @@ RUNID_RE = re.compile(r"^(\d+|local-[\d\-]+)$")              # 纯数字或 loca
 # Cxxx / Txx；用 ASCII 边界而非 \b，中文紧邻卡号（如“修复C001问题”）也能识别。
 CARD_ID_RE = re.compile(r"(?<![A-Za-z0-9_])([CT]\d{2,3})(?![A-Za-z0-9_])")
 SRC_PATH_RE = re.compile(r"(?:^|/)(src|app|lib|cmd|internal)/[\w/.\-]+\.\w+")
-# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.8.0 内容) ──────────────
+# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.8.1 内容) ──────────────
 # 上游: CANNED_QUOTES 含中文确认词 (已确认/确认/已通过/同意), 且 user_quote 长度门槛为 6。
 # 本项目维护者的确认天然简短 —— 会话存档实测原话为「确认」「确认，推送」「签收」,
 # 逐字记录也一律被误报为套话, 且该门槛无法在不伪造原话的前提下满足。
@@ -1603,6 +1603,24 @@ SCAFFOLD_REQUIRED = (("design_topic", "设计主题"), ("title", "标题"),
                      ("card_version", "发布批次"), ("branch", "执行分支"))
 
 
+def scaffold_design_issue(ctx, doc, topic):
+    if is_readme(doc):
+        return "README 不能作为设计正文"
+    if not ctx.exists(doc):
+        return "文件不存在"
+    rel = ledger_rel(ctx, doc)
+    if rel is None:
+        return "须使用 docs/devel/design/ 下的 Markdown 正文相对路径"
+    path = Path(rel)
+    if is_readme(path):
+        return "README 不能作为设计正文"
+    if path.parts[:3] != ("docs", "devel", "design") or path.suffix.lower() != ".md":
+        return "须使用 docs/devel/design/ 下的 Markdown 正文相对路径"
+    if topic not in ctx.topics_in(rel):
+        return "缺少 @%s 锚标" % topic
+    return None
+
+
 def scaffold_plan(ctx, args):
     """只读建卡计划：给出确定性写入差异与缺失输入；不写文件。
 
@@ -1618,22 +1636,18 @@ def scaffold_plan(ctx, args):
     design_doc, anchor_ok = args.design_doc, None
     if args.design_topic:
         if design_doc:
-            if not ctx.exists(design_doc):
-                anchor_ok = False
-                missing.append("design_doc（文件不存在）")
-            elif args.design_topic not in ctx.topics_in(design_doc):
-                anchor_ok = False
-                missing.append("design_doc（缺少 @%s 锚标）" % args.design_topic)
-            else:
-                anchor_ok = True
+            issue = scaffold_design_issue(ctx, design_doc, args.design_topic)
+            anchor_ok = issue is None
+            if issue:
+                missing.append("design_doc（%s）" % issue)
         else:
             for path in sorted((ctx.root / "docs/devel/design").glob("*.md")):
                 rel = str(path.relative_to(ctx.root))
-                if args.design_topic in ctx.topics_in(rel):
+                if scaffold_design_issue(ctx, rel, args.design_topic) is None:
                     design_doc, anchor_ok = rel, True
                     break
             if design_doc is None:
-                missing.append("design_doc（主题 %s 未在任何设计文档中命中）" % args.design_topic)
+                missing.append("design_doc（主题 %s 未在现行设计正文中命中）" % args.design_topic)
 
     tpl = ctx.load_json(template)
     if not isinstance(tpl, dict):

@@ -70,7 +70,7 @@
   },
   "gate": {
     "tool": "adflow-verify",
-    "version": "1.8.0",
+    "version": "1.8.1",
     "ran_at": "",
     "exit_code": null
   }

@@ -1,6 +1,6 @@
 # 变更与核验卡池 (change/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-06 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-24 ｜ **status**: active
 
 ## 1. 简介
 
@@ -77,7 +77,7 @@ scripts/adflow-verify --card C001 --receipt
 
 ## 附：项目既有约定（升级保留）
 
-> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.8.0。
+> 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.8.1。
 
 ### 3.1 `topics[].changes` 语义（TD-011 定稿，2026-10-16）
 
