@@ -4,7 +4,7 @@
   "title": "采集器额度重试门禁、ClinePass 空真值与 Provider OAuth/限流重试修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C254-collector-provider-quota-and-retry-guards",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"cline_pass_entitled|collect_quota_retry_only|parse_volcengine_usage|parse_kimi_usage|parse_stepfun_usage|redirects\\(0\\)\" core/collector/crates/",
     "expected": "`cline_pass_entitled` 使用 `.filter_map().all()`；`quotaRetryOnly` 在 `gather()` 门禁前返回；`ClaudeProvider`/`StepFunProvider` 用 `if let Ok` 吞刷新错；`VolcEngineProvider` 6 次循环不短路",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：cline_pass_entitled 用 filter_map(...).all() 空真值；collect_quota_retry_only 在 gather 门禁前直接出站；Claude/StepFun 主动刷新包在 if let Ok 且 401 分支可二次刷新；VolcEngine 6 次嵌套循环不短路、空 200 不回退 AFP；parse_kimi_usage 未 clamp；parse_stepfun_usage 0/负重置转 Some(0)；直连默认 5 次重定向、parse_ms 仅 as_i64 且乘法溢出。"
   },
   "callback": {
     "before": [

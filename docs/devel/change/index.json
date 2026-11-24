@@ -142,7 +142,7 @@
     },
     "C254": {
       "title": "采集器额度重试门禁、ClinePass 空真值与 Provider OAuth/限流重试修复",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C254-collector-provider-quota-and-retry-guards",
       "topic": "SubscriptionQuota",
       "file": "docs/devel/change/C254.json"

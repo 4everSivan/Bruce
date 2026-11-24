@@ -1151,3 +1151,61 @@ fn stepfun_rotated_token_survives_retry_failure_after_401_refresh() {
         "header.new_part1.sig...header.new_part2.sig"
     );
 }
+
+/// C254: Kimi 负 `remaining` 不得产生 >100% 的进度条。
+#[test]
+fn kimi_negative_remaining_clamps_percent() {
+    let parsed = parse_kimi_usage(&json!({
+        "limits": [{"detail": {"limit": 100, "remaining": -50, "resetTime": 1792485144}}],
+        "usage": {"limit": 100, "remaining": -25}
+    }))
+    .unwrap()
+    .unwrap();
+    let windows = parsed["windows"].as_array().unwrap();
+    assert_eq!(windows[0]["usedPercent"], 100.0);
+    assert_eq!(windows[1]["usedPercent"], 100.0);
+}
+
+/// C254: StepFun 0/负重置时间映射为 None，不得渲染 1970 年。
+#[test]
+fn stepfun_non_positive_reset_is_none() {
+    let parsed = parse_stepfun_usage(&json!({
+        "five_hour_usage_left_rate": 1.0,
+        "five_hour_usage_reset_time": 0,
+        "weekly_usage_left_rate": 1.0,
+        "weekly_usage_reset_time": -5
+    }))
+    .unwrap()
+    .unwrap();
+    let windows = parsed["windows"].as_array().unwrap();
+    assert!(windows[0]["resetsAt"].is_null());
+    assert!(windows[1]["resetsAt"].is_null());
+}
+
+/// C254: 主动刷新遇 401/429 立即返回失败态，不得再用过期 token 查询或二次刷新。
+#[test]
+fn stepfun_proactive_refresh_failure_stops_after_one_request() {
+    for (status, expected) in [
+        (401, "PROVIDER_AUTH_REJECTED"),
+        (429, "PROVIDER_RATE_LIMIT"),
+    ] {
+        let expired = "header.eyJleHAiOiAxNzAwMDAwMDAwfQ.sig...header.payload2.sig";
+        let http = FixtureHttp::new(vec![Ok(HttpResponse {
+            status,
+            body: Vec::new(),
+        })]);
+        let request = ProviderRequest {
+            account_id: Some("test-acc".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": expired })),
+        };
+        let error = StepFunProvider
+            .query(&request, &http, &CancellationToken::default())
+            .unwrap_err();
+        assert_eq!(error.diagnostic.code, expected, "HTTP {status}");
+        assert_eq!(http.requests().len(), 1);
+        assert_eq!(http.requests()[0].url, STEPFUN_REFRESH_TOKEN_URL);
+    }
+}

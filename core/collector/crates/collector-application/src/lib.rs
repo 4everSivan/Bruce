@@ -1178,12 +1178,18 @@ fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
 fn collect_quota_retry_only(
     context: &RunContext<'_>,
 ) -> Result<CollectionOutput, CollectionFailure> {
-    let quota = match build_account_plan(context.request) {
-        Ok(plans) => execute_quota_accounts(context, &plans),
-        Err(diagnostic) => QuotaExecution {
-            diagnostics: vec![diagnostic],
-            ..QuotaExecution::default()
-        },
+    // C254: 与 gather() 同一权限门禁 —— 纯本地模式或未授权 externalQuotas 时不得出站。
+    let quota_allowed = !local_usage_only(context) && context.capability_allowed("externalQuotas");
+    let quota = if quota_allowed {
+        match build_account_plan(context.request) {
+            Ok(plans) => execute_quota_accounts(context, &plans),
+            Err(diagnostic) => QuotaExecution {
+                diagnostics: vec![diagnostic],
+                ..QuotaExecution::default()
+            },
+        }
+    } else {
+        QuotaExecution::default()
     };
     let mut diagnostics = quota.diagnostics;
     if quota.services.iter().any(|service| {

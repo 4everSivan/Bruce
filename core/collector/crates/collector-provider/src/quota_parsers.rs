@@ -102,8 +102,9 @@ pub fn parse_kimi_usage(payload: &Value) -> Result<Option<Value>, ProviderError>
                 continue;
             };
             let used = (limit - remaining).max(0.0);
+            // C254: 负 remaining 等异常报文也要收敛在 0..=100。
             let percent = if limit > 0.0 {
-                used / limit * 100.0
+                clamp_percent(used / limit * 100.0)
             } else {
                 0.0
             };
@@ -122,7 +123,7 @@ pub fn parse_kimi_usage(payload: &Value) -> Result<Option<Value>, ProviderError>
         let remaining = number_with_default(usage.get("remaining"), 0.0, true).unwrap_or(0.0);
         let used = (limit - remaining).max(0.0);
         let percent = if limit > 0.0 {
-            used / limit * 100.0
+            clamp_percent(used / limit * 100.0)
         } else {
             0.0
         };
@@ -398,13 +399,16 @@ pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderErr
 
     // 5-hour window
     if let Some(left_rate) = number(object.get("five_hour_usage_left_rate")) {
-        let resets_at = number(object.get("five_hour_usage_reset_time")).map(|t| {
-            if t > 1_000_000_000_000.0 {
-                (t / 1000.0) as i64
-            } else {
-                t as i64
-            }
-        });
+        // C254: 0/负重置时间不是有效时间戳，映射为 None（避免渲染 1970 年）。
+        let resets_at = number(object.get("five_hour_usage_reset_time"))
+            .filter(|t| *t > 0.0)
+            .map(|t| {
+                if t > 1_000_000_000_000.0 {
+                    (t / 1000.0) as i64
+                } else {
+                    t as i64
+                }
+            });
         if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
             let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
             windows.push(window(
@@ -420,13 +424,15 @@ pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderErr
 
     // Weekly window
     if let Some(left_rate) = number(object.get("weekly_usage_left_rate")) {
-        let resets_at = number(object.get("weekly_usage_reset_time")).map(|t| {
-            if t > 1_000_000_000_000.0 {
-                (t / 1000.0) as i64
-            } else {
-                t as i64
-            }
-        });
+        let resets_at = number(object.get("weekly_usage_reset_time"))
+            .filter(|t| *t > 0.0)
+            .map(|t| {
+                if t > 1_000_000_000_000.0 {
+                    (t / 1000.0) as i64
+                } else {
+                    t as i64
+                }
+            });
         if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
             let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
             windows.push(window(
@@ -726,15 +732,20 @@ pub(crate) fn cline_pass_entitled(payload: &Value) -> Option<bool> {
         return Some(false);
     }
     let caps = entitlements.get("inferenceCapThreshold")?;
-    let entitled = [
+    // C254: 三个阈值必须全部存在且为正数；`filter_map(...).all()` 在缺键时因空真值
+    // 会误判为 ClinePass 权益 (空对象 / 缺两个键都会走到这里)。
+    let mut thresholds = [0.0f64; 3];
+    for (slot, key) in thresholds.iter_mut().zip([
         "last5HoursUsageCostUSDPerUser",
         "last7daysUsageCostUSDPerUser",
         "last30daysUsageCostUSDPerUser",
-    ]
-    .iter()
-    .filter_map(|key| number(caps.get(key)))
-    .all(|cap| cap > 0.0);
-    Some(entitled)
+    ]) {
+        let Some(value) = number(caps.get(key)) else {
+            return Some(false);
+        };
+        *slot = value;
+    }
+    Some(thresholds.iter().all(|cap| *cap > 0.0))
 }
 
 fn cline_plan_name(payload: &Value) -> Option<String> {

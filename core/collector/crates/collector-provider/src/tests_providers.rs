@@ -1096,3 +1096,90 @@ fn provider_error_debug_redacts_credential_update() {
     assert!(!debug.contains("sk-ant-ort01-secret"), "{debug}");
     assert!(debug.contains("<redacted>"));
 }
+
+/// C254: ClinePass 阈值必须三键齐全且为正 —— 空对象 / 缺键 / 0 阈值都不得误判为权益。
+#[test]
+fn cline_provider_rejects_empty_or_partial_pass_thresholds() {
+    for caps in [
+        json!({}),
+        json!({
+            "last5HoursUsageCostUSDPerUser": 1_000,
+            "last7daysUsageCostUSDPerUser": 2_000
+        }),
+        json!({
+            "last5HoursUsageCostUSDPerUser": 1_000,
+            "last7daysUsageCostUSDPerUser": 2_000,
+            "last30daysUsageCostUSDPerUser": 0
+        }),
+    ] {
+        let mut plan = cline_plan_payload((1_000, 2_000, 3_000), None);
+        plan["data"]["plan"]["entitlements"]["cline_pass"]["inferenceCapThreshold"] = caps;
+        let http = FixtureHttp::new(vec![response(&plan.to_string())]);
+        let result = ClineProvider
+            .query(
+                &cline_request("sk-cline-fixture-key"),
+                &http,
+                &CancellationToken::new(),
+            )
+            .unwrap();
+        assert!(result.is_none(), "缺阈值不得判为 ClinePass 权益");
+        assert_eq!(http.requests().len(), 1, "非权益账户不得查询 usage-limits");
+    }
+}
+
+/// C254: 429 立即短路，不再对 2 个候选密钥 × 2 个动作做 6 次请求。
+#[test]
+fn volcengine_rate_limit_short_circuits_candidate_retries() {
+    let http = FixtureHttp::new(vec![Ok(HttpResponse {
+        status: 429,
+        body: Vec::new(),
+    })]);
+    let request = provider_request(
+        "volcengine",
+        json!({"accessKeyId": "AKLTabcdef", "secretAccessKey": "secretkey123"}),
+    );
+    let error = VolcEngineProvider
+        .query(&request, &http, &CancellationToken::new())
+        .unwrap_err();
+    assert_eq!(error.diagnostic.code, "PROVIDER_RATE_LIMIT");
+    assert_eq!(http.requests().len(), 1, "限流后不得继续轰炸");
+}
+
+/// C254: GetCodingPlanUsage 200 但无窗口时回退 GetAFPUsage。
+#[test]
+fn volcengine_falls_back_to_afp_usage_on_empty_coding_plan() {
+    let http = FixtureHttp::new(vec![
+        response(r#"{"Result":{}}"#),
+        response(r#"{"Result":{"AFPFiveHour":{"Limit":100,"Used":10}}}"#),
+    ]);
+    let request = provider_request(
+        "volcengine",
+        json!({"accessKeyId": "AKLTabcdef", "secretAccessKey": "secretkey123"}),
+    );
+    let result = VolcEngineProvider
+        .query(&request, &http, &CancellationToken::new())
+        .unwrap()
+        .expect("AFP 回退应给出窗口");
+    assert_eq!(result["windows"].as_array().unwrap().len(), 1);
+    assert_eq!(http.requests().len(), 2);
+}
+
+/// C254: 主动刷新遇 401/429 立即返回失败态，不得用过期 token 再查一次或二次刷新。
+#[test]
+fn claude_proactive_refresh_failure_stops_after_one_request() {
+    for (status, expected_code) in [
+        (401, "PROVIDER_AUTH_REJECTED"),
+        (429, "PROVIDER_RATE_LIMIT"),
+    ] {
+        let http = FixtureHttp::new(vec![Ok(HttpResponse {
+            status,
+            body: b"{}".to_vec(),
+        })]);
+        let error = ClaudeProvider
+            .query(&claude_request(), &http, &CancellationToken::new())
+            .unwrap_err();
+        assert_eq!(error.diagnostic.code, expected_code, "HTTP {status}");
+        assert_eq!(http.requests().len(), 1, "刷新失败后不得再发请求");
+        assert!(http.requests()[0].url.contains("/v1/oauth/token"));
+    }
+}

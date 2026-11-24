@@ -116,14 +116,25 @@ pub fn parse_ms(value: Option<&Value>) -> Option<i64> {
         Value::String(text) => chrono::DateTime::parse_from_rfc3339(text)
             .ok()
             .map(|dt| dt.timestamp_millis()),
-        // 数值 > 1e12 视为毫秒, 否则视为秒。
-        Value::Number(number) => number.as_i64().map(|raw| {
-            if raw > 1_000_000_000_000 {
+        // C254: 接受浮点秒/毫秒，并在秒→毫秒处做饱和转换，避免极大值溢出回绕。
+        Value::Number(number) => {
+            let raw = number.as_f64()?;
+            if !raw.is_finite() {
+                return None;
+            }
+            let millis = if raw.abs() > 1_000_000_000_000.0 {
                 raw
             } else {
-                raw * 1000
-            }
-        }),
+                raw * 1000.0
+            };
+            Some(if millis >= i64::MAX as f64 {
+                i64::MAX
+            } else if millis <= i64::MIN as f64 {
+                i64::MIN
+            } else {
+                millis as i64
+            })
+        }
         _ => None,
     }
 }

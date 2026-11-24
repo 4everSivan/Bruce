@@ -388,7 +388,12 @@ pub struct UreqHttpClient {
 impl Default for UreqHttpClient {
     fn default() -> Self {
         Self {
-            agent: ureq::AgentBuilder::new().https_only(true).build(),
+            // C254: 与专用代理路径一致禁止自动重定向 —— 跨主机跳转会把 Authorization /
+            // Cookie 等敏感头带到非预期端点；3xx 由调用方按非成功状态处理。
+            agent: ureq::AgentBuilder::new()
+                .https_only(true)
+                .redirects(0)
+                .build(),
         }
     }
 }

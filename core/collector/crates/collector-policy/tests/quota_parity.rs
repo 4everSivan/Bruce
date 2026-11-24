@@ -4,8 +4,8 @@
 use std::collections::BTreeSet;
 
 use collector_policy::{
-    annotate_provider, annotate_services, merge, merge_round, plan, provider_of_id, timestamp_iso,
-    PlanInput, QuotaRunPolicy,
+    annotate_provider, annotate_services, merge, merge_round, parse_ms, plan, provider_of_id,
+    timestamp_iso, PlanInput, QuotaRunPolicy,
 };
 use serde_json::{json, Value};
 
@@ -778,4 +778,25 @@ fn proxy_auth_block_stamps_attempt_and_schedules_no_retry() {
     );
     assert!(transient["services"][0].get("egressRetryCount").is_none());
     assert!(transient["services"][0].get("egressRetryAt").is_none());
+}
+
+/// C254: parse_ms 接受浮点秒/毫秒，极大值饱和到 i64 边界而不是溢出回绕。
+#[test]
+fn parse_ms_accepts_fractional_and_saturates_extremes() {
+    assert_eq!(
+        parse_ms(Some(&json!(1_700_000_000))),
+        Some(1_700_000_000_000)
+    );
+    assert_eq!(
+        parse_ms(Some(&json!(1_700_000_000.5))),
+        Some(1_700_000_000_500)
+    );
+    assert_eq!(
+        parse_ms(Some(&json!(1_700_000_000_000_i64))),
+        Some(1_700_000_000_000)
+    );
+    assert_eq!(parse_ms(Some(&json!(1e30))), Some(i64::MAX));
+    assert_eq!(parse_ms(Some(&json!(-1.0))), Some(-1000));
+    assert_eq!(parse_ms(Some(&json!(null))), None);
+    assert!(parse_ms(Some(&json!("2026-10-20T00:00:00Z"))).is_some());
 }

@@ -167,7 +167,7 @@ impl QuotaProvider for VolcEngineProvider {
             return Err(invalid_credential());
         };
         let mut last_error = None;
-        for candidate in volc_secret_candidates(secret) {
+        'candidates: for candidate in volc_secret_candidates(secret) {
             for action in ["GetCodingPlanUsage", "GetAFPUsage"] {
                 let query = format!("Action={action}&Version=2024-01-01");
                 let result = send_json(
@@ -188,21 +188,44 @@ impl QuotaProvider for VolcEngineProvider {
                     parse_volcengine_usage(result).map(|value| value.unwrap_or(Value::Null))
                 });
                 match result {
-                    Ok(Value::Null) => return Ok(None),
-                    Ok(value) => return Ok(Some(value)),
-                    Err(error) => last_error = Some(error),
+                    Ok(Value::Null) => continue,
+                    Ok(value) => {
+                        let empty = value
+                            .get("windows")
+                            .and_then(Value::as_array)
+                            .is_none_or(|windows| windows.is_empty());
+                        if empty {
+                            // C254: 200 但无窗口不是有效配额，继续尝试下一个动作
+                            // (GetCodingPlanUsage 空 → GetAFPUsage)。
+                            continue;
+                        }
+                        return Ok(Some(value));
+                    }
+                    Err(error) => {
+                        // C254: 只有签名/鉴权相关错误才换候选密钥；429 / 5xx / 超时 /
+                        // 取消立即短路，绝不 6 次轰炸限流或故障端。
+                        if !volc_error_switches_candidate(&error) {
+                            return Err(error);
+                        }
+                        last_error = Some(error);
+                        continue 'candidates;
+                    }
                 }
             }
         }
-        Err(last_error.unwrap_or_else(|| {
-            ProviderError::new(
-                "PROVIDER_REQUEST_FAILED",
-                "request",
-                "火山引擎额度查询失败",
-                true,
-            )
-        }))
+        match last_error {
+            Some(error) => Err(error),
+            None => Ok(None),
+        }
     }
+}
+
+/// 火山引擎候选密钥切换条件：仅签名/鉴权类错误值得换一份密钥重试。
+fn volc_error_switches_candidate(error: &ProviderError) -> bool {
+    matches!(
+        error.diagnostic.code.as_str(),
+        "PROVIDER_AUTH_REJECTED" | "PROVIDER_PERMISSION_DENIED" | "PROVIDER_HTTP_STATUS"
+    )
 }
 
 pub(crate) fn claude_token(credential: &Value) -> Result<Option<String>, ProviderError> {
@@ -455,15 +478,15 @@ impl QuotaProvider for ClaudeProvider {
         // 1. 若 access_token 已过期（或即将过期 <= 60s）且有 refresh_token，主动发起 OAuth 刷新
         if let Some(ref rt) = creds.refresh_token {
             if is_claude_token_expired(creds.expires_at_epoch_ms, now_epoch_secs) {
-                if let Ok(new_tokens) =
-                    refresh_claude_token(request, rt, &creds.scopes, http, cancellation)
-                {
-                    active_token = new_tokens.access_token;
-                    active_refresh_token = Some(new_tokens.refresh_token.clone());
-                    active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
-                    creds.refresh_token = Some(new_tokens.refresh_token);
-                    refreshed = true;
-                }
+                // C254: 主动刷新失败 (取消 / 401 凭证失效 / 429 / 网络) 立即返回，
+                // 不再拿过期 token 发一次注定 401 的请求，也不再二次刷新。
+                let new_tokens =
+                    refresh_claude_token(request, rt, &creds.scopes, http, cancellation)?;
+                active_token = new_tokens.access_token;
+                active_refresh_token = Some(new_tokens.refresh_token.clone());
+                active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
+                creds.refresh_token = Some(new_tokens.refresh_token);
+                refreshed = true;
             }
         }
 
@@ -478,15 +501,21 @@ impl QuotaProvider for ClaudeProvider {
                     _ => false,
                 };
                 if is_auth_failure {
-                    if let Ok(new_tokens) =
-                        refresh_claude_token(request, rt, &creds.scopes, http, cancellation)
-                    {
-                        active_token = new_tokens.access_token;
-                        active_refresh_token = Some(new_tokens.refresh_token);
-                        active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
-                        refreshed = true;
-                        query_result =
-                            query_claude_usage(request, &active_token, http, cancellation);
+                    // C254: 只允许一次重试；取消必须向上传播，其余刷新失败保留原 401 结果，
+                    // 不再发起第三次请求。
+                    match refresh_claude_token(request, rt, &creds.scopes, http, cancellation) {
+                        Ok(new_tokens) => {
+                            active_token = new_tokens.access_token;
+                            active_refresh_token = Some(new_tokens.refresh_token);
+                            active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
+                            refreshed = true;
+                            query_result =
+                                query_claude_usage(request, &active_token, http, cancellation);
+                        }
+                        Err(error) if error.diagnostic.code == "PROVIDER_CANCELLED" => {
+                            return Err(error);
+                        }
+                        Err(_) => {}
                     }
                 }
             }
@@ -742,11 +771,10 @@ impl QuotaProvider for StepFunProvider {
 
         // 1. 若是两段式 Oasis-Token 且短期 access token 已过期 (或即将过期), 主动尝试刷新
         if can_refresh && is_stepfun_token_expired(&active_token, now_epoch) {
-            if let Ok(new_token) = refresh_stepfun_token(request, &active_token, http, cancellation)
-            {
-                active_token = new_token;
-                refreshed = true;
-            }
+            // C254: 主动刷新失败立即返回对应失败态，不再用过期 token 查询并二次刷新。
+            let new_token = refresh_stepfun_token(request, &active_token, http, cancellation)?;
+            active_token = new_token;
+            refreshed = true;
         }
 
         // 2. 执行配额查询
@@ -762,11 +790,18 @@ impl QuotaProvider for StepFunProvider {
                 _ => false,
             };
             if is_auth_failure {
-                if let Ok(new_token) = refresh_stepfun_token(request, token, http, cancellation) {
-                    active_token = new_token;
-                    refreshed = true;
-                    query_result =
-                        query_stepfun_rate_limit(request, &active_token, http, cancellation);
+                // C254: 只允许一次重试；取消向上传播，其余失败保留原鉴权失败结果。
+                match refresh_stepfun_token(request, token, http, cancellation) {
+                    Ok(new_token) => {
+                        active_token = new_token;
+                        refreshed = true;
+                        query_result =
+                            query_stepfun_rate_limit(request, &active_token, http, cancellation);
+                    }
+                    Err(error) if error.diagnostic.code == "PROVIDER_CANCELLED" => {
+                        return Err(error);
+                    }
+                    Err(_) => {}
                 }
             }
         }

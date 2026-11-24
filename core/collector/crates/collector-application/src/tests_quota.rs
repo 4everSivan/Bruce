@@ -527,3 +527,45 @@ fn allowed_quota_request_timeout_keeps_transport_error_code() {
     );
     assert_eq!(service["failureKind"], "network", "{service}");
 }
+
+/// C254: quotaRetryOnly 不得绕过 localUsageOnly 与 externalQuotas 权限门禁。
+#[test]
+fn quota_retry_only_respects_local_usage_and_capability_gates() {
+    for context in [
+        json!({
+            "now": "2026-08-21T08:00:00Z",
+            "capabilities": ["externalQuotas"],
+            "quotaRetryOnly": true,
+            "localUsageOnly": true,
+            "codexQuotaAccountOrder": ["acc-1"]
+        }),
+        json!({
+            "now": "2026-08-21T08:00:00Z",
+            "capabilities": ["localSessions"],
+            "quotaRetryOnly": true,
+            "codexQuotaAccountOrder": ["acc-1"]
+        }),
+    ] {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {"externalRequestSeconds": 10, "moduleSeconds": 90},
+            "context": context,
+            "credentials": {
+                "codexQuotaAccounts": {
+                    "acc-1": {"display_name": "Codex · user", "access_token": "fixture-token"}
+                }
+            }
+        }))
+        .unwrap();
+        let http = FixtureHttp {
+            calls: AtomicUsize::new(0),
+            body: b"{}".to_vec(),
+        };
+        let output = collect_agent_usage_with_dependencies(&request, &http).unwrap();
+        assert_eq!(http.calls.load(Ordering::Acquire), 0, "门禁关闭时不得出站");
+        assert!(output.artifact["services"].as_array().unwrap().is_empty());
+        assert!(output.artifact["agents"].as_array().unwrap().is_empty());
+    }
+}
