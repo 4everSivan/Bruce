@@ -332,8 +332,8 @@
     },
     "T39": {
       "title": "Grok Bot 订阅用量适配",
-      "status": "pending",
-      "branch": "feat/T39-grok-bot-quota",
+      "status": "in_progress",
+      "branch": "main",
       "topic": "SubscriptionQuota",
       "milestone": "M19-Grok Bot订阅用量",
       "depends_on": [],
