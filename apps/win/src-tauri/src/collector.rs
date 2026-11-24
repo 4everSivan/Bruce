@@ -61,9 +61,10 @@ pub fn build_local_request(
         run_id: uuid::Uuid::new_v4().to_string(),
         module: "agent-usage".to_owned(),
         // 进程内执行, 只有 Rust deadline 一道约束 (mac 子进程另有外层定时器); 预算口径见 design/01 规则 3。
+        // C264: 与 mac CollectorTimeouts.default (10s / 90s) 对齐, 不再放大到 30s / 150s。
         timeouts: BridgeTimeouts {
-            external_request_seconds: 30.0,
-            module_seconds: 150.0,
+            external_request_seconds: 10.0,
+            module_seconds: 90.0,
         },
         context,
         credentials: credentials_value,

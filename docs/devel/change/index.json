@@ -212,7 +212,7 @@
     },
     "C264": {
       "title": "Windows 端对齐网络出口校验、请求日志与采集隔离/快照容灾能力",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C264-win-feature-parity-and-collector-isolation",
       "topic": "WindowsCompat",
       "file": "docs/devel/change/C264.json"

@@ -4,7 +4,7 @@
   "title": "Windows 端对齐网络出口校验、请求日志与采集隔离/快照容灾能力",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C264-win-feature-parity-and-collector-isolation",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"external_request_seconds|suppress_external_quotas|SnapshotState|egress|request_log\" apps/win/src-tauri/src/ docs/devel/todo/future.md",
     "expected": "`apps/win/` 无 `egress` 与 `request_log` 匹配；`collector.rs:65-67` 为 `30.0/150.0`；`quota_policy.rs:33` 为 `suppress_external_quotas: false`；`future.md:11` 仍列 F-001",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：apps/win 下 egress 与 request_log 均为 0 匹配；collector.rs 超时为 30.0/150.0（mac 为 10/90）；quota_policy.rs:33 hardcode suppress_external_quotas=false；runtime_core/scheduler 仅单 snapshot.json，无 previous 灾备；future.md F-001 仍写「待立项拆卡」。本轮已落地：SnapshotState.save 轮换 snapshot.previous.json、load 主文件不可用时回退、clear_snapshot 双删；采集超时预算对齐 10/90；future.md F-001 状态校准。未做：egressRules/出口双卡/问题卡、request-log 设置页、采集看门狗与锁屏/唤醒去重。"
   },
   "callback": {
     "before": [

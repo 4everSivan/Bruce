@@ -312,11 +312,16 @@ fn clear_snapshot_removes_only_the_snapshot_file_and_is_idempotent() {
     let root = std::env::temp_dir().join(format!("bruce-c031-clear-{}", std::process::id()));
     std::fs::create_dir_all(root.join("config")).unwrap();
     std::fs::write(root.join("snapshot.json"), b"{\"phase\":\"idle\"}").unwrap();
+    std::fs::write(root.join("snapshot.previous.json"), b"{\"phase\":\"idle\"}").unwrap();
     std::fs::write(root.join("config").join("settings.json"), b"{}").unwrap();
     std::fs::write(root.join("credentials.json"), b"{}").unwrap();
 
     clear_snapshot(&root).unwrap();
     assert!(!root.join("snapshot.json").exists(), "快照已删除");
+    assert!(
+        !root.join("snapshot.previous.json").exists(),
+        "灾备快照同步删除 (C264)"
+    );
     assert!(
         root.join("config").join("settings.json").exists(),
         "配置不受影响"
@@ -506,6 +511,33 @@ fn durable_snapshot_restores_stale_and_corrupt_cache_is_visible() {
         Some("2026-10-08T08:00:00Z")
     );
     std::fs::write(path.join("snapshot.json"), b"broken").unwrap();
+    let invalid = SnapshotState::load(&path);
+    assert_eq!(invalid.error.as_deref(), Some("SNAPSHOT_INVALID"));
+    assert!(invalid.artifact().is_none());
+}
+
+/// C264: 主快照损坏时回退 `snapshot.previous.json`; 两份都坏才报 SNAPSHOT_INVALID。
+#[test]
+fn corrupt_primary_falls_back_to_previous_snapshot() {
+    let path = root();
+    let mut first = SnapshotState::default();
+    first
+        .apply_response(&response(valid_artifact(), ResponseStatus::Success))
+        .unwrap();
+    first.save(&path).unwrap();
+    // 第二次发布把第一份轮换为 previous。
+    first.save(&path).unwrap();
+    assert!(
+        path.join("snapshot.previous.json").exists(),
+        "第二次发布应生成灾备快照"
+    );
+
+    std::fs::write(path.join("snapshot.json"), b"broken").unwrap();
+    let restored = SnapshotState::load(&path);
+    assert_eq!(restored.error.as_deref(), Some("SNAPSHOT_RESTORED"));
+    assert!(restored.artifact().is_some(), "应从灾备快照恢复数据");
+
+    std::fs::write(path.join("snapshot.previous.json"), b"broken").unwrap();
     let invalid = SnapshotState::load(&path);
     assert_eq!(invalid.error.as_deref(), Some("SNAPSHOT_INVALID"));
     assert!(invalid.artifact().is_none());

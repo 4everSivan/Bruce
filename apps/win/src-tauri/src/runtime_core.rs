@@ -154,14 +154,22 @@ impl Default for SnapshotState {
     }
 }
 
+/// 当前快照文件名。
+pub const SNAPSHOT_FILE: &str = "snapshot.json";
+/// 灾备快照文件名 (C264): 主文件损坏/不可读时自动回退到上一份合格快照。
+pub const PREVIOUS_SNAPSHOT_FILE: &str = "snapshot.previous.json";
+
 /// 清理快照: 仅删除本应用的持久化文件 (与 mac「清理用量缓存」等价 —— 不动配置与
 /// 凭证); 文件不存在视为已清理, 幂等。下次刷新会重新采集并重建快照。
 pub fn clear_snapshot(root: &Path) -> Result<(), String> {
-    match fs::remove_file(root.join("snapshot.json")) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.to_string()),
+    for name in [SNAPSHOT_FILE, PREVIOUS_SNAPSHOT_FILE] {
+        match fs::remove_file(root.join(name)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
     }
+    Ok(())
 }
 
 /// 按模型汇总今日用量 (agent.models: 模型名 -> tokens)。供设置页「模型计费」表使用。
@@ -445,37 +453,61 @@ impl SnapshotState {
     }
 
     pub fn load(root: &Path) -> Self {
-        match fs::read(root.join("snapshot.json")) {
-            Ok(bytes) => match serde_json::from_slice::<Self>(&bytes) {
-                Ok(mut state)
-                    if state
-                        .artifact
-                        .as_ref()
-                        .map(validate_artifact)
-                        .transpose()
-                        .is_ok() =>
-                {
-                    state.fail("SNAPSHOT_RESTORED");
-                    state
-                }
-                _ => Self {
-                    phase: "failed".into(),
-                    error: Some("SNAPSHOT_INVALID".into()),
-                    ..Self::default()
-                },
+        // C264: 主快照不可用时回退 snapshot.previous.json (与 mac ArtifactStore.previous 同语义)。
+        let primary_error = match fs::read(root.join(SNAPSHOT_FILE)) {
+            Ok(bytes) => match Self::decode(&bytes) {
+                Some(state) => return Self::restored(state),
+                None => Some("SNAPSHOT_INVALID"),
             },
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
-            Err(_) => Self {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => Some("SNAPSHOT_READ_FAILED"),
+        };
+        if let Ok(bytes) = fs::read(root.join(PREVIOUS_SNAPSHOT_FILE)) {
+            if let Some(state) = Self::decode(&bytes) {
+                return Self::restored(state);
+            }
+        }
+        match primary_error {
+            Some(code) => Self {
                 phase: "failed".into(),
-                error: Some("SNAPSHOT_READ_FAILED".into()),
+                error: Some(code.into()),
                 ..Self::default()
             },
+            None => Self::default(),
         }
+    }
+
+    /// 解析并做最小结构校验; 损坏/字段缺失返回 None。
+    fn decode(bytes: &[u8]) -> Option<Self> {
+        let state = serde_json::from_slice::<Self>(bytes).ok()?;
+        state
+            .artifact
+            .as_ref()
+            .map(validate_artifact)
+            .transpose()
+            .ok()?;
+        Some(state)
+    }
+
+    fn restored(mut state: Self) -> Self {
+        state.fail("SNAPSHOT_RESTORED");
+        state
     }
 
     pub fn save(&self, root: &Path) -> Result<(), String> {
         let bytes = serde_json::to_vec(self).map_err(|_| "SNAPSHOT_WRITE_FAILED".to_owned())?;
-        crate::credentials::atomic_managed_write(&root.join("snapshot.json"), &bytes)
+        let primary = root.join(SNAPSHOT_FILE);
+        // C264: 先把当前合格主快照轮换为 previous; 主快照写入失败时灾备仍是上一份。
+        if let Ok(existing) = fs::read(&primary) {
+            if Self::decode(&existing).is_some() {
+                crate::credentials::atomic_managed_write(
+                    &root.join(PREVIOUS_SNAPSHOT_FILE),
+                    &existing,
+                )
+                .map_err(|_| "SNAPSHOT_WRITE_FAILED".to_owned())?;
+            }
+        }
+        crate::credentials::atomic_managed_write(&primary, &bytes)
             .map_err(|_| "SNAPSHOT_WRITE_FAILED".to_owned())
     }
 

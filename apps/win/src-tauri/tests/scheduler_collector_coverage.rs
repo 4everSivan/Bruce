@@ -89,8 +89,9 @@ fn local_request_serializes_and_round_trips_through_domain_type() {
     let parsed: BridgeRequest = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(parsed.schema_version, BRIDGE_SCHEMA_VERSION);
     assert_eq!(parsed.module, "agent-usage");
-    assert_eq!(parsed.timeouts.external_request_seconds, 30.0);
-    assert_eq!(parsed.timeouts.module_seconds, 150.0);
+    // C264: 与 mac CollectorTimeouts.default 对齐 (10s / 90s)。
+    assert_eq!(parsed.timeouts.external_request_seconds, 10.0);
+    assert_eq!(parsed.timeouts.module_seconds, 90.0);
     // 字段命名契约 (mac Bridge 同一协议)。
     assert!(value.get("schemaVersion").is_some());
     assert!(value.get("runId").is_some());

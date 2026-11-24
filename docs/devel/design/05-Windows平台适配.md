@@ -455,6 +455,11 @@ Windows Tauri 后端 (Rust)
     - **时间轴拖拽**：平移只替换 `.wb-chart` 子树（`redrawTimelineChart`），不再整卡 `fillSlot`；缩放仍整体重绘工具栏。
     - **测试**：`frontend.test.mjs` 覆盖深链命令参数 / 事件、运行态-only 不重建、重建后折叠与月份 / 展开态保留、时间轴拖拽复用图表子树。
 
+39. **快照灾备与采集超时预算对齐（C264，首批）**：
+    - `SnapshotState::save` 在覆盖 `snapshot.json` 前，把当前可解析的主快照原子轮换为 `snapshot.previous.json`；`load` 在主文件缺失 / 损坏 / 不可读时回退灾备（仍按 `SNAPSHOT_RESTORED` 呈现），两份都不可用才报 `SNAPSHOT_INVALID` / `SNAPSHOT_READ_FAILED`；`clear_snapshot` 同时删除两份。
+    - 采集请求超时预算与 mac `CollectorTimeouts.default` 对齐为 `externalRequestSeconds=10` / `moduleSeconds=90`（原 30 / 150）。
+    - 网络出口国家校验（`egressRules` / 设置双卡 / 仪表盘问题卡）、请求日志界面、采集看门狗熔断与锁屏/唤醒去重仍待后续批次，本卡尚未完成。
+
 ### 6.1 Rust 端改动清单（收敛后）
 
 | # | 改动 | 位置 | 内容 | 实施状态 |
