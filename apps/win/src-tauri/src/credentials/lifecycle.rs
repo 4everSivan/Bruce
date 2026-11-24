@@ -203,12 +203,13 @@ fn compare_and_replace(
     let _guard = STORE_LOCK
         .lock()
         .map_err(|_| "CREDENTIAL_STORE_LOCK_FAILED")?;
-    let mut latest = load_credentials(root);
+    // C252: 读原始内容并只按本次轮换的账号写回；不得顺手抹掉其他 Provider 的畸形旧记录。
+    let mut latest = read_raw_credentials(root);
     if latest.get(field).and_then(|v| v.get(id)) != Some(expected) {
         return Ok(false);
     }
     latest.get_mut(field).unwrap()[id] = updated.clone();
-    save_unlocked(root, &latest)?;
+    write_payloads_unchecked(root, &latest)?;
     Ok(true)
 }
 fn apply_updates(
@@ -266,7 +267,8 @@ fn apply_claude_update(
     let _guard = STORE_LOCK
         .lock()
         .map_err(|_| "CREDENTIAL_STORE_LOCK_FAILED")?;
-    let mut latest = load_credentials(root);
+    // C252: 读原始内容并按目标账号写回；轮换不得抹掉其他 Provider 的历史畸形记录。
+    let mut latest = read_raw_credentials(root);
     let stored = latest.get("claudeQuotaAccounts").and_then(|v| v.get(id));
     let base = if id == CLAUDE_FOLLOW_ACCOUNT {
         stored
@@ -292,7 +294,7 @@ fn apply_claude_update(
         .as_object_mut()
         .ok_or("凭证账号映射损坏")?
         .insert(id.to_owned(), updated);
-    save_unlocked(root, &latest)?;
+    write_payloads_unchecked(root, &latest)?;
     Ok(())
 }
 /// 与 mac `CredentialRotationMerge` (Claude) 同口径: 令牌写入嵌套 `claudeAiOauth` (已有

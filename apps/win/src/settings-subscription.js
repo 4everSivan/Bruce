@@ -901,6 +901,9 @@
         return;
       }
       await loadCredentials();
+      // C252: 登录成功后立即走一次结构校验 → 启用并定向刷新，避免新账号停留在
+      // none/disabled 状态直到用户手动点「重新验证」。
+      await reverifyProvider("codex");
       rerenderOpenDialog();
       message(byId("cfg-codex-login-status"), `已登录 ${result?.email || result?.accountId || "新账号"}`);
     } catch (error) {
@@ -940,6 +943,8 @@
     global: "🌐 国际站",
   };
   let stepfunPollTimer = null;
+  // C252: 定时轮询与手动「立即绑定」可能同时触发；同一时刻只允许一个在途请求。
+  let stepfunPollInFlight = false;
 
   function stepfunSiteDisplayName(site) {
     return STEPFUN_SITE_NAMES[site] || STEPFUN_SITE_NAMES.domestic;
@@ -1118,8 +1123,10 @@
   }
 
   async function pollStepFunWebLogin(manual = false) {
+    if (stepfunPollInFlight) return;
     const session = coreState.stepfunWebSession;
     if (!session) return;
+    stepfunPollInFlight = true;
     try {
       const result = await invoke("stepfun_web_login_poll", {
         site: session.site,
@@ -1150,6 +1157,8 @@
       coreState.stepfunWebSession.statusText = `校验失败：${error.message || error}`;
       renderStepFunWebPanel();
       if (!manual) scheduleStepFunWebPoll();
+    } finally {
+      stepfunPollInFlight = false;
     }
   }
 

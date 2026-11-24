@@ -1109,13 +1109,15 @@ mod desktop {
         };
         let current_url = window.url().map(|u| u.to_string()).unwrap_or_default();
         let cookies = collect_stepfun_cookies(&window, site);
-        match credentials::capture_stepfun_cookie(
-            &paths::data_root(),
-            site,
-            &current_url,
-            &cookies,
-            manual,
-        )? {
+        // C252: 远程校验 (最长 8s HTTP) 与 STORE_LOCK/fsync 落盘放到阻塞线程池，
+        // 不占用 Tokio 工作线程。
+        let root = paths::data_root();
+        let polled_url = current_url.clone();
+        let outcome = off_main_thread(move || {
+            credentials::capture_stepfun_cookie(&root, site, &polled_url, &cookies, manual)
+        })
+        .await??;
+        match outcome {
             credentials::StepFunCaptureOutcome::Captured {
                 site: captured_site,
                 account_id,
@@ -1309,6 +1311,8 @@ mod desktop {
             // 应用内软件更新 (T11): latest.json 检查 + minisign 验签 + NSIS 静默安装
             .plugin(tauri_plugin_updater::Builder::new().build())
             .setup(move |app| {
+                // C252: 旧版明文凭据在启动时原地迁移为 DPAPI 密文 (非 Windows 为 no-op)。
+                let _ = crate::credentials::migrate_plaintext_credentials(&paths::data_root());
                 // 调度控制状态 (托盘菜单/命令/热键共享)。
                 let control = SchedulerControl::new();
                 if let Ok(mut state) = control.snapshot.lock() {

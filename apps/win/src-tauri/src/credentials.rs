@@ -242,17 +242,25 @@ fn validate_credential_format(
 }
 /// Z.ai 个人版站点主机白名单 (对齐 mac: host 含 bigmodel.cn 或 api.z.ai)。
 fn zhipu_host_allowed(base_url: &str) -> bool {
-    let host = base_url_host(base_url);
-    host.contains("bigmodel.cn") || host.contains("api.z.ai")
+    // C252: 必须是 https，且主机精确等于白名单域或为其子域 —— `.contains()` 会被
+    // `bigmodel.cn.attacker.com` / `https://evil.com/?bigmodel.cn` 绕过。
+    let Some(host) = https_host(base_url) else {
+        return false;
+    };
+    host_matches_domain(&host, "bigmodel.cn") || host_matches_domain(&host, "api.z.ai")
 }
-/// 取 base URL 主机 (小写, 去端口与用户信息); 无法解析时返回空串。
-fn base_url_host(base_url: &str) -> String {
-    let rest = base_url.trim();
-    let rest = rest.split_once("://").map_or(rest, |(_, tail)| tail);
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let host = authority.rsplit('@').next().unwrap_or(authority);
-    let host = host.split(':').next().unwrap_or(host);
-    host.trim_end_matches('.').to_ascii_lowercase()
+/// 取 https URL 主机 (小写, 去端口与用户信息); 非 https 或无法解析时返回 None。
+fn https_host(url: &str) -> Option<String> {
+    let lower = url.trim().to_ascii_lowercase();
+    let rest = lower.strip_prefix("https://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    let host = host.trim_end_matches('.');
+    (!host.is_empty()).then(|| host.to_owned())
+}
+/// 主机精确等于 `domain` 或为其子域 (`*.domain`)，不接受子串匹配。
+fn host_matches_domain(host: &str, domain: &str) -> bool {
+    host == domain || host.ends_with(&format!(".{domain}"))
 }
 /// OAuth 形状契约 (C081 / 设计规则 21)。
 ///
@@ -361,6 +369,10 @@ pub fn read_raw_credentials(root: &Path) -> CredentialPayloads {
     let Ok(raw) = fs::read(&path) else {
         return CredentialPayloads::new();
     };
+    // C252: Windows 密文先解包；旧明文文件无前缀，保持兼容读取 (下次写入自动迁移)。
+    let Some(raw) = decode_store_bytes(&raw) else {
+        return CredentialPayloads::new();
+    };
     let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&raw) else {
         return CredentialPayloads::new();
     };
@@ -368,6 +380,42 @@ pub fn read_raw_credentials(root: &Path) -> CredentialPayloads {
         .filter(|(key, _)| is_allowed_field(key.as_str()))
         .collect()
 }
+
+/// Windows 凭据文件的 DPAPI 密文前缀 (C252)；旧明文文件没有前缀。
+#[cfg(windows)]
+const DPAPI_MAGIC: &[u8] = b"BRUCE-DPAPI-V1\n";
+
+fn encode_store_bytes(body: &[u8]) -> Result<Vec<u8>, String> {
+    #[cfg(windows)]
+    {
+        let cipher = windows_security::protect(body)?;
+        let mut encoded = Vec::with_capacity(DPAPI_MAGIC.len() + cipher.len());
+        encoded.extend_from_slice(DPAPI_MAGIC);
+        encoded.extend_from_slice(&cipher);
+        Ok(encoded)
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(body.to_vec())
+    }
+}
+
+/// 解包存储内容; Windows 上密文损坏/跨用户时返回 None (fail-closed)，明文则原样返回。
+fn decode_store_bytes(raw: &[u8]) -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        if let Some(cipher) = raw.strip_prefix(DPAPI_MAGIC) {
+            return windows_security::unprotect(cipher).ok();
+        }
+    }
+    Some(raw.to_vec())
+}
+/// 解码后的凭据文件字节 (诊断/测试用): Windows 上先做 DPAPI 解密再返回明文 JSON。
+pub fn read_credential_store_bytes(root: &Path) -> Option<Vec<u8>> {
+    let raw = fs::read(credentials_path(root)).ok()?;
+    decode_store_bytes(&raw)
+}
+
 /// 采集 / 展示消费路径: 逐字段与逐账号 fail-closed 过滤 (规则 21)。
 pub fn load_credentials(root: &Path) -> CredentialPayloads {
     read_raw_credentials(root)
@@ -384,6 +432,43 @@ pub fn save_credentials(root: &Path, payloads: &CredentialPayloads) -> Result<()
     let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
     save_unlocked(root, payloads)
 }
+
+/// 旧版明文 credentials.json 原地迁移为 DPAPI 密文 (C252)，启动时调用一次。
+///
+/// 仅 Windows 有实际动作；文件缺失 / 已是密文 / 无法解析时返回 false，不阻断启动。
+/// 迁移保留白名单字段（与其他写入路径同口径），畸形账号原样保留在明文 JSON 内一起加密。
+pub fn migrate_plaintext_credentials(root: &Path) -> Result<bool, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = root;
+        Ok(false)
+    }
+    #[cfg(windows)]
+    {
+        migrate_plaintext_credentials_windows(root)
+    }
+}
+
+#[cfg(windows)]
+fn migrate_plaintext_credentials_windows(root: &Path) -> Result<bool, String> {
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let path = credentials_path(root);
+    let Ok(raw) = fs::read(&path) else {
+        return Ok(false);
+    };
+    if raw.starts_with(DPAPI_MAGIC) {
+        return Ok(false);
+    }
+    let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&raw) else {
+        return Ok(false);
+    };
+    let payloads: CredentialPayloads = map
+        .into_iter()
+        .filter(|(key, _)| is_allowed_field(key.as_str()))
+        .collect();
+    write_payloads_unchecked(root, &payloads)?;
+    Ok(true)
+}
 /// UI mutation and token write-back read the latest file inside the same lock.
 /// 读原始内容 (C092): 写入不得顺手抹掉形状不合规的账号, 它们只由「移除服务」显式删除。
 pub fn save_credentials_patch(
@@ -392,7 +477,8 @@ pub fn save_credentials_patch(
 ) -> Result<(), String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
     let merged = merge_credentials(&read_raw_credentials(root), patch)?;
-    save_unlocked(root, &merged)
+    // C252: 只校验本次修改的字段；历史畸形账号原样保留，不得阻断无关 Provider 写入。
+    write_payloads_unchecked(root, &merged)
 }
 /// Provider 在显示名里的固定前缀 (与 mac `SubscriptionProviderID.displayName` 对齐).
 fn provider_display_prefix(field: &str) -> &'static str {
@@ -441,12 +527,25 @@ pub fn save_credential_account(
     if !field.ends_with("QuotaAccounts") || !is_allowed_field(field) || !valid_id(account_id) {
         return Err("凭证账号目标无效".to_owned());
     }
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = read_raw_credentials(root);
+    upsert_account(&mut latest, field, account_id, payload)?;
+    // C252: 目标账号已单独校验；其余字段（含历史畸形账号）只读保留，不做全量重校验。
+    write_payloads_unchecked(root, &latest)
+}
+
+/// 在原始凭据集合中插入/替换单个账号 (T18 语义): 保留既有 display_name，新账号
+/// 生成默认名，只校验目标账号本身。调用方已持有 `STORE_LOCK`。
+fn upsert_account(
+    latest: &mut CredentialPayloads,
+    field: &str,
+    account_id: &str,
+    payload: &Value,
+) -> Result<(), String> {
     let mut payload = payload
         .as_object()
         .cloned()
         .ok_or("凭证账号必须是 JSON 对象")?;
-    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
-    let mut latest = read_raw_credentials(root);
     let existing_name = latest
         .get(field)
         .and_then(Value::as_object)
@@ -489,7 +588,7 @@ pub fn save_credential_account(
         .as_object_mut()
         .ok_or("凭证账号映射损坏")?
         .insert(account_id.to_owned(), json!(payload));
-    save_unlocked(root, &latest)
+    Ok(())
 }
 /// 重命名账号 (T18): 只改目标账号的 `display_name`, 不动 token / site / 其他字段。
 ///
@@ -542,14 +641,15 @@ pub fn remove_credential_account(root: &Path, field: &str, account_id: &str) -> 
         return Err("凭证账号目标无效".to_owned());
     }
     let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
-    let mut latest = load_credentials(root);
+    // C252: 读原始内容 —— 过滤后的加载会顺手抹掉其他 Provider 的历史畸形账号。
+    let mut latest = read_raw_credentials(root);
     if let Some(accounts) = latest.get_mut(field).and_then(Value::as_object_mut) {
         accounts.remove(account_id);
         if accounts.is_empty() {
             latest.remove(field);
         }
     }
-    save_unlocked(root, &latest)
+    write_payloads_unchecked(root, &latest)
 }
 /// 移除服务 (C089 / 设计规则 25): 同一把锁内一次性删除该 Provider 的全部凭据 ——
 /// 账号映射整字段 (含读取侧已丢弃、界面不可见的不合规账号) 与 Claude / Grok 的遗留
@@ -570,7 +670,7 @@ pub fn remove_provider_credentials(root: &Path, provider: &str) -> Result<(), St
         "grok" => latest.remove("grokOAuth"),
         _ => None,
     };
-    save_unlocked(root, &latest)
+    write_payloads_unchecked(root, &latest)
 }
 /// 单条账号是否为「完整可用凭据记录」(C084 / 设计规则 23)。
 ///
@@ -639,7 +739,8 @@ pub fn import_codex_discovered(root: &Path, home: &Path) -> Result<usize, String
     if added == 0 {
         return Ok(0);
     }
-    save_unlocked(root, &latest)?;
+    // C252: 只写本次新增的元数据记录；其他 Provider 的历史畸形账号原样保留。
+    write_payloads_unchecked(root, &latest)?;
     Ok(added)
 }
 /// 被读取侧丢弃的账号 (C092): 只回**字段 / 账号 ID / 原因文案**, 不含任何凭据值。
@@ -750,21 +851,20 @@ pub fn connect_grok_bot(root: &Path, data_dir: &Path) -> Result<GrokBotConnectSt
         return Ok(GrokBotConnectStatus::NotSignedIn);
     };
     let account_id = collector_provider::grok_bot_account_key(&account);
-    let stale = read_raw_credentials(root)
-        .get(FIELD)
-        .and_then(Value::as_object)
-        .map(|accounts| {
-            accounts
-                .keys()
-                .filter(|id| **id != account_id)
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    for id in stale {
-        remove_credential_account(root, FIELD, &id)?;
+    // C252: 替旧换新必须在同一把锁、同一次原子写入内完成 —— 先逐条删除再写入时，
+    // 中途失败会连原有绑定一起丢失。
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = read_raw_credentials(root);
+    if let Some(accounts) = latest.get_mut(FIELD).and_then(Value::as_object_mut) {
+        accounts.retain(|id, _| id == &account_id);
     }
-    save_credential_account(root, FIELD, &account_id, &json!({ "account": account }))?;
+    upsert_account(
+        &mut latest,
+        FIELD,
+        &account_id,
+        &json!({ "account": account }),
+    )?;
+    write_payloads_unchecked(root, &latest)?;
     Ok(GrokBotConnectStatus::Connected)
 }
 
@@ -1103,6 +1203,11 @@ fn write_payloads_unchecked(root: &Path, payloads: &CredentialPayloads) -> Resul
     if body.len() as u64 > MAX_CREDENTIAL_BYTES {
         return Err("凭证文件超过大小上限".to_owned());
     }
+    // C252: Windows 落盘前统一 DPAPI 加密；其他平台保持明文 JSON (开发机兼容)。
+    let encoded = encode_store_bytes(&body)?;
+    if encoded.len() as u64 > MAX_CREDENTIAL_BYTES {
+        return Err("凭证文件超过大小上限".to_owned());
+    }
     if load_credentials(root).get("deepseekQuotaAccounts") != payloads.get("deepseekQuotaAccounts")
     {
         atomic_private_write(
@@ -1110,7 +1215,7 @@ fn write_payloads_unchecked(root: &Path, payloads: &CredentialPayloads) -> Resul
             uuid::Uuid::new_v4().to_string().as_bytes(),
         )?;
     }
-    write_with_permissions(root, &body, restrict_permissions)
+    write_with_permissions(root, &encoded, restrict_permissions)
 }
 fn reject_link(path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
@@ -1341,5 +1446,109 @@ mod tests {
             assert_eq!(mode_of(&root), 0o755, "每轮刷新不得重复重设目录 ACL");
         }
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn codex_device_login_payload_saves_through_storage_validation() {
+        let root = temp_root();
+        let account = codex_device::CodexLoginAccount {
+            account_id: "acct-c252".into(),
+            email: Some("dev@example.com".into()),
+            access_token: "access-fixture".into(),
+            refresh_token: "refresh-fixture".into(),
+            id_token: "id-fixture".into(),
+            expires_at: 1_700_000_000,
+        };
+        save_credential_account(
+            &root,
+            "codexQuotaAccounts",
+            "acct-c252",
+            &account.to_payload(),
+        )
+        .unwrap();
+        let stored = load_credentials(&root)["codexQuotaAccounts"]["acct-c252"].clone();
+        assert_eq!(stored["expiry"], json!("1700000000"));
+        assert_eq!(stored["authorization_state"], json!("connected"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn malformed_legacy_records_are_preserved_and_do_not_block_other_providers() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        let legacy = json!({
+            "kimiQuotaAccounts": {"broken": {"api_key": "has space"}},
+            "codexQuotaAccounts": {}
+        });
+        fs::write(
+            credentials_path(&root),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        // C252: 其他 Provider 的历史畸形账号不得阻断本次写入。
+        save_credential_account(
+            &root,
+            "codexQuotaAccounts",
+            "acct-ok",
+            &json!({"access_token": "access-fixture", "authorization_state": "connected"}),
+        )
+        .unwrap();
+        let raw = read_raw_credentials(&root);
+        assert!(
+            raw["kimiQuotaAccounts"]["broken"].is_object(),
+            "历史畸形账号不得被静默抹除"
+        );
+        assert!(raw["codexQuotaAccounts"]["acct-ok"].is_object());
+
+        // 删除账号同样只动目标记录。
+        remove_credential_account(&root, "codexQuotaAccounts", "acct-ok").unwrap();
+        let raw = read_raw_credentials(&root);
+        assert!(raw["kimiQuotaAccounts"]["broken"].is_object());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_credentials_are_dpapi_protected_and_migrate_plaintext() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        let legacy = json!({"kimiQuotaAccounts": {"a": {"api_key": "kimi-fixture-key"}}});
+        fs::write(
+            credentials_path(&root),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        assert!(migrate_plaintext_credentials(&root).unwrap());
+        let raw = fs::read(credentials_path(&root)).unwrap();
+        assert!(raw.starts_with(DPAPI_MAGIC), "迁移后必须为 DPAPI 密文");
+        assert!(
+            !raw.windows(4).any(|window| window == b"kimi".as_slice()),
+            "密文不得包含明文密钥片段"
+        );
+        assert_eq!(
+            load_credentials(&root)["kimiQuotaAccounts"]["a"]["api_key"],
+            json!("kimi-fixture-key")
+        );
+        // 已是密文时不重复迁移。
+        assert!(!migrate_plaintext_credentials(&root).unwrap());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_dpapi_roundtrip_rejects_tampering() {
+        let cipher = windows_security::protect(b"fixture-secret").unwrap();
+        assert_ne!(cipher, b"fixture-secret");
+        assert_eq!(
+            windows_security::unprotect(&cipher).unwrap(),
+            b"fixture-secret"
+        );
+        let mut tampered = cipher;
+        if let Some(last) = tampered.last_mut() {
+            *last ^= 0xff;
+        }
+        assert!(windows_security::unprotect(&tampered).is_err());
     }
 }

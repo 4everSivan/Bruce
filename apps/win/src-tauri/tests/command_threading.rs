@@ -15,6 +15,7 @@ const NETWORK_ENTRY_POINTS: &[&str] = &[
     "codex_device_poll_blocking",
     "verify_subscription_following_local",
     "credentials::verify_subscription(",
+    "credentials::capture_stepfun_cookie",
     "collect_with_recovery",
     "run_configured_collection",
     "run_scoped_collection",
@@ -120,6 +121,7 @@ fn known_network_commands_are_async() {
         "codex_device_start",
         "codex_device_poll",
         "verify_subscription",
+        "stepfun_web_login_poll",
     ] {
         let command = commands
             .iter()

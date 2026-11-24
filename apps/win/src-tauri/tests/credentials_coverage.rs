@@ -11,13 +11,13 @@ use bruce_win_lib::credentials::{
     app_data_root_with, capture_stepfun_cookie_with, connect_grok_bot, credential_accounts,
     credential_rejections, follow_local_claude, follow_local_grok, import_codex_discovered,
     import_volcengine_from_cc_switch, load_credentials, local_claude_status, local_grok_status,
-    merge_credentials, read_raw_credentials, remove_provider_credentials,
-    rename_credential_account, save_credential_account, save_credentials, stepfun_account_id,
-    validate_credential_payload, verify_subscription, verify_subscription_following_local,
-    verify_subscription_with, with_local_claude, ClaudeLocalStatus, CredentialPayloads,
-    DeepSeekProbe, GrokBotConnectStatus, GrokLocalStatus, StepFunCaptureOutcome,
-    StepFunCookieCandidate, StepFunRemoteTransport, StepFunSite, StepFunVerifyRequest,
-    SubscriptionVerification,
+    merge_credentials, read_credential_store_bytes, read_raw_credentials,
+    remove_provider_credentials, rename_credential_account, save_credential_account,
+    save_credentials, stepfun_account_id, validate_credential_payload, verify_subscription,
+    verify_subscription_following_local, verify_subscription_with, with_local_claude,
+    ClaudeLocalStatus, CredentialPayloads, DeepSeekProbe, GrokBotConnectStatus, GrokLocalStatus,
+    StepFunCaptureOutcome, StepFunCookieCandidate, StepFunRemoteTransport, StepFunSite,
+    StepFunVerifyRequest, SubscriptionVerification,
 };
 use bruce_win_lib::runtime_core::{window_action, WindowAction};
 use serde_json::json;
@@ -33,6 +33,11 @@ fn temp_root() -> PathBuf {
     ));
     fs::create_dir_all(&root).unwrap();
     root
+}
+
+/// 读取凭据文件的明文 (Windows 落盘为 DPAPI 密文, 必须经模块解码后再断言)。
+fn store_text(root: &std::path::Path) -> String {
+    String::from_utf8(read_credential_store_bytes(root).expect("凭据文件应可解码")).unwrap()
 }
 
 fn sample_payloads() -> CredentialPayloads {
@@ -324,6 +329,27 @@ fn provider_specific_key_format_is_enforced_before_saving() {
             "zhipuQuotaAccounts",
             json!({"a":{"api_key":"abc.def","base_url":"https://evil.example.com/api/paas/v4"}}),
             false,
+        ),
+        // C252: 子串域名/非 https 不得绕过主机白名单。
+        (
+            "zhipuQuotaAccounts",
+            json!({"a":{"api_key":"abc.def","base_url":"https://bigmodel.cn.attacker.com/api/paas/v4"}}),
+            false,
+        ),
+        (
+            "zhipuQuotaAccounts",
+            json!({"a":{"api_key":"abc.def","base_url":"https://evil.com/?bigmodel.cn"}}),
+            false,
+        ),
+        (
+            "zhipuQuotaAccounts",
+            json!({"a":{"api_key":"abc.def","base_url":"http://open.bigmodel.cn/api/paas/v4"}}),
+            false,
+        ),
+        (
+            "zhipuQuotaAccounts",
+            json!({"a":{"api_key":"abc.def","base_url":"https://sub.bigmodel.cn/api/paas/v4"}}),
+            true,
         ),
         // StepFun: Oasis-Token 非空且无空白。
         (
@@ -784,7 +810,7 @@ fn removing_a_provider_drops_every_credential_including_hidden_ones() {
     );
 
     remove_provider_credentials(&root, "kimi").unwrap();
-    let raw = fs::read_to_string(root.join("credentials.json")).unwrap();
+    let raw = store_text(&root);
     assert!(
         !raw.contains("kimiQuotaAccounts"),
         "可见与不可见账号一并删除"
@@ -822,13 +848,9 @@ fn removing_a_provider_fails_closed_and_never_creates_a_file() {
         &json!({"api_key": "fixture-key"}),
     )
     .unwrap();
-    let before = fs::read_to_string(root.join("credentials.json")).unwrap();
+    let before = store_text(&root);
     assert!(remove_provider_credentials(&root, "notAProvider").is_err());
-    assert_eq!(
-        fs::read_to_string(root.join("credentials.json")).unwrap(),
-        before,
-        "失败时一个凭据都不删"
-    );
+    assert_eq!(store_text(&root), before, "失败时一个凭据都不删");
 
     let empty = temp_root();
     remove_provider_credentials(&empty, "kimi").unwrap();

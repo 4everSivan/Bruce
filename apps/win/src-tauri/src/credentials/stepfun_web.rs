@@ -114,29 +114,56 @@ pub struct CookieCandidate {
 
 /// 自动捕获的页面 URL 门禁 (对齐 `StepFunWebLoginView.checkAutoCapture`)。
 ///
-/// 仅当当前 Web 页面属目标站点域名且非 `_not-found` 错误页时才允许自动捕获;
-/// 手动点击「我已登录，立即绑定」不受当前页面路径限制。
+/// 仅当当前 Web 页面属目标站点域名 (https + 精确域/子域) 且非 `_not-found`
+/// 错误页时才允许自动捕获; 手动点击「我已登录，立即绑定」不受当前页面路径限制。
 pub fn page_allows_auto_capture(current_url: &str, site: StepFunSite) -> bool {
     let trimmed = current_url.trim();
     if trimmed.is_empty() || trimmed.contains("_not-found") {
         return false;
     }
-    trimmed.to_ascii_lowercase().contains(site.domain_keyword())
+    let Some(host) = stepfun_https_host(trimmed) else {
+        return false;
+    };
+    host_matches_domain(&host, site.domain_keyword())
+}
+
+/// 页面 URL 必须是 https，主机取小写并去端口/用户信息 (C252)。
+fn stepfun_https_host(url: &str) -> Option<String> {
+    let lower = url.to_ascii_lowercase();
+    let rest = lower.strip_prefix("https://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    let host = host.trim_end_matches('.');
+    (!host.is_empty()).then(|| host.to_owned())
+}
+
+/// 主机精确等于 `domain` 或为其子域；不使用子串匹配 (C252)。
+fn host_matches_domain(host: &str, domain: &str) -> bool {
+    host == domain || host.ends_with(&format!(".{domain}"))
+}
+
+/// Cookie 域校验: 浏览器常写入 `.stepfun.com` 形式的前导点。
+fn cookie_domain_matches(domain: &str, site: StepFunSite) -> bool {
+    let host = domain
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    host_matches_domain(&host, site.domain_keyword())
 }
 
 /// 从 Cookie 列表中提取目标站点的有效 `Oasis-Token` (对齐 `extractTokenAndSubmit`)。
 ///
 /// 过滤规则:
 /// 1. 名称严格为 `Oasis-Token`;
-/// 2. Cookie 域名 (转小写) 包含目标站点关键字 (`stepfun.com` 或 `stepfun.ai`);
+/// 2. Cookie 域名精确等于目标站点域或为其子域 (`stepfun.com` 或 `stepfun.ai`);
 /// 3. 值去首尾空白后非空且字符数 `> 10`。
 pub fn select_oasis_token(cookies: &[CookieCandidate], site: StepFunSite) -> Option<String> {
-    let keyword = site.domain_keyword();
     for cookie in cookies {
         if cookie.name != "Oasis-Token" {
             continue;
         }
-        if !cookie.domain.to_ascii_lowercase().contains(keyword) {
+        if !cookie_domain_matches(&cookie.domain, site) {
             continue;
         }
         let val = cookie.value.trim();
@@ -149,7 +176,7 @@ pub fn select_oasis_token(cookies: &[CookieCandidate], site: StepFunSite) -> Opt
 
 /// 判断单条 Cookie 是否属于目标站点 (供「清除登录缓存」按域删除)。
 pub fn cookie_matches_site(domain: &str, site: StepFunSite) -> bool {
-    domain.to_ascii_lowercase().contains(site.domain_keyword())
+    cookie_domain_matches(domain, site)
 }
 
 /// 筛出清除登录缓存时应删除的 Cookie 索引或条目。
@@ -460,6 +487,29 @@ mod tests {
             select_oasis_token(&cookies, StepFunSite::Global).as_deref(),
             Some("global-token-value-12345")
         );
+        // C252: 子串/仿冒域拒绝 (cookie 域同样精确到域或子域)。
+        let lookalikes = vec![
+            CookieCandidate {
+                name: "Oasis-Token".into(),
+                value: "attacker-token-value-12345".into(),
+                domain: "stepfun.com.attacker.com".into(),
+            },
+            CookieCandidate {
+                name: "Oasis-Token".into(),
+                value: "attacker-token-value-67890".into(),
+                domain: "evilstepfun.com".into(),
+            },
+        ];
+        assert_eq!(select_oasis_token(&lookalikes, StepFunSite::Domestic), None);
+        assert!(!cookie_matches_site(
+            "stepfun.com.attacker.com",
+            StepFunSite::Domestic
+        ));
+        assert!(!cookie_matches_site(
+            "evilstepfun.com",
+            StepFunSite::Domestic
+        ));
+        assert!(cookie_matches_site(".stepfun.com", StepFunSite::Domestic));
     }
 
     #[test]
@@ -479,6 +529,19 @@ mod tests {
         assert!(page_allows_auto_capture(
             "https://platform.stepfun.ai/plan-subscribe",
             StepFunSite::Global
+        ));
+        // C252: 子串、仿冒域与非 https 一律拒绝。
+        assert!(!page_allows_auto_capture(
+            "https://evil.com/?stepfun.com",
+            StepFunSite::Domestic
+        ));
+        assert!(!page_allows_auto_capture(
+            "https://stepfun.com.attacker.com/step-plan",
+            StepFunSite::Domestic
+        ));
+        assert!(!page_allows_auto_capture(
+            "http://platform.stepfun.com/step-plan",
+            StepFunSite::Domestic
         ));
     }
 

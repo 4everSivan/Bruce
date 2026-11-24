@@ -8,6 +8,9 @@ use windows_sys::Win32::{
             ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
             SetNamedSecurityInfoW, SE_FILE_OBJECT,
         },
+        Cryptography::{
+            CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+        },
         GetSecurityDescriptorDacl, GetTokenInformation, TokenUser, DACL_SECURITY_INFORMATION,
         PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
     },
@@ -155,6 +158,71 @@ pub(super) fn replace(source: &Path, target: &Path) -> Result<(), String> {
         return Err("凭证原子替换失败".to_owned());
     }
     Ok(())
+}
+
+/// 当前用户作用域的静态加密 (C252)。`CRYPTPROTECT_UI_FORBIDDEN`: 任何需要交互的
+/// 场景都直接失败，绝不弹系统对话框。
+pub(super) fn protect(data: &[u8]) -> Result<Vec<u8>, String> {
+    let input = blob(data);
+    let mut output = empty_blob();
+    // SAFETY: input points at a live buffer; output is released through LocalBuffer.
+    let ok = unsafe {
+        CryptProtectData(
+            &input,
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+    };
+    copy_output(ok, output)
+}
+
+pub(super) fn unprotect(data: &[u8]) -> Result<Vec<u8>, String> {
+    let input = blob(data);
+    let mut output = empty_blob();
+    // SAFETY: input points at a live buffer; output is released through LocalBuffer.
+    let ok = unsafe {
+        CryptUnprotectData(
+            &input,
+            ptr::null_mut(),
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+    };
+    copy_output(ok, output)
+}
+
+fn blob(data: &[u8]) -> CRYPT_INTEGER_BLOB {
+    CRYPT_INTEGER_BLOB {
+        cbData: data.len() as u32,
+        pbData: data.as_ptr() as *mut u8,
+    }
+}
+
+fn empty_blob() -> CRYPT_INTEGER_BLOB {
+    CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    }
+}
+
+/// `CryptProtectData` / `CryptUnprotectData` 的输出缓冲由 LocalAlloc 分配。
+fn copy_output(ok: i32, output: CRYPT_INTEGER_BLOB) -> Result<Vec<u8>, String> {
+    if ok == 0 {
+        return Err("DPAPI 加解密失败".to_owned());
+    }
+    let _owned = LocalBuffer(output.pbData.cast());
+    if output.cbData == 0 {
+        return Ok(Vec::new());
+    }
+    // SAFETY: successful call returns cbData bytes at pbData, owned by the LocalBuffer.
+    Ok(unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec())
 }
 
 #[cfg(test)]

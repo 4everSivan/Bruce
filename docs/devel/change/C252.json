@@ -4,7 +4,7 @@
   "title": "Windows Codex 设备登录落盘修复、C092 异常凭据读写隔离与域名/存储加固",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C252-win-credentials-codex-and-security",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"expiry|zhipu_host_allowed|domain_keyword|stepfun_web_login_poll|oauth_expires_at|save_unlocked\" apps/win/src-tauri/src/",
     "expected": "`codex_device.rs:117` 插入整数 `expiry`；`credentials.rs` 4 条写路径经 `save_unlocked` 全量重校验；`zhipu_host_allowed`/`stepfun_web` 用 `.contains()`；`stepfun_web_login_poll` 未使用 `off_main_thread`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核命中：codex_device.rs:117 写入整数 expiry；save_credential_account/save_credentials_patch/remove_provider_credentials/import_codex_discovered 均经 save_unlocked 全量重校验，remove_credential_account 与 lifecycle.rs:206/269 用 load_credentials 过滤；Windows 凭据为明文 JSON 且 connect_grok_bot 先删后写；zhipu_host_allowed/stepfun_web 用 contains 子串；stepfun_web_login_poll 未走 off_main_thread，claude_local oauth_expires_at 未归一单位。"
   },
   "callback": {
     "before": [
@@ -100,7 +100,7 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": false,
     "commit": "",
     "tag": ""

@@ -120,25 +120,39 @@ fn oauth_entry(oauth: &Value) -> Option<&Map<String, Value>> {
 /// 一律视为未过期; 数值 > 1e12 视为毫秒, 否则视为秒; 字符串按 RFC 3339 解析。
 /// `pub(super)`: Grok 本机跟随 (C085) 复用同一张判定表, 避免两处口径漂移。
 pub(super) fn is_expired(value: Option<&Value>, now_ms: i64) -> bool {
-    let Some(value) = value else {
-        return false;
-    };
-    let seconds = match value {
-        Value::Number(number) => {
-            let ts = number.as_f64().unwrap_or(0.0);
-            if ts > 1e12 {
-                ts / 1000.0
-            } else {
-                ts
+    value
+        .and_then(timestamp_ms)
+        .is_some_and(|expires_ms| expires_ms < now_ms)
+}
+
+/// 时间戳统一归一为毫秒 (C252): 数值秒/毫秒、数值字符串、RFC3339 与无时区 ISO
+/// 都接受; 无法解析返回 None (调用方视为未过期)。
+fn timestamp_ms(value: &Value) -> Option<i64> {
+    match value {
+        Value::Number(number) => number.as_f64().map(numeric_ms),
+        Value::String(text) => {
+            let text = text.trim();
+            if let Ok(number) = text.parse::<f64>() {
+                return Some(numeric_ms(number));
             }
+            chrono::DateTime::parse_from_rfc3339(text)
+                .map(|parsed| parsed.timestamp_millis())
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S%.f")
+                        .map(|parsed| parsed.and_utc().timestamp_millis())
+                })
+                .ok()
         }
-        Value::String(text) => match chrono::DateTime::parse_from_rfc3339(text) {
-            Ok(parsed) => parsed.timestamp_millis() as f64 / 1000.0,
-            Err(_) => return false,
-        },
-        _ => return false,
-    };
-    (seconds * 1000.0) < now_ms as f64
+        _ => None,
+    }
+}
+
+fn numeric_ms(timestamp: f64) -> i64 {
+    if timestamp > 1e12 {
+        timestamp as i64
+    } else {
+        (timestamp * 1000.0) as i64
+    }
 }
 
 /// 载荷的 accessToken 是否已过期。
@@ -149,17 +163,11 @@ fn oauth_expired(oauth: &Value, now_ms: i64) -> bool {
     )
 }
 
-/// 载荷的 `expiresAt` 数值 (用于「本机比已存更新」判定); 缺失返回 0。
+/// 载荷的 `expiresAt` 归一为毫秒 (用于「本机比已存更新」判定); 缺失/无法解析返回 0。
 fn oauth_expires_at(oauth: &Value) -> i64 {
     oauth_entry(oauth)
         .and_then(|entry| entry.get("expiresAt"))
-        .and_then(|value| match value {
-            Value::Number(number) => number
-                .as_i64()
-                .or_else(|| number.as_f64().map(|f| f as i64)),
-            Value::String(text) => text.parse().ok(),
-            _ => None,
-        })
+        .and_then(timestamp_ms)
         .unwrap_or(0)
 }
 
@@ -217,4 +225,34 @@ pub fn with_local_claude(
     }
     payloads.insert("claudeQuotaAccounts".to_owned(), Value::Object(accounts));
     payloads
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expiry_seconds_milliseconds_and_rfc3339_normalize_to_one_instant() {
+        let oauth = |value: Value| json!({"claudeAiOauth": {"expiresAt": value}});
+        let instant_ms = 1_700_000_000_000_i64; // 2023-11-14T22:13:20Z
+        for value in [
+            json!(1_700_000_000_i64),
+            json!(1_700_000_000_000_i64),
+            json!("1700000000"),
+            json!("1700000000000"),
+            json!("2023-11-14T22:13:20Z"),
+            json!("2023-11-14T22:13:20.000"),
+        ] {
+            assert_eq!(
+                oauth_expires_at(&oauth(value.clone())),
+                instant_ms,
+                "expiresAt={value} 应归一为同一毫秒时刻"
+            );
+        }
+        assert!(!is_expired(Some(&json!(1_700_000_001)), instant_ms));
+        assert!(is_expired(Some(&json!("2023-11-14T22:13:19Z")), instant_ms));
+        // 无法解析的时间戳视为未过期 (与 mac 口径一致)。
+        assert!(!is_expired(Some(&json!("not-a-time")), instant_ms));
+        assert_eq!(oauth_expires_at(&json!({"claudeAiOauth": {}})), 0);
+    }
 }

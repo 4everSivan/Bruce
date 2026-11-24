@@ -114,7 +114,9 @@ impl CodexLoginAccount {
         account.insert("access_token".to_owned(), json!(self.access_token));
         account.insert("refresh_token".to_owned(), json!(self.refresh_token));
         account.insert("id_token".to_owned(), json!(self.id_token));
-        account.insert("expiry".to_owned(), json!(self.expires_at));
+        // C252: 存储契约要求令牌字段均为字符串 (epoch 秒), 与 collector 轮换写回同形;
+        // 写成 JSON 整数会被 validate_credential_payload 拒绝, 导致设备登录保存必败。
+        account.insert("expiry".to_owned(), json!(self.expires_at.to_string()));
         account.insert("authorization_state".to_owned(), json!("connected"));
         Value::Object(account)
     }
@@ -521,7 +523,7 @@ mod tests {
         let payload = account.to_payload();
         assert_eq!(payload["access_token"], json!("at"));
         assert_eq!(payload["authorization_state"], json!("connected"));
-        assert_eq!(payload["expiry"], json!(42));
+        assert_eq!(payload["expiry"], json!("42"));
     }
 
     #[test]

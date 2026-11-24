@@ -128,7 +128,7 @@
     },
     "C252": {
       "title": "Windows Codex 设备登录落盘修复、C092 异常凭据读写隔离与域名/存储加固",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C252-win-credentials-codex-and-security",
       "topic": "SubscriptionQuota",
       "file": "docs/devel/change/C252.json"
