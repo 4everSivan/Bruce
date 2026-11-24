@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T39",
+  "title": "Grok Bot 订阅用量适配",
+  "version": "0.19.0",
+  "milestone": "M19-Grok Bot订阅用量",
+  "status": "pending",
+  "branch": "feat/T39-grok-bot-quota",
+  "depends_on": [],
+  "target": {
+    "module": "core/collector、macOS 与 Windows 订阅额度",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "goal": "在同一批次为 macOS 和 Windows 交付 Grok Bot 订阅用量。共享 Collector 实现周额度查询和解析，两端各自接入凭据授权、设置和订阅卡，展示已用百分比、剩余百分比和下次重置时间。",
+  "precheck": {
+    "description": "只读查找既有 Grok Bot provider、客户端额度接口和双端入口，确认是否已具备本卡能力。",
+    "command": "git grep -nE 'GetSandUsageStatus|grok-bot|grokBot' -- core/collector apps/macos/Sources apps/win || test \"$?\" -eq 1",
+    "expected": "逐项核对命中是否已覆盖数据来源、同账号授权、双端设置与额度展示，以及真实账号对照。现有 Grok Build 适配不能判为完成。",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git status --short --branch",
+      "git branch --show-current",
+      "# 在登记的特性分支执行，先准备获授权的测试账号，只保存脱敏的接口与产品界面对照证据。"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "scripts/adflow-verify --json"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T39-1",
+      "title": "核对真实响应和套餐口径",
+      "capability": "先比较获授权的同一账号在 Grok Bot 或 Grok Dashboard 上的读数，记录旧版套餐与 The X Subscription 各自的已用比例、窗口重置时间以及额度归属；确认登录源、账号切换及平台适用性。取不到可信读数的场景按设计降级。",
+      "done": false
+    },
+    {
+      "id": "T39-2",
+      "title": "接入凭据与授权门禁",
+      "capability": "两端由用户主动连接，优先使用 Grok Bot 的本机登录态。通过稳定的账号标识确认同一账号后，才允许复用 Cursor 会话。账号无法匹配、会话失效或系统要求交互授权时停止查询，提示回官方客户端重新连接。",
+      "done": false
+    },
+    {
+      "id": "T39-3",
+      "title": "实现共享 Collector 额度查询",
+      "capability": "在共享 Collector 中注册独立的 grok-bot Provider。两端向同一个 Bridge 契约装配已授权的会话，共用出站、额度请求与响应映射，输出已用和剩余比例、重置时间及相应的空态、错误状态。",
+      "done": false
+    },
+    {
+      "id": "T39-4",
+      "title": "接入双端设置与订阅卡",
+      "capability": "沿用添加、启停、移除及定向刷新入口。对已确认的新版套餐显示共享周用量，旧版显示 Grok Bot 每周用量。安全降级并按账号隔离旧快照，其他订阅照常刷新。",
+      "done": false
+    },
+    {
+      "id": "T39-5",
+      "title": "补齐自动化与实机验收证据",
+      "capability": "保留脱敏 fixture 和双端自动化结果，分别在 macOS 和 Windows 用真实同账号对照官方界面的已用比例及重置时间。覆盖登录态优先级、异账号、失效或需交互授权的状态，两端都验收后再完成本卡。",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "套餐与显示口径",
+        "true_if": "已支持的套餐均用同账号与官方界面对照，已用比例、剩余比例和重置时间一致，共享池与旧版独立周额度标注正确。",
+        "false_if": "用历史团队支出、API 余额或 Grok Build 读数替代，或将共享池当成独立额度。",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "授权、账号与凭据边界",
+        "true_if": "用户主动连接后优先读取 Grok Bot 本机登录态。Cursor 会话仅在账号归属一致时使用，账号无法匹配、会话失效或系统要求交互授权时提示回官方客户端重新连接。未授权、停用和移除后均不探测或查询，外部凭据只读且产物已脱敏。",
+        "false_if": "以 Cursor 当前账号替代未经核对的目标账号，触发系统鉴权弹窗、继续用失效会话查询、回写外部凭据或将会话写入日志和 artifact。",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "数值边界与降级",
+        "true_if": "自动化覆盖 0%、100%、无内含额度、企业池、无效字段、401/403、429、超时和账号切换。限流遵循现有冷却，旧读数仅在同账号同口径下标为陈旧。",
+        "false_if": "把缺失或错误显示为 0%，切换账号沿用旧读数，或单 Provider 错误阻塞其他订阅。",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "双端正常入口与回归",
+        "true_if": "两端使用同一 Collector Provider 与 Bridge 契约，macOS 和 Windows 分别完成在真实环境中的连接、启停、移除、定向刷新和额度对照。现有 Grok Build 及其他订阅的刷新回归检查通过。",
+        "false_if": "任一端缺少产品入口或实机证据，两端各维护一套额度请求与解析，或现有 Grok Build 的标识、额度及刷新发生回归。",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
