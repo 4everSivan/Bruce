@@ -56,8 +56,8 @@
         "item": "自动化测试",
         "true_if": "cargo test --workspace 与 verify-local 全绿；bridge 空库用例在注入不存在路径后仍通过；本机真实请求库不被测试读写",
         "false_if": "任一测试失败或测试仍解析到真实 LOCALAPPDATA 路径",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-20 zsh scripts/verify-local.sh Exit 0（日志 local/verify-C250-r1.log，末行「Bruce 本地验证全部通过」）；该日志后新增 bridge 覆盖用例并复跑 Rust 段：cargo fmt --all -- --check 通过、cargo test --workspace 全绿（collector-bridge 24/24，含新增 request_log_module_reads_the_paths_override）、cargo clippy -p collector-bridge --all-targets -- -D warnings 通过。受影响用例均注入 paths.request_log_db（tests_local 4 处、tests_run 2 处、bridge 空库用例显式指向不存在的临时路径）。",
+        "result": true
       },
       {
         "item": "Windows CI 复验",
@@ -70,8 +70,8 @@
         "item": "反向影响排查",
         "true_if": "产品路径解析与查询响应不变；macOS 请求日志页与采集行为不受影响",
         "false_if": "产品代码被改动或 mac 行为变化",
-        "evidence": "",
-        "result": null
+        "evidence": "产品代码零改动：仅测试文件、collector-bridge 的 [dev-dependencies] 与 CHANGELOG/卡登记；resolve_request_log_path、persist_request_logs 与 query_request_log_artifact 均未修改。verify-local 全部既有 Harness/对拍通过；新增 dev-dependency 仅测试可见，release 产物不变。",
+        "result": true
       }
     ]
   },
