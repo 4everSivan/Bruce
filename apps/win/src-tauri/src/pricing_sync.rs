@@ -250,6 +250,10 @@ pub fn classify_fetch_error(error: &ureq::Error) -> (PricingSyncFailureReason, O
 }
 
 pub fn fetch_catalog_bytes(url: &str) -> Result<Vec<u8>, (PricingSyncFailureReason, Option<u16>)> {
+    // C263: 与 mac 同步服务同口径 —— 只允许 HTTPS, 非 HTTPS 端点直接拒绝, 不发请求。
+    if !url.trim().starts_with("https://") {
+        return Err((PricingSyncFailureReason::InvalidCatalog, None));
+    }
     let agent = ureq::builder()
         .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
         .build();
@@ -665,5 +669,18 @@ mod tests {
         bruce_win_viewmodel::model_catalog::reset_to_builtin();
         assert_eq!(active_catalog_context_value(&file_path), None);
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    /// C263: 价卡同步只允许 HTTPS 端点 (与 mac 同步服务同口径)。
+    #[test]
+    fn catalog_fetch_requires_https() {
+        assert!(
+            RAW_CATALOG_URL.starts_with("https://"),
+            "同步端点必须为 HTTPS: {RAW_CATALOG_URL}"
+        );
+        assert_eq!(
+            fetch_catalog_bytes("http://example.com/pricing-catalog.json"),
+            Err((PricingSyncFailureReason::InvalidCatalog, None))
+        );
     }
 }

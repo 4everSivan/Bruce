@@ -88,6 +88,38 @@ fn parse_semver(value: &str) -> (u64, u64, u64) {
     (pick(0), pick(1), pick(2))
 }
 
+/// 严格三段 SemVer (C263, 对齐 mac `SemanticVersion`): 可带 `v`/`V` 前缀,
+/// 恰好 3 段且每段为非空纯数字; 预发布 / 构建后缀 / 缺段一律无效。
+/// 清单版本不合法时整份清单无效, 不得进入跳过判定或下载。
+pub fn is_strict_semver(value: &str) -> bool {
+    let text = value.trim();
+    let text = text
+        .strip_prefix('v')
+        .or_else(|| text.strip_prefix('V'))
+        .unwrap_or(text);
+    let parts: Vec<&str> = text.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+/// 清单下载地址白名单 (C263, 对齐 mac `UpdateRelease.parse`): 仅允许
+/// `https://github.com/...`。被污染的清单不得把安装包指向第三方主机。
+pub fn is_allowed_download_url(value: &str) -> bool {
+    let Some((scheme, rest)) = value.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // 去掉 userinfo 与端口, 只比较主机名 (mac 使用 URL.host, 不含端口)。
+    let host_port = authority.rsplit('@').next().unwrap_or("");
+    let host = host_port.split(':').next().unwrap_or("");
+    host.eq_ignore_ascii_case("github.com")
+}
+
 /// 跳过判定 (07 §4.2 R4): 跳过 vN 后, 远端仍是 vN → 不再提醒; 出现更新的版本 → 自动恢复。
 pub enum SkipDecision {
     /// 未跳过或版本不同: 正常呈现, 且 offered > skipped 时应清除跳过记录。
@@ -171,6 +203,16 @@ pub mod desktop_impl {
     pub const INSTALL_FAILURE_SIGNATURE: &str = "signatureInvalid";
     pub const INSTALL_FAILURE_INSTALL: &str = "installFailed";
 
+    /// 检查更新在途闸门 (C263): 手动连点与 24h 自动检查不得并发跑两轮清单请求。
+    static CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+    struct CheckInFlightGuard;
+    impl Drop for CheckInFlightGuard {
+        fn drop(&mut self) {
+            CHECK_IN_FLIGHT.store(false, Ordering::SeqCst);
+        }
+    }
+
     pub struct UpdateStateInner {
         pub phase: UpdatePhase,
         pub release: Option<ReleaseInfo>,
@@ -251,13 +293,20 @@ pub mod desktop_impl {
             last_check_at: settings.update_last_check_at,
             skipped_version: settings.update_skipped_version,
             auto_check: settings.auto_check_update,
-            install_failure: inner.install_failure.take(),
+            // C263: 不在此消费 — 设置窗口关闭期间事件丢失后仍能在下次 update_state 读到;
+            // 由用户的下一次检查/下载/安装/跳过操作显式确认清除。
+            install_failure: inner.install_failure.clone(),
         }
     }
 
     fn publish(app: &AppHandle, inner: &mut UpdateStateInner) {
         let payload = snapshot(app, inner);
         let _ = app.emit("update-state", &payload);
+    }
+
+    /// 用户发起新的更新操作即确认上一条安装失败提示 (C263)。
+    fn acknowledge_install_failure(inner: &mut UpdateStateInner) {
+        inner.install_failure = None;
     }
 
     /// GET latest.json (ureq, 10 秒超时) + HEAD 补包体尺寸; 失败按分类返回。
@@ -338,9 +387,15 @@ pub mod desktop_impl {
     /// 核心检查: 插件判定 (自身比对当前版本, 内部只拉一次 latest.json) → 跳过语义收敛。
     /// `manual` 为 false 时 (自动检查) 任何失败保持原相位、不进入 failed (07 §4.2 R5 静默)。
     pub fn run_check(app: &AppHandle, manual: bool) {
+        // C263: 手动连点 / 自动检查与手动检查并发时只跑一轮。
+        if CHECK_IN_FLIGHT.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let _check_guard = CheckInFlightGuard;
         if manual {
             let state = app.state::<UpdateState>();
             let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+            acknowledge_install_failure(&mut guard);
             guard.phase = UpdatePhase::Checking;
             publish(app, &mut guard);
         }
@@ -373,6 +428,24 @@ pub mod desktop_impl {
                 return;
             }
         };
+        // C263: 清单版本必须严格三段数字, 下载地址必须 https://github.com;
+        // 任一不合规按清单无效处理 (对齐 mac UpdateRelease.parse)。
+        if let Some(update) = offered.as_ref() {
+            if !is_strict_semver(&update.version)
+                || !is_allowed_download_url(update.download_url.as_str())
+            {
+                if manual {
+                    let state = app.state::<UpdateState>();
+                    let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+                    guard.phase = UpdatePhase::Failed {
+                        failure: UpdateFailureKind::InvalidManifest,
+                        http_status: None,
+                    };
+                    publish(app, &mut guard);
+                }
+                return;
+            }
+        }
         let checked_at = now_rfc3339_local();
         // 尺寸 HEAD 在状态锁之外完成, 避免网络等待阻塞更新命令与服务 tick。
         let mut release = offered.as_ref().map(release_info_from_update);
@@ -430,6 +503,7 @@ pub mod desktop_impl {
             if guard.downloading || guard.pending.is_none() {
                 return;
             }
+            acknowledge_install_failure(&mut guard);
             guard.downloading = true;
             guard.cancel = Arc::new(AtomicBool::new(false));
             guard.phase = UpdatePhase::Downloading {
@@ -498,6 +572,7 @@ pub mod desktop_impl {
             let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
             match (guard.pending.take(), guard.downloaded_bytes.take()) {
                 (Some(update), Some(bytes)) => {
+                    acknowledge_install_failure(&mut guard);
                     guard.phase = UpdatePhase::Relaunching;
                     publish(app, &mut guard);
                     (update, bytes)
@@ -528,13 +603,15 @@ pub mod desktop_impl {
 
     pub fn run_cancel(app: &AppHandle) {
         let state = app.state::<UpdateState>();
-        let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        acknowledge_install_failure(&mut guard);
         guard.cancel.store(true, Ordering::Relaxed);
     }
 
     pub fn run_dismiss_ready(app: &AppHandle) {
         let state = app.state::<UpdateState>();
         let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        acknowledge_install_failure(&mut guard);
         if matches!(guard.phase, UpdatePhase::Ready) {
             guard.phase = UpdatePhase::Available;
             publish(app, &mut guard);
@@ -545,6 +622,7 @@ pub mod desktop_impl {
         persist_update_fields(None, Some(Some(version)));
         let state = app.state::<UpdateState>();
         let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        acknowledge_install_failure(&mut guard);
         guard.phase = UpdatePhase::Skipped;
         publish(app, &mut guard);
     }
@@ -553,6 +631,7 @@ pub mod desktop_impl {
         persist_update_fields(None, Some(None));
         let state = app.state::<UpdateState>();
         let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        acknowledge_install_failure(&mut guard);
         if matches!(guard.phase, UpdatePhase::Skipped) {
             guard.phase = UpdatePhase::Available;
         }
@@ -782,5 +861,56 @@ mod tests {
             stamp.ends_with('Z') || stamp.contains("+") || stamp.contains("-"),
             "缺时区偏移: {stamp}"
         );
+    }
+
+    /// C263: 严格三段 SemVer, 与 mac `SemanticVersion` 同口径。
+    #[test]
+    fn strict_semver_rejects_prerelease_and_missing_parts() {
+        for ok in ["0.18.0", "v0.18.0", "V1.2.3", " 0.18.0 ", "10.20.30"] {
+            assert!(is_strict_semver(ok), "应接受 {ok}");
+        }
+        for bad in [
+            "0.18",
+            "0.18.0.1",
+            "0.18.0-beta.1",
+            "0.18.0+build",
+            "v",
+            "0..1",
+            "abc",
+            "1.2.-3",
+            "",
+        ] {
+            assert!(!is_strict_semver(bad), "应拒绝 {bad}");
+        }
+        // 宽松比较仍保留 (跳过版本历史数据容忍 v 前缀/后缀), 但清单准入走严格口径。
+        assert_eq!(
+            compare_semver("v0.18.0", "0.18.0"),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    /// C263: 下载地址仅允许 https://github.com, 与 mac 清单校验一致。
+    #[test]
+    fn download_url_whitelist_requires_https_github() {
+        for ok in [
+            "https://github.com/4everSivan/Bruce/releases/download/v0.18.0/Bruce_0.18.0_x64-setup.exe",
+            "https://github.com/",
+            "HTTPS://GitHub.com/a",
+            "https://user@github.com/a",
+            "https://github.com:443/a",
+        ] {
+            assert!(is_allowed_download_url(ok), "应接受 {ok}");
+        }
+        for bad in [
+            "http://github.com/a",
+            "https://evil.example.com/a",
+            "https://github.com.evil.example/a",
+            "https://raw.githubusercontent.com/a",
+            "https://objects.githubusercontent.com/a",
+            "github.com/a",
+            "",
+        ] {
+            assert!(!is_allowed_download_url(bad), "应拒绝 {bad}");
+        }
     }
 }
