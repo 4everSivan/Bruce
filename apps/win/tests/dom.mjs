@@ -149,6 +149,39 @@ export const analytics = Object.fromEntries(
   JSON.parse(readFileSync(resolve("tests/fixtures/viewmodel-parity/agent-usage-workbench.analytics.json"), "utf8"))
     .map(snapshot => [snapshot.range, snapshot]),
 );
+// C264: 请求日志页默认 fixture (与 Rust artifact 字段一致)。
+export const requestLogFixture = {
+  total: 120,
+  page: 0,
+  pageSize: 50,
+  summary: { tokens: 12345, costUsd: 0.4321, avgTokens: 4115 },
+  models: ["gpt-5", "claude-sonnet-4"],
+  entries: [
+    {
+      requestId: "req-1", agentId: "codex", model: "gpt-5", rawModel: "gpt-5",
+      occurredAt: Date.UTC(2026, 10, 24, 10, 0, 0), input: 100, output: 3000,
+      cacheRead: 50, cacheCreation: 10, cacheCreation1h: null, costUsd: 0.0123,
+      pricingModel: "gpt-5", statusCode: 200, project: "/repo/a", fidelity: "exact",
+      latencyMs: 2000, firstTokenMs: 500,
+    },
+    {
+      requestId: "req-2", agentId: "claude-code", model: null, rawModel: "orchestrator",
+      occurredAt: Date.UTC(2026, 10, 24, 11, 0, 0), input: 200, output: 100,
+      cacheRead: 0, cacheCreation: 0, cacheCreation1h: null, costUsd: null,
+      pricingModel: null, statusCode: 201, project: null, fidelity: "raw",
+      latencyMs: 900, firstTokenMs: null,
+    },
+    {
+      requestId: "req-3", agentId: "zcode", model: "claude-sonnet-4", rawModel: "claude-sonnet-4",
+      occurredAt: Date.UTC(2026, 10, 24, 12, 0, 0), input: 10, output: 20,
+      cacheRead: 5, cacheCreation: 1, cacheCreation1h: 2, costUsd: 0.5,
+      pricingModel: "claude-sonnet-4", statusCode: 0, project: "/repo/b", fidelity: "exact",
+      latencyMs: null, firstTokenMs: null,
+    },
+  ],
+  notice: null,
+};
+
 export const defaults = {
   refreshIntervalSecs: 1800, theme: "fluent",
   cardOrder: ["usage", "subscription", "hourly"], hotkey: "", consentVersion: 0,
@@ -165,7 +198,7 @@ export function memoryStorage(initial = {}) {
   };
 }
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, grokBotConnect = { status: "connected" }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, pricingCatalogState = null, storage = null, pendingPane = null } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, grokBotConnect = { status: "connected" }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." }, pricingCatalogState = null, storage = null, pendingPane = null, requestLog = requestLogFixture } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
@@ -214,6 +247,15 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     }
     if (command === "plugin:dialog|save") return dialogPath;
     if (command === "get_usage_analytics") return structuredClone(workbench[args.range] ?? null);
+    if (command === "get_request_log") {
+      const page = Number(args?.page || 0);
+      const pageSize = Number(args?.pageSize || 50);
+      const pageData = structuredClone(requestLog);
+      pageData.page = page;
+      pageData.pageSize = pageSize;
+      pageData.entries = page === 0 ? pageData.entries : [];
+      return pageData;
+    }
     if (command === "get_model_prices") return [{ model: "fixture-model", displayName: "Fixture Model", vendor: "Fixture Vendor", inputPricePerMillion: 1, outputPricePerMillion: 2, cacheReadPricePerMillion: null, currency: "USD", note: "fixture 备注" }];
     if (command === "claude_local_status") return structuredClone(claudeLocal);
     if (command === "import_claude_from_local") return { status: claudeLocal.status };

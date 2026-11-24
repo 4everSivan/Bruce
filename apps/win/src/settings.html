@@ -23,6 +23,10 @@
           <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
           <span class="nav-text">模型计费</span>
         </button>
+        <button type="button" class="navitem" data-category="requestLog">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+          <span class="nav-text">请求日志</span>
+        </button>
         <button type="button" class="navitem" data-category="subscription">
           <svg class="ic" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
           <span class="nav-text">订阅额度</span>
@@ -70,6 +74,11 @@
           <div id="pane-modelPricing-content"></div>
         </section>
 
+        <!-- 分类面板: 请求日志 (C264) -->
+        <section id="pane-requestLog" class="category-pane hidden">
+          <div id="pane-requestLog-content"></div>
+        </section>
+
         <!-- 分类面板 4: 订阅额度 -->
         <section id="pane-subscription" class="category-pane hidden">
           <div id="pane-subscription-content"></div>
@@ -100,6 +109,7 @@
   <script src="settings-subscription.js"></script>
   <script src="settings-workbench.js"></script>
   <script src="settings-pricing.js"></script>
+  <script src="settings-requestlog.js"></script>
   <script src="settings-maintenance.js"></script>
   <script src="settings-welcome.js"></script>
   <script src="settings.js"></script>

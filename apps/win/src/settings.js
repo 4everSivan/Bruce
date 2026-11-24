@@ -17,12 +17,14 @@
     const gHost = byId("pane-general-content");
     const uHost = byId("pane-agentUsage-content");
     const sHost = byId("pane-subscription-content");
+    const rHost = byId("pane-requestLog-content");
     const cHost = byId("pane-consent-content");
     const mHost = byId("pane-maintenance-content");
 
     if (gHost) S.buildGeneral(gHost);
     if (uHost) S.buildAgentUsage(uHost);
     if (sHost) S.buildSubscription(sHost);
+    if (rHost) S.buildRequestLog(rHost);
     if (cHost) S.buildConsent(cHost);
     if (mHost) S.buildMaintenance(mHost);
 
@@ -31,12 +33,15 @@
       await listen("settings-pane-requested", () => { applyPendingPane(); });
       // C262: loadClaudeLocalStatus 已由 buildSubscription 在面板构建时探测一次, 不再重复。
       await Promise.all([S.loadSettings(), S.loadCredentials(), S.loadPrices(), S.loadRuntimeInfo(), S.loadPlans(), S.initSoftwareUpdate(), S.initPricingCatalog()]);
+      // 请求日志默认 Agent 依赖 dashboard 加载完成后的活跃来源。
+      S.updateRequestLogDashboard(state.currentDashboard);
       await listen("settings-updated", async () => {
         try { await S.loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });
       await listen("dashboard-updated", event => {
         state.currentDashboard = event.payload;
         S.renderAgentUsageWorkbench();
+        S.updateRequestLogDashboard(event.payload);
       });
       // StepFun 双轨捕获 (C086): WebView2 页面加载事件到达时同步更新当前 URL 并立即试捕一次。
       await listen("stepfun-page-load", event => {

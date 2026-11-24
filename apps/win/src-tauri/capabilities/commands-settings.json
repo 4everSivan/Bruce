@@ -26,6 +26,7 @@
     "allow-get-dashboard",
     "allow-get-model-prices",
     "allow-get-pricing-catalog-state",
+    "allow-get-request-log",
     "allow-get-runtime-info",
     "allow-get-settings",
     "allow-get-usage-analytics",

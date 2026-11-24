@@ -2912,6 +2912,58 @@ test("brand registry drives Nothing ramp and UTF-8 FNV-1a on all three ends (C26
   assert.match(appJs, /const PROVIDER_GLYPHS = window\.BRUCE_PROVIDER_GLYPHS/, "看板消费共享图形数据");
 });
 
+test("request log page renders summary, filters, pagination and detail (C264)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="requestLog"]').click();
+  await settle();
+  const pane = app.node("pane-requestLog");
+  assert.equal(pane.classList.contains("hidden"), false, "请求日志分类可切换");
+
+  const calls = (name) => app.calls.filter((call) => call.command === name);
+  assert.equal(calls("refresh_now").length, 0, "打开请求日志不得触发全量刷新");
+  const active = fixture.hourly.rows
+    .filter((row) => row.todayTotal > 0)
+    .map((row) => row.agentId)
+    .filter((id) => ["claude-code", "codex", "antigravity", "zcode"].includes(id));
+  const first = calls("get_request_log").at(-1);
+  assert.equal([...first.args.agentIds].sort().join(","), active.sort().join(","), "默认勾选今日有用量的受支持 Agent");
+  assert.equal(first.args.page, 0, "页码 0-based");
+
+  assert.ok(pane.textContent.includes("120"), "请求总数");
+  assert.ok(pane.textContent.includes("$0.4321"), "折算费用");
+  const rows = () => [...pane.querySelectorAll(".requestlog-row")];
+  assert.equal(rows().length, 3);
+
+  // 详情: 归一化模型缺失时回退原始标签, 未命中价卡显示「未计价」。
+  await rows()[1].click();
+  const detail = pane.querySelector(".requestlog-detail");
+  assert.ok(detail);
+  assert.ok(detail.textContent.includes("orchestrator"));
+  assert.ok(detail.textContent.includes("未计价"));
+
+  // 分页: 第 2 页仍保留分页条。
+  const next = [...pane.querySelectorAll(".requestlog-pager .plain-btn")][1];
+  assert.equal(next.disabled, false);
+  await next.click();
+  await settle();
+  assert.equal(calls("get_request_log").at(-1).args.page, 1);
+  assert.ok(pane.textContent.includes("第 2 / 3 页"));
+
+  // Agent 筛选: 取消 Codex 后请求参数同步。
+  const codex = [...pane.querySelectorAll(".requestlog-agent")].find((chip) => chip.textContent === "Codex");
+  await codex.click();
+  await settle();
+  assert.equal(calls("get_request_log").at(-1).args.agentIds.includes("codex"), false);
+
+  // 模型筛选: 回车提交。
+  const model = pane.querySelector(".requestlog-model");
+  model.value = "gpt-5";
+  await model.dispatch("keydown", { key: "Enter" });
+  await settle();
+  assert.equal(calls("get_request_log").at(-1).args.model, "gpt-5");
+  assert.equal(calls("get_request_log").at(-1).args.page, 0, "改筛选回到第一页");
+});
+
 // ---------- C233: 看板只保留基础动效 ----------
 
 test("dashboard drops decorative update motion and keeps the title still (C233)", async () => {

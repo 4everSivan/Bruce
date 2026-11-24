@@ -1505,6 +1505,36 @@ input[type="checkbox"]:checked::after {
 .pricing-table .col-cache { width: 75px; }
 .pricing-table .col-cost { width: 68px; text-align: right; }
 .pricing-table .col-ops { width: 68px; text-align: right; white-space: nowrap; }
+
+/* C264: 设置页「请求日志」 */
+.requestlog-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.requestlog-agents { display: flex; flex-wrap: wrap; gap: 6px; }
+.requestlog-agent {
+  height: 28px; padding: 0 10px; border-radius: 14px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-2);
+  font-size: 12px; cursor: pointer;
+}
+.requestlog-agent.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.requestlog-model {
+  height: 28px; min-width: 180px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.requestlog-status { font-size: 12px; color: var(--text-2); }
+.requestlog-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 4px 0 10px; }
+.requestlog-metric { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+.requestlog-metric-label { font-size: 11px; color: var(--text-2); margin-bottom: 4px; }
+.requestlog-metric-value { font-size: 16px; font-weight: 600; }
+.requestlog-table-wrap { max-height: 360px; overflow: auto; }
+.requestlog-table td, .requestlog-table th { white-space: nowrap; }
+.requestlog-row { cursor: pointer; }
+.requestlog-row:hover td { background: var(--surface-hover); }
+.requestlog-row.selected td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.requestlog-pager { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.requestlog-empty { padding: 24px; text-align: center; color: var(--text-2); font-size: 12px; }
+.requestlog-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+.requestlog-detail-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.requestlog-detail-label { font-size: 11px; color: var(--text-2); }
+.requestlog-detail-value { font-size: 12px; overflow-wrap: anywhere; }
 .pricing-model-line { display: flex; align-items: center; gap: 4px; }
 .pricing-model { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; font-weight: 500; color: var(--text); }
 .pricing-vendor { display: block; font-size: 10.5px; color: var(--text-3); }

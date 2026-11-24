@@ -24,6 +24,7 @@
     general: { title: "通用", crumb: "设置 / 通用" },
     agentUsage: { title: "模型用量", crumb: "设置 / 模型用量" },
     modelPricing: { title: "模型计费", crumb: "设置 / 模型计费" },
+    requestLog: { title: "请求日志", crumb: "设置 / 请求日志" },
     subscription: { title: "订阅额度", crumb: "设置 / 订阅额度" },
     consent: { title: "授权与隐私", crumb: "设置 / 授权与隐私" },
     maintenance: { title: "维护", crumb: "设置 / 维护" },
