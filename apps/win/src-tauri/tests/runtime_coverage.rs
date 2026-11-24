@@ -1,6 +1,6 @@
 use bruce_win_lib::runtime_core::{
     billing_csv, clear_snapshot, diagnostics_report, export_path, merge_snapshot, model_usage,
-    next_delay, resolve_export_path, write_export, RefreshOutcome,
+    next_delay, resolve_export_path, snapshot_revision, write_export, RefreshOutcome,
 };
 use serde_json::json;
 
@@ -1705,4 +1705,31 @@ fn runtime_error_text_matches_frontend_table() {
     }
     assert_eq!(entries, 9, "前端表登记 9 个机器码");
     assert_eq!(runtime_error_text("SOME_FUTURE_CODE"), None);
+}
+
+/// C262: 面板视图模型缓存以快照代数失效 —— artifact 变化必须递增, 幂等读取不递增。
+#[test]
+fn snapshot_revision_tracks_artifact_mutations() {
+    let before = snapshot_revision();
+    let mut state = SnapshotState::default();
+    state
+        .apply_response(&response(valid_artifact(), ResponseStatus::Success))
+        .unwrap();
+    let applied = snapshot_revision();
+    assert!(applied > before, "应用采集结果必须使面板缓存失效");
+
+    // 仅读取不递增。
+    let _ = state.artifact().cloned();
+    assert_eq!(snapshot_revision(), applied);
+
+    // 首次标记 stale 改变 artifact → 递增; 重复标记为 no-op。
+    state.mark_provider_stale("codex");
+    let stale = snapshot_revision();
+    assert!(stale > applied, "合格旧值降级 stale 必须使面板缓存失效");
+    state.mark_provider_stale("codex");
+    assert_eq!(snapshot_revision(), stale, "重复降级不得反复失效");
+
+    // 失败状态切换同样递增 (运行态与 stale 标记)。
+    state.fail("COLLECTION_FAILED");
+    assert!(snapshot_revision() > stale);
 }

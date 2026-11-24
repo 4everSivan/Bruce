@@ -258,8 +258,65 @@ fn settings_path(root: &Path) -> PathBuf {
     root.join("config").join("settings.json")
 }
 
+/// 进程内设置快照 (C262): 读路径 (托盘悬停、下载进度广播、看板面板构造) 不必每拍
+/// 重读 + 解析整份 `settings.json`。缓存以 root + 文件元数据戳为键: 本进程保存成功
+/// 立即刷新, 手改文件 (C007 阵地) 仍会被下一次 stat 发现并重读。
+static SETTINGS_CACHE: Mutex<Option<(PathBuf, SettingsStamp, AppSettings)>> = Mutex::new(None);
+
+/// settings.json 的廉价变化戳: 长度 + 修改时间 (读元数据不读内容)。
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SettingsStamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+fn settings_stamp(path: &Path) -> Option<SettingsStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some(SettingsStamp {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+    })
+}
+
+fn read_settings_cache(root: &Path, stamp: SettingsStamp) -> Option<AppSettings> {
+    let cache = SETTINGS_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    cache
+        .as_ref()
+        .filter(|(cached_root, cached_stamp, _)| cached_root == root && *cached_stamp == stamp)
+        .map(|(_, _, settings)| settings.clone())
+}
+
+fn store_settings_cache(root: &Path, settings: &AppSettings) {
+    // 文件缺失 (默认值) 不缓存: 下一次落盘/手改出现文件时必须重新读取。
+    let Some(stamp) = settings_stamp(&settings_path(root)) else {
+        let mut cache = SETTINGS_CACHE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *cache = None;
+        return;
+    };
+    let mut cache = SETTINGS_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *cache = Some((root.to_path_buf(), stamp, settings.clone()));
+}
+
 /// 加载设置; 文件缺失/损坏/字段缺失一律回落默认值 (与 mac load 语义一致)。
 pub fn load_settings(root: &Path) -> AppSettings {
+    let stamp = settings_stamp(&settings_path(root));
+    if let Some(stamp) = stamp {
+        if let Some(settings) = read_settings_cache(root, stamp) {
+            return settings;
+        }
+    }
+    let settings = load_settings_uncached(root);
+    store_settings_cache(root, &settings);
+    settings
+}
+
+fn load_settings_uncached(root: &Path) -> AppSettings {
     let Ok(raw) = fs::read_to_string(settings_path(root)) else {
         return AppSettings::default();
     };
@@ -357,6 +414,8 @@ pub(crate) fn save_settings_locked(root: &Path, settings: &AppSettings) -> Resul
         let _ = fs::remove_file(&temporary);
         error.to_string()
     })?;
+    // C262: 内存快照与落盘同源, 后续读路径不再重读文件。
+    store_settings_cache(root, settings);
     Ok(())
 }
 
@@ -491,6 +550,40 @@ mod tests {
         };
         save_settings(&root, &settings).unwrap();
         assert_eq!(load_settings(&root), settings);
+    }
+
+    /// C262: 读路径命中进程内快照, 保存成功后立即可见, 切换数据根不串值。
+    #[test]
+    fn settings_cache_follows_successful_saves_and_root_switches() {
+        let first = temp_root();
+        let second = temp_root();
+        let defaults = load_settings(&first);
+        save_settings(
+            &first,
+            &AppSettings {
+                theme: "nothing".to_owned(),
+                ..AppSettings::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(load_settings(&first).theme, "nothing");
+        assert_eq!(
+            load_settings(&second),
+            defaults,
+            "不同数据根不得命中上一份缓存"
+        );
+        // 失败写入不得污染缓存。
+        assert!(save_settings(
+            &first,
+            &AppSettings {
+                theme: "glass".to_owned(),
+                ..AppSettings::default()
+            },
+        )
+        .is_err());
+        assert_eq!(load_settings(&first).theme, "nothing");
+        let _ = std::fs::remove_dir_all(&first);
+        let _ = std::fs::remove_dir_all(&second);
     }
 
     #[test]

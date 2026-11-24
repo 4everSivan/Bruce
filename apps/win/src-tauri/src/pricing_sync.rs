@@ -25,6 +25,26 @@ pub const RAW_CATALOG_URL: &str =
 pub const MAX_CATALOG_BYTES: usize = 512 * 1024; // 512 KB
 pub const FETCH_TIMEOUT_SECS: u64 = 10;
 
+/// 已加载活动价卡的进程内副本 (C262): 每轮采集注入 `context.pricingCatalog` 时
+/// 不再重读 + 解析 `pricing-catalog.json`; 启动恢复 / 同步落盘 / 恢复内置是唯一写入点。
+static ACTIVE_CATALOG_CACHE: Mutex<Option<(PathBuf, serde_json::Value)>> = Mutex::new(None);
+
+fn store_active_catalog_cache(path: &Path, bytes: &[u8]) -> Option<serde_json::Value> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let mut cache = ACTIVE_CATALOG_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *cache = Some((path.to_path_buf(), value.clone()));
+    Some(value)
+}
+
+fn clear_active_catalog_cache() {
+    let mut cache = ACTIVE_CATALOG_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *cache = None;
+}
+
 // ---------------------------------------------------------------- 状态与数据结构
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,6 +190,7 @@ pub fn init_pricing_catalog(path: &Path) {
         Err(_) => {
             let _ = fs::remove_file(path);
             bruce_win_viewmodel::model_catalog::reset_to_builtin();
+            clear_active_catalog_cache();
             return;
         }
     };
@@ -181,26 +202,35 @@ pub fn init_pricing_catalog(path: &Path) {
         // 旧版本缓存落后于新客户端内置基线，静默清理并回退
         let _ = fs::remove_file(path);
         bruce_win_viewmodel::model_catalog::reset_to_builtin();
+        clear_active_catalog_cache();
     } else {
         bruce_win_viewmodel::model_catalog::set_active_catalog(
             &catalog.updated_at,
             &catalog.models,
         );
+        store_active_catalog_cache(path, &bytes);
     }
 }
 
 /// 供 Collector Bridge Request 上下文注入 (Tier 2 已同步价卡)
 pub fn active_catalog_context_value(path: &Path) -> Option<serde_json::Value> {
     if bruce_win_viewmodel::model_catalog::current_source()
-        == bruce_win_viewmodel::model_catalog::CatalogSource::Synced
+        != bruce_win_viewmodel::model_catalog::CatalogSource::Synced
     {
-        if let Ok(bytes) = fs::read(path) {
-            if let Ok(json) = serde_json::from_slice(&bytes) {
-                return Some(json);
+        return None;
+    }
+    {
+        let cache = ACTIVE_CATALOG_CACHE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some((cached_path, value)) = cache.as_ref() {
+            if cached_path == path {
+                return Some(value.clone());
             }
         }
     }
-    None
+    let bytes = fs::read(path).ok()?;
+    store_active_catalog_cache(path, &bytes)
 }
 
 // ---------------------------------------------------------------- 远端网络拉取
@@ -300,7 +330,7 @@ impl PricingSyncManager {
         }
 
         bruce_win_viewmodel::model_catalog::reset_to_builtin();
-
+        clear_active_catalog_cache();
         let updated_at = bruce_win_viewmodel::model_catalog::current_updated_at();
         let model_count = bruce_win_viewmodel::model_catalog::active_catalog().len();
 
@@ -424,6 +454,7 @@ impl PricingSyncManager {
             && diff.adjusted_count == 0;
 
         if is_up_to_date {
+            store_active_catalog_cache(&pricing_catalog_path(), bytes);
             return Ok(PricingSyncStage::UpToDate {
                 updated_at: catalog.updated_at,
                 model_count: listed_count,
@@ -440,6 +471,7 @@ impl PricingSyncManager {
             &catalog.updated_at,
             &catalog.models,
         );
+        store_active_catalog_cache(&path, bytes);
 
         Ok(PricingSyncStage::Updated {
             updated_at: catalog.updated_at,
@@ -601,5 +633,37 @@ mod tests {
         let diff = calculate_diff(&current, &new_catalog);
         assert_eq!(diff.added_count, 1);
         assert_eq!(diff.adjusted_count, 1);
+    }
+
+    /// C262: 采集注入用的活动价卡走进程内副本; 文件在运行期被替换不改变已加载值。
+    #[test]
+    fn active_catalog_context_reuses_loaded_catalog() {
+        let _guard = bruce_win_viewmodel::model_catalog::TEST_LOCK
+            .lock()
+            .unwrap();
+        let temp_dir = std::env::temp_dir().join(format!("test-bruce-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let file_path = temp_dir.join("pricing-catalog.json");
+        let catalog = r#"{
+            "schemaVersion": 1,
+            "updatedAt": "2099-01-01",
+            "models": [
+                {"model": "cached-model", "displayName": "Cached", "vendor": "V", "input": 1, "output": 2, "note": "", "listed": true}
+            ]
+        }"#;
+        fs::write(&file_path, catalog).unwrap();
+        init_pricing_catalog(&file_path);
+        assert_eq!(
+            bruce_win_viewmodel::model_catalog::current_source(),
+            bruce_win_viewmodel::model_catalog::CatalogSource::Synced
+        );
+        let loaded = active_catalog_context_value(&file_path).expect("已同步价卡应可注入");
+        // 运行期文件被外部替换: 已加载快照优先, 不重读。
+        fs::write(&file_path, "{}").unwrap();
+        assert_eq!(active_catalog_context_value(&file_path), Some(loaded));
+        // 回退内置后不再注入 context.pricingCatalog。
+        bruce_win_viewmodel::model_catalog::reset_to_builtin();
+        assert_eq!(active_catalog_context_value(&file_path), None);
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

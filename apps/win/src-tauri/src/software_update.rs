@@ -164,7 +164,7 @@ pub mod desktop_impl {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tauri::{AppHandle, Emitter, Manager};
-    use tauri_plugin_updater::{Update, UpdaterExt};
+    use tauri_plugin_updater::{Error as UpdaterError, Update, UpdaterExt};
 
     /// 一次性安装失败码 (表现层 installFailureStatusLine 映射状态行)。
     pub const INSTALL_FAILURE_DOWNLOAD: &str = "downloadFailed";
@@ -286,7 +286,56 @@ pub mod desktop_impl {
         })
     }
 
-    /// 核心检查: manifest 拉取 → 插件判定 (自身比对当前版本) → 跳过语义收敛。
+    /// 插件检查失败时的分类 (C262): 传输类错误按 reqwest 错误本身判定, 其余回退一次
+    /// ureq 拉取以补 HTTP 状态码等精确类别 (仅失败路径产生第二次请求)。
+    fn classify_check_failure(error: &UpdaterError) -> (UpdateFailureKind, Option<u16>) {
+        match error {
+            UpdaterError::Reqwest(error) if error.is_timeout() => {
+                (UpdateFailureKind::TimedOut, None)
+            }
+            UpdaterError::Reqwest(error) if error.is_connect() => {
+                (UpdateFailureKind::Offline, None)
+            }
+            _ => fetch_release_info()
+                .err()
+                .unwrap_or((UpdateFailureKind::InvalidManifest, None)),
+        }
+    }
+
+    /// 复用插件同一次 latest.json 响应构造展示元信息 (C262): 不再先用 ureq 拉一遍清单。
+    /// notes 取插件解析值 (清单 `notes`), 尺寸由 HEAD 补 (失败静默 None)。
+    fn release_info_from_update(update: &Update) -> ReleaseInfo {
+        let notes = update
+            .body
+            .clone()
+            .or_else(|| {
+                update
+                    .raw_json
+                    .get("notes")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default();
+        let agent = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(10))
+            .build();
+        let size_bytes = agent
+            .head(update.download_url.as_str())
+            .call()
+            .ok()
+            .and_then(|response| {
+                response
+                    .header("Content-Length")
+                    .and_then(|v| v.parse::<u64>().ok())
+            });
+        ReleaseInfo {
+            version: update.version.clone(),
+            notes,
+            size_bytes,
+        }
+    }
+
+    /// 核心检查: 插件判定 (自身比对当前版本, 内部只拉一次 latest.json) → 跳过语义收敛。
     /// `manual` 为 false 时 (自动检查) 任何失败保持原相位、不进入 failed (07 §4.2 R5 静默)。
     pub fn run_check(app: &AppHandle, manual: bool) {
         if manual {
@@ -295,8 +344,22 @@ pub mod desktop_impl {
             guard.phase = UpdatePhase::Checking;
             publish(app, &mut guard);
         }
-        let release = match fetch_release_info() {
-            Ok(info) => info,
+        // 插件检查 (endpoints/pubkey 出自 tauri.conf.json): Some(update) 即远端高于当前。
+        // C262: 复用同一次清单响应的同时补上 10s 总超时 —— 插件默认不设 timeout，
+        // 网络黑洞时阻塞检查线程会一直停在 checking。
+        let offered: Result<Option<Update>, (UpdateFailureKind, Option<u16>)> = match app
+            .updater_builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+        {
+            Ok(updater) => match tauri::async_runtime::block_on(updater.check()) {
+                Ok(offered) => Ok(offered),
+                Err(error) => Err(classify_check_failure(&error)),
+            },
+            Err(_) => Err((UpdateFailureKind::InvalidManifest, None)),
+        };
+        let offered = match offered {
+            Ok(value) => value,
             Err((failure, http_status)) => {
                 if manual {
                     let state = app.state::<UpdateState>();
@@ -310,28 +373,9 @@ pub mod desktop_impl {
                 return;
             }
         };
-        // 插件检查 (endpoints/pubkey 出自 tauri.conf.json): Some(update) 即远端高于当前。
-        let offered: Result<Option<Update>, ()> = match app.updater() {
-            Ok(updater) => tauri::async_runtime::block_on(updater.check()).map_err(|_| ()),
-            Err(_) => Err(()),
-        };
-        let offered = match offered {
-            Ok(value) => value,
-            Err(_) => {
-                // 插件侧失败 (网络/配置): 手动时给可分类提示, 自动静默。
-                if manual {
-                    let state = app.state::<UpdateState>();
-                    let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
-                    guard.phase = UpdatePhase::Failed {
-                        failure: UpdateFailureKind::InvalidManifest,
-                        http_status: None,
-                    };
-                    publish(app, &mut guard);
-                }
-                return;
-            }
-        };
         let checked_at = now_rfc3339_local();
+        // 尺寸 HEAD 在状态锁之外完成, 避免网络等待阻塞更新命令与服务 tick。
+        let mut release = offered.as_ref().map(release_info_from_update);
         let state = app.state::<UpdateState>();
         let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
         cleanup_stale_skipped(app);
@@ -349,22 +393,25 @@ pub mod desktop_impl {
                 match skip_decision(&offered_version, skipped.as_deref()) {
                     SkipDecision::Ignore => {
                         guard.phase = UpdatePhase::Skipped;
-                        guard.release = Some(release);
+                        guard.release = release.take();
                         guard.pending = Some(update);
                     }
                     SkipDecision::Offer { clear_skip } => {
                         if clear_skip {
                             persist_update_fields(None, Some(None));
                         }
-                        // notes 优先插件读取的清单值, 兜底自取 manifest。
-                        let mut info = release;
-                        if info.notes.is_empty() {
-                            if let Some(body) = update.body.clone() {
-                                info.notes = body;
+                        // notes 已在复用同一份清单响应时取插件解析值; 缺失则保持空串。
+                        if let Some(mut info) = release.take() {
+                            if info.notes.is_empty() {
+                                if let Some(body) = update.body.clone() {
+                                    info.notes = body;
+                                }
                             }
+                            guard.release = Some(info);
+                        } else {
+                            guard.release = None;
                         }
                         guard.phase = UpdatePhase::Available;
-                        guard.release = Some(info);
                         guard.pending = Some(update);
                     }
                 }

@@ -48,12 +48,27 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
 };
 
 pub type CredentialPayloads = BTreeMap<String, Value>;
 static STORE_LOCK: Mutex<()> = Mutex::new(());
 const MAX_CREDENTIAL_BYTES: u64 = 4 * 1024 * 1024;
+
+/// 已验证凭据的进程内快照 (C262): 采集每轮、看板面板构造与写前 DeepSeek 变更对比
+/// 都走 `load_credentials`; 文件只由本进程的 STORE_LOCK 写路径改写, 读路径无需每拍
+/// 重读 + 全量校验。成功落盘后立即发布新快照。
+static CREDENTIALS_CACHE: Mutex<Option<(PathBuf, CredentialPayloads)>> = Mutex::new(None);
+/// 缓存发布代数: 面板缓存以它作失效键, 避免仅凭时间窗口漏掉凭据增删。
+static CREDENTIALS_REVISION: AtomicU64 = AtomicU64::new(0);
+
+/// 当前进程内已发布凭据快照的代数 (单调递增)。
+pub fn credential_revision() -> u64 {
+    CREDENTIALS_REVISION.load(Ordering::Relaxed)
+}
 
 pub fn app_data_root(home: &Path) -> PathBuf {
     app_data_root_with(home, std::env::var_os("APPDATA").as_deref())
@@ -418,7 +433,23 @@ pub fn read_credential_store_bytes(root: &Path) -> Option<Vec<u8>> {
 
 /// 采集 / 展示消费路径: 逐字段与逐账号 fail-closed 过滤 (规则 21)。
 pub fn load_credentials(root: &Path) -> CredentialPayloads {
-    read_raw_credentials(root)
+    {
+        let cache = CREDENTIALS_CACHE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some((cached_root, payloads)) = cache.as_ref() {
+            if cached_root == root {
+                return payloads.clone();
+            }
+        }
+    }
+    let payloads = validated_payloads(read_raw_credentials(root));
+    store_credentials_cache(root, &payloads);
+    payloads
+}
+
+fn validated_payloads(payloads: CredentialPayloads) -> CredentialPayloads {
+    payloads
         .into_iter()
         .filter_map(|(key, value)| {
             if validate_credential_payload(&key, &value).is_ok() {
@@ -427,6 +458,14 @@ pub fn load_credentials(root: &Path) -> CredentialPayloads {
             retain_valid_accounts(&key, &value).map(|value| (key, value))
         })
         .collect()
+}
+
+fn store_credentials_cache(root: &Path, payloads: &CredentialPayloads) {
+    let mut cache = CREDENTIALS_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *cache = Some((root.to_path_buf(), validated_payloads(payloads.clone())));
+    CREDENTIALS_REVISION.fetch_add(1, Ordering::Relaxed);
 }
 pub fn save_credentials(root: &Path, payloads: &CredentialPayloads) -> Result<(), String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
@@ -1215,7 +1254,10 @@ fn write_payloads_unchecked(root: &Path, payloads: &CredentialPayloads) -> Resul
             uuid::Uuid::new_v4().to_string().as_bytes(),
         )?;
     }
-    write_with_permissions(root, &encoded, restrict_permissions)
+    write_with_permissions(root, &encoded, restrict_permissions)?;
+    // C262: 成功发布后刷新进程内已验证快照 (读路径与 DeepSeek 变更对比不再读盘)。
+    store_credentials_cache(root, payloads);
+    Ok(())
 }
 fn reject_link(path: &Path) -> Result<(), String> {
     match fs::symlink_metadata(path) {
@@ -1505,6 +1547,31 @@ mod tests {
         remove_credential_account(&root, "codexQuotaAccounts", "acct-ok").unwrap();
         let raw = read_raw_credentials(&root);
         assert!(raw["kimiQuotaAccounts"]["broken"].is_object());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// C262: 读路径命中进程内已验证快照; 每次成功写入发布新代数, 供面板缓存失效。
+    #[test]
+    fn credentials_cache_tracks_successful_writes() {
+        let root = temp_root();
+        assert!(load_credentials(&root).is_empty());
+        let before = credential_revision();
+        save_credential_account(
+            &root,
+            "kimiQuotaAccounts",
+            "acct-cache",
+            &json!({"api_key": "kimi-fixture-key"}),
+        )
+        .unwrap();
+        assert!(
+            credential_revision() > before,
+            "成功写入必须发布新的凭据代数"
+        );
+        assert!(load_credentials(&root)["kimiQuotaAccounts"]["acct-cache"].is_object());
+        // 失败写入不改缓存: 非法字段不落盘也不发布。
+        let revision = credential_revision();
+        assert!(save_credential_account(&root, "notAllowed", "x", &json!({})).is_err());
+        assert_eq!(credential_revision(), revision);
         let _ = fs::remove_dir_all(&root);
     }
 

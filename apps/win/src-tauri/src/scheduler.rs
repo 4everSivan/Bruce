@@ -4,9 +4,36 @@ use std::collections::BTreeSet;
 use std::sync::{mpsc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(feature = "desktop")]
+use serde_json::Value;
+
 use crate::alerts::AlertState;
 pub use crate::runtime_core::RefreshOutcome;
 use crate::runtime_core::SnapshotState;
+
+/// 视图模型缓存键 (C262): 快照代数 + 凭据代数 + 分钟桶 + 影响面板内容与排序的设置。
+/// 分钟桶保留 `now` 派生的 LIVE / 重置文案 / 今日口径语义 (至多 60s 陈旧)。
+#[cfg(feature = "desktop")]
+#[derive(Clone, PartialEq, Eq)]
+struct PanelCacheKey {
+    snapshot_revision: u64,
+    credentials_revision: u64,
+    minute: i64,
+    usage_enabled: bool,
+    enabled_providers: Vec<String>,
+    verified_providers: BTreeSet<String>,
+    provider_order: Vec<String>,
+}
+
+/// `cached_panel` 的进程内视图模型缓存 (C262): 数据未变时复用上一份面板,
+/// 仅覆盖运行态与速览字段, 避免每次 `get_dashboard`/`publish` 重新解析 artifact、
+/// 克隆整份 JSON 并重排服务。
+#[derive(Default)]
+#[cfg(feature = "desktop")]
+struct PanelCache {
+    key: Option<PanelCacheKey>,
+    panel: Option<Value>,
+}
 
 const BASE_BACKOFF_SECS: u64 = 30;
 const MAX_BACKOFF_SECS: u64 = 1800;
@@ -62,6 +89,8 @@ pub struct SchedulerControl {
     /// 定向刷新进行中的 Provider (UI 契约: 目标按钮显示进度并禁用)。
     pub refreshing_providers: Mutex<BTreeSet<String>>,
     local_refresh: Mutex<LocalRefreshState>,
+    #[cfg(feature = "desktop")]
+    panel_cache: Mutex<PanelCache>,
 }
 
 impl SchedulerControl {
@@ -156,6 +185,8 @@ impl SchedulerControl {
         if let Ok(mut state) = self.snapshot.lock() {
             *state = SnapshotState::default();
         }
+        // C262: 内存快照被替换, 视图模型缓存同步失效。
+        crate::runtime_core::invalidate_snapshot();
         Ok(())
     }
 
@@ -247,23 +278,58 @@ mod desktop {
         state.artifact().cloned()
     }
 
-    pub fn cached_panel(app: &AppHandle) -> Result<Value, String> {
+    /// 构造面板并返回托盘/预览同源速览 (C262): 视图模型按代数缓存, 运行态与
+    /// 定向刷新状态每次覆盖; `publish` 复用同一份 summary, 不再二次扫描。
+    fn build_panel(
+        app: &AppHandle,
+    ) -> Result<(Value, crate::tray_icon_renderer::QuotaSummary), String> {
         let root = paths::data_root();
         let settings = load_settings(&root);
+        let credentials = credentials::load_credentials(&root);
+        let verified = crate::settings::verified_provider_ids(&settings);
         let control = app.state::<SchedulerControl>();
         let mut state = control
             .snapshot
             .lock()
             .map_err(|_| "SNAPSHOT_LOCK_FAILED")?;
-        state.prune_credentials(&credentials::load_credentials(&root));
-        let verified = crate::settings::verified_provider_ids(&settings);
-        let mut panel = state.panel_json_verified(
-            chrono::Local::now().fixed_offset(),
-            settings.usage_enabled,
-            &settings.enabled_providers,
-            Some(&verified),
-            &settings.provider_order,
-        );
+        state.prune_credentials(&credentials);
+        let now = chrono::Local::now();
+        let key = PanelCacheKey {
+            snapshot_revision: crate::runtime_core::snapshot_revision(),
+            credentials_revision: credentials::credential_revision(),
+            minute: now.timestamp() / 60,
+            usage_enabled: settings.usage_enabled,
+            enabled_providers: settings.enabled_providers.clone(),
+            verified_providers: verified.clone(),
+            provider_order: settings.provider_order.clone(),
+        };
+        let mut cache = control
+            .panel_cache
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut panel = match cache.key.as_ref() {
+            Some(cached) if cached == &key => cache
+                .panel
+                .clone()
+                .ok_or_else(|| "PANEL_CACHE_EMPTY".to_owned())?,
+            _ => {
+                let panel = state.panel_json_verified(
+                    now.fixed_offset(),
+                    settings.usage_enabled,
+                    &settings.enabled_providers,
+                    Some(&verified),
+                    &settings.provider_order,
+                );
+                *cache = PanelCache {
+                    key: Some(key),
+                    panel: Some(panel.clone()),
+                };
+                panel
+            }
+        };
+        drop(cache);
+        // runtime 块每次覆盖: phase / error / 定向刷新状态不属于视图模型缓存键。
+        panel["runtime"] = state.runtime_value();
         drop(state);
         // 订阅段定向刷新按钮的呈现输入 (mac SubscriptionRefreshControlPolicy):
         // 进行中的 Provider 与「出站额度查询已授权」。
@@ -274,20 +340,18 @@ mod desktop {
         // 不再在前端按猜测的字段名自行推算。须在 runtime 字段写入后计算 (状态灯读取 runtime)。
         let preview = crate::tray_icon_renderer::extract_quota_summary(&panel);
         panel["preview"] = serde_json::to_value(&preview).unwrap_or(Value::Null);
-        Ok(panel)
+        Ok((panel, preview))
+    }
+
+    pub fn cached_panel(app: &AppHandle) -> Result<Value, String> {
+        build_panel(app).map(|(panel, _)| panel)
     }
 
     pub fn publish(app: &AppHandle) {
-        if let Ok(panel) = cached_panel(app) {
+        if let Ok((panel, summary)) = build_panel(app) {
             if let Some(tray) = app.tray_by_id("bruce") {
-                // 方案 1: 系统托盘动态配额环与心跳状态指示
-                let summary = crate::tray_icon_renderer::extract_quota_summary(&panel);
-                let is_refreshing = app
-                    .state::<SchedulerControl>()
-                    .snapshot
-                    .lock()
-                    .map(|state| state.phase == "refreshing")
-                    .unwrap_or(false);
+                // 方案 1: 系统托盘动态配额环与心跳状态指示 (与本次发布的面板同源)
+                let is_refreshing = panel["runtime"]["phase"].as_str() == Some("refreshing");
                 let pixels = crate::tray_icon_renderer::render_tray_quota_icon(
                     32,
                     summary.remaining_pct,

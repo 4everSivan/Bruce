@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bruce_win_viewmodel::analytics::{self, AnalyticsRange, AnalyticsSnapshot};
 use chrono::{DateTime, FixedOffset};
@@ -114,6 +115,20 @@ pub fn merge_scoped_snapshot(previous: Option<&Value>, current: &Value, provider
         .cloned()
         .unwrap_or(Value::Null);
     result
+}
+
+/// 快照代数: 单调递增, 供 `PanelCache` 精确失效 (C262)。重置快照同样递增,
+/// 因此不会与旧条目碰撞。
+static SNAPSHOT_REVISION: AtomicU64 = AtomicU64::new(0);
+
+/// 当前快照代数 (进程内单调)。
+pub fn snapshot_revision() -> u64 {
+    SNAPSHOT_REVISION.load(Ordering::Relaxed)
+}
+
+/// 使所有已缓存的视图模型失效 (重置快照等不经过 `SnapshotState` 方法的路径)。
+pub fn invalidate_snapshot() {
+    SNAPSHOT_REVISION.fetch_add(1, Ordering::Relaxed);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -370,45 +385,63 @@ impl SnapshotState {
         self.artifact.as_ref()
     }
 
+    /// 面板视图模型缓存代数 (C262): 任何会改变 artifact / 运行态的写入都递增,
+    /// `cached_panel` 仅据此与设置/凭据代数复用上一份视图模型。
+    fn invalidate(&self) {
+        invalidate_snapshot();
+    }
+
+    /// 运行态切片 (phase / 最近成功 / 错误 / 诊断码), 单独覆盖到缓存面板上。
+    pub fn runtime_value(&self) -> Value {
+        json!({"phase":self.phase,"lastSuccessAt":self.last_success_at,"error":self.error,"diagnosticCodes":self.diagnostics})
+    }
+
     /// Filter restored snapshots against current credentials before publishing.
     pub fn prune_credentials(&mut self, credentials: &BTreeMap<String, Value>) {
-        let Some(services) = self
-            .artifact
-            .as_mut()
-            .and_then(|a| a.get_mut("services"))
-            .and_then(Value::as_array_mut)
-        else {
-            return;
-        };
-        services.retain(|service| {
-            let provider = provider_id(service);
-            let accounts = credentials
-                .get(&format!("{provider}QuotaAccounts"))
-                .and_then(Value::as_object);
-            let id = service.get("id").and_then(Value::as_str).unwrap_or("");
-            if provider == "codex" {
-                return accounts.is_some_and(|accounts| {
-                    accounts
-                        .keys()
-                        .any(|account| collector_provider::codex_service_id(account) == id)
-                });
-            }
-            let prefix = match provider {
-                "kimi" => "kimi_coding_".to_owned(),
-                "opencodeGo" => "opencode_go_".to_owned(),
-                // T39: collector 前缀为小写 `grokbot_`, 与 rawValue 大小写不同。
-                "grokBot" => "grokbot_".to_owned(),
-                _ => format!("{provider}_"),
+        let removed = {
+            let Some(services) = self
+                .artifact
+                .as_mut()
+                .and_then(|a| a.get_mut("services"))
+                .and_then(Value::as_array_mut)
+            else {
+                return;
             };
-            if let Some(account_id) = id.strip_prefix(&prefix) {
-                if let Some(accounts) = accounts {
-                    return accounts.contains_key(account_id);
+            let before = services.len();
+            services.retain(|service| {
+                let provider = provider_id(service);
+                let accounts = credentials
+                    .get(&format!("{provider}QuotaAccounts"))
+                    .and_then(Value::as_object);
+                let id = service.get("id").and_then(Value::as_str).unwrap_or("");
+                if provider == "codex" {
+                    return accounts.is_some_and(|accounts| {
+                        accounts
+                            .keys()
+                            .any(|account| collector_provider::codex_service_id(account) == id)
+                    });
                 }
-                return credentials.contains_key(&format!("{provider}OAuth"));
-            }
-            accounts.is_some_and(|accounts| !accounts.is_empty())
-                || credentials.contains_key(&format!("{provider}OAuth"))
-        });
+                let prefix = match provider {
+                    "kimi" => "kimi_coding_".to_owned(),
+                    "opencodeGo" => "opencode_go_".to_owned(),
+                    // T39: collector 前缀为小写 `grokbot_`, 与 rawValue 大小写不同。
+                    "grokBot" => "grokbot_".to_owned(),
+                    _ => format!("{provider}_"),
+                };
+                if let Some(account_id) = id.strip_prefix(&prefix) {
+                    if let Some(accounts) = accounts {
+                        return accounts.contains_key(account_id);
+                    }
+                    return credentials.contains_key(&format!("{provider}OAuth"));
+                }
+                accounts.is_some_and(|accounts| !accounts.is_empty())
+                    || credentials.contains_key(&format!("{provider}OAuth"))
+            });
+            before != services.len()
+        };
+        if removed {
+            self.invalidate();
+        }
     }
 
     pub fn load(root: &Path) -> Self {
@@ -451,6 +484,7 @@ impl SnapshotState {
     }
 
     pub fn fail(&mut self, code: &str) {
+        self.invalidate();
         self.phase = if self.artifact.is_some() {
             "stale"
         } else {
@@ -536,6 +570,7 @@ impl SnapshotState {
             ),
             None => merge_snapshot(self.artifact.as_ref(), current),
         });
+        self.invalidate();
         self.phase = if response.status == ResponseStatus::Partial {
             "partial"
         } else {
@@ -577,6 +612,7 @@ impl SnapshotState {
             if let Some(artifact) = self.artifact.as_mut() {
                 crate::quota_policy::annotate_provider(artifact, provider, now_ms);
             }
+            self.invalidate();
         }
         result
     }
@@ -598,6 +634,7 @@ impl SnapshotState {
                         current,
                         provider,
                     ));
+                    self.invalidate();
                     None
                 }
             }
@@ -613,6 +650,7 @@ impl SnapshotState {
 
     /// 定向刷新失败: 仅目标 Provider 的合格旧值标 stale (与全量 `fail` 同一资格判定)。
     pub fn mark_provider_stale(&mut self, provider: &str) {
+        let mut changed = false;
         if let Some(services) = self
             .artifact
             .as_mut()
@@ -622,10 +660,15 @@ impl SnapshotState {
             for service in services {
                 if provider_id(service) == provider
                     && collector_policy::is_qualified_previous(service)
+                    && service.get("freshness").and_then(Value::as_str) != Some("stale")
                 {
                     service["freshness"] = json!("stale");
+                    changed = true;
                 }
             }
+        }
+        if changed {
+            self.invalidate();
         }
     }
 
@@ -697,7 +740,7 @@ impl SnapshotState {
                 }
             }
         }
-        panel["runtime"] = json!({"phase":self.phase,"lastSuccessAt":self.last_success_at,"error":self.error,"diagnosticCodes":self.diagnostics});
+        panel["runtime"] = self.runtime_value();
         panel
     }
 }
