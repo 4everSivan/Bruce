@@ -41,7 +41,8 @@ struct ArtifactStoreHarness {
         try await clearCachesRemovesSnapshotsAndStaysUsable(repository: repository)
         try await validatesCalendarDaysStrictlyAndQuickly(repository: repository)
         try await verifiedSnapshotCacheFollowsDiskBytes(repository: repository)
-        print("ArtifactStore tests passed: 7")
+        try await clearWaitsForInFlightBackgroundPublish(repository: repository)
+        print("ArtifactStore tests passed: 8")
     }
 
     /// C106: 逐日校验语义与旧「非宽松 DateFormatter + 回写比对」一致, 且 182 天 ×
@@ -490,6 +491,52 @@ struct ArtifactStoreHarness {
             afterUnknownLoad == unknownData,
             "unknown schema snapshot was modified"
         )
+    }
+
+    /// C261: publish 落盘在后台串行队列进行; 清理缓存必须排在在途写入之后,
+    /// 不能让写入在目录删除后重建快照 (清理落空), 也不能让写入因目录消失而失败。
+    private static func clearWaitsForInFlightBackgroundPublish(
+        repository: URL
+    ) async throws {
+        let root = try temporaryRoot("clear-in-flight")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let writeStarted = DispatchSemaphore(value: 0)
+        let store = try ArtifactStore(
+            rootURL: root,
+            faultInjector: { stage in
+                // 把在途写入停在替换前, 稳定复现「清理恰好发生在写入中途」。
+                if stage == .beforeReplace {
+                    writeStarted.signal()
+                    Thread.sleep(forTimeInterval: 0.2)
+                }
+            }
+        )
+        let artifact = try fixture(repository: repository, module: .agentUsage)
+        let publishing = Task { @MainActor in
+            try await store.publish(artifact, for: .agentUsage)
+        }
+        // 等后台队列真正进入写入阶段再清理 (主线程不被阻塞, 在后台线程等信号)。
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                writeStarted.wait()
+                continuation.resume()
+            }
+        }
+        try store.clearSnapshotCaches()
+        do {
+            _ = try await publishing.value
+        } catch {
+            throw StoreTestFailure.expectation(
+                "in-flight publish failed because clear removed its directory: \(error)"
+            )
+        }
+        do {
+            _ = try store.load(.agentUsage)
+            throw StoreTestFailure.expectation(
+                "snapshot written by an in-flight publish survived the clear"
+            )
+        } catch ArtifactStoreError.noSnapshot {
+        }
     }
 
     private static func clearCachesRemovesSnapshotsAndStaysUsable(

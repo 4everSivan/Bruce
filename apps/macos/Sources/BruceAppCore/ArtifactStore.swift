@@ -84,6 +84,9 @@ package final class ArtifactStore {
     }
 
     private var verifiedSnapshots: [CollectorModule: VerifiedSnapshot] = [:]
+    /// C261: 每次清理缓存递增; 清理前已发出的后台 publish 回到主线程时据此
+    /// 放弃回填内存缓存 (其落盘结果已被随后排队的清理删除)。
+    private var clearGeneration: UInt64 = 0
 
     package convenience init() throws {
         guard let applicationSupport = FileManager.default.urls(
@@ -150,6 +153,7 @@ package final class ArtifactStore {
         for module: CollectorModule,
         attemptedAt: Date = Date()
     ) async throws -> DecodedArtifact {
+        let generation = clearGeneration
         let context = ArtifactStoreDiskContext(
             fileManager: fileManager,
             validator: validator,
@@ -175,6 +179,9 @@ package final class ArtifactStore {
                     }
                 }
             }
+        // 等待期间发生过清理: 磁盘快照已被删除, 内存缓存保持清空, 只把本轮已校验
+        // 对象交回调用方 (与「清理不影响内存面板数据」语义一致)。
+        guard generation == clearGeneration else { return published.decoded }
         verifiedSnapshots[module] = VerifiedSnapshot(
             data: published.data,
             artifact: artifact,
@@ -354,14 +361,29 @@ package final class ArtifactStore {
     /// 只触碰本应用 Application Support/Bruce 下的 snapshots 与 metadata,
     /// 不影响配置, Keychain 凭证和 DeepSeek 月度账本.
     package func clearSnapshotCaches() throws {
+        clearGeneration &+= 1
         verifiedSnapshots.removeAll()
+        // C261: 与后台 publish 同一串行队列执行, 排在已发出的写入之后 —— 否则在途写入
+        // 会在目录删除后重建快照 (清理落空) 或因目录消失而失败。队列任务从不同步回到
+        // 主线程, 这里 sync 等待不会死锁; 只阻塞到在途写入完成 (毫秒级)。
+        let fileManager = fileManager
+        let snapshotsURL = snapshotsURL
+        let metadataURL = metadataURL
+        let removed: Bool = Self.persistenceQueue.sync {
+            do {
+                if fileManager.fileExists(atPath: snapshotsURL.path) {
+                    try fileManager.removeItem(at: snapshotsURL)
+                }
+                if fileManager.fileExists(atPath: metadataURL.path) {
+                    try fileManager.removeItem(at: metadataURL)
+                }
+                return true
+            } catch {
+                return false
+            }
+        }
+        guard removed else { throw ArtifactStoreError.storageFailure }
         do {
-            if fileManager.fileExists(atPath: snapshotsURL.path) {
-                try fileManager.removeItem(at: snapshotsURL)
-            }
-            if fileManager.fileExists(atPath: metadataURL.path) {
-                try fileManager.removeItem(at: metadataURL)
-            }
             try prepareDirectories()
         } catch {
             throw ArtifactStoreError.storageFailure
