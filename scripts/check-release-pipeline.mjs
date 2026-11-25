@@ -399,6 +399,23 @@ if (!/shasum -a 256 Bruce\.zip Bruce-\*\.dmg > SHA256SUMS/.test(workflow)) {
   ok("ci.yml 已将 Bruce.zip 与 Bruce-*.dmg 统一写入 SHA256SUMS 校验和");
 }
 
+// 8. (C266) 工件解包目标目录必须先创建: tag 场景的新 runner 上 local/ 被 gitignore,
+//    `tar -C <dir>` 不会自建目录, 缺 mkdir 会让发版在解包一步失败 (本机与 push 都验证不到)。
+const extracts = [...workflow.matchAll(/tar -C (\S+) -xf/g)];
+if (extracts.length === 0) {
+  fail("ci.yml release 作业未解包 build-release-app 工件 (C266 复用产物链路缺失)");
+}
+for (const match of extracts) {
+  const target = match[1];
+  const before = workflow.slice(0, match.index);
+  const step = before.slice(before.lastIndexOf("- name:"));
+  if (!step.includes(`mkdir -p ${target}`)) {
+    fail(`ci.yml 解包 \`tar -C ${target}\` 前未在同一步骤 \`mkdir -p ${target}\` (新 runner 上目录不存在)`);
+  } else {
+    ok(`解包前创建目标目录 ${target}`);
+  }
+}
+
 if (failed) {
   process.exit(1);
 }

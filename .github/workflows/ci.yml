@@ -140,6 +140,8 @@ jobs:
           path: local/build
       - name: 解包并校验可执行位
         run: |
+          # 新 runner 上 local/ 不在仓库内 (gitignore), tar -C 不会自建目标目录。
+          mkdir -p local/dist
           tar -C local/dist -xf local/build/Bruce-test-app.tar
           rm local/build/Bruce-test-app.tar
           for bin in local/dist/Bruce.app/Contents/MacOS/BruceApp local/dist/Bruce.app/Contents/Resources/Bruce-collector; do
