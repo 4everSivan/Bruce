@@ -11,6 +11,16 @@
 - **请求日志页补齐速度列、自动刷新与 ZCode 明细（C248）**：实机验收后新增「速度」列，按 cc-switch 会话日志估算口径 `output ÷ 总耗时`（`output ≥ 200` 且 `总耗时 ≥ 1000ms`，显示 `≈N/s`；Antigravity 原生库提供总耗时，Claude/Codex 无计时显示「—」），详情 Sheet 增加性能段；模型列/详情/模型用量在归一化失败时回退展示原始标签（如 `Orchestrator (Neon)`），两者皆缺才显示「未标注模型」；补入 ZCode 逐请求行（扫描时只读查询本机 `model_usage` 近 30 天，按 rowid 生成稳定键，读取失败仅丢明细）；Agent 筛选改为自定义 popover 并显示品牌徽章，默认只勾选今日有用量的受支持 Agent、用户改选后不再自动覆盖，「全部 Agent」重复点击保持全选；表格列距调整为 6px，费用与工程不再相连；页面监听 agent-usage artifact 更新（250ms 防抖）并每 30s 兜底查询；后台刷新不清空/重建整表，只对新增请求行做强调色高亮并在 1.8s 后淡出，仅第 1 页自动刷新，保留筛选与页码。
 - **模型价卡补入 Gemini 3.5–4 与 GPT-6.2（C248）**：按 cc-switch 2026-11 价表补入 Gemini 4 Argon / Carbon / Hydrogen / Neon、Gemini 3.8 / 3.7 / 3.6 / 3.5 Flash（含 3.5 Flash Lite）与 GPT-6.2 Sol / Astra、GPT-6 Astra；同步生成 macOS 内置价卡，采集端计费与设置页价卡同源。
 - **请求粒度用量台账（T35–T38）**：新增独立 `request-log-v1.sqlite` 与 `collector-request-log` crate（schema v1、30 天保留、幂等 upsert、费用落库、筛选分页与 distinct models），不混入不可再生的 usage-history 台账；Claude Code / Codex / Antigravity 在现有观测流旁路产出 `RequestRecord`，复用原 dedupe key/step 键，无第二次会话解析；Bridge 新增 `module=request-log` 只读查询（31 天范围、分页/Agent/模型/状态校验），请求库故障仅输出信息级 `LOCAL_REQUEST_LOG_UNAVAILABLE`；mac 设置侧栏新增「请求日志」一级分类，落地摘要条 + 8 列表格 + 居中详情 Sheet（Agent 18px 品牌徽章、菜单 16px、Sheet 18px，含复制 request id、空/加载/错误态）。
+- **Windows 端对齐网络出口国家校验、请求日志与采集隔离（[C264](docs/devel/change/C264.json)）**：设置页新增「网络出口国家校验」卡（国家组、本机回环代理端口、Provider 归属、经 Cloudflare Trace 脱敏回显的测试线路与解散），仪表盘阻断态显示单行问题卡与快照保护；设置侧栏新增「请求日志」页（今日 / 近 7 天 / 近 30 天、Agent 与模型筛选、汇总、分页与行详情）；采集改为租约 + 105s 看门狗，卡死线程不再锁死后续刷新，全量刷新遇定向 / 局部采集在途时排队等待；写快照前轮换 `snapshot.previous.json`，主文件损坏自动回退；采集超时预算对齐 mac 10s / 90s；锁屏期间抑制外部额度查询，睡眠唤醒 60s 去重。Windows 真机验收待完成。
+
+### Changed
+- **采集引擎热路径减负（[C260](docs/devel/change/C260.json)）**：历史台账改 `BETWEEN` 批量查询；Bridge 单次解析并为 Windows 提供强类型入口；回环代理按端口复用连接；稳态零写——jsonl manifest 仅在集合变化时落盘、内容一致的历史天跳过重写、请求日志在来源缓存与计价指纹均未变时跳过 30 天全量重放（指纹含计价逻辑探针，升级后计价代码变化会自动重放一次）、ZCode 请求行按库签名侧缓存；出口探针先于网络并发配额执行。
+- **macOS 主线程减负（[C261](docs/devel/change/C261.json)）**：解码与工作台分析缓存改按单调 `artifactRevision` 判等，publish 直接交回已校验对象免二次解码；快照与元数据落盘（含 fsync）迁入后台串行队列，清理快照缓存与之同队列串行；SQLiteSchemaProbe 合并为单次 sqlite3 调用；菜单栏刷新动效帧只重绘图像；品牌图形 CGPath 与图标负缓存、模型目录键索引。
+- **Windows 热路径 I/O 缓存与看板状态保活（[C262](docs/devel/change/C262.json)）**：设置 / 凭据 / 活动价卡 / 面板视图模型进程内缓存（按文件戳与代数失效），检查更新复用同一次清单响应；设置页去掉无效与重复 IPC；后台刷新保留卡片折叠、所选月份与展开态；跨窗口设置深链改为命令参数 + 事件，不再轮询 localStorage。
+- **跨端单一事实源收敛（首批，[C263](docs/devel/change/C263.json)）**：`config/brand-registry.json` 代码生成三端 Nothing 色阶与 Agent 档位（修正 Windows 浅色杏色阶与 UTF-8 FNV-1a 漂移），删除 app.js 内联品牌图形；mac 三个策略客户端统一经 `PolicyFFITransport` 并做 C ABI 版本握手；`collector-policy` 新增价卡校验 / 防降级与软件更新纯决策（`pricingValidate` / `updateDecide`），Windows 价卡同步仅接受 HTTPS、更新严格三段 SemVer 与 github.com 下载白名单、安装失败提示保留到下一次操作。Swift 侧切换拆出 [C268](docs/devel/change/C268.json)。
+- **依赖与死代码治理（首批，[C265](docs/devel/change/C265.json)）**：三份 Cargo manifest 去掉 `=` 精确钉版（版本仍由各自 Cargo.lock 锁定，tauri 保持 2.11.6）；删除 collector-credential 主机读取层、Windows 不可达命令与跨端死链（约 540 行）；`default_cache_root` 下沉 collector-domain，src-tauri 不再依赖 collector-local；基准工具退出生产二进制；collector-local 的 JSON 缓存统一经 `cache_util` 原子写。锁收敛、巨型模块拆分与重复实现收口拆出 [C269](docs/devel/change/C269.json)。
+- **Schema 契约、Universal 2 打包与 CI（[C266](docs/devel/change/C266.json)）**：schemas 补齐 request-log 模块、context / 凭据字段、`runtime` 诊断分类与 `alertDecide`，由 `schema_contract.rs` 锁定；Preview / Release 共用 Universal 2 构建并断言双架构切片；打包产物统一收口 `local/dist/`；CI release 作业复用构建产物（tar 保留可执行位、解包前建目录并由流水线契约测试锁定），不再整轮重编；删除孤儿脚本。Harness 迁移 testTarget 拆出 [C270](docs/devel/change/C270.json)。
+- **官网数据同步与仓库整理（[C267](docs/devel/change/C267.json)）**：官网同步 11 Agents / 11 Providers（补 Antigravity、Grok Bot，修正 Kimi 路径与 StepFun 计费类型）并开放 Windows 安装包下载，契约测试同步；km 产物（`.cards` / `.staging`）按维护者口径继续入库（TD-013 关闭）；清理 3 个无引用的 Windows 预览 demo。
 
 ### Fixed
 - **请求日志模块评审收紧（[C249](docs/devel/change/C249.json)）**：
@@ -24,6 +34,15 @@
   - **计价**：`pricing_model` 改记实际命中的价卡键（新增 `PricingTable::resolve_with_key`，与 `resolve` 同一匹配）并经 `pricingModel` 回传，详情 Sheet「计价模型」显示命中键、未命中显示「未计价」；重放行覆盖库内 Token 时费用随当前价卡重算（涨价、降价、改为未计价都跟随），与聚合 artifact 同口径，取代原「价格变更不回改历史行」。
   - **设计回写**：design/14 修正首批来源、合并与计价细则、查询路径、`models` 语义与可观测口径，§4.3 改为已实现并列出残余说明。
 - **Windows CI 请求日志测试隔离（[C250](docs/devel/change/C250.json)）**：Windows 上 `resolve_request_log_path` 固定解析到 `%LOCALAPPDATA%\Bruce`，采集用例与 bridge 空库用例此前未注入 `paths.request_log_db`，`cargo test` 会把夹具请求行写进 runner/开发机的真实请求库，并使空库用例随后读到已存在的库而断言 `notice` 失败（CI run 44673267017）；现统一注入临时路径覆盖，bridge 用例显式指向不存在的库，产品路径解析与查询行为不变。
+- **Windows 导出 ACL、预警死锁与设置并发写（[C251](docs/devel/change/C251.json)）**：导出 CSV / JSON / 诊断不再改写用户所选目录的 ACL（原会关闭继承并剥离 SYSTEM / Administrators）；应用私有目录 ACL 每进程只施放一次；预警投递前释放快照锁，消除与主线程的 AB-BA 死锁；清理用量缓存同步清空内存快照；settings.json 读改写进程内串行，设置页保存保留后台写入的同步 / 检查时间，看板排序基于最新设置；Agent 卡内连点刷新合并为一次后续执行。
+- **Windows 凭据存储修复与加固（[C252](docs/devel/change/C252.json)）**：Codex 设备码登录写入与存储校验一致的过期时间；畸形历史账号原样保留且不阻断其他 Provider 写入；凭据文件改为 DPAPI 加密存储，旧明文文件启动时一次性迁移；智谱 / StepFun 域名与 Cookie 校验改为 https + 精确后缀匹配；StepFun 登录轮询移出主线程；claude_local 过期时间统一单位。**破坏性**：迁移为密文后，降级到 0.18.x 及更早版本会无法读取并在下次保存时覆盖已存凭据，降级需重新连接订阅。
+- **采集器计费正确性（[C253](docs/devel/change/C253.json)）**：解析期间文件被追加时不写回缓存，追加段不再被重复计费；空或仅前缀的模型名不再命中价卡；动态注入的峰谷 / 长上下文分档按请求生效；$0 价卡模型按已计价处理；Codex 回退去重键补回 cache_creation。
+- **Provider 额度重试与解析（[C254](docs/devel/change/C254.json)）**：额度重试遵守本地用量与能力门禁；ClinePass 阈值为空不再判为已授权；Claude / StepFun 主动刷新失败后不再二次刷新；VolcEngine 限流短路候选重试、空 Coding Plan 回退 AFP；Kimi 负剩余量钳位、StepFun 非正重置时间视为无；直连请求不再跟随重定向；时间戳解析接受小数并饱和极值。
+- **macOS 进程探针与凭据并发（[C255](docs/devel/change/C255.json)）**：探针超时 / 取消后的 SIGTERM 宽限等待不再空转占满 CPU，只对有效 pid 发 SIGKILL；Claude 钥匙串读取与诊断打包移出主线程并并发排空管道；Codex 刷新在途时断开或重新登录的账号不会被迟到结果复活或覆盖；凭据文件 I/O 错误不再被当作损坏挪走，`.bak` 0600 原子写；StepFun 登录窗改为非持久化存储并精确校验域名；移除 Codex 真正清空配置。`.claudeCLI` 外部源门禁按 C060 设计保持不变。
+- **macOS 运行时生命周期与调度器（[C256](docs/devel/change/C256.json)）**：全局热键随监视器释放反注册；CollectorRunner 的 stdin 写入移出主线程、输出有界读取；调度器挂起期间不覆盖用户开关与新意图，启用中的模块首次刷新被取消后可再次调度，stop 取消在途任务；价卡自动同步在途时不再并发手动同步且不显示同步中，大小写重复的模型名不再崩溃；取消更新下载后等在途写入退出再清理暂存；退出时停止更新与价卡同步；请求日志查询传播取消；玻璃面板补 addChild。
+- **SQLite 并发与 FFI 边界（[C257](docs/devel/change/C257.json)）**：请求库写入改为 IMMEDIATE 事务、查询在同一读快照内完成；外部只读库补 busy_timeout，含 `?` / `#` 的路径不再按 URI 解析；ZCode 扫描透传取消；Mach CPU 时间按 timebase 换算；策略 FFI 先校验长度再解引用。
+- **Antigravity 扫描与缓存（[C258](docs/devel/change/C258.json)）**：只存在一个根时不再报会话读取失败；只有 DONE 的 planner step 计为完成；空行不计畸形；缓存身份纳入时区 / 设备 / inode 并回收过期缓存；第二个根的原生库同样生效；热路径减少重复克隆与全表扫描。
+- **Windows 界面缺陷与 Widget 转义（[C259](docs/devel/change/C259.json)）**：预警弹窗恢复品牌图标；价卡搜索只重绘表格、输入不丢焦点；欢迎页去掉破图并同步双端文案；关闭服务弹窗停止 Codex 轮询，连点移除只保留一个确认框，引导外链经系统浏览器打开；价格加载失败回退为空列表；无订阅时 Ctrl+2 可用；Widget 横轴日期转义、颜色表不再命中原型键。
 
 ## [0.18.0] - 2026-11-18
 

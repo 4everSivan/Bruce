@@ -88,7 +88,7 @@
   "rejections": [],
   "sync": {
     "design_pinned": false,
-    "changelog": false,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
