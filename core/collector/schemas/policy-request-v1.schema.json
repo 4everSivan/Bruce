@@ -90,6 +90,27 @@
       }
     },
     {
+      "title": "alertDecide: 额度预警决策 (T29/T30, design/02 规则 15)",
+      "additionalProperties": false,
+      "required": ["nowMs", "deliverable", "services"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "alertDecide" },
+        "nowMs": { "type": "integer", "description": "当前时间 (epoch 毫秒)" },
+        "deliverable": { "type": "boolean" },
+        "services": { "$ref": "#/$defs/services" },
+        "previousState": {
+          "type": ["object", "null"],
+          "description": "上次持久化预警状态; null / 缺省表示静默 bootstrap"
+        },
+        "activeKeys": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
+    {
       "title": "backoff: 刷新退避秒数 (T17)",
       "additionalProperties": false,
       "required": ["retryCount", "rateLimited", "base", "max", "rateLimit"],

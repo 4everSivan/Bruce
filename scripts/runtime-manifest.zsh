@@ -249,6 +249,53 @@ Bruce_validate_release_bundle() {
                 echo "Rust Collector 缺少目标架构: $expected_arch" >&2
                 return 1
             fi
+            # C266: Swift 主可执行文件必须与 Collector 同为 Universal 2。
+            if ! lipo "$app_executable" -verify_arch "$expected_arch" >/dev/null 2>&1; then
+                echo "BruceApp 缺少目标架构: $expected_arch" >&2
+                return 1
+            fi
         done
     fi
+}
+
+# C266: 统一 Swift BruceApp 可执行文件构建 (Preview/Release 共用)。
+# $1 仓库根, $2 configuration, $3 空格分隔架构; 最终可执行路径打印到 stdout,
+# 构建日志写 stderr, 多架构经 lipo 合并并断言切片齐全。
+Bruce_build_swift_app_executable() {
+    local repo_root="$1"
+    local configuration="$2"
+    local archs="$3"
+    local package="$repo_root/apps/macos"
+    local output_dir="$repo_root/local/build/swift-app/$configuration"
+    mkdir -p "$output_dir" || return 1
+    local -a binaries
+    local arch bin_dir
+    for arch in ${(s: :)archs}; do
+        echo "编译 BruceApp ($configuration, $arch)" >&2
+        swift build --package-path "$package" --configuration "$configuration" \
+            --triple "${arch}-apple-macosx" --product BruceApp >&2 || return 1
+        bin_dir=$(swift build --package-path "$package" --configuration "$configuration" \
+            --triple "${arch}-apple-macosx" --show-bin-path) || return 1
+        if [[ ! -x "$bin_dir/BruceApp" ]]; then
+            echo "缺少 BruceApp ($arch): $bin_dir/BruceApp" >&2
+            return 1
+        fi
+        cp -p "$bin_dir/BruceApp" "$output_dir/BruceApp-$arch" || return 1
+        binaries+=("$output_dir/BruceApp-$arch")
+    done
+    local executable
+    if [[ ${#binaries[@]} -eq 1 ]]; then
+        executable="${binaries[1]}"
+    else
+        executable="$output_dir/BruceApp-universal"
+        lipo -create "${binaries[@]}" -output "$executable" >&2 || return 1
+    fi
+    local expected_arch
+    for expected_arch in ${(s: :)archs}; do
+        if ! lipo "$executable" -verify_arch "$expected_arch" >/dev/null 2>&1; then
+            echo "BruceApp 缺少目标架构: $expected_arch" >&2
+            return 1
+        fi
+    done
+    print -r -- "$executable"
 }

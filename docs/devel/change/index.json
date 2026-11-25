@@ -226,7 +226,7 @@
     },
     "C266": {
       "title": "协议 Schema 同步与契约化、Release Universal 2 打包修复及 CI/测试流程提效",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C266-schema-contracts-packaging-and-ci-pipeline",
       "topic": "SystemOverview",
       "file": "docs/devel/change/C266.json"

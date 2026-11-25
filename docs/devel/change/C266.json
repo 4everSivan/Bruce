@@ -4,7 +4,7 @@
   "title": "协议 Schema 同步与契约化、Release Universal 2 打包修复及 CI/测试流程提效",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C266-schema-contracts-packaging-and-ci-pipeline",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"alertDecide|request-log|--configuration release --product BruceApp|Bruce-test-app\" core/collector/schemas/ scripts/build-release-app.sh .github/workflows/ci.yml",
     "expected": "`policy-*-v1.schema.json` 无 `alertDecide`；`request-v1.schema.json` 无 `request-log`；`build-release-app.sh:112` 无 `--triple` 与 `lipo`；`ci.yml` 重复执行 `build-test-app.sh --universal --dmg`",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核：build-release-app.sh 仅单架构 swift build，build-test-app.sh 有 Universal 2 逻辑但两脚本重复；schemas/request-v1 缺 request-log 模块与新上下文字段、quotaAccounts 约束过窄；response-v1 诊断 category 缺 runtime；policy schemas 缺 alertDecide；macOS 20 个 Harness 仍为 executable 而非 testTarget；scripts/test-stepfun-token.sh 仍存在。已实施：①构建脚本抽出 Bruce_build_swift_app_executable（Preview/Release 共用），Release 按 BRUCE_RUST_TARGET_ARCHS 双架构构建、lipo 合并并断言 Collector/BruceApp 双切片；②schemas 同步：request-v1 补 request-log/8 个 context 字段/claudeOAuth/grokOAuth/opencodeGoQuotaAccounts/放宽 quotaAccounts 与 codex 账号、response-v1 补 runtime 分类、policy-request/response 补 alertDecide；③新增 collector-bridge/tests/schema_contract.rs 锁定上述集合。已删除零引用 scripts/test-stepfun-token.sh。未做：CI 产物复用、output local/dist 收口、Harness 迁移。"
   },
   "callback": {
     "before": [

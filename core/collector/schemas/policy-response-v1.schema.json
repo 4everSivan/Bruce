@@ -17,11 +17,12 @@
         "boundaryIds",
         "boundaryWake",
         "backoff",
+        "alertDecide",
         null
       ]
     },
     "result": {
-      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; boundaryIds → {boundaries}; boundaryWake → {delay, consumed}; backoff → {seconds}; 失败时为 null",
+      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; boundaryIds → {boundaries}; boundaryWake → {delay, consumed}; backoff → {seconds}; alertDecide → {state, events}; 失败时为 null",
       "oneOf": [
         {
           "type": "object",
@@ -62,6 +63,15 @@
           "required": ["seconds"],
           "properties": {
             "seconds": { "type": "number" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "events"],
+          "properties": {
+            "state": { "type": "object" },
+            "events": { "type": "array", "items": { "type": "object" } }
           }
         },
         { "type": "null" }

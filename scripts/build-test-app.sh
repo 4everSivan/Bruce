@@ -68,54 +68,13 @@ Bruce_validate_rust_source "$BRUCE_REPO_ROOT" release
 echo "编译共享策略静态库 (local/build/policy-ffi)"
 Bruce_build_policy_ffi "$BRUCE_REPO_ROOT"
 
+# C266: Swift 构建统一走 runtime-manifest, Universal 2 由 lipo 合并并断言双架构。
 if [[ "$BRUCE_BUILD_UNIVERSAL" == true ]]; then
-    echo "编译 Bruce Preview 可执行文件 (arm64)"
-    swift build \
-        --package-path "$BRUCE_SWIFT_PACKAGE" \
-        --configuration release \
-        --triple arm64-apple-macosx \
-        --product BruceApp
-    BRUCE_BIN_DIR="$(swift build \
-        --package-path "$BRUCE_SWIFT_PACKAGE" \
-        --configuration release \
-        --triple arm64-apple-macosx \
-        --show-bin-path)"
-    BRUCE_BIN_ARM64="$BRUCE_STAGING_ROOT/BruceApp-arm64"
-    cp -p "$BRUCE_BIN_DIR/BruceApp" "$BRUCE_BIN_ARM64"
-
-    echo "编译 Bruce Preview 可执行文件 (x86_64)"
-    swift build \
-        --package-path "$BRUCE_SWIFT_PACKAGE" \
-        --configuration release \
-        --triple x86_64-apple-macosx \
-        --product BruceApp
-    BRUCE_BIN_DIR="$(swift build \
-        --package-path "$BRUCE_SWIFT_PACKAGE" \
-        --configuration release \
-        --triple x86_64-apple-macosx \
-        --show-bin-path)"
-    BRUCE_BIN_X86="$BRUCE_STAGING_ROOT/BruceApp-x86_64"
-    cp -p "$BRUCE_BIN_DIR/BruceApp" "$BRUCE_BIN_X86"
-
-    BRUCE_EXECUTABLE="$BRUCE_STAGING_ROOT/BruceApp-universal"
-    lipo -create "$BRUCE_BIN_ARM64" "$BRUCE_BIN_X86" -output "$BRUCE_EXECUTABLE"
+    BRUCE_SWIFT_ARCHS="arm64 x86_64"
 else
-    echo "编译 Bruce Preview 可执行文件"
-    swift build \
-        --package-path "$BRUCE_SWIFT_PACKAGE" \
-        --configuration release \
-        --product BruceApp
-    BRUCE_BIN_DIR=$(swift build \
-        --package-path "$BRUCE_SWIFT_PACKAGE" \
-        --configuration release \
-        --show-bin-path)
-    BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
+    BRUCE_SWIFT_ARCHS="$(uname -m)"
 fi
-
-if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
-    echo "Release 可执行文件不存在: $BRUCE_EXECUTABLE" >&2
-    exit 1
-fi
+BRUCE_EXECUTABLE=$(Bruce_build_swift_app_executable "$BRUCE_REPO_ROOT" release "$BRUCE_SWIFT_ARCHS")
 
 echo "组装 Bruce.app"
 mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES"

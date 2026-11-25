@@ -109,15 +109,8 @@ Bruce_build_policy_ffi "$BRUCE_REPO_ROOT"
 
 echo "[2/5] Release 构建与 App 组装"
 
-swift build \
-    --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration release \
-    --product BruceApp
-BRUCE_BIN_DIR=$(swift build \
-    --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration release \
-    --show-bin-path)
-BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
+# C266: Universal 2 Swift 构建与 Preview 共用同一实现, 并断言双架构切片。
+BRUCE_EXECUTABLE=$(Bruce_build_swift_app_executable "$BRUCE_REPO_ROOT" release "$BRUCE_RUST_TARGET_ARCHS")
 
 if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
     echo "Release 可执行文件不存在: $BRUCE_EXECUTABLE" >&2

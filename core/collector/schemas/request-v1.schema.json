@@ -76,7 +76,8 @@
     },
     "module": {
       "enum": [
-        "agent-usage"
+        "agent-usage",
+        "request-log"
       ]
     },
     "timeouts": {
@@ -183,6 +184,38 @@
             "type": "string"
           }
         },
+        "operation": {
+          "type": "string",
+          "description": "request-log 查询操作 (design/14); 当前仅只读分页查询"
+        },
+        "start": {
+          "type": "integer",
+          "description": "request-log 时间窗起点 (epoch 毫秒)"
+        },
+        "end": {
+          "type": "integer",
+          "description": "request-log 时间窗终点 (epoch 毫秒)"
+        },
+        "agentIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "model": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
         "egressRules": {
           "type": "object",
           "description": "按服务商提供国家代码及专用回环 HTTP 代理端口；空端口由采集端阻断。",
@@ -208,9 +241,10 @@
       "type": "object",
       "minProperties": 1,
       "maxProperties": 64,
+      "description": "每个账号至少含 display_name; api_key / access_token / refresh_token / expiry / 平台扩展字段按 Provider 原样透传 (C266: 不再只允许 display_name)。",
       "additionalProperties": {
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "required": [
           "display_name"
         ],
@@ -260,10 +294,9 @@
     },
     "codexQuotaAccount": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": [
-        "display_name",
-        "access_token"
+        "display_name"
       ],
       "properties": {
         "display_name": {
@@ -292,6 +325,17 @@
           "$ref": "#/$defs/quotaAccounts"
         },
         "zhipuQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "claudeOAuth": {
+          "type": "object",
+          "description": "Claude CLI 登录态包装 (claudeAiOauth)"
+        },
+        "grokOAuth": {
+          "type": "object",
+          "description": "Grok CLI scope 映射"
+        },
+        "opencodeGoQuotaAccounts": {
           "$ref": "#/$defs/quotaAccounts"
         },
         "claudeQuotaAccounts": {
