@@ -1149,15 +1149,16 @@ mod concurrency_tests {
         let started = std::time::Instant::now();
         assert!(
             run_with_watchdog("watchdog-timeout", Duration::from_millis(20), || {
-                std::thread::sleep(Duration::from_millis(200));
+                // 子线程故意远长于预算：CI 调度抖动下仍应远早于它返回。
+                std::thread::sleep(Duration::from_secs(1));
                 1u8
             })
             .is_err()
         );
         let elapsed = started.elapsed();
         assert!(
-            elapsed < Duration::from_millis(150),
-            "超时必须在预算内返回, elapsed={elapsed:?}"
+            elapsed < Duration::from_millis(500),
+            "超时必须在预算内返回且不等待子线程, elapsed={elapsed:?}"
         );
     }
 }
