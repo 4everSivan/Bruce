@@ -19,7 +19,7 @@
     "command": "rg -n \"load_day_models|send_via_loopback_proxy|run_id_of|persist_request_logs|fill_buf|Mutex<Option<Instant>>\" core/collector/crates/",
     "expected": "`HistoryStore::load` 逐日单条 SQL 查询；`send_via_loopback_proxy` 每次 `AgentBuilder::new()`；`run_bytes_panic_safe` 两次 `from_slice`；`CancellationState::deadline` 为 `Mutex`",
     "is_completed": false,
-    "evidence": "HEAD 复核命中：HistoryStore::load 逐日 query_row + 每日 prepare；桥接入口先 run_id_of 再 run_bytes 双解析；Windows 进程内先 to_vec 再双解析；send_via_loopback_proxy 每次新建 Agent；CancellationState.deadline 为 Mutex；read_bounded_line 用 iter().position；resolve_pricing_table 先 to_vec 再 from_slice。"
+    "evidence": "HEAD 复核命中：HistoryStore::load 逐日 query_row + 每日 prepare；桥接入口先 run_id_of 再 run_bytes 双解析；Windows 进程内先 to_vec 再双解析；send_via_loopback_proxy 每次新建 Agent；CancellationState.deadline 为 Mutex；read_bounded_line 用 iter().position；resolve_pricing_table 先 to_vec 再 from_slice。2026-11-25 复核：上述九项已全部落地。历史台账 BETWEEN 批量查询、Bridge 单次解析 + Windows 强类型入口、按端口复用 ureq Agent、deadline OnceLock、memchr、from_value 价卡注入均已完成；本轮补齐 ①jsonl manifest 仅在集合/源根变化时落盘（等价天不再重写，新增回归用例以回拨 mtime 断言）；②merge_versioned 对总量+桶 JSON+日×模型完全一致的历史天短路（今日仍整体替换，新增 MergeStats.unchanged_days）；③请求日志按来源缓存签名 + PricingTable::fingerprint 跳过 30 天全量重放（标记文件 <request-log-db>.replay.json，仍执行保留期清理，新增 request_log_replay_skipped 指标与价卡变更重算用例）；④ZCode 请求行按 SqliteSignature 侧缓存，库无变更时不再重开全表扫描，保留期前移只剔除过期行；⑤day_list 定位改用二分；⑥出口探针先于 network_permit，探针失败不再占用网络并发配额。验证：collector workspace 32 套件全绿、clippy -D warnings 通过。未完成：卡内「行为实测」所需的真机稳态 WAL 增量/耗时对比尚未在部署实例上采集，留待人工验收时补证；C260 仍保持 in_progress。"
   },
   "callback": {
     "before": [
