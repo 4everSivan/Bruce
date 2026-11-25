@@ -675,9 +675,9 @@ impl UsageContributionBuilder {
             .keys()
             .any(|day| self.window.day_list.binary_search(day).is_err())
             || contribution
-            .hour_models_today
-            .keys()
-            .any(|hour| usize::from(*hour) >= self.hours.len());
+                .hour_models_today
+                .keys()
+                .any(|hour| usize::from(*hour) >= self.hours.len());
         if detail_outside_window {
             return false;
         }
