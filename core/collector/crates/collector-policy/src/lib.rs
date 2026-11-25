@@ -15,6 +15,7 @@ pub mod alerts;
 pub mod quota;
 pub mod refresh;
 pub mod request;
+pub mod update;
 
 pub use quota::{
     annotate_provider, annotate_services, attempt_at, captured_at, is_failed_status,

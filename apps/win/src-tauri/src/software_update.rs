@@ -67,86 +67,11 @@ pub struct ReleaseInfo {
 }
 
 /// 三段 semver 比较; 解析失败按 (0.0.0) 处理, 容忍 `v` 前缀。
-pub fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
-    parse_semver(a).cmp(&parse_semver(b))
-}
-
-fn parse_semver(value: &str) -> (u64, u64, u64) {
-    let parts: Vec<&str> = value.trim().trim_start_matches('v').split('.').collect();
-    let pick = |index: usize| -> u64 {
-        parts
-            .get(index)
-            .map(|s| {
-                s.chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect::<String>()
-                    .parse()
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0)
-    };
-    (pick(0), pick(1), pick(2))
-}
-
-/// 严格三段 SemVer (C263, 对齐 mac `SemanticVersion`): 可带 `v`/`V` 前缀,
-/// 恰好 3 段且每段为非空纯数字; 预发布 / 构建后缀 / 缺段一律无效。
-/// 清单版本不合法时整份清单无效, 不得进入跳过判定或下载。
-pub fn is_strict_semver(value: &str) -> bool {
-    let text = value.trim();
-    let text = text
-        .strip_prefix('v')
-        .or_else(|| text.strip_prefix('V'))
-        .unwrap_or(text);
-    let parts: Vec<&str> = text.split('.').collect();
-    parts.len() == 3
-        && parts
-            .iter()
-            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-}
-
-/// 清单下载地址白名单 (C263, 对齐 mac `UpdateRelease.parse`): 仅允许
-/// `https://github.com/...`。被污染的清单不得把安装包指向第三方主机。
-pub fn is_allowed_download_url(value: &str) -> bool {
-    let Some((scheme, rest)) = value.split_once("://") else {
-        return false;
-    };
-    if !scheme.eq_ignore_ascii_case("https") {
-        return false;
-    }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    // 去掉 userinfo 与端口, 只比较主机名 (mac 使用 URL.host, 不含端口)。
-    let host_port = authority.rsplit('@').next().unwrap_or("");
-    let host = host_port.split(':').next().unwrap_or("");
-    host.eq_ignore_ascii_case("github.com")
-}
-
-/// 跳过判定 (07 §4.2 R4): 跳过 vN 后, 远端仍是 vN → 不再提醒; 出现更新的版本 → 自动恢复。
-pub enum SkipDecision {
-    /// 未跳过或版本不同: 正常呈现, 且 offered > skipped 时应清除跳过记录。
-    Offer { clear_skip: bool },
-    /// offered == skipped: 维持「已跳过」呈现。
-    Ignore,
-}
-
-pub fn skip_decision(offered: &str, skipped: Option<&str>) -> SkipDecision {
-    match skipped {
-        None => SkipDecision::Offer { clear_skip: false },
-        Some(skipped) if compare_semver(offered, skipped) == std::cmp::Ordering::Equal => {
-            SkipDecision::Ignore
-        }
-        Some(skipped) => SkipDecision::Offer {
-            clear_skip: compare_semver(offered, skipped) == std::cmp::Ordering::Greater,
-        },
-    }
-}
-
-/// 本地版本追平或超过跳过版本时应清除跳过记录 (07 §4.2 R4)。
-pub fn should_clear_skipped_on_catchup(local_version: &str, skipped: Option<&str>) -> bool {
-    match skipped {
-        Some(s) => compare_semver(local_version, s) != std::cmp::Ordering::Less,
-        None => false,
-    }
-}
+/// C263: 实现已下沉 `collector_policy::update`, 两端共用同一份规则。
+pub use collector_policy::update::{
+    compare_semver, is_allowed_download_url, is_manifest_trustworthy, is_strict_semver,
+    should_clear_skipped_on_catchup, skip_decision, SkipDecision,
+};
 
 /// ureq 拉清单的失败分类: HTTP 状态码直接映射; 传输错误按 io kind 分超时/离线。
 pub fn classify_transport_failure(error: &ureq::Error) -> (UpdateFailureKind, Option<u16>) {
