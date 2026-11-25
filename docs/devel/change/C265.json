@@ -4,7 +4,7 @@
   "title": "Rust 三锁分裂治理、跨模块死代码清理、缓存引擎收口与巨型模块拆分",
   "version": "0.19.0",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C265-cargo-workspace-unify-and-dead-code-cleanup",
   "is_hotfix": false,
   "target": {
@@ -64,10 +64,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -80,8 +80,8 @@
         "item": "行为实测",
         "true_if": "删除死代码、路径下沉与缓存统一后，`Bruce-collector`、macOS 与 Windows 端冷启动、采集、设置保存与导出行为等价",
         "false_if": "任何功能或对拍结果出现偏差",
-        "evidence": "未实测：冷启动、采集、设置保存与导出的真机等价性；文件规模统计随巨型模块拆分移至 C269。",
-        "result": null
+        "evidence": "未实测：冷启动、采集、设置保存与导出的真机等价性；文件规模统计随巨型模块拆分移至 C269。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -94,15 +94,19 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

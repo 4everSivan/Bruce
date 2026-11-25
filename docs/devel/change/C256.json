@@ -4,7 +4,7 @@
   "title": "macOS 采集管道主线程阻塞、热键悬垂指针、调度器状态机与更新/同步并发修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C256-macos-runtime-lifecycle-and-scheduler-races",
   "is_hotfix": false,
   "target": {
@@ -58,31 +58,31 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "扩展 `GlobalHotkeyHarness`、`CollectorRunnerHarness`、`RefreshSchedulerHarness`、`PricingCatalogSyncHarness`、`SoftwareUpdateHarness`、`BruceRequestLogHarness` 覆盖上述并发/边界回归用例，全部 20 Harness 与 `verify-local.sh` 全绿",
         "false_if": "任一 Harness 失败或缺少对应回归测试",
-        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。原提交未附测试；评审补 ce083dbe 三例（均已验证回退修复后失败）：firstCancellationKeepsEnabledModuleSchedulable（RefreshScheduler 139）、testAutoSyncInFlightBlocksManualSyncSilently（PricingCatalogSync 13）、cancelDownloadCleansUpAfterInFlightWriteFinishes（SoftwareUpdate 52）。缺口：热键 deinit 反注册、CollectorRunner 主线程 stdin / terminationHandler / 有界读取、RequestLogClient 取消传播、调度器挂起期间状态合并、玻璃面板 addChild、退出时停止更新 / 价卡服务无专门用例，结果待人工裁定。",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。原提交未附测试；评审补 ce083dbe 三例（均已验证回退修复后失败）：firstCancellationKeepsEnabledModuleSchedulable（RefreshScheduler 139）、testAutoSyncInFlightBlocksManualSyncSilently（PricingCatalogSync 13）、cancelDownloadCleansUpAfterInFlightWriteFinishes（SoftwareUpdate 52）。缺口：热键 deinit 反注册、CollectorRunner 主线程 stdin / terminationHandler / 有界读取、RequestLogClient 取消传播、调度器挂起期间状态合并、玻璃面板 addChild、退出时停止更新 / 价卡服务无专门用例，结果待人工裁定。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "行为实测",
         "true_if": "加载大体积价卡刷新主界面不阻塞；快速连续切换请求日志筛选不残留多余 `Bruce-collector` 进程；应用退出干净收尾",
         "false_if": "主线程卡顿、有残留子进程或关闭报错",
-        "evidence": "未实测（需 mac 真机）：大价卡刷新主界面不阻塞、快速切换请求日志筛选不残留 Bruce-collector 进程、退出干净收尾。",
-        "result": null
+        "evidence": "未实测（需 mac 真机）：大价卡刷新主界面不阻塞、快速切换请求日志筛选不残留 Bruce-collector 进程、退出干净收尾。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "既有面板玻璃效果、自动刷新节拍、软件更新自替换与请求日志页功能不受影响",
         "false_if": "引发其他生命周期或 UI 回归",
-        "evidence": "自动化：GlobalHotkeyHarness、DashboardGlassSurfaceHarness（10）、BruceRequestLogHarness、SoftwareUpdate（52）、NativeLifecycle（23）全过；玻璃效果与真实自替换更新需真机。",
-        "result": null
+        "evidence": "自动化：GlobalHotkeyHarness、DashboardGlassSurfaceHarness（10）、BruceRequestLogHarness、SoftwareUpdate（52）、NativeLifecycle（23）全过；玻璃效果与真实自替换更新需真机。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       }
     ]
   },
@@ -90,13 +90,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

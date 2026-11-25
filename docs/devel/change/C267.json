@@ -4,7 +4,7 @@
   "title": "官网产品数据同步、仓库暂存脏文件清理（TD-013）与废弃 Demo 整理",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C267-website-sync-and-repo-hygiene",
   "is_hotfix": false,
   "target": {
@@ -63,10 +63,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -79,8 +79,8 @@
         "item": "行为实测",
         "true_if": "本地构建预览官网页面（桌面与移动端 `responsive-check.mjs`）：11 Agents、Grok Bot/Antigravity、下载链接与三主题面板交互正常",
         "false_if": "页面脚本报错、图标缺失或响应式校验失败",
-        "evidence": "未实测：本地预览官网桌面 / 移动端（responsive-check.mjs）。",
-        "result": null
+        "evidence": "未实测：本地预览官网桌面 / 移动端（responsive-check.mjs）。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -95,13 +95,17 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

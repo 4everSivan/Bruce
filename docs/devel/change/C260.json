@@ -4,7 +4,7 @@
   "title": "采集引擎热路径优化：历史库批量查询、写放大短路、请求日志按需持久化与代理连接池",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C260-collector-hotpath-perf",
   "is_hotfix": false,
   "target": {
@@ -66,31 +66,31 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；新增 `HistoryStore` 批量查询等价性、等价日零 SQLITE_CHANGES 跳过、Bridge 强类型入口与代理 Agent 缓存复用测试",
         "false_if": "任一用例失败、存在 clippy 告警或统计口径出现偏差",
-        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：typed_entry_matches_byte_entry（Bridge 强类型入口等价）、unchanged_days_are_not_rewritten（等价日短路）、unchanged_scan_does_not_rewrite_jsonl_manifest、pricing_fingerprint_is_stable_and_sensitive、请求日志重放跳过与价卡变更重算（request_log_rows_are_idempotent_and_keep_aggregate_parity）；评审补 b198f6f6：request_log_pricing_fingerprint_folds_real_cost_probes（重放标记折入计价逻辑探针，升级后计价 / 归一代码变化自动重放一次）。缺口：HistoryStore BETWEEN 批量查询与逐日查询等价、代理 ureq Agent 按端口复用无专门用例（既有历史台账用例覆盖读写结果），结果待人工裁定。",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：typed_entry_matches_byte_entry（Bridge 强类型入口等价）、unchanged_days_are_not_rewritten（等价日短路）、unchanged_scan_does_not_rewrite_jsonl_manifest、pricing_fingerprint_is_stable_and_sensitive、请求日志重放跳过与价卡变更重算（request_log_rows_are_idempotent_and_keep_aggregate_parity）；评审补 b198f6f6：request_log_pricing_fingerprint_folds_real_cost_probes（重放标记折入计价逻辑探针，升级后计价 / 归一代码变化自动重放一次）。缺口：HistoryStore BETWEEN 批量查询与逐日查询等价、代理 ureq Agent 按端口复用无专门用例（既有历史台账用例覆盖读写结果），结果待人工裁定。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "行为实测",
         "true_if": "本机稳态热刷新对比基线：历史读写耗时、WAL 增量字节与 CPU 占用有明显可量化下降，请求库与聚合产物完全一致",
         "false_if": "耗时未降反升或产生数据不一致",
-        "evidence": "未实测：部署实例上的稳态 WAL 增量 / 耗时 / CPU 对比基线未采集（precheck 已注明）。",
-        "result": null
+        "evidence": "未实测：部署实例上的稳态 WAL 增量 / 耗时 / CPU 对比基线未采集（precheck 已注明）。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "Windows/macOS 采集结果、`PanelParityHarness` 与所有基准 fixture 一致",
         "false_if": "影响既有统计数值或并发取消语义",
-        "evidence": "Panel 视图模型与工作台双端 golden、collector fixture 全过；Windows 同经共享引擎，未在 Windows 实机对比采集结果。",
-        "result": null
+        "evidence": "Panel 视图模型与工作台双端 golden、collector fixture 全过；Windows 同经共享引擎，未在 Windows 实机对比采集结果。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       }
     ]
   },
@@ -98,13 +98,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

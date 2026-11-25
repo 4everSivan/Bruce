@@ -4,7 +4,7 @@
   "title": "采集器额度重试门禁、ClinePass 空真值与 Provider OAuth/限流重试修复",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C254-collector-provider-quota-and-retry-guards",
   "is_hotfix": false,
   "target": {
@@ -60,17 +60,17 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；针对 7 项逻辑缺陷全部补充单元测试并断言 mock HTTP 请求次数与错误类型",
         "false_if": "任一用例失败或仍存在无意义重复 HTTP 请求",
-        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖 7 类缺陷共 10 例：cline_provider_rejects_empty_or_partial_pass_thresholds、quota_retry_only_respects_local_usage_and_capability_gates、claude_proactive_refresh_failure_stops_after_one_request 与 stepfun_proactive_refresh_failure_stops_after_one_request（断言只发 1 次请求）、volcengine_rate_limit_short_circuits_candidate_retries、volc_error_switches_candidate、volcengine_falls_back_to_afp_usage_on_empty_coding_plan、kimi_negative_remaining_clamps_percent、stepfun_non_positive_reset_is_none、parse_ms_accepts_fractional_and_saturates_extremes。缺口：直连重定向次数上限未见专门用例，结果待人工裁定是否补测。",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖 7 类缺陷共 10 例：cline_provider_rejects_empty_or_partial_pass_thresholds、quota_retry_only_respects_local_usage_and_capability_gates、claude_proactive_refresh_failure_stops_after_one_request 与 stepfun_proactive_refresh_failure_stops_after_one_request（断言只发 1 次请求）、volcengine_rate_limit_short_circuits_candidate_retries、volc_error_switches_candidate、volcengine_falls_back_to_afp_usage_on_empty_coding_plan、kimi_negative_remaining_clamps_percent、stepfun_non_positive_reset_is_none、parse_ms_accepts_fractional_and_saturates_extremes。缺口：直连重定向次数上限未见专门用例，结果待人工裁定是否补测。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "行为实测",
@@ -92,13 +92,17 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

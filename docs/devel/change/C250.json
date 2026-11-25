@@ -4,7 +4,7 @@
   "title": "请求日志测试隔离：Windows 采集用例注入请求库路径并封闭 bridge 空库用例",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C250-request-log-test-isolation",
   "is_hotfix": false,
   "target": {
@@ -47,10 +47,10 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261120-02",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -63,8 +63,8 @@
         "item": "Windows CI 复验",
         "true_if": "推送后 CI/CD 的「Rust 验证 (Windows)」作业转绿，空库用例通过",
         "false_if": "Windows 作业仍失败",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行：本地未推送，Windows CI 未运行；按维护者签收口径记 false（ADVISORY），待推送后 CI 补证。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -78,14 +78,18 @@
   "rejections": [],
   "sync": {
     "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "changelog": true,
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
-    "version": "1.8.0",
-    "ran_at": "",
-    "exit_code": null
+    "version": "1.8.1",
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

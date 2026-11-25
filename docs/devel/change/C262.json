@@ -4,7 +4,7 @@
   "title": "Windows 热路径磁盘 I/O 缓存、设置页 IPC 合并与看板 UI 状态保活",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C262-win-hotpath-io-and-dom-state",
   "is_hotfix": false,
   "target": {
@@ -63,10 +63,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -79,8 +79,8 @@
         "item": "行为实测",
         "true_if": "关闭悬停预览滑过托盘不触发磁盘读；后台刷新期间已折叠卡片/所选月份保持原样；打开设置窗、拖拽时间轴及从看板直达设置页签丝滑无闪烁",
         "false_if": "状态被刷新重置、时间轴拖拽卡顿或设置页加载冗余卡滞",
-        "evidence": "后端：托盘 Move/Enter 只 stat settings.json（文件戳命中直接复用内存设置）；publish 复用面板视图模型缓存与同一份速览；拖拽/水平平移只替换 .wb-chart 子树。前端：正文签名未变时跳过整栈重建，仅刷新状态灯与定向刷新按钮。Windows 真机未实测（开发机为 macOS + DOM harness），留给人工验收。",
-        "result": null
+        "evidence": "后端：托盘 Move/Enter 只 stat settings.json（文件戳命中直接复用内存设置）；publish 复用面板视图模型缓存与同一份速览；拖拽/水平平移只替换 .wb-chart 子树。前端：正文签名未变时跳过整栈重建，仅刷新状态灯与定向刷新按钮。Windows 真机未实测（开发机为 macOS + DOM harness），留给人工验收。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       },
       {
         "item": "反向影响排查",
@@ -93,15 +93,19 @@
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }

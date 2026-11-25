@@ -4,7 +4,7 @@
   "title": "协议 Schema 同步与契约化、Release Universal 2 打包修复及 CI/测试流程提效",
   "version": "0.19.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C266-schema-contracts-packaging-and-ci-pipeline",
   "is_hotfix": false,
   "target": {
@@ -63,10 +63,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261124-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收所有卡片，然后推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -86,22 +86,26 @@
         "item": "反向影响排查",
         "true_if": "GitHub Actions CI 各作业（verify/build-release-app/release/windows）及 `check-ci-tool-deps.mjs` 全兼容",
         "false_if": "CI 路径失配或签名发布步骤受损",
-        "evidence": "未实测：CI 未运行（分支未推送）；release / release-windows 仅在 tag 触发。check-ci-tool-deps 与 check-release-pipeline 本地通过。",
-        "result": null
+        "evidence": "未实测：CI 未运行（分支未推送）；release / release-windows 仅在 tag 触发。check-ci-tool-deps 与 check-release-pipeline 本地通过。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "result": false
       }
     ]
   },
   "rejections": [],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "4c6e7379",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-25",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "closed",
+    "signed_quote": "签收所有卡片，然后推送",
+    "signed_rejection_count": 0
   }
 }
