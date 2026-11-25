@@ -21,9 +21,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-# 锁定 2.11.6: 2.12 树经 tauri-build 2.7/cargo_toml 1.0 要求 serde >=1.0.228,
-# 与 core/collector workspace 的 serde =1.0.210 精确钉版冲突; 配套 runtime 见 Cargo.lock。
-tauri = { version = "=2.11.6", features = ["tray-icon", "image-png"], optional = true }
+# C265: 解除精确钉版 —— serde 不再冻结在 1.0.210, 2.12 树可解析; 实际运行版本仍由
+# Cargo.lock 锁定为已验证的 2.11.6, 升到 2.12 须单独运行 cargo update 并在 Windows
+# 真机验证 NSIS/updater 链路后再改锁。
+tauri = { version = "2.11.6", features = ["tray-icon", "image-png"], optional = true }
 bruce-win-viewmodel = { path = "../viewmodel" }
 collector-domain = { path = "../../../core/collector/crates/collector-domain" }
 collector-bridge = { path = "../../../core/collector/crates/collector-bridge" }
@@ -31,9 +32,9 @@ collector-credential = { path = "../../../core/collector/crates/collector-creden
 collector-provider = { path = "../../../core/collector/crates/collector-provider" }
 # T13: 额度门禁与回填的跨端共享实现 (design/08)
 collector-policy = { path = "../../../core/collector/crates/collector-policy" }
-base64 = "=0.22.1"
-chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
-uuid = { version = "=1.11.0", features = ["v4"] }
+base64 = "0.22.1"
+chrono = { version = "0.4.38", default-features = false, features = ["clock", "std"] }
+uuid = { version = "1.11.0", features = ["v4"] }
 iana-time-zone = "0.1"
 # C209: tauri-plugin-notification 已移除 —— C159 起预警改由托盘锚定气泡投递, 该插件无任何调用方。
 tauri-plugin-global-shortcut = { version = "2", optional = true }
@@ -47,10 +48,10 @@ serde = { version = "1", features = ["derive"] }
 # float_roundtrip: 双端对拍要求 17 位浮点精确解析 (与 viewmodel 一致)
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
-ureq = { version = "=2.12.1", default-features = false, features = ["tls", "json"] }
+ureq = { version = "2.12.1", default-features = false, features = ["tls", "json"] }
 # CC Switch 火山引擎凭据只读导入 (C083): 与 collector-local 同版本同 features,
 # 复用构建图内已有的 bundled sqlite, 不引入第二份构建。
-rusqlite = { version = "=0.32.1", features = ["bundled"] }
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # Win32_UI_Shell: C084 用 ShellExecuteW 打开 Codex 设备码验证页 (不引入 opener 插件)。
