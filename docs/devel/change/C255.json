@@ -39,10 +39,10 @@
       "impact": "子进程取消或超时终止零忙等，不再饿死 Swift 并发线程池。"
     },
     {
-      "scope": "外部凭据白名单门禁与子进程管道防死锁",
+      "scope": "子进程管道防死锁（外部凭据白名单门禁按 C060 不实施）",
       "before": "`.claudeCLI` 跳过 `accessController.allows(...)`；`readClaudeKeychain()` 与 `Diagnostics` 同步 `waitUntilExit()` 且未排空双管道。",
-      "after": "为 `.claudeCLI` 补全 `accessController.allows(source: .external(.claudeCLI), intent: intent)` 守卫；`readClaudeKeychain` 与 `SystemDiagnosticArchiver` 迁移至后台执行并并发排空 stdout/stderr（或重定向无关输出至 `nullDevice`）加有界超时。",
-      "impact": "严格遵守外部源授权白名单并彻底消除主线程 64 KB 管道死锁风险。"
+      "after": "（2026-11-24 维护者决定：`.claudeCLI` 白名单门禁与 design/02 规则 2 / C060「Claude Keychain 无条件静默读取，externalSources 仅约束 Grok」冲突，本卡不实施，保持现行设计。）`readClaudeKeychain` 与 `SystemDiagnosticArchiver` 迁移至后台执行并并发排空 stdout/stderr（或重定向无关输出至 `nullDevice`）加有界超时。",
+      "impact": "消除主线程 64 KB 管道死锁风险；外部源白名单口径保持 C060 现行设计不变。"
     },
     {
       "scope": "CodexTokenResolver 防重入与文件凭据库容错收紧",
@@ -68,29 +68,29 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "在 `BruceOnboardingCoreHarness`、`SubscriptionCredentialsHarness`、`DiagnosticsHarness` 新增取消无忙等耗时检查、`.claudeCLI` 白名单拦截、刷新期断开不复活、I/O 错误不挪 `credentials.json`、精确域名校验与 Codex 移除清空用例，全部 20 Harness 与 `verify-local.sh` 全绿",
+        "true_if": "在 `BruceOnboardingCoreHarness`、`SubscriptionCredentialsHarness`、`DiagnosticsHarness` 新增取消无忙等耗时检查、刷新期断开不复活、I/O 错误不挪 `credentials.json`、精确域名校验与 Codex 移除清空用例，全部 20 Harness 与 `verify-local.sh` 全绿",
         "false_if": "任一 Harness 失败或新回归场景未验证",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：protectedFileCredentialStoreReadErrorKeepsFile（I/O 错误不挪 credentials.json，原提交）；评审补 ad1e53e1：probeForceKillGraceWaitDoesNotBusySpin（SIGTERM 宽限 1s 内本进程 CPU < 0.4s；回退修复实测空转 0.99s）、disconnectDuringRefreshDoesNotResurrectAccount（刷新在途断开 Codex 账号不复活）。BruceOnboardingCore 184 项、CodexTokenManager 35 项全过。缺口：StepFun 精确域名校验与 Codex 移除清空位于 BruceApp 视图 / 服务层，无 Harness 可达，留真机验证。`.claudeCLI` 白名单门禁按 C060 不实施（见 precheck 维护者决定）。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "macOS 实测触发大量诊断日志打包不卡主线程、关闭 StepFun 登录窗后无遗留轮询、移除 Codex 后界面状态归零",
         "false_if": "界面卡顿、仍有后台请求或移除状态残留",
-        "evidence": "",
+        "evidence": "未实测（需 mac 真机）：大量诊断日志打包不卡主线程、关闭 StepFun 登录窗后无遗留轮询、移除 Codex 后界面状态归零。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "不引发任何 macOS 系统钥匙串授权弹窗；Claude/Grok/Codex/StepFun 正常读取与刷新行为不变",
         "false_if": "触发钥匙串弹窗或破坏既有凭据链路",
-        "evidence": "",
+        "evidence": "未实测：钥匙串弹窗与 Claude / Grok / Codex / StepFun 读取刷新需安装版真机；readClaudeKeychain 改后台执行后仍经 /usr/bin/security 静默查询。",
         "result": null
       }
     ]

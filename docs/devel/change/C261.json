@@ -68,7 +68,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -76,22 +76,22 @@
         "item": "自动化测试",
         "true_if": "`AppModelCacheHarness`、`ArtifactStoreHarness`、`PanelViewModelHarness`、`BruceRequestLogHarness`、`BruceOnboardingCoreHarness` 与全部 20 Harness + `verify-local.sh` 全绿",
         "false_if": "任一 Harness 失败、引入线程隔离/Swift 6 编译告警或丢失三级容灾保证",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。AppModelCache 8、ArtifactStore 8、PanelViewModel 75、BruceRequestLog、BruceOnboardingCore 184 与全部 20 Harness 全过。原提交未新增用例；评审补 7691053d（clearWaitsForInFlightBackgroundPublish：清理与后台 publish 同队列串行，回退修复后实测 storageFailure）与 88fb25d3（validatedHintServesOnlyTheNextArtifact：已校验对象只服务下一次 setArtifact，「提示未清空」变体下失败）。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "macOS 实测在打开工作台/设置页同时触发刷新无界面掉帧，冷启动与刷新期间凭据/配置读取耗时显著降低",
         "false_if": "仍存在主线程卡顿或快照持久化异常",
-        "evidence": "",
+        "evidence": "未实测（需 mac 真机）：打开工作台 / 设置页同时刷新无掉帧、冷启动与刷新期间凭据读取耗时。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "三层快照容灾回退、历史 v0 迁移及工作台统计数字 100% 等价",
         "false_if": "破坏快照原子性或分析数值精度",
-        "evidence": "",
-        "result": null
+        "evidence": "ArtifactStore 三层容灾回退、历史迁移、故障注入用例与工作台 workbench / valid golden 对拍全过。",
+        "result": true
       }
     ]
   },

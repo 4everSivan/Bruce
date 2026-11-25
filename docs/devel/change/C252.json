@@ -71,7 +71,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -79,21 +79,21 @@
         "item": "自动化测试",
         "true_if": "覆盖 Codex 设备登录 `to_payload`→`save_credential_account`→`reverifyProvider`、C092 跨 Provider 隔离、DPAPI 加解密与明文迁移、畸形域名拒绝、`command_threading.rs` 守卫 `stepfun_web_login_poll` 及 `claude_local` 时间戳，Windows Rust/前端测试与 `verify-local.sh` 全绿",
         "false_if": "任一用例失败或缺少安全/并发回归断言",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。Windows crate：`cargo test` 默认特性与 `--no-default-features` 各 287 passed，两种特性组合 `clippy -D warnings` 通过（评审前 --no-default-features 有 7 处仅桌面可达项告警，301cd9c4 已修复）；`apps/win/tests/*.test.mjs` 159/159。覆盖：codex_device_login_payload_saves_through_storage_validation、malformed_legacy_records_are_preserved_and_do_not_block_other_providers（C092 跨 Provider 隔离）、expiry_seconds_milliseconds_and_rfc3339_normalize_to_one_instant（claude_local 时间戳归一）、stepfun_web 用例新增 `stepfun.com.attacker.com` / `evilstepfun.com` 拒绝断言（精确后缀匹配）、tests/command_threading.rs 守卫 stepfun_web_login_poll。DPAPI 用例 windows_credentials_are_dpapi_protected_and_migrate_plaintext、windows_dpapi_roundtrip_rejects_tampering 为 cfg(windows)，未执行。以上均在 macOS 开发机执行：#[cfg(windows)] 代码与用例未执行，需推送后 CI verify-windows 或 Windows 真机补证。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "Windows 真机完成 Codex 设备码登录保存并自动验证生效；迁移后 `credentials.json` 密文落盘且全部已有订阅正常读取",
         "false_if": "登录仍报错、无法解密既有凭据或新账号停留在禁用态",
-        "evidence": "",
+        "evidence": "未实测（需 Windows 真机）：Codex 设备码登录保存并自动验证；升级后 credentials.json 为 `BRUCE-DPAPI-V1` 密文且全部已有订阅正常读取。降级到 0.18.x 及更早版本会丢失已存凭据（design/02 已标注，3a3fec97），发布说明需写明。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "11 家 Provider 凭据读取、OAuth 刷新与 CC Switch 导入行为正常，macOS 端凭据格式保持兼容",
         "false_if": "既有凭据读取失效或格式不兼容",
-        "evidence": "",
+        "evidence": "未实测：11 家 Provider 读取 / OAuth 刷新 / CC Switch 导入需 Windows 真机；macOS 凭据格式未改动（DPAPI 仅作用于 Windows 落盘）。",
         "result": null
       }
     ]

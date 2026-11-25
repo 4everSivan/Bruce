@@ -13,7 +13,7 @@
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-  "why": "C265 本批次只落地了 manifest 解钉（仍由三份 Cargo.lock 各自锁版本，tauri 运行版仍为 2.11.6）、collector-credential 死读取层与 Windows 不可达命令删除、`default_cache_root` 下沉、benchmark 移出生产构建与 JSON 缓存统一走 `cache_util`。C265 why 中列出、但既未实施也未写入其「未做」清单的项仍在代码中（2026-11-24 复核）：`collector-aggregate` 复制 `UsageContributionBuilder` 的字段与合并逻辑；`collector-runtime::PermitPool` 与工作线程数相等形同虚设；`context.rs` 的 `retry_count` / `credential_refresh_count` 恒 0；时间戳解析在 4 crate 间复制 8+ 份且阈值不一致；目录遍历 / `file_identity` 与 Unix SQLite 权限多处复制；macOS 6 处私有 `NothingTokens`、2 处不一致欢迎判断、`EgressRouteTester` 重复 `egress.rs`、Windows 重复 `ShellExecuteW`。C265 已登记未做：三份 Cargo.lock 合并为单一锁（需把 win crates 并入统一 workspace）与 tauri 2.12 实升级（需 Windows 真机 NSIS/updater 验证）、巨型模块拆分（`OnboardingConfiguration.swift` 1,443 行、`SettingsView.swift` 1,508 行、`collector-history/src/lib.rs` 1,814 行、`apps/win/src-tauri/src/lib.rs` 1,652 行等）。为让 C265 按已落地范围收口，剩余结构债自 C265 拆出单列（2026-11-24 维护者授权按建议处理）。",
+  "why": "C265 本批次只落地了 manifest 解钉（仍由三份 Cargo.lock 各自锁版本，tauri 运行版仍为 2.11.6）、collector-credential 死读取层与 Windows 不可达命令删除、`default_cache_root` 下沉、benchmark 移出生产构建与 JSON 缓存统一走 `cache_util`。C265 why 中列出、但既未实施也未写入其「未做」清单的项仍在代码中（2026-11-24 复核）：`collector-aggregate` 复制 `UsageContributionBuilder` 的字段与合并逻辑；`collector-runtime::PermitPool` 与工作线程数相等形同虚设；`context.rs` 的 `retry_count` / `credential_refresh_count` 恒 0；时间戳解析在 4 crate 间复制 8+ 份且阈值不一致；目录遍历 / `file_identity` 与 Unix SQLite 权限多处复制；macOS 6 处私有 `NothingTokens`、2 处不一致欢迎判断、`EgressRouteTester` 重复 `egress.rs`、Windows 重复 `ShellExecuteW`；`codex` / `dsh` 缓存文件名（`codex-files-v1.json` / `dsh-sessions-v1.json`）未哈希源根，多源根时易碰撞。C265 已登记未做：三份 Cargo.lock 合并为单一锁（需把 win crates 并入统一 workspace）与 tauri 2.12 实升级（需 Windows 真机 NSIS/updater 验证）、巨型模块拆分（`OnboardingConfiguration.swift` 1,443 行、`SettingsView.swift` 1,508 行、`collector-history/src/lib.rs` 1,814 行、`apps/win/src-tauri/src/lib.rs` 1,652 行等）。为让 C265 按已落地范围收口，剩余结构债自 C265 拆出单列（2026-11-24 维护者授权按建议处理）。",
   "precheck": {
     "description": "逐项确认 C265 遗留的重复实现、形同虚设样板与巨型模块在 HEAD 上仍存在",
     "command": "rg -n \"PermitPool|retry_count|credential_refresh_count\" core/collector/crates; rg -ln \"NothingTokens\" apps/macos/Sources; rg -ln \"ShellExecuteW\" apps/win/src-tauri/src; rg -ln \"EgressRouteTester\" apps/macos/Sources; wc -l apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift apps/macos/Sources/BruceApp/SettingsView.swift core/collector/crates/collector-history/src/lib.rs apps/win/src-tauri/src/lib.rs; ls core/collector/Cargo.lock apps/win/src-tauri/Cargo.lock apps/win/viewmodel/Cargo.lock",
@@ -41,8 +41,8 @@
     },
     {
       "scope": "跨模块重复实现与形同虚设样板收口",
-      "before": "collector-aggregate ⟷ UsageContributionBuilder、时间戳解析 8+ 份、目录遍历 / file_identity、SQLite 权限、NothingTokens ×6、欢迎判断 ×2、ShellExecuteW ×2、EgressRouteTester ⟷ egress.rs 各自复制；PermitPool 与恒 0 计数器无实际作用。",
-      "after": "每类保留单一实现并让调用方复用（时间戳阈值统一并补边界单测）；删除或接通 PermitPool 与恒 0 计数器（仅测试使用者迁回测试模块或注明保留理由）。",
+      "before": "collector-aggregate ⟷ UsageContributionBuilder、时间戳解析 8+ 份、目录遍历 / file_identity、SQLite 权限、NothingTokens ×6、欢迎判断 ×2、ShellExecuteW ×2、EgressRouteTester ⟷ egress.rs 各自复制；PermitPool 与恒 0 计数器无实际作用；codex / dsh 缓存文件名未哈希源根。",
+      "after": "每类保留单一实现并让调用方复用（时间戳阈值统一并补边界单测）；codex / dsh 缓存文件名并入源根哈希（沿用 jsonl 的 source_path_digest）；删除或接通 PermitPool 与恒 0 计数器（仅测试使用者迁回测试模块或注明保留理由）。",
       "impact": "采集口径与双端 golden 对拍保持不变；时间戳阈值统一可能改变极端输入的解析结果，需对拍确认。"
     },
     {

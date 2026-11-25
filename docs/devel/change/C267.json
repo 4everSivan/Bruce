@@ -64,7 +64,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -72,22 +72,22 @@
         "item": "自动化测试",
         "true_if": "`u_website_contract.test.mjs`、`build-site.mjs`、`geometry-parity.test.mjs` 与 `verify-local.sh` 全绿；`git ls-files` 继续跟踪 `.cards`/`.staging`（按 2026-11-24 口径），未发布候选文件仍在工作区。",
         "false_if": "官网构建/契约测试失败、索引仍跟踪暂存文件或破坏现有 demo 测试",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。tests/unit u_website_contract（UT-website-001~005）在 27/27 内通过；verify-local 内站点构建 website/ → local/dist/site/ 成功；apps/win/tests geometry-parity 与 update-copy-parity 在 159/159 内；`git ls-files` 仍跟踪 .cards 63 个、.staging 149 个文件（按 2026-11-24 口径保留）。",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "本地构建预览官网页面（桌面与移动端 `responsive-check.mjs`）：11 Agents、Grok Bot/Antigravity、下载链接与三主题面板交互正常",
         "false_if": "页面脚本报错、图标缺失或响应式校验失败",
-        "evidence": "",
+        "evidence": "未实测：本地预览官网桌面 / 移动端（responsive-check.mjs）。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "保留的 `win-taskbar-interaction-demo.html` 与 `win-settings-update-flow-demo.html` 及对应测试 `geometry-parity`/`update-copy-parity` 不受影响；本地 `.staging` 工作区未被物理误删",
         "false_if": "误删现行引用 demo 或物理销毁暂存目录",
-        "evidence": "",
-        "result": null
+        "evidence": "保留的 win-taskbar-interaction-demo.html 与 win-settings-update-flow-demo.html 仍在；geometry-parity / update-copy-parity 通过；.staging 工作区未动。",
+        "result": true
       }
     ]
   },

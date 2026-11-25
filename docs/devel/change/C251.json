@@ -61,7 +61,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -69,21 +69,21 @@
         "item": "自动化测试",
         "true_if": "Windows Rust 单测全绿，覆盖导出不改父目录继承与 SYSTEM/Administrators ACL、预警投递前释放 snapshot 锁、clear_snapshot_cache 清除内存态、settings 并发更新不丢字段、局部刷新防重入，且 verify-local 全绿",
         "false_if": "任一单测/clippy 失败或未覆盖上述回归场景",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。Windows crate：`cargo test` 默认特性与 `--no-default-features` 各 287 passed，两种特性组合 `clippy -D warnings` 通过（评审前 --no-default-features 有 7 处仅桌面可达项告警，301cd9c4 已修复）；`apps/win/tests/*.test.mjs` 159/159。覆盖：export_write_does_not_tighten_the_user_directory（导出只做临时文件 + rename，不收紧用户目录；其中 Windows DACL 断言为 cfg(windows)）、managed_write_secures_the_private_directory_only_once、with_artifact_releases_the_snapshot_lock_before_the_callback、reset_snapshot_clears_disk_and_memory、concurrent_field_updates_serialize_and_keep_both_fields、local_refresh_bursts_collapse_to_one_follow_up；评审补修 794036a3：stale_ui_save_keeps_backend_owned_fields（设置页保存以锁内磁盘值保留后台独占字段）与前端「card reorder saves on top of the latest backend settings」（看板排序基于最新设置，回退修复后失败）。以上均在 macOS 开发机执行：#[cfg(windows)] 代码与用例未执行，需推送后 CI verify-windows 或 Windows 真机补证。结果待 Windows 端 DACL 断言执行后裁定。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "Windows 实机导出 CSV 到桌面/文档目录后 `icacls` 显示继承与系统 ACE 完好；触发高占用预警同时连续查询面板无卡死；清理快照缓存后立刻进入干净重建",
         "false_if": "目录权限被修改、发生界面卡死或旧快照残留",
-        "evidence": "",
+        "evidence": "未实测：开发机为 macOS。待 Windows 真机：导出 CSV 到桌面/文档后 `icacls` 核对继承与 SYSTEM/Administrators ACE；高占用预警弹窗期间连续操作面板无卡死；清理快照缓存后干净重建。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "凭证目录 `%APPDATA%\\Bruce\\credentials.json` 私有 ACL 保护不变，既有 `fixture_parity` 与看板刷新不受影响",
         "false_if": "凭证文件安全边界减弱或双端对拍出现差异",
-        "evidence": "",
+        "evidence": "自动化：verify-local 内 Panel 视图模型 valid/partial/empty 与工作台 workbench/valid 双端 golden 对拍通过；凭据写入仍走 atomic_private_write（未改动）。凭据目录私有 ACL 的 Windows 断言（assert_current_sid_only）为 cfg(windows)，未执行。",
         "result": null
       }
     ]

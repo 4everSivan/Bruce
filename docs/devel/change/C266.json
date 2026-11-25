@@ -47,10 +47,10 @@
       "impact": "修复 Release 脚本架构缺陷，CI 发布耗时减半并符合 `AGENTS.md §三.1` 隔离要求。"
     },
     {
-      "scope": "孤儿脚本清理与 SwiftPM 标准 TestTarget 现代化",
+      "scope": "孤儿脚本清理",
       "before": "存在无引用且绕过守卫的 `scripts/test-stepfun-token.sh`；20 个 `.executableTarget` 无法用 `swift test`。",
-      "after": "清理孤儿脚本 `scripts/test-stepfun-token.sh`；将 macOS 20 个 Harness 按批次/统一过渡到标准 `XCTest` / `Swift Testing` `.testTarget`，并更新 `verify-local.sh` 保持 1 分钟内全绿 SLA。",
-      "impact": "支持 `swift test --filter`、用例并行、覆盖率与完整失败汇总。"
+      "after": "删除零引用孤儿脚本 `scripts/test-stepfun-token.sh`；Harness → SwiftPM 标准 testTarget 迁移拆出 C270。",
+      "impact": "仓库不再保留无入口脚本；测试体系迁移由 C270 承接。"
     }
   ],
   "design": {
@@ -64,29 +64,29 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "5 份 JSON Schema 契约测试全过、`check-bundle-resources.zsh` 与 `check-ci-tool-deps.mjs` 通过、`swift test` 与 `verify-local.sh` 全绿（耗时保持在 SLA 内）",
+        "true_if": "5 份 JSON Schema 契约测试全过、`check-bundle-resources.zsh` / `check-ci-tool-deps.mjs` / `check-release-pipeline.mjs` 通过、`verify-local.sh` 全绿（耗时保持在 SLA 内）",
         "false_if": "任一 schema 校验失败、资源门禁报错或测试超时/漏跑",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。collector-bridge/tests/schema_contract.rs（request / response / policy schema 3 例）与 collector-policy request_contract 全过；verify-local 内 check-bundle-resources.zsh 与 check-ci-tool-deps.mjs 通过；评审补 7d6e766a：`node scripts/check-release-pipeline.mjs` 第 8 节断言 release 解包前 `mkdir -p local/dist`（对原 ci.yml 实测 Exit 1，修复后 Exit 0）。",
+        "result": true
       },
       {
         "item": "行为实测",
-        "true_if": "实测 `build-release-app.sh`（或等价干跑路径）产出的 `BruceApp`、`Bruce-collector` 与 `libbruce_policy.a` 经 `lipo -archs` 均含 `arm64 x86_64`；输出落于 `local/dist/`；`swift test --filter` 正常运行",
-        "false_if": "任一产物退化为单架构或测试目标不可过滤",
-        "evidence": "",
-        "result": null
+        "true_if": "实测 Universal 2 构建路径（`build-test-app.sh --universal`，与 Release 共用 `Bruce_build_swift_app_executable`）产出的 `BruceApp`、`Bruce-collector` 与 `libbruce_policy.a` 经 `lipo -archs` 均含 `arm64 x86_64`，输出落于 `local/dist/`",
+        "false_if": "任一产物退化为单架构或输出不在 local/dist/",
+        "evidence": "2026-11-24 23:43 `zsh scripts/build-test-app.sh --universal` Exit 0（2m20s，日志 local/logs/build-test-app-universal-c266.log，ad-hoc 签名 codesign --verify 通过，未安装）：`lipo -archs` 实测 local/dist/Bruce.app/Contents/MacOS/BruceApp、Contents/Resources/Bruce-collector 与 local/build/policy-ffi/libbruce_policy.a 均为 `x86_64 arm64`；产物落于 local/dist/。正式 `build-release-app.sh` 需 tag + Developer ID + 公证凭据，本机未执行，其与 Preview 共用 `Bruce_build_swift_app_executable`。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "GitHub Actions CI 各作业（verify/build-release-app/release/windows）及 `check-ci-tool-deps.mjs` 全兼容",
         "false_if": "CI 路径失配或签名发布步骤受损",
-        "evidence": "",
+        "evidence": "未实测：CI 未运行（分支未推送）；release / release-windows 仅在 tag 触发。check-ci-tool-deps 与 check-release-pipeline 本地通过。",
         "result": null
       }
     ]

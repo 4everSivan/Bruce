@@ -39,14 +39,14 @@
     {
       "scope": "品牌、色板、Agent 元信息单一事实源与 Windows 漂移修正",
       "before": "Nothing 浅色色阶与 FNV-1a 算法漂移；`PROVIDER_COLORS`/图标/Agent 元信息/状态灯/账号命名规则多处手抄双写。",
-      "after": "建立单一权威品牌与 Agent 元数据定义（`config/brand-registry.json` + 代码生成），同步生成 Swift/Rust/JS（含修正 Windows `color.rs` 杏色阶与统一 `AccountNaming`/Agent 列表），删除 `app.js` 内联重复 `PROVIDER_GLYPHS`、32-bit `nothingRampHex` 及重复状态灯映射，直接复用 Rust viewmodel 输出。",
-      "impact": "双端品牌视觉、未知 Agent 配色与状态文案彻底对齐且消除 5 处重复表。"
+      "after": "建立 `config/brand-registry.json` + `scripts/gen-brand-registry.mjs`，生成 Swift / Rust / JS 三端 Nothing 色阶与已知 Agent 固定档位（修正 Windows 浅色杏色阶与 UTF-8 FNV-1a），删除 `app.js` 内联 `PROVIDER_GLYPHS`。provider id 归一、状态灯 / 错误文案与 `AccountNaming` 单源化拆出 C268。",
+      "impact": "双端 Nothing 色阶与未知 Agent 配色对齐；其余重复映射由 C268 收敛。"
     },
     {
-      "scope": "价卡同步校验与软件更新纯决策下沉 `collector-policy-ffi`",
+      "scope": "价卡校验与软件更新纯决策下沉 `collector-policy`（Rust / Windows 侧）",
       "before": "Swift 侧维护 1,900+ LOC 价卡表/校验/更新状态决策；Windows `software_update.rs` 与 `pricing_sync.rs` 校验口径偏松且缺 HTTPS 约束。",
-      "after": "在 `collector-policy` 扩展低频、小载荷操作承载价卡校验/Diff/防降级（复用 `collector-domain::pricing::CatalogFile`）与软件更新 SemVer/Manifest/跳过版本/状态展示纯策略；双端统一切换为共享策略（补 `pricing_sync.rs` HTTPS 校验，修复 `software_update.rs` 并发与 `install_failure` 消费时机），大幅裁减 Swift 重复表与逻辑。",
-      "impact": "消除 ~2,300+ LOC 跨语言重复，封堵宽松 SemVer 与非 HTTPS URL 风险。"
+      "after": "`collector-policy` 新增 `pricing`（`validate_catalog` 复用 domain `CatalogFile`、`updatedAt` 防降级）与 `update`（严 / 宽 SemVer、下载域白名单、跳过与追平清除、清单可信判定）及 `pricingValidate` / `updateDecide` 操作；Windows `software_update.rs` 改为 re-export，`pricing_sync.rs` 只接受 HTTPS，安装失败提示不再读取即消费。Swift 侧切换并删除重复实现拆出 C268。",
+      "impact": "Windows 价卡 / 更新判定与共享策略同源，封堵宽松 SemVer 与非 HTTPS；macOS 行为本卡不变。"
     },
     {
       "scope": "收口 Swift FFI 传输封装与 ABI 版本校验",
@@ -66,7 +66,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -74,22 +74,22 @@
         "item": "自动化测试",
         "true_if": "Rust `collector-policy`/`viewmodel`/Windows、Swift 20 Harness、`apps/win/tests`、`tests/unit` 与 `verify-local.sh` 全绿；覆盖 Nothing 浅色杏色阶、非 HTTPS URL 与非法 SemVer 一致拒绝、FFI ABI 不匹配报错",
         "false_if": "任一测试或双端对拍失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。Windows crate：`cargo test` 默认特性与 `--no-default-features` 各 287 passed，两种特性组合 `clippy -D warnings` 通过（评审前 --no-default-features 有 7 处仅桌面可达项告警，301cd9c4 已修复）；`apps/win/tests/*.test.mjs` 159/159。覆盖：brand registry 前端用例与 nothing_ramp_uses_generated_registry_values（Nothing 杏色阶 / UTF-8 FNV-1a）、catalog_fetch_requires_https、strict_semver_rejects_prerelease_and_missing_parts / _short_forms、download_url_whitelist_requires_https_github、manifest_trust_requires_both_rules、skip_decision_restores_on_newer_offer、rejects_rolled_back_catalog、pricing_validate_accepts_and_rejects_with_codes、update_decide_returns_trust_and_skip_semantics、abi_version_is_explicit 与 RefreshSchedulerHarness 信封 / ABI 用例。",
+        "result": true
       },
       {
         "item": "行为实测",
-        "true_if": "Windows Nothing 浅色模式呈杏色阶且未知 Agent 颜色与 macOS 一致；双端价卡同步与软件更新检查行为完全等价",
+        "true_if": "Windows Nothing 浅色模式呈杏色阶且未知 Agent 颜色与 macOS 一致；Windows 价卡同步拒绝非 HTTPS、检查更新拒绝非法 SemVer / 非 github.com 下载地址，安装失败提示保留到下一次操作；macOS 价卡同步与检查更新行为不变",
         "false_if": "颜色不一致或更新/同步解析出现差异",
-        "evidence": "",
+        "evidence": "未实测（需 Windows 真机）：Nothing 浅色杏色阶与未知 Agent 配色、价卡同步拒绝非 HTTPS、检查更新拒绝非法版本 / 下载地址、安装失败提示保留到下一次操作；macOS 价卡与更新行为本卡未改动（切换移至 C268）。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "原有 7 项额度策略操作与延迟性能无回退（低频调用不增加热路径延迟），`PanelParityHarness` 与 `fixture_parity` 全绿",
         "false_if": "影响现有面板渲染或产生额外主线程卡顿",
-        "evidence": "",
-        "result": null
+        "evidence": "原 7 项额度策略操作契约与 RefreshScheduler 139 项全过；新增 pricingValidate / updateDecide 只在低频路径调用，不进热路径。",
+        "result": true
       }
     ]
   },

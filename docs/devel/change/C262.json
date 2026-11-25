@@ -64,7 +64,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -72,8 +72,8 @@
         "item": "自动化测试",
         "true_if": "Windows Rust 单测与 `apps/win/tests/*.test.mjs` + `verify-local.sh` 全绿；覆盖刷新后保留卡片折叠/选中月份/展开态、设置初始化不发空转 IPC 与双渲染",
         "false_if": "任一单测或前端 DOM 测试失败",
-        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features：Exit 0，269 passed；node --test apps/win/tests/*.test.mjs：Exit 0，150 passed；zsh scripts/verify-local.sh：Exit 0（全部 Harness 与双端 golden 对拍通过）。新增 C262 用例覆盖：设置启动不再调用 get_credential_fields、usage_analytics/claude_local_status 各仅一次、白名单只取一次；深链命令参数 + settings-pane-requested 事件；运行态-only 刷新不重建 DOM；数据变化重建后折叠/所选月份/展开全部保留；快照代数在 artifact 变更时递增。",
-        "result": null
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features：Exit 0，269 passed；node --test apps/win/tests/*.test.mjs：Exit 0，150 passed；zsh scripts/verify-local.sh：Exit 0（全部 Harness 与双端 golden 对拍通过）。新增 C262 用例覆盖：设置启动不再调用 get_credential_fields、usage_analytics/claude_local_status 各仅一次、白名单只取一次；深链命令参数 + settings-pane-requested 事件；运行态-only 刷新不重建 DOM；数据变化重建后折叠/所选月份/展开全部保留；快照代数在 artifact 变更时递增。 2026-11-24 复核：verify-local Exit 0（local-20261124-01），Windows crate 默认 / --no-default-features 各 287 passed，apps/win/tests 159/159。",
+        "result": true
       },
       {
         "item": "行为实测",
@@ -87,7 +87,7 @@
         "true_if": "全部 Tauri IPC 契约、双端 `fixture_parity` 与设置持久化语义保持一致",
         "false_if": "造成设置保存失效或页面数据不同步",
         "evidence": "node scripts/check-win-frontend.mjs：Exit 0；AppManifest 覆盖 64 个应用命令且与 generate_handler 一致；settings 窗口授权恰为其调用的 54 个命令；verify-local.sh 中 Panel 视图模型/工作台 golden 双端对拍通过。顺带补齐 C259 遗留的 open_external_link AppManifest/ACL 漏项。",
-        "result": null
+        "result": true
       }
     ]
   },

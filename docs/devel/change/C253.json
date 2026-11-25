@@ -64,7 +64,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -72,22 +72,22 @@
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；新增解析期间并发追加不双倍累计、`\"\"` / `\"openai/\"` 返回未计价、动态注入峰谷/长上下文档目录生效、头块短读、`$0` 模型计价回归用例",
         "false_if": "任一用例失败、存在 clippy 告警或未覆盖 TOCTOU/热更新分档用例",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：append_between_stat_and_parse_is_counted_exactly_once（stat 与解析之间追加只计一次）、empty_normalized_model_never_matches_a_catalog_row（空 / 仅前缀模型名不计价）、tiered_rate_class_follows_the_active_catalog（注入目录的峰谷 / 长上下文档生效）、zero_priced_model_keeps_priced_semantics 与 artifact_total_cost_keeps_zero_priced_agents（$0 模型按已计价处理）、legacy_dedupe_fallback_restores_cache_creation（Codex 回退去重键）。缺口：卡内「头块短读」（fingerprint_head_tail 单次 read）未见专门用例，结果待人工裁定是否补测。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "向测试 JSONL 在解析钩子中模拟追加写入两轮刷新，累计 Token 与真实行总和 100% 一致；同步自定义分档价卡时费用准确切换",
         "false_if": "出现重复累计或热更新分档不生效",
-        "evidence": "",
-        "result": null
+        "evidence": "自动化等价验证：append_between_stat_and_parse_is_counted_exactly_once 以 stat 后钩子模拟活跃会话追加并跑两轮刷新，累计 Token 与真实行一致；tiered_rate_class_follows_the_active_catalog 验证同步分档价卡后费用切换。权衡：文件在解析期间持续增长时本轮不写缓存、下一轮从旧 offset 重解析（正确性优先，活跃大文件命中率略降）。真机活跃会话核对未做。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "既有 `PanelParityHarness` 与 `fixture_parity` 金值全过，常规计费金额与模型归一化结果不变",
         "false_if": "既有模型定价或金值用例发生意外偏差",
-        "evidence": "",
-        "result": null
+        "evidence": "verify-local 内 Panel 视图模型与工作台双端 golden 对拍、collector fixture 契约全过；常规计费与归一化既有用例无变更。",
+        "result": true
       }
     ]
   },

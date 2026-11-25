@@ -61,7 +61,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -69,22 +69,22 @@
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；覆盖 WAL 并发写入不报 `SQLITE_BUSY`、含 `?`/`#` 路径只读打开、ZCode 取消信号透传、Mach timebase 换算单测及 FFI 超限长度安全返回错误",
         "false_if": "任一用例失败或仍有 clippy 警告",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：merge_waits_for_concurrent_writer_instead_of_failing_busy（WAL 并发写不报 BUSY）、external_sqlite_path_with_query_characters_is_not_parsed_as_uri、cpu_time_units_follow_mach_timebase、oversized_request_length_is_rejected_without_dereferencing。缺口：ZCode 取消信号透传未见专门用例，结果待人工裁定。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "Apple Silicon Mac 上 `BRUCE_COLLECTOR_METRICS_PATH` 输出的 `userCpuMs`/`systemCpuMs` 与实测进程 CPU 时间量级一致；高并发读写请求库零 `SQLITE_BUSY`",
         "false_if": "CPU 指标仍偏低一个数量级以上或出现锁超时错误",
-        "evidence": "",
+        "evidence": "未实测：真机 BRUCE_COLLECTOR_METRICS_PATH 的 userCpuMs / systemCpuMs 与实测进程 CPU 对比、高并发读写零 BUSY（单测已断言 mach timebase 换算与并发写等待）。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "既有请求日志页查询、历史台账读写与 `BrucePolicyFFI` 全套 Harness 全绿",
         "false_if": "影响既有查询结果或 FFI 调用兼容性",
-        "evidence": "",
-        "result": null
+        "evidence": "BruceRequestLogHarness、collector-history 与 policy-ffi（含超限长度用例）全过。",
+        "result": true
       }
     ]
   },

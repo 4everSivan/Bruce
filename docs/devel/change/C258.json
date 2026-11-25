@@ -61,7 +61,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -69,21 +69,21 @@
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；覆盖仅单根存在 `io_errors == 0`、非 `DONE` step 不计 `saw_completed`、空行不计 `malformed_lines`、时区变更与超期 GC、热扫描不重开窗口外/未变更原生 DB",
         "false_if": "任一单测失败或缺少单根/时区/GC 回归用例",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：missing_secondary_root_is_silent、non_done_planner_is_not_counted_as_completed、blank_lines_are_not_malformed、timezone_change_invalidates_the_cache、stale_cache_files_are_collected。缺口：热扫描不重开窗口外 / 未变更原生 DB 未见专门用例，结果待人工裁定。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "在仅存在单个 `~/.gemini/antigravity*/brain` 根的机器上刷新，诊断不再报“1 个会话读取失败”，且 Antigravity 用量与请求日志耗时一致",
         "false_if": "仍报错跳过提示或漏记请求耗时",
-        "evidence": "",
+        "evidence": "单根缺席静默已由 missing_secondary_root_is_silent 自动化验证；真机单根机器上的诊断与请求日志耗时未实测。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "Antigravity CLI+IDE 双根合并去重、模型继承与请求日志明细与设计 15 规格一致",
         "false_if": "用量合并口径或请求键发生回归",
-        "evidence": "",
+        "evidence": "collector-local Antigravity 双根合并与既有用例全过；与 design/15 规格的人工核对未做。",
         "result": null
       }
     ]

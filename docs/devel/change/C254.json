@@ -61,7 +61,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -69,22 +69,22 @@
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；针对 7 项逻辑缺陷全部补充单元测试并断言 mock HTTP 请求次数与错误类型",
         "false_if": "任一用例失败或仍存在无意义重复 HTTP 请求",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖 7 类缺陷共 10 例：cline_provider_rejects_empty_or_partial_pass_thresholds、quota_retry_only_respects_local_usage_and_capability_gates、claude_proactive_refresh_failure_stops_after_one_request 与 stepfun_proactive_refresh_failure_stops_after_one_request（断言只发 1 次请求）、volcengine_rate_limit_short_circuits_candidate_retries、volc_error_switches_candidate、volcengine_falls_back_to_afp_usage_on_empty_coding_plan、kimi_negative_remaining_clamps_percent、stepfun_non_positive_reset_is_none、parse_ms_accepts_fractional_and_saturates_extremes。缺口：直连重定向次数上限未见专门用例，结果待人工裁定是否补测。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "模拟 401 refresh failure、429 rate limit、空 windows 200、缺阈值 ClinePass 报文时均返回预期诊断状态与 `quota` 空/失败态",
         "false_if": "出现二次刷新、6 次轰炸或误判 ClinePass 权益",
-        "evidence": "",
-        "result": null
+        "evidence": "以 mock HTTP 覆盖：401 刷新失败只请求一次（Claude / StepFun）、429 短路候选重试（VolcEngine）、空 Coding Plan 200 回退 AFP、缺阈值 ClinePass 判未授权，均返回预期诊断与 quota 空 / 失败态。真实 Provider 端点未联调。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "既有 10+ 家 Provider 解析金值测试与共享策略契约测试全过",
         "false_if": "既有正常订阅解析发生回归",
-        "evidence": "",
-        "result": null
+        "evidence": "既有 Provider 解析与共享策略契约用例在 collector workspace 测试中全过（769 passed 内）。",
+        "result": true
       }
     ]
   },

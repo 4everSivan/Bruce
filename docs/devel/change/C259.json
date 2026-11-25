@@ -60,7 +60,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261124-01",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -68,21 +68,21 @@
         "item": "自动化测试",
         "true_if": "更新并全绿通过 `apps/win/tests/*.test.mjs`、`welcome-onboarding-parity`、`tests/unit/*.test.mjs` 与 `verify-local.sh`，覆盖价卡输入保焦、预警 SVG、Codex 关窗停轮询、Widget 转义及原型键名",
         "false_if": "任一前端/对拍测试失败或缺失回归断言",
-        "evidence": "",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。Windows crate：`cargo test` 默认特性与 `--no-default-features` 各 287 passed，两种特性组合 `clippy -D warnings` 通过（评审前 --no-default-features 有 7 处仅桌面可达项告警，301cd9c4 已修复）；`apps/win/tests/*.test.mjs` 159/159。原提交仅调整既有断言；评审补 77a18603 四例（均已验证回退修复后失败）：价卡搜索只重绘表格不重建输入框（保焦）、关闭服务弹窗停止 Codex 轮询、连点移除只留一个确认框、引导外链经 open_external_link。welcome-onboarding-parity 与 tests/unit 全过。缺口：预警弹窗 SVG 图标、Widget xAxis 转义与 colorByName 原型键无专门用例，结果待人工裁定。",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "Windows 端实机确认预警弹窗图标正常、价卡搜索输入拼音不断触、欢迎页无破图且文案正确、关闭 Codex 弹窗后台无续轮询",
         "false_if": "仍有破图、失焦、报错或后台继续轮询",
-        "evidence": "",
+        "evidence": "未实测（需 Windows 真机）：预警弹窗图标、拼音输入法下价卡搜索、欢迎页无破图且文案正确；关闭 Codex 弹窗停轮询已有自动化用例。",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "macOS 欢迎向导与 `widget-performance-harness.mjs` 通过，样式与桌面布局无偏移",
         "false_if": "造成其他窗体或卡片样式回归",
-        "evidence": "",
+        "evidence": "Widget performance 5 项与欢迎向导双端对拍通过；样式与桌面布局需真机目测。",
         "result": null
       }
     ]
