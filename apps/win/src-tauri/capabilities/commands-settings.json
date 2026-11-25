@@ -16,6 +16,7 @@
     "allow-codex-import-discovered",
     "allow-connect-grok-bot",
     "allow-credential-allowlist",
+    "allow-egress-test",
     "allow-expand-dashboard",
     "allow-export-billing",
     "allow-export-diagnostics",

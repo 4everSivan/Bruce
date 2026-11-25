@@ -2964,6 +2964,77 @@ test("request log page renders summary, filters, pagination and detail (C264)", 
   assert.equal(calls("get_request_log").at(-1).args.page, 0, "改筛选回到第一页");
 });
 
+test("egress blocked section renders compact issue card and protected snapshot (C264)", async () => {
+  const panel = structuredClone(fixture);
+  const section = panel.subscription.sections[0];
+  section.egress = {
+    status: "blocked", reason: "EGRESS_COUNTRY_MISMATCH",
+    expected: "JP", observed: "US", maskedIp: "192.0.***.***",
+  };
+  section.hasProtectedSnapshot = true;
+  const app = await boot({ panel });
+  const stack = app.node("stack");
+  const issue = stack.querySelector(".egress-issue");
+  assert.ok(issue, "阻断态必须渲染单行问题卡片");
+  assert.ok(issue.textContent.includes("出口 IP 泄漏"));
+  assert.ok(issue.textContent.includes("已拦截查额以保护账号 · 保持历史快照"));
+  assert.equal(issue.title, "预期 JP · 探测为 US");
+  assert.equal(stack.querySelector(".egress-flag").textContent, "🇯🇵");
+
+  const row = stack.querySelector(".win-row");
+  assert.ok(row.querySelector(".wp").textContent.includes("(已保护)"), "百分比标注已保护");
+  assert.equal(row.querySelector(".wr").textContent, "已拦截", "重置列显示已拦截");
+
+  // 去设置走 C262 深链命令参数。
+  await [...issue.querySelectorAll(".egress-issue-action")].find((button) => button.textContent === "去设置").click();
+  await settle();
+  assert.equal(app.calls.filter((call) => call.command === "open_settings").at(-1).args.pane, "subscription");
+});
+
+test("egress settings card adds countries, assigns providers, tests route and dissolves (C264)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="subscription"]').click();
+  await settle();
+  const pane = app.node("pane-subscription");
+  assert.ok(pane.querySelector(".egress-card"), "订阅额度页包含出口校验卡");
+
+  // 快捷添加日本
+  await pane.querySelectorAll(".egress-quick")[0].click();
+  await settle();
+  let groups = () => app.state.settings.egressGroups || [];
+  assert.deepEqual(groups().map((group) => group.country), ["JP"]);
+
+  // 配置端口
+  const port = pane.querySelector(".egress-port");
+  port.value = "18081";
+  await port.dispatch("change");
+  await settle();
+  assert.equal(groups()[0].proxyPort, 18081);
+
+  // 把 Codex 加入该组 (跨组唯一)
+  const codexChip = [...pane.querySelectorAll(".egress-providers .egress-provider")]
+    .find((chip) => chip.textContent === "Codex");
+  await codexChip.click();
+  await settle();
+  assert.deepEqual([...groups()[0].providers], ["codex"]);
+
+  // 测试线路: 结果持久化并回显
+  await pane.querySelector(".egress-test").click();
+  await settle();
+  const call = app.calls.filter((item) => item.command === "egress_test").at(-1);
+  assert.equal(call.args.country, "JP");
+  assert.equal(call.args.port, 18081);
+  assert.ok(pane.textContent.includes("线路探测匹配"));
+  assert.ok(groups()[0].lastTestResult.startsWith("线路探测匹配"));
+
+  // 解散只移除分组, 不动凭据
+  const accountsBefore = structuredClone(app.state.accounts);
+  await pane.querySelector(".egress-remove").click();
+  await settle();
+  assert.deepEqual(groups(), []);
+  assert.deepEqual(app.state.accounts, accountsBefore, "解散分组不得触碰凭据");
+});
+
 // ---------- C233: 看板只保留基础动效 ----------
 
 test("dashboard drops decorative update motion and keeps the title still (C233)", async () => {

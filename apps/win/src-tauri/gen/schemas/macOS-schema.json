@@ -231,6 +231,12 @@
           "markdownDescription": "Enables the credential_allowlist command without any pre-configured scope."
         },
         {
+          "description": "Enables the egress_test command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-egress-test",
+          "markdownDescription": "Enables the egress_test command without any pre-configured scope."
+        },
+        {
           "description": "Enables the expand_dashboard command without any pre-configured scope.",
           "type": "string",
           "const": "allow-expand-dashboard",
@@ -619,6 +625,12 @@
           "type": "string",
           "const": "deny-credential-allowlist",
           "markdownDescription": "Denies the credential_allowlist command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the egress_test command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-egress-test",
+          "markdownDescription": "Denies the egress_test command without any pre-configured scope."
         },
         {
           "description": "Denies the expand_dashboard command without any pre-configured scope.",

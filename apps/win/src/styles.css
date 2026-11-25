@@ -713,6 +713,35 @@ html[data-motion="off"] #panel.curtain-exit {
 /* 收起态迷你摘要 (mac collapsedMini): 每家 [徽章 + 5pt 迷你量条], 组间距 10 */
 .collapsed-summary .sub-mini { gap: 10px; }
 .sub-mini-group { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+/* C264: 出口国家校验 (design/11) */
+.sub-mini-group.blocked { position: relative; }
+.sub-mini-group.blocked::after {
+  content: ""; position: absolute; top: -2px; right: -2px; width: 5px; height: 5px;
+  border-radius: 50%; background: #D4A843; border: 1px solid #000;
+}
+.egress-flag {
+  font-size: 12px; line-height: 1; opacity: .55; padding: 0 2px;
+}
+.egress-flag.blocked { opacity: .9; }
+.egress-issue {
+  display: flex; align-items: center; gap: 8px; min-height: 30px;
+  margin: 6px 0 8px; padding: 4px 8px; border-radius: 8px;
+  background: rgba(212,168,67,.10); border: 1px solid rgba(212,168,67,.35);
+}
+.egress-issue-icon { display: inline-flex; color: #D4A843; flex: none; }
+.egress-issue-icon svg { width: 14px; height: 14px; }
+.egress-issue-copy { flex: 1; min-width: 0; }
+.egress-issue-title { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #E3BE6B; }
+.egress-issue-title b { font-weight: 600; }
+.egress-issue-sep { display: inline-block; width: 1px; height: 10px; background: currentColor; opacity: .35; }
+.egress-issue-promise { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.egress-issue-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.egress-issue-action {
+  border: 0; background: transparent; color: #E3BE6B; font-size: 11px;
+  padding: 2px 0; cursor: pointer;
+}
+.egress-issue-action:disabled { opacity: .5; cursor: default; }
+
 
 /* ---------- Agent 用量卡 (mac HourlyLineCard) ---------- */
 /* 14 日堆叠柱 (mac dailyChartClassic): 高 68, 顶部留 8; 柱宽约为日槽 72%,
@@ -1506,6 +1535,37 @@ input[type="checkbox"]:checked::after {
 .pricing-table .col-cost { width: 68px; text-align: right; }
 .pricing-table .col-ops { width: 68px; text-align: right; white-space: nowrap; }
 
+/* C264: 设置页「网络出口国家校验」 */
+.egress-card { margin-top: 18px; }
+.egress-card > .hint { margin: 0 0 10px; }
+.egress-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.egress-add-input {
+  width: 140px; height: 28px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); text-transform: uppercase;
+}
+.egress-quick, .egress-provider {
+  height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer;
+}
+.egress-quick:hover { background: var(--surface-hover); color: var(--text); }
+.egress-status { min-height: 16px; margin: 8px 0; font-size: 12px; color: var(--text-2); }
+.egress-empty { padding: 16px; color: var(--text-2); font-size: 12px; }
+.egress-group { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.egress-group-head { display: flex; align-items: center; gap: 10px; }
+.egress-group-flag { font-size: 18px; line-height: 1; }
+.egress-group-country { font-size: 13px; }
+.egress-port {
+  width: 110px; height: 26px; padding: 0 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px;
+}
+.egress-test, .egress-remove { margin-left: 0; }
+.egress-remove { margin-left: auto; }
+.egress-result { margin: 8px 0; font-size: 12px; color: var(--text-2); }
+.egress-result.ok { color: var(--ok); }
+.egress-result.warn { color: var(--warn); }
+.egress-result.danger { color: var(--danger); }
+.egress-providers { display: flex; flex-wrap: wrap; gap: 6px; }
+.egress-provider.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 /* C264: 设置页「请求日志」 */
 .requestlog-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .requestlog-agents { display: flex; flex-wrap: wrap; gap: 6px; }

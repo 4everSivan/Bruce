@@ -187,6 +187,7 @@ export const defaults = {
   cardOrder: ["usage", "subscription", "hourly"], hotkey: "", consentVersion: 0,
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek"], providerOrder: [], pricingOverrides: {},
   layoutMode: "stack", activeCardId: "usage",
+  egressGroups: [],
 };
 // 内存版 localStorage (仅实现生产代码用到的三个方法)。
 export function memoryStorage(initial = {}) {
@@ -247,6 +248,7 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     }
     if (command === "plugin:dialog|save") return dialogPath;
     if (command === "get_usage_analytics") return structuredClone(workbench[args.range] ?? null);
+    if (command === "egress_test") return { result: `线路探测匹配 · ${args?.country || "JP"} · 192.0.***.***`, tone: "ok" };
     if (command === "get_request_log") {
       const page = Number(args?.page || 0);
       const pageSize = Number(args?.pageSize || 50);

@@ -641,7 +641,7 @@ function nothingMeter(level, usedPercent) {
   }
   return meter;
 }
-function windowRow(row) {
+function windowRow(row, protectedSnapshot = false) {
   const line = el("div", "win-row");
   line.append(el("span", "wl", row.label));
   const level = meterLevel(row.usedPercent);
@@ -653,9 +653,60 @@ function windowRow(row) {
     meter.append(fill);
   }
   line.append(meter);
-  line.append(el("span", `wp ${level}`, row.percentText));
-  line.append(el("span", "wr", row.resetText));
+  const percentText = protectedSnapshot && !row.percentText.includes("已保护")
+    ? `${row.percentText} (已保护)`
+    : row.percentText;
+  line.append(el("span", `wp ${level}`, percentText));
+  line.append(el("span", "wr", protectedSnapshot ? "已拦截" : row.resetText));
   return line;
+}
+
+// C264: 出口阻断的单行紧凑问题卡片 (design/11 §3.2)。
+const EGRESS_REASON_TITLE = {
+  EGRESS_COUNTRY_MISMATCH: "出口 IP 泄漏",
+  EGRESS_CN_DIRECT: "当前线路为国内出口",
+  EGRESS_PROBE_TIMEOUT: "出口探测超时",
+  EGRESS_PROXY_UNREACHABLE: "专用代理不可用",
+  EGRESS_PROXY_AUTH: "专用代理需要认证",
+  EGRESS_BAD_STATUS: "出口信标异常",
+  EGRESS_COUNTRY_UNKNOWN: "无法识别出口国家",
+  EGRESS_CONFIG_INVALID: "出口保护配置无效",
+};
+function countryFlag(code) {
+  const value = String(code || "").toUpperCase();
+  if (!/^[A-Z]{2}$/.test(value)) return "";
+  return String.fromCodePoint(...[...value].map((char) => 127397 + char.charCodeAt(0)));
+}
+function egressIssueCard(section) {
+  const egress = section.egress || {};
+  const title = EGRESS_REASON_TITLE[egress.reason] || "出口校验未通过";
+  const compare = egress.expected && egress.observed
+    ? `预期 ${egress.expected} · 探测为 ${egress.observed}`
+    : (egress.maskedIp ? `探测 IP ${egress.maskedIp}` : "");
+  const card = el("div", "egress-issue");
+  card.setAttribute("role", "note");
+  if (compare) card.title = compare;
+  const iconEl = el("span", "egress-issue-icon");
+  iconEl.append(icon("activity", 1.8));
+  const copy = el("div", "egress-issue-copy");
+  const line = el("div", "egress-issue-title");
+  line.append(el("b", null, title), el("i", "egress-issue-sep"));
+  line.append(el("span", "egress-issue-promise", "已拦截查额以保护账号 · 保持历史快照"));
+  copy.append(line);
+  const actions = el("div", "egress-issue-actions");
+  const settingsBtn = el("button", "egress-issue-action", "去设置");
+  settingsBtn.type = "button";
+  settingsBtn.addEventListener("click", () => openSettingsPane("subscription"));
+  const retryBtn = el("button", "egress-issue-action", "重测");
+  retryBtn.type = "button";
+  retryBtn.addEventListener("click", async () => {
+    retryBtn.disabled = true;
+    try { await invoke("refresh_subscription", { sectionId: section.id }); }
+    catch { retryBtn.disabled = false; }
+  });
+  actions.append(settingsBtn, el("i", "egress-issue-sep"), retryBtn);
+  card.append(iconEl, copy, actions);
+  return card;
 }
 
 // 订阅段 Provider 定向刷新 (mac ProviderRefreshButton + SubscriptionRefreshControlPolicy)。
@@ -788,14 +839,14 @@ function balanceSlots(section) {
   return wrap;
 }
 // 账号子卡 (mac ProviderAccountCard): 名称 + tag → 窗口行 → error note → 上次成功。
-function accountCard(account, sectionID) {
+function accountCard(account, sectionID, protectedSnapshot = false) {
   const block = el("div", "account-card");
   const head = el("div", "account-head");
   head.append(el("span", "account-name", account.name || account.id));
   if (account.tag) head.append(el("span", "tag-chip", account.tag));
   block.append(head);
   for (const row of account.windows || []) {
-    block.append(windowRow(row));
+    block.append(windowRow(row, protectedSnapshot));
   }
   if (account.status === "error" && account.note) block.append(el("div", "note-line", account.note));
   if (account.lastSuccessText) {
@@ -816,6 +867,7 @@ function subscriptionCard(sub) {
       const peak = collapsedPeakWindow(section);
       if (!peak) continue;
       const group = el("span", "sub-mini-group");
+      if (section.egress?.status === "blocked") group.classList.add("blocked");
       const meterEl = el("span", `meter ${meterLevel(peak.usedPercent)}`);
       const fill = el("span");
       fill.style.width = `${Math.round(clampedPercent(peak.usedPercent))}%`;
@@ -833,6 +885,8 @@ function subscriptionCard(sub) {
     for (const section of sub.sections) {
       const multi = isMultiAccount(section);
       const balanceBased = isBalanceBased(section);
+      const egress = section.egress || null;
+      const blocked = egress?.status === "blocked";
       const block = el("div", "sub-section");
       const h = el("div", "sub-head");
       h.append(badge(section.provider || section.id, section.name));
@@ -866,24 +920,30 @@ function subscriptionCard(sub) {
       }
       if (section.accountCountText) h.append(el("span", "acct-count", section.accountCountText));
       if (section.extraText) h.append(el("span", "sub-extra", section.extraText));
+      if (egress?.expected) {
+        const flag = el("span", blocked ? "egress-flag blocked" : "egress-flag", countryFlag(egress.expected));
+        flag.title = [egress.expected, egress.observed, egress.maskedIp].filter(Boolean).join(" · ");
+        h.append(flag);
+      }
       // 定向刷新按钮钉在头部行尾 (单/多账号位置统一), 与名称展开开关为兄弟控件
       const refresh = providerRefreshButton(section);
       if (refresh) h.append(refresh);
       block.append(h);
+      if (blocked) block.append(egressIssueCard(section));
 
       if (multi) {
         if (expandedSections.has(section.id)) {
           const list = el("div", "account-list-inline");
-          for (const account of section.accounts) list.append(accountCard(account, section.id));
+          for (const account of section.accounts) list.append(accountCard(account, section.id, blocked));
           block.append(list);
         } else if (section.collapsedWindow) {
-          block.append(windowRow(section.collapsedWindow));
+          block.append(windowRow(section.collapsedWindow, blocked));
         }
       } else if (balanceBased) {
         block.append(balanceSlots(section));
       } else {
         for (const row of section.windows || []) {
-          block.append(windowRow(row));
+          block.append(windowRow(row, blocked));
         }
       }
 

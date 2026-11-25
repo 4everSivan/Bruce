@@ -461,7 +461,8 @@ Windows Tauri 后端 (Rust)
     - **采集看门狗**：采集通道由 `CollectionLease`（原子忙标志 + 代数）取代 `Mutex<()>`；全量 / 定向 / 局部采集均在独立 `bruce-collect-*` 线程执行，父线程以 `COLLECTION_WATCHDOG_SECS=105`（mac 外层预算）等待。超时 / 线程失败 / panic 时父线程写 `COLLECTION_WATCHDOG_TIMEOUT`、放弃租约（代数递增、忙标志释放），卡死线程结果丢弃且不得再锁死后续刷新；同一时刻仍只允许一个采集。**残余限制**：子线程不可强杀，连续黑洞可能每轮泄漏一个线程，但其内部 Bridge deadline 通常在 90s 内自返；后续批次可评估以进程外采集彻底解决。
     - **锁屏抑制**：`session_state::session_locked()` 经 `WTSQuerySessionInformationW(WTSSessionInfoEx)` 读取 `SessionFlags`；全量门禁 `plan_with_suppression` 在锁屏时等价于「上一份全部 provider 进入 skip」，不发起外部额度查询，解锁后由下一轮调度恢复。查询失败按未锁屏处理，不误抑制采集。
     - **请求日志后端与设置页**：`get_request_log` 为 async command，经 `spawn_blocking` 执行 `module=request-log` 查询（1s / 10s 预算、home/start/end/page(0-based)/pageSize/agentIds/model、无凭据），返回 artifact；设置侧栏「请求日志」页提供今日/近 7 天/近 30 天、受支持 Agent 默认勾选（用户改选后不覆盖）、模型回车筛选、汇总、分页与行详情（计价模型缺失显示「未计价」）。
-    - 网络出口国家校验（`egressRules` / 设置双卡 / 仪表盘问题卡）与睡眠唤醒去重仍待后续批次，本卡尚未完成。
+    - **网络出口国家校验（C264，design/11）**：设置持久化 `egressGroups`（ISO 国家代码 + 受管 Provider + 本机回环代理端口 + 上次测试结论，同 Provider 跨组唯一、缺端口交由共享引擎判无效并阻断）；采集请求注入 `context.egressRules`（provider → {country, port}）；视图模型把 service `egress` 映射为 section `egress` / `hasProtectedSnapshot`（缺失字段不输出，保持 mac golden 契约）；仪表盘阻断态渲染 30pt 单行问题卡（原因标题 + 保护承诺 + 去设置/重测）、百分比「(已保护)」与重置列「已拦截」、折叠态黄点与国旗微标；设置页「网络出口国家校验」卡支持快捷/手输国家、端口、Provider 归属、测试线路（`egress_test` 经回环代理访问 Cloudflare Trace，返回脱敏匹配/不匹配/国内/代理失败文案）与解散（不动凭据）。
+    - 睡眠唤醒去重仍待后续批次，本卡尚未完成。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

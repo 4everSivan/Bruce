@@ -1359,6 +1359,8 @@
     loadCCSwitchStatus();
     // Codex 发现来源 (C084): 决定对话框里「发现…账号」按钮的显隐。
     loadCodexSources();
+    // C264: 网络出口国家校验独立卡片 (design/11 §3.1)。
+    if (typeof S.buildEgressCard === "function") S.buildEgressCard(host);
   }
 
   /// 重建「授权后应用将：」摘要列表 (C094 / 设计规则 29)。
