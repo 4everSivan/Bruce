@@ -8,6 +8,8 @@ pub mod collector;
 pub mod credentials;
 pub mod egress_probe;
 pub mod paths;
+#[cfg(feature = "desktop")]
+pub mod power_events;
 pub mod pricing_sync;
 pub mod quota_policy;
 pub mod reachability;
@@ -1524,6 +1526,8 @@ mod desktop {
                         }
                     })
                     .build(app)?;
+                // C264: 睡眠唤醒通知 (Windows); 60s 去重由调度循环处理。
+                crate::power_events::start(app.handle().clone());
                 scheduler::spawn(app.handle().clone());
                 // C149 / T22: 首次安装或尚未完成向导时直接打开设置窗承载欢迎向导遮罩;
                 // 已完成向导或存量老用户升级则保持双击启动直接呈现看板面板。

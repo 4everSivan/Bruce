@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(feature = "desktop")]
+use std::time::Instant;
 
 #[cfg(feature = "desktop")]
 use serde_json::Value;
@@ -81,6 +83,8 @@ enum LocalRefreshState {
 #[derive(Default)]
 pub struct SchedulerControl {
     manual_refresh: Mutex<Option<mpsc::SyncSender<()>>>,
+    /// C264: 睡眠唤醒通知（与手动刷新共用唤醒通道, 由该标志区分来源）。
+    wake_pending: AtomicBool,
     pub retry_count: Mutex<u32>,
     pub alert_state: Mutex<QuotaAlertRuntimeState>,
     pub snapshot: Mutex<SnapshotState>,
@@ -97,6 +101,18 @@ pub struct SchedulerControl {
 
 /// 采集预算：mac 外层 `moduleSeconds + externalRequestSeconds + 5s 宽限` = 105s。
 pub const COLLECTION_WATCHDOG_SECS: u64 = 105;
+
+/// 唤醒去重窗口（对齐 mac `wakeDedupSeconds = 60`）。
+pub const WAKE_DEDUP_SECS: u64 = 60;
+
+/// 距上次采集尝试不足去重窗口时, 唤醒事件不再触发新刷新。
+pub fn should_refresh_on_wake(
+    last_attempt: Option<std::time::Instant>,
+    now: std::time::Instant,
+    dedup: Duration,
+) -> bool {
+    last_attempt.is_none_or(|last| now.duration_since(last) >= dedup)
+}
 
 /// 采集租约 (C264): 同一时刻只允许一个全量/定向/局部采集。
 /// `abandon` 用于看门狗超时：立即放开忙标志并递增代数，让后续刷新继续，
@@ -178,7 +194,24 @@ impl SchedulerControl {
         self.collection_busy.load(Ordering::SeqCst)
     }
 
+    /// 睡眠唤醒触发一次自动刷新（不按手动处理, 不绕过额度冷却）。
+    pub fn request_wake_refresh(&self) {
+        self.wake_pending.store(true, Ordering::SeqCst);
+        self.send_wakeup();
+    }
+
+    /// 消费唤醒标志; 调度循环每轮调用一次。
+    pub fn take_wake_pending(&self) -> bool {
+        self.wake_pending.swap(false, Ordering::SeqCst)
+    }
+
     pub fn request_manual_refresh(&self) {
+        // 手动意图优先：清除尚未被消费的唤醒标志，避免被当成自动唤醒。
+        self.wake_pending.store(false, Ordering::SeqCst);
+        self.send_wakeup();
+    }
+
+    fn send_wakeup(&self) {
         if let Ok(guard) = self.manual_refresh.lock() {
             if let Some(sender) = guard.as_ref() {
                 // A burst during collection schedules one follow-up, without blocking IPC.
@@ -765,6 +798,7 @@ mod desktop {
             let mut retries = 0u32;
             let mut manual = false;
             let mut manual_reason = false;
+            let mut last_attempt: Option<Instant> = None;
             // C037: 边界唤醒已消费集合 —— 同一窗口重置时刻只提前唤醒一次。
             let mut boundary_consumed = std::collections::BTreeSet::new();
             // C076: 网络可达性闸门 —— 离线不发起自动刷新/不重试, 联网后单次补偿。
@@ -772,9 +806,27 @@ mod desktop {
             let mut gate = crate::reachability::ReachabilityGate::new();
             loop {
                 // Collapse requests already queued before this run into its manual reason.
-                manual |= receiver.try_iter().next().is_some();
+                let received = receiver.try_iter().next().is_some();
+                let wake = app.state::<SchedulerControl>().take_wake_pending();
+                manual |= received && !wake;
                 if manual {
                     retries = 0;
+                }
+                // C264: 睡眠唤醒去重 — 距上次采集尝试不足窗口时不重复刷新, 等待窗口结束。
+                if wake
+                    && !manual
+                    && !should_refresh_on_wake(
+                        last_attempt,
+                        Instant::now(),
+                        Duration::from_secs(WAKE_DEDUP_SECS),
+                    )
+                {
+                    if let Some(last) = last_attempt {
+                        let remaining =
+                            Duration::from_secs(WAKE_DEDUP_SECS).saturating_sub(last.elapsed());
+                        let _ = receiver.recv_timeout(remaining);
+                    }
+                    continue;
                 }
                 let decision = gate.observe(probe.is_online());
                 // 断网闸门: 自动触发在无网络时不启动采集, 也不排任何重试; 手动刷新
@@ -789,16 +841,19 @@ mod desktop {
                     }
                     publish(&app);
                     // 短周期重探, 不进入指数退避; 手动输入可提前打断。
-                    manual = receiver
+                    let received = receiver
                         .recv_timeout(Duration::from_secs(
                             crate::reachability::OFFLINE_PROBE_INTERVAL_SECS,
                         ))
                         .is_ok();
+                    let wake = app.state::<SchedulerControl>().take_wake_pending();
+                    manual = received && !wake;
                     continue;
                 }
                 manual_reason =
                     crate::runtime_core::manual_alert_reason(manual, retries, manual_reason);
                 let settings = load_settings(&paths::data_root());
+                last_attempt = Some(Instant::now());
                 let outcome = run_refresh_with_kind(&app, &settings, manual_reason);
                 retries = match outcome {
                     RefreshOutcome::Success => 0,
@@ -838,8 +893,10 @@ mod desktop {
                         );
                     }
                 }
-                // Manual input replaces this one wait and begins the next run immediately.
-                manual = receiver.recv_timeout(Duration::from_secs(wait)).is_ok();
+                // Manual input replaces this one wait; wake input triggers an automatic run.
+                let received = receiver.recv_timeout(Duration::from_secs(wait)).is_ok();
+                let wake = app.state::<SchedulerControl>().take_wake_pending();
+                manual = received && !wake;
                 if retries > 5 {
                     retries = 0;
                 }
@@ -888,6 +945,7 @@ mod alert_state_tests {
 #[cfg(test)]
 mod concurrency_tests {
     use super::*;
+    use std::time::Instant;
 
     fn temp_root() -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!(
@@ -973,6 +1031,35 @@ mod concurrency_tests {
         assert!(next.generation() > generation, "代数必须递增以隔离旧线程");
         drop(next);
         assert!(!control.collection_in_flight());
+    }
+
+    /// C264: 唤醒去重窗口 60s, 与 mac wakeDedupSeconds 同口径。
+    #[test]
+    fn wake_dedup_window_matches_mac() {
+        let now = Instant::now();
+        assert!(should_refresh_on_wake(None, now, Duration::from_secs(60)));
+        assert!(!should_refresh_on_wake(
+            Some(now),
+            now + Duration::from_secs(59),
+            Duration::from_secs(60)
+        ));
+        assert!(should_refresh_on_wake(
+            Some(now),
+            now + Duration::from_secs(60),
+            Duration::from_secs(60)
+        ));
+    }
+
+    /// C264: 唤醒与手动意图可区分; 手动请求清除未消费的唤醒标志。
+    #[test]
+    fn wake_and_manual_intents_are_distinct() {
+        let control = SchedulerControl::new();
+        control.request_wake_refresh();
+        assert!(control.take_wake_pending());
+        assert!(!control.take_wake_pending());
+        control.request_wake_refresh();
+        control.request_manual_refresh();
+        assert!(!control.take_wake_pending());
     }
 
     /// C264: 看门狗正常返回结果; 超时返回 Err 且不等待子线程。
