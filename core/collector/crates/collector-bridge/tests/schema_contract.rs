@@ -114,10 +114,20 @@ fn policy_schemas_cover_alert_decide() {
             .any(|case| { case["properties"]["operation"]["const"] == "alertDecide" }),
         "policy-request 缺 alertDecide"
     );
+    for operation in ["pricingValidate", "updateDecide"] {
+        assert!(
+            cases
+                .iter()
+                .any(|case| { case["properties"]["operation"]["const"] == operation }),
+            "policy-request 缺 {operation}"
+        );
+    }
 
     let response = schema("policy-response-v1.schema.json");
     let operations = strings(&response["properties"]["operation"]["enum"]);
-    assert!(operations.contains(&"alertDecide".to_owned()));
+    for operation in ["alertDecide", "pricingValidate", "updateDecide"] {
+        assert!(operations.contains(&operation.to_owned()));
+    }
     let results = response["properties"]["result"]["oneOf"]
         .as_array()
         .expect("policy response result oneOf");
@@ -129,5 +139,34 @@ fn policy_schemas_cover_alert_decide() {
             })
         }),
         "policy-response 缺 alertDecide {{state, events}}"
+    );
+    assert!(
+        results.iter().any(|case| {
+            case["required"].as_array().is_some_and(|required| {
+                strings(&Value::Array(required.clone()))
+                    == [
+                        "accepted".to_owned(),
+                        "updatedAt".to_owned(),
+                        "modelCount".to_owned(),
+                        "code".to_owned(),
+                        "message".to_owned(),
+                    ]
+            })
+        }),
+        "policy-response 缺 pricingValidate 结果"
+    );
+    assert!(
+        results.iter().any(|case| {
+            case["required"].as_array().is_some_and(|required| {
+                strings(&Value::Array(required.clone()))
+                    == [
+                        "trustworthy".to_owned(),
+                        "decision".to_owned(),
+                        "clearSkip".to_owned(),
+                        "clearSkipOnCatchup".to_owned(),
+                    ]
+            })
+        }),
+        "policy-response 缺 updateDecide 结果"
     );
 }

@@ -13,16 +13,20 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::alerts::{decide, AlertState};
+use crate::pricing::{validate_catalog, CatalogDecision};
 use crate::quota::{annotate_services, merge, plan, PlanInput, QuotaRunPolicy};
 use crate::refresh::{
     backoff_seconds, boundary_delay, boundary_ids, boundary_vec, DEFAULT_BOUNDARY_SLACK_SECS,
+};
+use crate::update::{
+    is_manifest_trustworthy, should_clear_skipped_on_catchup, skip_decision, SkipDecision,
 };
 
 pub const POLICY_SCHEMA_VERSION: u64 = 1;
 /// 请求上限: 与采集请求同为 4 MiB (正常请求只含 services, 约数 KB)。
 pub const MAX_POLICY_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 
-const OPERATIONS: [&str; 7] = [
+const OPERATIONS: [&str; 9] = [
     "quotaPlan",
     "quotaMerge",
     "quotaAnnotate",
@@ -30,6 +34,8 @@ const OPERATIONS: [&str; 7] = [
     "boundaryWake",
     "backoff",
     "alertDecide",
+    "pricingValidate",
+    "updateDecide",
 ];
 
 #[derive(Deserialize)]
@@ -113,6 +119,29 @@ struct AlertDecideRequest {
     previous_state: Option<AlertState>,
     #[serde(default)]
     active_keys: Option<Vec<String>>,
+}
+
+/// C263: 价卡校验/防降级 (远端清单 ↔ 内置基线)。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PricingValidateRequest {
+    catalog: Value,
+    /// 缺省取 domain 内置基线; 显式注入便于测试与双端对拍。
+    #[serde(default)]
+    builtin_updated_at: Option<String>,
+}
+
+/// C263: 软件更新纯决策 (清单可信 / 跳过恢复 / 本地追平)。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateDecideRequest {
+    offered_version: String,
+    manifest_version: String,
+    download_url: String,
+    #[serde(default)]
+    skipped_version: Option<String>,
+    #[serde(default)]
+    local_version: Option<String>,
 }
 
 struct Failure {
@@ -202,7 +231,7 @@ fn validate_envelope(input: &[u8]) -> Result<(String, Value), Failure> {
         }
         _ => Err(Failure::new(
             "POLICY_UNKNOWN_OPERATION",
-            "operation 必须是 quotaPlan / quotaMerge / quotaAnnotate / boundaryIds / boundaryWake / backoff / alertDecide",
+            "operation 必须是 quotaPlan / quotaMerge / quotaAnnotate / boundaryIds / boundaryWake / backoff / alertDecide / pricingValidate / updateDecide",
         )),
     }
 }
@@ -295,7 +324,78 @@ fn run(operation: &str, fields: Value) -> Result<Value, Failure> {
             );
             Ok(json!({"state": state, "events": events}))
         }
+        "pricingValidate" => {
+            let request: PricingValidateRequest = parse(fields)?;
+            let baseline = request
+                .builtin_updated_at
+                .unwrap_or_else(|| collector_domain::pricing::builtin_updated_at().to_owned());
+            Ok(pricing_decision_json(validate_catalog(
+                &request.catalog,
+                &baseline,
+            )))
+        }
+        "updateDecide" => {
+            let request: UpdateDecideRequest = parse(fields)?;
+            let decision =
+                if is_manifest_trustworthy(&request.manifest_version, &request.download_url)
+                    && request.offered_version == request.manifest_version
+                {
+                    match skip_decision(
+                        &request.offered_version,
+                        request.skipped_version.as_deref(),
+                    ) {
+                        SkipDecision::Ignore => json!({
+                            "trustworthy": true,
+                            "decision": "ignore",
+                            "clearSkip": false,
+                            "clearSkipOnCatchup": false,
+                        }),
+                        SkipDecision::Offer { clear_skip } => json!({
+                            "trustworthy": true,
+                            "decision": "offer",
+                            "clearSkip": clear_skip,
+                            "clearSkipOnCatchup": request
+                                .local_version
+                                .as_deref()
+                                .is_some_and(|local| should_clear_skipped_on_catchup(
+                                    local,
+                                    request.skipped_version.as_deref()
+                                )),
+                        }),
+                    }
+                } else {
+                    json!({
+                        "trustworthy": false,
+                        "decision": "reject",
+                        "clearSkip": false,
+                        "clearSkipOnCatchup": false,
+                    })
+                };
+            Ok(decision)
+        }
         _ => Err(Failure::new("POLICY_UNKNOWN_OPERATION", "未知的策略操作")),
+    }
+}
+
+fn pricing_decision_json(decision: CatalogDecision) -> Value {
+    match decision {
+        CatalogDecision::Accept {
+            updated_at,
+            model_count,
+        } => json!({
+            "accepted": true,
+            "updatedAt": updated_at,
+            "modelCount": model_count,
+            "code": null,
+            "message": null,
+        }),
+        CatalogDecision::Reject { code, message } => json!({
+            "accepted": false,
+            "updatedAt": null,
+            "modelCount": null,
+            "code": code,
+            "message": message,
+        }),
     }
 }
 

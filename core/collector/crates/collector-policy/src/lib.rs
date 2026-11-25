@@ -12,6 +12,7 @@
 //! `refresh-policy-parity` 三份共享用例裁判。
 
 pub mod alerts;
+pub mod pricing;
 pub mod quota;
 pub mod refresh;
 pub mod request;

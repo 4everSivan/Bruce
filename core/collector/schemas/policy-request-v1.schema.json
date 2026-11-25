@@ -111,6 +111,34 @@
       }
     },
     {
+      "title": "pricingValidate: 价卡校验与防降级 (C263)",
+      "additionalProperties": false,
+      "required": ["catalog"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "pricingValidate" },
+        "catalog": { "type": "object", "description": "远端价卡 JSON (CatalogFile); 由 domain 严格校验" },
+        "builtinUpdatedAt": {
+          "type": "string",
+          "description": "内置基线 updatedAt; 缺省取 collector-domain 内置值"
+        }
+      }
+    },
+    {
+      "title": "updateDecide: 软件更新纯决策 (C263)",
+      "additionalProperties": false,
+      "required": ["offeredVersion", "manifestVersion", "downloadUrl"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "updateDecide" },
+        "offeredVersion": { "type": "string" },
+        "manifestVersion": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "skippedVersion": { "type": ["string", "null"] },
+        "localVersion": { "type": ["string", "null"] }
+      }
+    },
+    {
       "title": "backoff: 刷新退避秒数 (T17)",
       "additionalProperties": false,
       "required": ["retryCount", "rateLimited", "base", "max", "rateLimit"],

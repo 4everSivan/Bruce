@@ -310,3 +310,85 @@ fn alert_decide_envelope_bootstraps_and_crosses() {
     assert_eq!(events[0]["tier"], 95);
     assert_eq!(events[0]["windowKey"], "five_hour");
 }
+
+/// C263: 价卡校验/防降级经共享策略入口返回稳定错误码。
+#[test]
+fn pricing_validate_accepts_and_rejects_with_codes() {
+    let catalog = |updated_at: &str| {
+        json!({
+            "schemaVersion": 1,
+            "updatedAt": updated_at,
+            "models": [{
+                "model": "m1", "displayName": "Model 1", "vendor": "V",
+                "input": 1.0, "output": 2.0, "cacheRead": 0.5, "note": ""
+            }]
+        })
+    };
+    let accepted = call(&json!({
+        "schemaVersion": 1,
+        "operation": "pricingValidate",
+        "catalog": catalog("2026-11-02"),
+        "builtinUpdatedAt": "2026-11-01",
+    }));
+    assert_eq!(accepted["status"], "success", "{accepted}");
+    assert_eq!(accepted["result"]["accepted"], true);
+    assert_eq!(accepted["result"]["updatedAt"], "2026-11-02");
+    assert_eq!(accepted["result"]["modelCount"], 1);
+
+    let rolled_back = call(&json!({
+        "schemaVersion": 1,
+        "operation": "pricingValidate",
+        "catalog": catalog("2026-10-31"),
+        "builtinUpdatedAt": "2026-11-01",
+    }));
+    assert_eq!(rolled_back["status"], "success");
+    assert_eq!(rolled_back["result"]["accepted"], false);
+    assert_eq!(rolled_back["result"]["code"], "PRICING_OLDER_THAN_BUILTIN");
+
+    let invalid = call(&json!({
+        "schemaVersion": 1,
+        "operation": "pricingValidate",
+        "catalog": json!({"schemaVersion": 2, "updatedAt": "2026-11-01", "models": []}),
+        "builtinUpdatedAt": "2026-11-01",
+    }));
+    assert_eq!(invalid["result"]["code"], "PRICING_INVALID_SCHEMA_VERSION");
+}
+
+/// C263: 软件更新纯决策 (清单可信 / 跳过 / 本地追平) 经共享策略入口。
+#[test]
+fn update_decide_returns_trust_and_skip_semantics() {
+    let base = |skipped: Option<&str>, local: Option<&str>| {
+        json!({
+            "schemaVersion": 1,
+            "operation": "updateDecide",
+            "offeredVersion": "0.14.0",
+            "manifestVersion": "0.14.0",
+            "downloadUrl": "https://github.com/4everSivan/Bruce/releases/download/v0.14.0/x.exe",
+            "skippedVersion": skipped,
+            "localVersion": local,
+        })
+    };
+    let offer = call(&base(None, Some("0.13.0")));
+    assert_eq!(offer["status"], "success", "{offer}");
+    assert_eq!(offer["result"]["trustworthy"], true);
+    assert_eq!(offer["result"]["decision"], "offer");
+    assert_eq!(offer["result"]["clearSkip"], false);
+
+    let ignored = call(&base(Some("0.14.0"), Some("0.13.0")));
+    assert_eq!(ignored["result"]["decision"], "ignore");
+
+    let recovered = call(&base(Some("0.13.0"), Some("0.13.5")));
+    assert_eq!(recovered["result"]["decision"], "offer");
+    assert_eq!(recovered["result"]["clearSkip"], true);
+    assert_eq!(recovered["result"]["clearSkipOnCatchup"], true);
+
+    let untrusted = call(&json!({
+        "schemaVersion": 1,
+        "operation": "updateDecide",
+        "offeredVersion": "0.14.0",
+        "manifestVersion": "0.14.0-beta",
+        "downloadUrl": "http://github.com/x",
+    }));
+    assert_eq!(untrusted["result"]["trustworthy"], false);
+    assert_eq!(untrusted["result"]["decision"], "reject");
+}

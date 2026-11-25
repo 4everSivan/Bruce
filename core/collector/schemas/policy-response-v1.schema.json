@@ -18,11 +18,13 @@
         "boundaryWake",
         "backoff",
         "alertDecide",
+        "pricingValidate",
+        "updateDecide",
         null
       ]
     },
     "result": {
-      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; boundaryIds → {boundaries}; boundaryWake → {delay, consumed}; backoff → {seconds}; alertDecide → {state, events}; 失败时为 null",
+      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; boundaryIds → {boundaries}; boundaryWake → {delay, consumed}; backoff → {seconds}; alertDecide → {state, events}; pricingValidate → {accepted, updatedAt, modelCount, code, message}; updateDecide → {trustworthy, decision, clearSkip, clearSkipOnCatchup}; 失败时为 null",
       "oneOf": [
         {
           "type": "object",
@@ -72,6 +74,29 @@
           "properties": {
             "state": { "type": "object" },
             "events": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accepted", "updatedAt", "modelCount", "code", "message"],
+          "properties": {
+            "accepted": { "type": "boolean" },
+            "updatedAt": { "type": ["string", "null"] },
+            "modelCount": { "type": ["integer", "null"] },
+            "code": { "type": ["string", "null"] },
+            "message": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trustworthy", "decision", "clearSkip", "clearSkipOnCatchup"],
+          "properties": {
+            "trustworthy": { "type": "boolean" },
+            "decision": { "enum": ["offer", "ignore", "reject"] },
+            "clearSkip": { "type": "boolean" },
+            "clearSkipOnCatchup": { "type": "boolean" }
           }
         },
         { "type": "null" }
