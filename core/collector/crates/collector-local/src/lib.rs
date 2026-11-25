@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+pub use collector_domain::default_cache_root;
 
 pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 /// SQLite 缓存的压缩贡献格式版本 (`CompactContribution`)。
@@ -108,40 +110,6 @@ impl ScanStats {
 ///
 /// macOS/Linux keep the historical `~/Library/Application Support` layout;
 /// Windows resolves under `%LOCALAPPDATA%` (env first, `~/AppData/Local`
-/// fallback) so machine-local caches never land in the roaming profile.
-pub fn default_cache_root(home: &Path) -> PathBuf {
-    #[cfg(windows)]
-    {
-        let local_app_data = std::env::var("LOCALAPPDATA").ok();
-        windows_cache_root(home, local_app_data.as_deref())
-    }
-    #[cfg(not(windows))]
-    {
-        home.join("Library/Application Support/Bruce/collector-cache-v1")
-    }
-}
-
-/// Windows cache root with the `LOCALAPPDATA` value injected for tests.
-///
-/// Blank env values count as unset (trimmed, matching `paths.rs`
-/// `env_non_empty` semantics) so the home-relative fallback applies.
-#[cfg(windows)]
-fn windows_cache_root(home: &Path, local_app_data: Option<&str>) -> PathBuf {
-    let trimmed = local_app_data
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    match trimmed {
-        Some(value) => PathBuf::from(value)
-            .join("Bruce")
-            .join("collector-cache-v1"),
-        None => home
-            .join("AppData")
-            .join("Local")
-            .join("Bruce")
-            .join("collector-cache-v1"),
-    }
-}
-
 /// 清理 C116 前 Kimi Code CLI 旧版缓存引擎遗留的条目与清单 (`<64 位十六进制>.json` /
 /// `manifest-<64 位十六进制>.json`), 返回删除数。
 ///
@@ -486,44 +454,6 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::io::Cursor;
-
-    #[cfg(not(windows))]
-    #[test]
-    fn default_cache_root_keeps_historical_layout_outside_windows() {
-        assert_eq!(
-            super::default_cache_root(std::path::Path::new("/Users/dev")),
-            std::path::PathBuf::from(
-                "/Users/dev/Library/Application Support/Bruce/collector-cache-v1",
-            )
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_cache_root_prefers_non_empty_localappdata_env() {
-        assert_eq!(
-            super::windows_cache_root(
-                std::path::Path::new("C:\\Users\\dev"),
-                Some("C:\\Users\\dev\\AppData\\Local"),
-            ),
-            std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1")
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_cache_root_falls_back_to_home_when_env_missing_or_blank() {
-        let expected =
-            std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1");
-        assert_eq!(
-            super::windows_cache_root(std::path::Path::new("C:\\Users\\dev"), None),
-            expected
-        );
-        assert_eq!(
-            super::windows_cache_root(std::path::Path::new("C:\\Users\\dev"), Some("   ")),
-            expected
-        );
-    }
 
     #[test]
     fn oversized_line_is_consumed_without_allocating_the_full_record() {

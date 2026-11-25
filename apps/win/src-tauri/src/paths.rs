@@ -18,7 +18,7 @@ pub fn home_root() -> PathBuf {
 }
 
 pub fn collector_cache_root() -> PathBuf {
-    collector_local::default_cache_root(&home_root())
+    collector_domain::default_cache_root(&home_root())
 }
 
 /// 欢迎向导 Step 1 本机只读环境扫描 (T22, 对齐 mac `LocalDependencyScanPaths.standard`)。

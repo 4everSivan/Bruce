@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 pub const BRIDGE_SCHEMA_VERSION: u8 = 1;
@@ -1376,5 +1377,78 @@ mod tests {
             .unwrap();
         assert_eq!(qwen.bucket.rate_splits["long"].input, 300_000);
         assert_eq!(qwen.bucket.input, 300_000);
+    }
+}
+
+/// 采集缓存根目录 (C265): Windows 使用 `%LOCALAPPDATA%\Bruce\collector-cache-v1`
+/// (空/缺失回退 home 相对路径); 其他平台沿用历史上的 Application Support 目录。
+pub fn default_cache_root(home: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let local_app_data = std::env::var("LOCALAPPDATA").ok();
+        windows_cache_root(home, local_app_data.as_deref())
+    }
+    #[cfg(not(windows))]
+    {
+        home.join("Library/Application Support/Bruce/collector-cache-v1")
+    }
+}
+
+/// Windows 缓存根 (注入 `LOCALAPPDATA` 供测试); 空白值按未设置处理。
+#[cfg(windows)]
+fn windows_cache_root(home: &Path, local_app_data: Option<&str>) -> PathBuf {
+    let trimmed = local_app_data
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    match trimmed {
+        Some(value) => PathBuf::from(value)
+            .join("Bruce")
+            .join("collector-cache-v1"),
+        None => home
+            .join("AppData")
+            .join("Local")
+            .join("Bruce")
+            .join("collector-cache-v1"),
+    }
+}
+
+#[cfg(test)]
+mod cache_root_tests {
+    #[cfg(not(windows))]
+    #[test]
+    fn default_cache_root_keeps_historical_layout_outside_windows() {
+        assert_eq!(
+            super::default_cache_root(std::path::Path::new("/Users/dev")),
+            std::path::PathBuf::from(
+                "/Users/dev/Library/Application Support/Bruce/collector-cache-v1",
+            )
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cache_root_prefers_non_empty_localappdata_env() {
+        assert_eq!(
+            super::windows_cache_root(
+                std::path::Path::new("C:\\Users\\dev"),
+                Some("C:\\Users\\dev\\AppData\\Local"),
+            ),
+            std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cache_root_falls_back_to_home_when_env_missing_or_blank() {
+        let expected =
+            std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1");
+        assert_eq!(
+            super::windows_cache_root(std::path::Path::new("C:\\Users\\dev"), None),
+            expected
+        );
+        assert_eq!(
+            super::windows_cache_root(std::path::Path::new("C:\\Users\\dev"), Some("   ")),
+            expected
+        );
     }
 }

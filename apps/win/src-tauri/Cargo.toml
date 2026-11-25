@@ -29,7 +29,6 @@ collector-domain = { path = "../../../core/collector/crates/collector-domain" }
 collector-bridge = { path = "../../../core/collector/crates/collector-bridge" }
 collector-credential = { path = "../../../core/collector/crates/collector-credential" }
 collector-provider = { path = "../../../core/collector/crates/collector-provider" }
-collector-local = { path = "../../../core/collector/crates/collector-local" }
 # T13: 额度门禁与回填的跨端共享实现 (design/08)
 collector-policy = { path = "../../../core/collector/crates/collector-policy" }
 base64 = "=0.22.1"
