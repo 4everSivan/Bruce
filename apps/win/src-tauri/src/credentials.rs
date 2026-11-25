@@ -977,7 +977,8 @@ pub fn verify_subscription_with(
     {
         return SubscriptionVerification::none();
     }
-    let Ok(raw) = fs::read(&path) else {
+    // C252: Windows 落盘为 DPAPI 密文，验证路径必须与读取路径同样先解码。
+    let Some(raw) = read_credential_store_bytes(root) else {
         return SubscriptionVerification::none();
     };
     let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&raw) else {
