@@ -235,7 +235,13 @@ fn assemble(context: &RunContext<'_>, gathered: Gathered) -> Result<Assembled, C
     cancellation_fence(context, &quota.credential_updates)?;
     let mut diagnostics = local.diagnostics;
     let pricing_table = resolve_pricing_table(context.request);
-    persist_request_logs(context, &local.agents, &pricing_table, &mut diagnostics);
+    persist_request_logs(
+        context,
+        &local.agents,
+        &local.scan_stats,
+        &pricing_table,
+        &mut diagnostics,
+    );
     let agents = build_agents(context, &local.agents, &pricing_table);
     // C124: 未授予 externalQuotas (无订阅凭证 / 未同意授权) 或本轮只做本地统计时,
     // 额度 worker 不会启动, quota 为空: 不输出占位 service, 也不消费/产生额度诊断。
@@ -349,6 +355,7 @@ fn resolve_pricing_table(request: &BridgeRequest) -> PricingTable {
 fn persist_request_logs(
     context: &RunContext<'_>,
     agents: &BTreeMap<String, LocalAgentResult>,
+    scan_stats: &ScanStats,
     pricing: &PricingTable,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -361,14 +368,15 @@ fn persist_request_logs(
         paths::resolve_request_log_path(Path::new(home)),
     );
     let cutoff = collector_domain::request_log_cutoff_millis(context.window.now.timestamp_millis());
-    let mut entries = Vec::new();
-    let mut truncated_total = 0;
     // Shared aggregators also emit rows for agents outside the request-log
     // scope (CodeBuddy / DSH); only in-scope agents reach the store (C249).
-    let in_scope = agents
+    let in_scope: Vec<(&str, &LocalAgentResult)> = agents
         .iter()
-        .filter(|(agent_id, _)| REQUEST_LOG_AGENT_IDS.contains(&agent_id.as_str()));
-    for (agent_id, result) in in_scope {
+        .filter(|(agent_id, _)| REQUEST_LOG_AGENT_IDS.contains(&agent_id.as_str()))
+        .map(|(agent_id, result)| (agent_id.as_str(), result))
+        .collect();
+    let mut truncated_total = 0;
+    for (agent_id, result) in &in_scope {
         if result.requests.truncated > 0 {
             truncated_total += result.requests.truncated;
             // design/14 §3.5.3: the cap keeps the newest rows; say how many
@@ -376,7 +384,7 @@ fn persist_request_logs(
             diagnostics.push(Diagnostic::new(
                 LOCAL_SOURCE_NOTICE,
                 "local",
-                agent_id,
+                *agent_id,
                 format!(
                     "请求日志明细超过每源 {REQUEST_LOG_MAX_PER_SOURCE} 条上限, 已保留最近 \
                      {REQUEST_LOG_MAX_PER_SOURCE} 条, 未记录较早的 {} 条",
@@ -385,28 +393,6 @@ fn persist_request_logs(
                 false,
             ));
         }
-        for request in &result.requests.rows {
-            let (cost_usd, pricing_model) = request_cost(pricing, request);
-            entries.push(RequestLogEntry {
-                agent_id: agent_id.clone(),
-                request_key: request.key.clone(),
-                occurred_at: request.timestamp_millis,
-                model: request.model.clone(),
-                raw_model: request.raw_model.clone(),
-                project: request.project.clone(),
-                input: request.input,
-                output: request.output,
-                cache_read: request.cache_read,
-                cache_creation: request.cache_creation,
-                cache_creation_1h: request.cache_creation_1h,
-                cost_usd,
-                pricing_model,
-                status_code: 200,
-                fidelity: request.fidelity.clone(),
-                latency_ms: request.latency_ms,
-                first_token_ms: request.first_token_ms,
-            });
-        }
     }
     context
         .metrics
@@ -414,8 +400,52 @@ fn persist_request_logs(
         .store(truncated_total, Ordering::Release);
     // With nothing to write, still prune an existing store so expired detail
     // does not linger while every in-scope agent is idle; never create one.
-    if entries.is_empty() && !path.is_file() {
+    let rows_total: usize = in_scope
+        .iter()
+        .map(|(_, result)| result.requests.rows.len())
+        .sum();
+    if rows_total == 0 && !path.is_file() {
         return;
+    }
+
+    // C260: 来源缓存零变更且价卡指纹与上次落盘一致时，近 30 天明细无需重新计价重放
+    // (每轮 20 万行的定价 + clone + upsert); 仍打开库执行一次保留期清理。
+    let source_signature = request_log_source_signature(&in_scope);
+    let pricing_fingerprint = pricing.fingerprint();
+    let skip_replay = path.is_file()
+        && !request_log_sources_changed(scan_stats)
+        && replay_marker_matches(&path, source_signature, pricing_fingerprint);
+    context
+        .metrics
+        .request_log_replay_skipped
+        .store(usize::from(skip_replay), Ordering::Release);
+
+    let mut entries = Vec::new();
+    if !skip_replay {
+        for (agent_id, result) in &in_scope {
+            for request in &result.requests.rows {
+                let (cost_usd, pricing_model) = request_cost(pricing, request);
+                entries.push(RequestLogEntry {
+                    agent_id: (*agent_id).to_owned(),
+                    request_key: request.key.clone(),
+                    occurred_at: request.timestamp_millis,
+                    model: request.model.clone(),
+                    raw_model: request.raw_model.clone(),
+                    project: request.project.clone(),
+                    input: request.input,
+                    output: request.output,
+                    cache_read: request.cache_read,
+                    cache_creation: request.cache_creation,
+                    cache_creation_1h: request.cache_creation_1h,
+                    cost_usd,
+                    pricing_model,
+                    status_code: 200,
+                    fidelity: request.fidelity.clone(),
+                    latency_ms: request.latency_ms,
+                    first_token_ms: request.first_token_ms,
+                });
+            }
+        }
     }
     let started = Instant::now();
     let result = RequestLogStore::open(&path).and_then(|mut store| store.merge(&entries, cutoff));
@@ -434,6 +464,9 @@ fn persist_request_logs(
                 .metrics
                 .request_log_rows_pruned
                 .store(outcome.pruned, Ordering::Release);
+            if !skip_replay {
+                write_replay_marker(&path, source_signature, pricing_fingerprint);
+            }
         }
         Err(error) => diagnostics.push(Diagnostic::new(
             LOCAL_REQUEST_LOG_UNAVAILABLE,
@@ -443,6 +476,80 @@ fn persist_request_logs(
             true,
         )),
     }
+}
+
+/// C260: 请求日志重放标记的 schema 版本; 版本不符时保守重放。
+const REQUEST_LOG_REPLAY_SCHEMA_VERSION: u64 = 1;
+
+/// C260: 本轮来源是否有任何缓存写入 / 重建 / 删除 —— 有则明细可能变化, 必须重放。
+fn request_log_sources_changed(stats: &ScanStats) -> bool {
+    stats.cache_rebuilds > 0
+        || stats.cache_appends > 0
+        || stats.cache_corruptions > 0
+        || stats.cache_invalidations > 0
+        || stats.cache_deletions > 0
+        || stats.io_errors > 0
+}
+
+/// C260: 范围内来源的数据形状签名 (agent 集合 / found / 请求行数 / 截断数)。
+/// 缓存全命中时它与来源内容一一对应, 用于判定重放结果是否与上次一致。
+fn request_log_source_signature(in_scope: &[(&str, &LocalAgentResult)]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for (agent_id, result) in in_scope {
+        fnv1a(&mut hash, agent_id.as_bytes());
+        fnv1a(&mut hash, &[u8::from(result.found)]);
+        fnv1a(
+            &mut hash,
+            &(result.requests.rows.len() as u64).to_le_bytes(),
+        );
+        fnv1a(&mut hash, &result.requests.truncated.to_le_bytes());
+    }
+    hash
+}
+
+fn fnv1a(hash: &mut u64, bytes: &[u8]) {
+    for byte in bytes {
+        *hash ^= u64::from(*byte);
+        *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+}
+
+fn replay_marker_path(db: &Path) -> PathBuf {
+    let mut name = db
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_default();
+    name.push(".replay.json");
+    db.with_file_name(name)
+}
+
+fn replay_marker_matches(db: &Path, source_signature: u64, pricing_fingerprint: u64) -> bool {
+    let Ok(body) = fs::read_to_string(replay_marker_path(db)) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&body) else {
+        return false;
+    };
+    value.get("schema_version").and_then(Value::as_u64) == Some(REQUEST_LOG_REPLAY_SCHEMA_VERSION)
+        && value.get("source_signature").and_then(Value::as_u64) == Some(source_signature)
+        && value.get("pricing_fingerprint").and_then(Value::as_u64) == Some(pricing_fingerprint)
+}
+
+fn write_replay_marker(db: &Path, source_signature: u64, pricing_fingerprint: u64) {
+    let marker = replay_marker_path(db);
+    let Some(parent) = marker.parent() else {
+        return;
+    };
+    if fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let body = json!({
+        "schema_version": REQUEST_LOG_REPLAY_SCHEMA_VERSION,
+        "source_signature": source_signature,
+        "pricing_fingerprint": pricing_fingerprint,
+    });
+    // 标记只是跳过提示: 写失败最多导致下一轮重放, 不计诊断。
+    let _ = fs::write(&marker, body.to_string());
 }
 
 /// Read-only request-log page for the `request-log` Bridge module.

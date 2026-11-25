@@ -393,6 +393,39 @@ impl PricingTable {
         Self { builtin, overrides }
     }
 
+    /// C260: 生效价卡的稳定指纹 (模型键与覆盖项按字典序归一化)。
+    ///
+    /// 请求日志每轮重放近 30 天明细; 只有指纹变化时历史行才需要用新价重算。
+    /// 内置基线与用户覆盖都属于生效口径, 因此两者一并纳入。
+    pub fn fingerprint(&self) -> u64 {
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        let mut builtin: Vec<_> = self.builtin.iter().collect();
+        builtin.sort_by_key(|(key, _)| key.as_str());
+        for (key, pricing) in builtin {
+            Self::fnv1a(&mut hash, key.as_bytes());
+            if let Ok(bytes) = serde_json::to_vec(pricing) {
+                Self::fnv1a(&mut hash, &bytes);
+            }
+        }
+        let mut overrides: Vec<_> = self.overrides.iter().collect();
+        overrides.sort_by_key(|(key, _)| key.as_str());
+        for (key, value) in overrides {
+            Self::fnv1a(&mut hash, key.as_bytes());
+            if let Ok(bytes) = serde_json::to_vec(value) {
+                Self::fnv1a(&mut hash, &bytes);
+            }
+        }
+        hash
+    }
+
+    /// FNV-1a 64-bit: 进程间稳定, 无需额外哈希依赖。
+    fn fnv1a(hash: &mut u64, bytes: &[u8]) {
+        for byte in bytes {
+            *hash ^= u64::from(*byte);
+            *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+
     /// Resolves model pricing by checking overrides first, then built-in baselines.
     pub fn resolve(&self, raw_model_name: &str) -> Option<ModelPricing> {
         self.resolve_with_key(raw_model_name)
@@ -763,6 +796,29 @@ fn rate_class_from(
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    /// C260: 指纹只随生效口径变化 —— 同内容不同实例相同, 覆盖或基线改动即变化。
+    #[test]
+    fn pricing_fingerprint_is_stable_and_sensitive() {
+        let baseline = PricingTable::default().fingerprint();
+        assert_eq!(baseline, PricingTable::default().fingerprint());
+
+        let overrides = HashMap::from([(
+            "gpt-5.4".to_owned(),
+            ModelPricingOverride {
+                input_price_per_million: Some(9.0),
+                ..ModelPricingOverride::default()
+            },
+        )]);
+        let adjusted = PricingTable::new(overrides.clone()).fingerprint();
+        assert_ne!(baseline, adjusted, "覆盖项必须改变指纹");
+        assert_eq!(adjusted, PricingTable::new(overrides).fingerprint());
+
+        let mut catalog = catalog().to_vec();
+        catalog[0].input += 1.0;
+        let customized = PricingTable::with_catalog(&catalog, HashMap::new()).fingerprint();
+        assert_ne!(PricingTable::default().fingerprint(), customized);
+    }
 
     #[test]
     fn prefix_resolution_is_deterministic_and_prefers_the_most_specific_base() {

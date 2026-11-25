@@ -39,7 +39,8 @@ pub(crate) struct SqliteSignature {
 }
 
 impl SqliteSignature {
-    fn from_path(path: &Path) -> io::Result<Self> {
+    /// C260: 请求行侧缓存复用同一签名 (主库大小/时间戳/WAL + change counter)。
+    pub(crate) fn from_path(path: &Path) -> io::Result<Self> {
         let metadata = fs::metadata(path)?;
         let (device, inode) = device_and_inode(&metadata);
         let wal_path = PathBuf::from(format!("{}-wal", path.to_string_lossy()));

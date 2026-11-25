@@ -170,19 +170,6 @@ fn execute_one(
             credential_challenges: Vec::new(),
         };
     };
-    let network_permit = match context.budgets.acquire_network(&context.cancellation) {
-        Ok(permit) => permit,
-        Err(error) => {
-            let diagnostic = runtime_diagnostic(error);
-            diagnostics.push(diagnostic.clone());
-            return ServiceExecution {
-                service: failed_service(service, &diagnostic),
-                diagnostics,
-                credential_updates: Vec::new(),
-                credential_challenges: Vec::new(),
-            };
-        }
-    };
     let request = ProviderRequest {
         account_id: plan.account_id.clone(),
         captured_at: context.captured_at.clone(),
@@ -197,9 +184,11 @@ fn execute_one(
     let provider_id = collector_provider::subscription_provider_id(&plan.service.app);
     let rule = rule_for(context.request.context.get("egressRules"), provider_id);
     let mut egress_state = None;
-    let result = match rule {
+    // C260: 出口探针不占网络并发配额 —— 先完成信标/代理探测与放行判定,
+    // 仅在真正发起额度请求前获取 permit (此前探针超时会白白占用配额)。
+    let egress_port = match rule {
         Err(error) => Err(egress_error(error, None, None, &mut egress_state)),
-        Ok(None) => provider.query(&request, &http, &context.cancellation),
+        Ok(None) => Ok(None),
         Ok(Some(rule)) => match egress_cache.probe(rule.port, &http, &context.cancellation) {
             Err(error) => Err(egress_error(
                 error,
@@ -219,16 +208,38 @@ fn execute_one(
                         "status": "allowed", "expected": rule.country,
                         "observed": trace.country, "maskedIp": trace.masked_ip
                     }));
-                    let proxy_http = ProxyHttpClient {
-                        inner: http,
-                        port: rule.port,
-                    };
-                    provider.query(&request, &proxy_http, &context.cancellation)
+                    Ok(Some(rule.port))
                 }
             },
         },
     };
-    drop(network_permit);
+    let result = match egress_port {
+        Err(error) => Err(error),
+        Ok(port) => {
+            let network_permit = match context.budgets.acquire_network(&context.cancellation) {
+                Ok(permit) => permit,
+                Err(error) => {
+                    let diagnostic = runtime_diagnostic(error);
+                    diagnostics.push(diagnostic.clone());
+                    return ServiceExecution {
+                        service: failed_service(service, &diagnostic),
+                        diagnostics,
+                        credential_updates: Vec::new(),
+                        credential_challenges: Vec::new(),
+                    };
+                }
+            };
+            let result = match port {
+                None => provider.query(&request, &http, &context.cancellation),
+                Some(port) => {
+                    let proxy_http = ProxyHttpClient { inner: http, port };
+                    provider.query(&request, &proxy_http, &context.cancellation)
+                }
+            };
+            drop(network_permit);
+            result
+        }
+    };
     if let Err(error) = &result {
         diagnostics.push(error.diagnostic.clone());
     }

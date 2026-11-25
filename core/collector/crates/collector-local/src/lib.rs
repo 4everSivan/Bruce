@@ -200,10 +200,11 @@ impl CompactContribution {
             .by_day
             .iter()
             .map(|(day, bucket)| {
+                // C260: day_list 升序 —— 二分定位, 避免每个日期都线性扫描。
                 window
                     .day_list
-                    .iter()
-                    .position(|candidate| candidate == day)
+                    .binary_search(day)
+                    .ok()
                     .and_then(|index| u16::try_from(index).ok())
                     .map(|index| (index, compact_bucket(bucket)))
             })
@@ -227,8 +228,8 @@ impl CompactContribution {
             .map(|(day, models)| {
                 window
                     .day_list
-                    .iter()
-                    .position(|candidate| candidate == day)
+                    .binary_search(day)
+                    .ok()
                     .and_then(|index| u16::try_from(index).ok())
                     .map(|index| (index, compact_models(models)))
             })

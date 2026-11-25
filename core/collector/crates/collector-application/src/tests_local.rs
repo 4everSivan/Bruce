@@ -4,6 +4,7 @@ use crate::{
     collect_agent_usage, collect_agent_usage_with_dependencies, finalize_local_agent,
     LocalAgentResult, LOCAL_SOURCE_NOTICE,
 };
+use collector_local::ScanStats;
 use serde_json::json;
 use std::sync::atomic::AtomicUsize;
 
@@ -890,6 +891,46 @@ fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
     assert_eq!(entry.cache_creation, 4);
     assert_eq!(entry.model.as_deref(), Some("claude-opus-5-5"));
     assert!(entry.cost_usd.is_some(), "claude-opus-5-5 应命中内置价卡");
+    let baseline_cost = entry.cost_usd.unwrap();
+
+    // C260: 第二轮来源缓存全命中且价卡指纹一致 → 跳过全量重放, 仍执行保留期清理。
+    assert_eq!(first.metrics.request_log_replay_skipped, 0);
+    assert_eq!(second.metrics.request_log_replay_skipped, 1);
+    assert!(
+        home.join("request-log.sqlite.replay.json").is_file(),
+        "成功落盘后应写入重放标记"
+    );
+
+    // 价卡指纹变化必须触发重放, 并按新价重算历史行。
+    let mut repriced = request.clone();
+    repriced.context.insert(
+        "pricingOverrides".to_owned(),
+        json!({"claude-opus-5-5": {"inputPricePerMillion": 100.0}}),
+    );
+    let third = collect_agent_usage_with_dependencies(&repriced, &empty_http()).unwrap();
+    assert_eq!(
+        third.metrics.request_log_replay_skipped, 0,
+        "价卡变化必须重放"
+    );
+    let page = RequestLogStore::open(&home.join("request-log.sqlite"))
+        .unwrap()
+        .query(&RequestLogFilter {
+            start: 0,
+            end: i64::MAX,
+            page: 0,
+            page_size: 50,
+            ..RequestLogFilter::default()
+        })
+        .unwrap();
+    assert!(
+        page.entries[0].cost_usd.unwrap() > baseline_cost,
+        "覆盖价必须写入请求日志"
+    );
+    let fourth = collect_agent_usage_with_dependencies(&repriced, &empty_http()).unwrap();
+    assert_eq!(
+        fourth.metrics.request_log_replay_skipped, 1,
+        "同价卡再次跳过"
+    );
 
     std::fs::remove_dir_all(&home).ok();
 }
@@ -993,6 +1034,7 @@ fn request_log_reports_truncation_and_stores_the_matched_price_key() {
     crate::persist_request_logs(
         &context,
         &agents,
+        &ScanStats::default(),
         &PricingTable::default(),
         &mut diagnostics,
     );

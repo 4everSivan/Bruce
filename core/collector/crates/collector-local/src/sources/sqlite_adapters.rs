@@ -3,9 +3,11 @@ use super::finish;
 use super::{
     number_u64, project_from_zcode, record, timestamp_number, SourceScan, SourceScanError,
 };
+use crate::cache_util::{load_json_cache, write_json_atomic, CacheLoad};
 use crate::jsonl_cache::UsageProbe;
 use crate::sqlite_cache::{
-    scan_sqlite_cached, SqliteCacheConfig, SqliteCursor, SqliteIncrementalAdapter, SqliteReadResult,
+    scan_sqlite_cached, SqliteCacheConfig, SqliteCursor, SqliteIncrementalAdapter,
+    SqliteReadResult, SqliteSignature,
 };
 use crate::ScanStats;
 use collector_domain::{
@@ -15,10 +17,11 @@ use collector_domain::{
 use collector_runtime::CancellationToken;
 use rusqlite::Connection;
 use rusqlite::OpenFlags;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 fn sqlite_error(window: &CollectionWindow, message: &str) -> SourceScan {
@@ -728,7 +731,7 @@ pub fn scan_zcode_cached(
     )?;
     // Request rows are a side-channel: the aggregate cache stays the source of
     // truth for usage; a failed request read only removes ZCode detail rows.
-    match scan_zcode_requests(path, window, cancellation) {
+    match scan_zcode_requests_cached(path, window, cache_root, cancellation) {
         Ok(requests) => scan.requests = requests,
         // C257: 取消/超时是 Runtime 错误，必须向上传播，不能降级成「读取失败」提示。
         Err(SourceScanError::Runtime(error)) => return Err(error.into()),
@@ -742,6 +745,67 @@ pub fn scan_zcode_cached(
         }
     }
     Ok(scan)
+}
+
+/// C260: ZCode 请求行侧缓存 —— 库签名不变时直接复用上次的全表扫描结果,
+/// 避免每轮刷新都重开外部库扫 30 天明细。签名与聚合缓存共用
+/// `SqliteSignature` (大小 / 时间戳 / WAL / change counter), 两者新鲜度一致。
+const ZCODE_REQUEST_CACHE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ZCodeRequestCache {
+    schema_version: u32,
+    signature: SqliteSignature,
+    #[allow(dead_code)]
+    cutoff: i64,
+    requests: RequestRows,
+}
+
+fn zcode_request_cache_path(path: &Path, cache_root: &Path) -> PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(b"bruce-zcode-request-cache-v1\0");
+    hasher.update(path.to_string_lossy().as_bytes());
+    cache_root.join(format!("zcode-requests-{:x}.json", hasher.finalize()))
+}
+
+fn scan_zcode_requests_cached(
+    path: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<RequestRows, SourceScanError> {
+    if !path.is_file() {
+        return Ok(RequestRows::default());
+    }
+    let cutoff = request_log_cutoff_millis(window.now.timestamp_millis());
+    let signature = SqliteSignature::from_path(path).ok();
+    let cache_path = zcode_request_cache_path(path, cache_root);
+    if let Some(signature) = &signature {
+        if let CacheLoad::Entry(cache) = load_json_cache::<ZCodeRequestCache>(&cache_path) {
+            let cache = *cache;
+            if cache.schema_version == ZCODE_REQUEST_CACHE_SCHEMA_VERSION
+                && cache.signature == *signature
+            {
+                cancellation.check()?;
+                // 保留期随 now 前移: 只剔除过期行, 窗口外的行本来就不计入截断。
+                let mut requests = cache.requests;
+                requests.rows.retain(|row| row.timestamp_millis >= cutoff);
+                return Ok(requests);
+            }
+        }
+    }
+    let requests = scan_zcode_requests(path, window, cancellation)?;
+    if let Some(signature) = signature {
+        let cache = ZCodeRequestCache {
+            schema_version: ZCODE_REQUEST_CACHE_SCHEMA_VERSION,
+            signature,
+            cutoff,
+            requests: requests.clone(),
+        };
+        // 缓存可再生: 写失败只影响下一轮重扫, 不改 scan 结果。
+        let _ = write_json_atomic(&cache_path, &cache, cancellation);
+    }
+    Ok(requests)
 }
 
 fn scan_zcode_requests(

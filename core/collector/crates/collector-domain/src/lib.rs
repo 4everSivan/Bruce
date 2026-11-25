@@ -413,7 +413,8 @@ pub fn request_log_cutoff_millis(now_millis: i64) -> i64 {
 }
 
 /// One request-granularity row emitted alongside the aggregate sample.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// C260: 可序列化 —— ZCode 请求行按 SQLite 签名做侧缓存, 无变更时跳过全表扫描。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestRecord {
     pub key: String,
     pub timestamp_millis: i64,
@@ -434,7 +435,7 @@ pub struct RequestRecord {
 
 /// Request rows from one source scan, newest first, plus how many rows the
 /// per-source cap dropped (design/14 §3.5.3).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestRows {
     pub rows: Vec<RequestRecord>,
     /// Rows inside the retention window dropped by [`REQUEST_LOG_MAX_PER_SOURCE`].
@@ -661,23 +662,19 @@ impl UsageContributionBuilder {
             .by_day
             .keys()
             .map(|day| {
-                self.window
-                    .day_list
-                    .iter()
-                    .position(|candidate| candidate == day)
+                // C260: day_list 升序 —— 二分定位。
+                self.window.day_list.binary_search(day).ok()
             })
             .collect::<Option<Vec<_>>>();
         let Some(day_indexes) = day_indexes else {
             return false;
         };
         // 新增明细与 by_day 同一校验口径, 且在任何合并前完成 (失败不留半合并状态)
-        let detail_outside_window = contribution.models_by_day.keys().any(|day| {
-            !self
-                .window
-                .day_list
-                .iter()
-                .any(|candidate| candidate == day)
-        }) || contribution
+        let detail_outside_window = contribution
+            .models_by_day
+            .keys()
+            .any(|day| self.window.day_list.binary_search(day).is_err())
+            || contribution
             .hour_models_today
             .keys()
             .any(|hour| usize::from(*hour) >= self.hours.len());

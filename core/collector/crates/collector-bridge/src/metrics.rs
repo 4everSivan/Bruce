@@ -138,6 +138,7 @@ pub(crate) fn build_metrics_payload(
         "request_log_rows_pruned": metrics.request_log_rows_pruned,
         "request_log_rows_truncated": metrics.request_log_rows_truncated,
         "request_log_merge_ms": metrics.request_log_merge_ms,
+        "request_log_replay_skipped": metrics.request_log_replay_skipped,
         "cache_hits": stats.cache_hits,
         "cache_appends": stats.cache_appends,
         "cache_rebuilds": stats.cache_rebuilds,

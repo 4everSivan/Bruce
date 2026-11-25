@@ -172,6 +172,8 @@ pub struct MergeStats {
     pub kept_months: usize,
     /// C199: 本轮因派生口径版本升级而按新值替换 (可能向下) 的日期数; 0 表示单调合并。
     pub corrected_days: usize,
+    /// C260: 内容与存量完全一致、因此没有落盘的日期数 (历史窗口每轮扫描的常态)。
+    pub unchanged_days: usize,
 }
 
 /// 按窗口从台账投影出的读数。`contribution` 直接交给既有 `UsageAccumulator`
@@ -353,21 +355,37 @@ impl HistoryStore {
             if bucket.total == 0 {
                 continue;
             }
-            let stored: Option<i64> = transaction
+            let stored: Option<(i64, String)> = transaction
                 .query_row(
-                    "SELECT total FROM agent_day WHERE agent_id = ?1 AND date = ?2",
+                    "SELECT total, bucket_json FROM agent_day WHERE agent_id = ?1 AND date = ?2",
                     params![agent_id, date],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?;
             let new_total = saturating_i64(bucket.total);
-            if matches!(stored, Some(value) if new_total < value) {
+            if matches!(stored.as_ref(), Some((value, _)) if new_total < *value) {
                 // 来源回退 / 修剪 / 部分失败: 保留历史, 只计数。
                 stats.kept_days += 1;
                 continue;
             }
 
             let bucket_json = encode_bucket(bucket)?;
+            // C260: 历史窗口里绝大多数日期每轮扫描都完全相同。总量 + 桶 JSON + 日×模型
+            // 都一致时跳过写盘 (今日仍写: 今日临时表随之整体替换)。
+            let unchanged = date != today
+                && matches!(
+                    stored.as_ref(),
+                    Some((value, stored_json))
+                        if *value == new_total && stored_json == &bucket_json
+                )
+                && match contribution.models_by_day.get(date) {
+                    Some(models) => day_models_match(&transaction, agent_id, date, models)?,
+                    None => true,
+                };
+            if unchanged {
+                stats.unchanged_days += 1;
+                continue;
+            }
             transaction.execute(
                 "INSERT INTO agent_day (agent_id, date, total, bucket_json, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)
@@ -923,6 +941,47 @@ fn write_today_tables(
     Ok(())
 }
 
+/// C260: 台账里某日的模型明细是否与扫描值一致 (模型名 / ordinal / 总量 / 桶 JSON)。
+fn day_models_match(
+    transaction: &rusqlite::Transaction<'_>,
+    agent_id: &str,
+    date: &str,
+    models: &BTreeMap<String, TokenBucket>,
+) -> Result<bool, HistoryError> {
+    let mut statement = transaction.prepare(
+        "SELECT model, ordinal, total, bucket_json FROM agent_day_model
+         WHERE agent_id = ?1 AND date = ?2 ORDER BY ordinal",
+    )?;
+    let rows = statement.query_map(params![agent_id, date], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    let mut stored = Vec::new();
+    for row in rows {
+        stored.push(row?);
+    }
+    let ordered = ordered_models(models);
+    if stored.len() != ordered.len() {
+        return Ok(false);
+    }
+    for (ordinal, ((model, bucket), (stored_model, stored_ordinal, total, bucket_json))) in
+        ordered.iter().zip(stored).enumerate()
+    {
+        if stored_model != model.as_str()
+            || stored_ordinal != ordinal as i64
+            || total != saturating_i64(bucket.total)
+            || bucket_json != encode_bucket(bucket)?
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 /// 过滤空桶后按 BTreeMap (模型名) 顺序返回, ordinal 即此顺序的下标。
 fn ordered_models(models: &BTreeMap<String, TokenBucket>) -> Vec<(&String, &TokenBucket)> {
     models
@@ -1462,6 +1521,38 @@ mod tests {
     }
 
     // MARK: - C199: 派生口径版本与向下修正
+
+    /// C260: 历史窗口的重复扫描不做等价写盘 —— 总量 / 桶 / 日×模型都一致的日子只计数,
+    /// 今日仍走整体替换; 任一维度变化时该日重新写入。
+    #[test]
+    fn unchanged_days_are_not_rewritten() {
+        let mut store = HistoryStore::open_in_memory().unwrap();
+        let days = [("2026-11-01", 100_u64), ("2026-11-02", 200), (TODAY, 300)];
+        let contribution = day_contribution(&days);
+        let first = store.merge(AGENT, &contribution, true, TODAY, NOW).unwrap();
+        assert_eq!(first.written_days, 3);
+        assert_eq!(first.unchanged_days, 0);
+
+        let second = store.merge(AGENT, &contribution, true, TODAY, NOW).unwrap();
+        assert_eq!(second.unchanged_days, 2, "两天历史内容一致, 无需落盘");
+        assert_eq!(second.written_days, 1, "今日仍写: 今日临时表整体替换");
+
+        // 总量不变但模型拆分变化的日子必须重写。
+        let mut split = contribution.clone();
+        split.models_by_day.insert(
+            "2026-11-01".to_owned(),
+            BTreeMap::from([
+                ("grok".to_owned(), bucket(60, 0, 0, 0)),
+                ("codex".to_owned(), bucket(40, 0, 0, 0)),
+            ]),
+        );
+        let third = store.merge(AGENT, &split, true, TODAY, NOW).unwrap();
+        assert_eq!(third.unchanged_days, 1, "只有 11-02 完全一致");
+        assert_eq!(third.written_days, 2);
+        let loaded = store.load(AGENT, &window()).unwrap();
+        assert_eq!(loaded.contribution.models_by_day["2026-11-01"].len(), 2);
+        assert_eq!(stored_days(&store)["2026-11-01"], 100);
+    }
 
     /// 只有逐日 / 逐日×模型 / 月×模型的贡献 (模型名固定为 grok)。
     fn day_contribution(days: &[(&str, u64)]) -> UsageContribution {

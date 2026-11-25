@@ -20,6 +20,8 @@ pub struct CollectionMetrics {
     pub request_log_rows_truncated: u64,
     /// Wall time of the request-log open + merge + prune.
     pub request_log_merge_ms: u64,
+    /// C260: 1 when the full replay was skipped (sources and price table unchanged).
+    pub request_log_replay_skipped: u64,
 }
 
 /// Per-source local scan measurements for diagnostic output only.
@@ -39,6 +41,7 @@ pub(crate) struct RuntimeCounters {
     pub request_log_rows_pruned: AtomicUsize,
     pub request_log_rows_truncated: AtomicUsize,
     pub request_log_merge_ms: AtomicUsize,
+    pub request_log_replay_skipped: AtomicUsize,
 }
 
 impl RuntimeCounters {
@@ -52,6 +55,8 @@ impl RuntimeCounters {
             request_log_rows_truncated: self.request_log_rows_truncated.load(Ordering::Acquire)
                 as u64,
             request_log_merge_ms: self.request_log_merge_ms.load(Ordering::Acquire) as u64,
+            request_log_replay_skipped: self.request_log_replay_skipped.load(Ordering::Acquire)
+                as u64,
         }
     }
 }

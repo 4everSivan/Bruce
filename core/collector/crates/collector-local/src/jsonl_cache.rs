@@ -569,6 +569,7 @@ fn scan_cached_jsonl_tree_impl<A: JsonlCacheAdapter>(
         truncated_usage: 0,
         unreadable_files: 0,
         seen: std::collections::BTreeSet::new(),
+        manifest_dirty: true,
         visited_dirs: std::collections::BTreeSet::new(),
         #[cfg(test)]
         before_file,
@@ -620,6 +621,8 @@ struct TreeState<'a, A> {
     /// C201: 本轮读取 / 解析失败的会话文件数。
     unreadable_files: u64,
     seen: std::collections::BTreeSet<String>,
+    /// C260: 上一轮 manifest 与本次集合一致时跳过落盘 (每轮重写只会抖动目录 mtime)。
+    manifest_dirty: bool,
     /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
     visited_dirs: std::collections::BTreeSet<PathBuf>,
     #[cfg(test)]
@@ -988,6 +991,13 @@ fn reconcile_deleted_cache<A: JsonlCacheAdapter>(
         if previous.schema_version == JSONL_CACHE_SCHEMA_VERSION
             && previous.source_id == state.config.source_id
         {
+            // C260: 集合与根指纹都没变时, 本轮无需重写 manifest。
+            if previous.source_root_digest
+                == digest_with_source(state.config.source_id.as_str(), root)
+                && previous.source_path_digests == state.seen
+            {
+                state.manifest_dirty = false;
+            }
             for digest in previous.source_path_digests.difference(&state.seen) {
                 state.cancellation.check()?;
                 match fs::remove_file(entry_path(&state.config.cache_root, digest)) {
@@ -1007,6 +1017,9 @@ fn write_manifest<A: JsonlCacheAdapter>(
     root: &Path,
     state: &TreeState<'_, A>,
 ) -> Result<(), SourceScanError> {
+    if !state.manifest_dirty {
+        return Ok(());
+    }
     let manifest = JsonlCacheManifest {
         schema_version: JSONL_CACHE_SCHEMA_VERSION,
         source_id: state.config.source_id.clone(),

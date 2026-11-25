@@ -9,7 +9,7 @@ use collector_runtime::{CancellationToken, RuntimeError};
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(super) fn window() -> CollectionWindow {
     let context: Map<String, Value> = serde_json::from_value(json!({
@@ -1289,6 +1289,58 @@ fn jsonl_cache_entries_left_empty_or_truncated_are_rebuilt() {
     fs::remove_dir_all(root).ok();
 }
 
+/// C260 回归: 源树与缓存集合都没变的第二轮扫描不得重写 manifest。
+/// 通过回拨 mtime 断言 —— 重写走临时文件 + rename, 不可能保留回拨值。
+#[test]
+fn unchanged_scan_does_not_rewrite_jsonl_manifest() {
+    let root = temp_root("jsonl-manifest-dirty");
+    let source_root = root.join("kimi");
+    let cache_root = root.join("cache");
+    fs::create_dir_all(&source_root).unwrap();
+    let base = 1_785_211_200_000_i64;
+    let line = json!({
+        "type": "usage.record",
+        "time": base,
+        "model": "kimi-k2",
+        "usage": {"inputOther": 3, "output": 1}
+    });
+    fs::write(source_root.join("a.jsonl"), format!("{line}\n")).unwrap();
+    let scan = || {
+        scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap()
+    };
+    scan();
+    let manifests = cache_files_with_prefix(&cache_root, "manifest-jsonl-");
+    assert_eq!(manifests.len(), 1);
+    let pinned = UNIX_EPOCH + Duration::from_secs(1_000_000);
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&manifests[0])
+        .unwrap()
+        .set_modified(pinned)
+        .unwrap();
+
+    let warm = scan();
+    assert_eq!(warm.stats.cache_hits, 1);
+    assert_eq!(
+        fs::metadata(&manifests[0]).unwrap().modified().unwrap(),
+        pinned,
+        "集合未变时 manifest 不得重写"
+    );
+
+    // 新增源文件改变集合, manifest 必须重新落盘。
+    fs::write(source_root.join("b.jsonl"), format!("{line}\n")).unwrap();
+    scan();
+    let rewritten = fs::metadata(&manifests[0]).unwrap().modified().unwrap();
+    assert!(rewritten > pinned, "集合变化后 manifest 必须重写");
+    fs::remove_dir_all(root).ok();
+}
+
 /// C175 回归: SQLite 缓存条目为空或被截断时同样判 Corrupt 并全量重建。
 #[test]
 fn sqlite_cache_entry_left_empty_or_truncated_is_rebuilt() {
@@ -1623,6 +1675,25 @@ fn zcode_request_rows_normalize_tokens_and_survive_cache_hits() {
         scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
     assert_eq!(again.requests.rows.len(), 1, "缓存命中仍应重放请求行");
     assert_eq!(again.requests.rows[0].key, request.key, "rowid 键必须稳定");
+    assert_eq!(
+        cache_files_with_prefix(&cache_root, "zcode-requests-").len(),
+        1,
+        "C260: 请求行应写入按库签名的侧缓存"
+    );
+
+    // 库内容变化 (签名变化) 必须让侧缓存失效并重扫。
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute(
+            "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens, session_id) \
+                 VALUES (?1, 'glm-5.3', 5, 5, 's1')",
+            [base - 30_000],
+        )
+        .unwrap();
+    drop(connection);
+    let appended =
+        scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+    assert_eq!(appended.requests.rows.len(), 2, "签名变化后必须重扫请求行");
     fs::remove_dir_all(root).ok();
 }
 
