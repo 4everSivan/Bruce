@@ -111,10 +111,16 @@ jobs:
           [ -s "$dmg" ] || { echo "DMG 产物缺失或为空"; exit 1; }
           hdiutil imageinfo "$dmg" >/dev/null || { echo "DMG 镜像结构损坏"; exit 1; }
           echo "DMG 镜像校验通过: $dmg"
+      # C266: GitHub 工件不保证保留 Unix 可执行位, 先打 tar 再上传;
+      # release 作业解包复用, 不再整轮重建 App/Collector。
+      - name: 打包构建产物为 tar (保留可执行位)
+        run: |
+          mkdir -p local/build
+          tar -C local/dist -cf local/build/Bruce-test-app.tar .
       - uses: actions/upload-artifact@v4
         with:
           name: Bruce-test-app
-          path: local/dist/
+          path: local/build/Bruce-test-app.tar
           if-no-files-found: error
 
   release:
@@ -127,12 +133,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: 安装 ripgrep (build-test-app.sh 前置依赖)
-        run: brew install ripgrep
-      - name: 补齐 x86_64 Rust target (Universal 2 前置)
-        run: rustup target add x86_64-apple-darwin
-      - name: 构建测试版 App (Universal 2 与 DMG)
-        run: zsh scripts/build-test-app.sh --universal --dmg
+      # C266: 复用 build-release-app 的 Universal 2 产物, 只补发版清单与 Release 提交。
+      - uses: actions/download-artifact@v4
+        with:
+          name: Bruce-test-app
+          path: local/build
+      - name: 解包并校验可执行位
+        run: |
+          tar -C local/dist -xf local/build/Bruce-test-app.tar
+          rm local/build/Bruce-test-app.tar
+          for bin in local/dist/Bruce.app/Contents/MacOS/BruceApp local/dist/Bruce.app/Contents/Resources/Bruce-collector; do
+            [ -x "$bin" ] || { echo "解包后缺少可执行位: $bin"; exit 1; }
+          done
       - name: 生成 SHA256 校验和
         run: |
           cd local/dist
