@@ -8,12 +8,15 @@
 //! 5. 零重启热生效: 同步成功或恢复内置后即刻更新 viewmodel::model_catalog 活动目录并触发采集重算;
 //! 6. 状态机与双端对拍: 表现层文案与状态机消费 tests/fixtures/pricing-sync-parity/cases.json。
 
+#[cfg(feature = "desktop")]
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(feature = "desktop")]
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -281,6 +284,8 @@ pub fn fetch_catalog_bytes(url: &str) -> Result<Vec<u8>, (PricingSyncFailureReas
 
 pub struct PricingSyncManager {
     stage: Mutex<PricingSyncStage>,
+    /// 同步在途闸门 (仅桌面运行态的 sync 入口读写)。
+    #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
     syncing: AtomicBool,
 }
 

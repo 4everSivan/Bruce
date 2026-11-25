@@ -42,12 +42,15 @@ const RATE_LIMIT_BACKOFF_SECS: u64 = 300;
 
 /// 额度预警持久状态: `loaded=false` 时首次刷新从独立 metadata 文件按需读取;
 /// 文件缺失/损坏保持 None, 由共享内核按静默 bootstrap 处理 (T31).
+// 只由桌面运行态的预警投递消费; 无 desktop 特性的单测构建里不可达。
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 #[derive(Default)]
 pub struct QuotaAlertRuntimeState {
     loaded: bool,
     state: Option<AlertState>,
 }
 
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 impl QuotaAlertRuntimeState {
     fn previous(&mut self, path: &std::path::Path) -> Option<AlertState> {
         if !self.loaded {
@@ -62,6 +65,7 @@ impl QuotaAlertRuntimeState {
     }
 }
 
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 fn load_alert_state(path: &std::path::Path) -> Option<AlertState> {
     let data = std::fs::read(path).ok()?;
     let state: AlertState = serde_json::from_slice(&data).ok()?;
@@ -155,6 +159,7 @@ impl Drop for CollectionLease<'_> {
 
 /// 在独立线程执行采集并在超时后隔离：返回 `Err(())` 表示超时/线程失败/panic，
 /// 调用方必须放弃租约并写入可见失败态；子线程结果直接丢弃。
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 pub(crate) fn run_with_watchdog<T, F>(name: &str, timeout: Duration, job: F) -> Result<T, ()>
 where
     T: Send + 'static,
