@@ -1715,6 +1715,8 @@ fn request_keys_keep_their_persisted_byte_layout() {
 }
 
 /// C257: 外部只读库的普通文件路径即使含 `?` / `#` 也不得按 URI 解析。
+/// Windows 文件名不允许 `?`，该场景仅在 Unix 可构造；CI 的 Windows 作业跳过。
+#[cfg(unix)]
 #[test]
 fn external_sqlite_path_with_query_characters_is_not_parsed_as_uri() {
     use rusqlite::Connection;
