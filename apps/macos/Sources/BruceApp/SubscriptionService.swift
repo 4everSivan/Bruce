@@ -546,7 +546,7 @@ final class SubscriptionService {
     _ id: SubscriptionProviderID,
     status: SubscriptionVerificationStatus
     ) {
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = ISODate.string(from: Date())
         guard persistSubscription(id, mutate: {
             $0 = $0.applyingVerification(status, verifiedAt: now)
         }) else { return }

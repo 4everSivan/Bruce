@@ -41,22 +41,21 @@ package final class RequestLogClient {
         guard output.exitCode == 0 else {
             throw RequestLogClientError.processFailed(exitCode: output.exitCode)
         }
-        let envelope: RequestLogEnvelope
+        let envelope: RequestLogEnvelope<RequestLogPageModel>
         do {
-            envelope = try JSONDecoder().decode(RequestLogEnvelope.self, from: output.stdout)
+            // C261: 直接泛型解码目标模型, 不再先解成 JSONValue 再重编码解码。
+            envelope = try JSONDecoder().decode(
+                RequestLogEnvelope<RequestLogPageModel>.self,
+                from: output.stdout
+            )
         } catch {
             throw RequestLogClientError.invalidEnvelope
         }
-        guard envelope.status == "success", let artifact = envelope.artifact else {
+        guard envelope.status == "success", let page = envelope.artifact else {
             let message = envelope.diagnostics.first?.message ?? "请求日志查询失败"
             throw RequestLogClientError.collector(message)
         }
-        do {
-            let data = try JSONEncoder().encode(artifact)
-            return try JSONDecoder().decode(RequestLogPageModel.self, from: data)
-        } catch {
-            throw RequestLogClientError.invalidEnvelope
-        }
+        return page
     }
 
     private func context(for query: RequestLogQuery) -> [String: JSONValue] {
@@ -159,8 +158,8 @@ private struct RequestLogBridgeRequest: Encodable {
     }
 }
 
-private struct RequestLogEnvelope: Decodable {
+private struct RequestLogEnvelope<Artifact: Decodable>: Decodable {
     let status: String
-    let artifact: JSONValue?
+    let artifact: Artifact?
     let diagnostics: [BridgeDiagnostic]
 }

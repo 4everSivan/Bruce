@@ -159,7 +159,7 @@ extension RefreshSchedulerHarness {
             ]),
             "totalCostUsd": .double(1.0),
         ])
-        try store.publish(seeded, for: .agentUsage, attemptedAt: fresh)
+        try await store.publish(seeded, for: .agentUsage, attemptedAt: fresh)
 
         lockState.setLocked(true)
         scheduler.start()
@@ -236,7 +236,7 @@ extension RefreshSchedulerHarness {
             ]),
             "totalCostUsd": .double(1.0),
         ])
-        try store.publish(seeded, for: .agentUsage, attemptedAt: fresh)
+        try await store.publish(seeded, for: .agentUsage, attemptedAt: fresh)
 
         scheduler.start()
         scheduler.enableModule(.agentUsage)

@@ -120,7 +120,7 @@ extension RefreshSchedulerHarness {
             object["services"] = .array(services)
             previous = .object(object)
         }
-        try store.publish(previous, for: .agentUsage, attemptedAt: base.addingTimeInterval(-60))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: base.addingTimeInterval(-60))
 
         let executor = MockCollectorExecutor()
         executor.repository = repository
@@ -183,7 +183,7 @@ extension RefreshSchedulerHarness {
             object["services"] = .array(services)
             previous = .object(object)
         }
-        try store.publish(previous, for: .agentUsage, attemptedAt: clock.now().addingTimeInterval(-300))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: clock.now().addingTimeInterval(-300))
 
         scheduler.start()
         scheduler.enableModule(.agentUsage)

@@ -330,7 +330,7 @@ static func codexRetryErrorPreservesLastGoodQuota(
     )
     defer { try? FileManager.default.removeItem(at: root) }
     // 预发布上一轮快照 (previous 源)
-    try store.publish(previous, for: .agentUsage, attemptedAt: Date())
+    try await store.publish(previous, for: .agentUsage, attemptedAt: Date())
 
     scheduler.start()
     scheduler.enableModule(.agentUsage)

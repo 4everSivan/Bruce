@@ -1087,7 +1087,7 @@ private enum UsageHeroPreviewFixture {
             """
         }
 
-        let generatedAt = ISO8601DateFormatter().string(from: today)
+        let generatedAt = ISODate.string(from: today)
         return """
         {"schemaVersion":1,"module":"agent-usage","generatedAt":"\(generatedAt)",\
         "agents":[

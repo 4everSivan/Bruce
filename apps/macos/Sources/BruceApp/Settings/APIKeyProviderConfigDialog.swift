@@ -57,7 +57,7 @@ struct ProviderStatusBanner: View {
     /// ISO8601 → 「M月d日 HH:mm」; 解析失败不显示时间.
     private static func formatVerified(_ iso: String?) -> String? {
         guard let iso,
-              let date = ISO8601DateFormatter().date(from: iso) else { return nil }
+              let date = ISODate.parse(iso) else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = "M月d日 HH:mm"

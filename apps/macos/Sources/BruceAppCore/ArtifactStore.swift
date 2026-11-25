@@ -135,61 +135,52 @@ package final class ArtifactStore {
         try prepareDirectories()
     }
 
+    /// C261: 快照与元数据的磁盘持久化 (含 3 次 fsync) 在后台串行队列执行,
+    /// 主线程只等待结果; 内存缓存 `verifiedSnapshots` 仍在 MainActor 侧更新。
+    nonisolated private static let persistenceQueue = DispatchQueue(
+        label: "io.bruce.artifact-store",
+        qos: .utility
+    )
+
+    /// C261: 返回本轮已校验解码的对象, 供 Pipeline 直接交给 AppModel,
+    /// 避免主线程用同一份 artifact 再编码 + 再解码。
+    @discardableResult
     func publish(
         _ artifact: JSONValue,
         for module: CollectorModule,
         attemptedAt: Date = Date()
-    ) throws {
-        let data: Data
-        do {
-            data = try JSONEncoder().encode(artifact)
-        } catch {
-            throw ArtifactValidationError.decodeFailed
-        }
-        let decoded = try validator.validate(artifact, encoded: data, for: module)
-        let currentURL = snapshotURL(for: module)
-        let previousURL = previousSnapshotURL(for: module)
-
-        // 只把合格的当前快照轮换为 previous; 与上次发布 / 读取的字节相同即已校验 (C121)
-        if let currentData = try? Data(contentsOf: currentURL),
-           isVerified(currentData, for: module) || isValidSnapshot(currentData, for: module) {
-            try atomicStoreWrite(
-                currentData,
-                to: previousURL,
-                stage: .beforeReplace
-            )
-        }
-        // C121: 内存中已校验, 写后重读只需逐字节比对; previous 已保存上一份合格快照,
-        // 不再另写同内容的 .backup.json (并清理旧版本遗留的那份)
-        try atomicStoreWrite(
-            data,
-            to: currentURL,
-            validate: { reread in
-                guard reread == data else {
-                    throw ArtifactStoreError.corruptedSnapshot
+    ) async throws -> DecodedArtifact {
+        let context = ArtifactStoreDiskContext(
+            fileManager: fileManager,
+            validator: validator,
+            atomicStore: atomicStore,
+            currentURL: snapshotURL(for: module),
+            previousURL: previousSnapshotURL(for: module),
+            metadataURL: metadataURL
+        )
+        let published: (data: Data, decoded: DecodedArtifact) =
+            try await withCheckedThrowingContinuation { continuation in
+                Self.persistenceQueue.async {
+                    do {
+                        continuation.resume(
+                            returning: try ArtifactStoreDisk.publish(
+                                artifact: artifact,
+                                module: module,
+                                attemptedAt: attemptedAt,
+                                context: context
+                            )
+                        )
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
-            },
-            stage: .beforeReplace
-        )
-        atomicStore.removeBackup(currentURL)
+            }
         verifiedSnapshots[module] = VerifiedSnapshot(
-            data: data,
+            data: published.data,
             artifact: artifact,
-            decoded: decoded
+            decoded: published.decoded
         )
-
-        var metadata = try readMetadata()
-        let timestamp = Self.timestamp(attemptedAt)
-        metadata.modules[module.rawValue] = ModuleSnapshotMetadata(
-            schemaVersion: 1,
-            artifactSchemaVersion: ArtifactValidator.currentSchemaVersion,
-            module: module,
-            lastSuccessAt: timestamp,
-            lastAttemptAt: timestamp,
-            isStale: false,
-            errorCategory: nil
-        )
-        try writeMetadata(metadata)
+        return published.decoded
     }
 
     func recordAttempt(
@@ -398,17 +389,6 @@ package final class ArtifactStore {
         } catch is AtomicJSONStore.AtomicJSONStoreError {
             throw ArtifactStoreError.storageFailure
         }
-    }
-
-    private func isVerified(_ data: Data, for module: CollectorModule) -> Bool {
-        verifiedSnapshots[module]?.data == data
-    }
-
-    private func isValidSnapshot(_ data: Data, for module: CollectorModule) -> Bool {
-        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
-            return false
-        }
-        return (try? validator.validate(value, encoded: data, for: module)) != nil
     }
 
     private func prepareDirectories() throws {
@@ -640,5 +620,149 @@ package final class ArtifactStore {
         case .beforeMigrationReplace:
             return .beforeMigrationReplace
         }
+    }
+}
+
+// MARK: - 后台持久化 (C261)
+
+/// 一次 publish 所需的不可变依赖。`AtomicJSONStore` 内嵌 Harness 故障注入闭包
+/// (非 Sendable), 但后台队列只做文件 I/O、不触碰 `@MainActor` 状态, 故整体标注
+/// `@unchecked Sendable` 并只在串行队列内使用。
+private struct ArtifactStoreDiskContext: @unchecked Sendable {
+    let fileManager: FileManager
+    let validator: ArtifactValidator
+    let atomicStore: AtomicJSONStore
+    let currentURL: URL
+    let previousURL: URL
+    let metadataURL: URL
+}
+
+private enum ArtifactStoreDisk {
+    /// 编码 → 校验解码 → 轮换 previous → 原子写当前快照 → 写元数据。
+    /// 返回已校验解码对象与落盘字节, 供 MainActor 侧更新内存缓存。
+    static func publish(
+        artifact: JSONValue,
+        module: CollectorModule,
+        attemptedAt: Date,
+        context: ArtifactStoreDiskContext
+    ) throws -> (data: Data, decoded: DecodedArtifact) {
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(artifact)
+        } catch {
+            throw ArtifactValidationError.decodeFailed
+        }
+        let decoded = try context.validator.validate(artifact, encoded: data, for: module)
+
+        // 只把合格的当前快照轮换为 previous; 内容相等即已校验 (C121)。
+        if let currentData = try? Data(contentsOf: context.currentURL),
+           isValidSnapshot(currentData, for: module, context: context) {
+            try atomicWrite(
+                currentData,
+                to: context.previousURL,
+                stage: .beforeReplace,
+                context: context
+            )
+        }
+        // C121: 内存中已校验, 写后重读只需逐字节比对; previous 已保存上一份合格快照,
+        // 不再另写同内容的 .backup.json (并清理旧版本遗留的那份)。
+        try atomicWrite(
+            data,
+            to: context.currentURL,
+            validate: { reread in
+                guard reread == data else {
+                    throw ArtifactStoreError.corruptedSnapshot
+                }
+            },
+            stage: .beforeReplace,
+            context: context
+        )
+        context.atomicStore.removeBackup(context.currentURL)
+
+        var metadata = try readMetadata(context: context)
+        let timestamp = ISODate.string(from: attemptedAt)
+        metadata.modules[module.rawValue] = ModuleSnapshotMetadata(
+            schemaVersion: 1,
+            artifactSchemaVersion: ArtifactValidator.currentSchemaVersion,
+            module: module,
+            lastSuccessAt: timestamp,
+            lastAttemptAt: timestamp,
+            isStale: false,
+            errorCategory: nil
+        )
+        try writeMetadata(metadata, context: context)
+        return (data, decoded)
+    }
+
+    private static func atomicWrite(
+        _ data: Data,
+        to targetURL: URL,
+        validate: ((Data) throws -> Void)? = nil,
+        stage: AtomicJSONStore.WriteStage,
+        context: ArtifactStoreDiskContext
+    ) throws {
+        do {
+            try context.atomicStore.write(
+                data,
+                to: targetURL,
+                validate: validate,
+                stage: stage
+            )
+        } catch is AtomicJSONStore.AtomicJSONStoreError {
+            throw ArtifactStoreError.storageFailure
+        }
+    }
+
+    private static func isValidSnapshot(
+        _ data: Data,
+        for module: CollectorModule,
+        context: ArtifactStoreDiskContext
+    ) -> Bool {
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
+            return false
+        }
+        return (try? context.validator.validate(value, encoded: data, for: module)) != nil
+    }
+
+    private static func readMetadata(
+        context: ArtifactStoreDiskContext
+    ) throws -> ArtifactStoreMetadata {
+        guard context.fileManager.fileExists(atPath: context.metadataURL.path) else {
+            return .empty
+        }
+        do {
+            let data = try Data(contentsOf: context.metadataURL)
+            let metadata = try JSONDecoder().decode(
+                ArtifactStoreMetadata.self,
+                from: data
+            )
+            guard metadata.schemaVersion == 1 else {
+                throw ArtifactStoreError.unknownSchema(metadata.schemaVersion)
+            }
+            return metadata
+        } catch let error as ArtifactStoreError {
+            throw error
+        } catch {
+            throw ArtifactStoreError.corruptedSnapshot
+        }
+    }
+
+    private static func writeMetadata(
+        _ metadata: ArtifactStoreMetadata,
+        context: ArtifactStoreDiskContext
+    ) throws {
+        let data = try JSONEncoder().encode(metadata)
+        try atomicWrite(
+            data,
+            to: context.metadataURL,
+            validate: { reread in
+                _ = try JSONDecoder().decode(
+                    ArtifactStoreMetadata.self,
+                    from: reread
+                )
+            },
+            stage: .beforeMetadataReplace,
+            context: context
+        )
     }
 }

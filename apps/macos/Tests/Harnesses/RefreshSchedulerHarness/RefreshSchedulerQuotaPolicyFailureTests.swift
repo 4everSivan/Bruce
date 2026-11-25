@@ -102,7 +102,7 @@ extension RefreshSchedulerHarness {
         let (store, root) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-3600), usedPercent: 10)
-        try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
         let executor = MockCollectorExecutor()
         executor.repository = repository
         let transport = ScriptedQuotaPolicyTransport()
@@ -130,7 +130,7 @@ extension RefreshSchedulerHarness {
         let (store, root) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-3600), usedPercent: 10)
-        try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
 
         let credentials = InMemoryCredentialStore()
         let accounts = ProviderAccountStore(provider: .claude, credentialStore: credentials)
@@ -190,7 +190,7 @@ extension RefreshSchedulerHarness {
         let (store, root) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-3600), usedPercent: 10)
-        try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
 
         let credentials = InMemoryCredentialStore()
         let accounts = ProviderAccountStore(provider: .claude, credentialStore: credentials)
@@ -278,7 +278,7 @@ extension RefreshSchedulerHarness {
         let (store, root) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-3600), usedPercent: 10)
-        try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-3600))
         let executor = MockCollectorExecutor()
         executor.repository = repository
         executor.artifactOverride = failureArtifact(capturedAt: failureBase, usedPercent: 55)
@@ -306,7 +306,7 @@ extension RefreshSchedulerHarness {
         let (store, root) = try temporaryStore()
         defer { try? FileManager.default.removeItem(at: root) }
         let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-60), usedPercent: 10)
-        try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-60))
+        try await store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-60))
         let scheduler = RefreshScheduler(
             executor: executor,
             store: store,

@@ -26,7 +26,7 @@ private func storeExpect(
 @main
 @MainActor
 struct ArtifactStoreHarness {
-    static func main() throws {
+    static func main() async throws {
         guard CommandLine.arguments.count == 2 else {
             throw StoreTestFailure.expectation("expected repository root")
         }
@@ -34,13 +34,13 @@ struct ArtifactStoreHarness {
             fileURLWithPath: CommandLine.arguments[1],
             isDirectory: true
         )
-        try validatesVersionedArtifacts(repository: repository)
-        try writesPrivateAtomicSnapshots(repository: repository)
-        try fallsBackAfterCorruptionAndWriteFailure(repository: repository)
-        try migratesAndRejectsUnknownSchemas(repository: repository)
-        try clearCachesRemovesSnapshotsAndStaysUsable(repository: repository)
-        try validatesCalendarDaysStrictlyAndQuickly(repository: repository)
-        try verifiedSnapshotCacheFollowsDiskBytes(repository: repository)
+        try await validatesVersionedArtifacts(repository: repository)
+        try await writesPrivateAtomicSnapshots(repository: repository)
+        try await fallsBackAfterCorruptionAndWriteFailure(repository: repository)
+        try await migratesAndRejectsUnknownSchemas(repository: repository)
+        try await clearCachesRemovesSnapshotsAndStaysUsable(repository: repository)
+        try await validatesCalendarDaysStrictlyAndQuickly(repository: repository)
+        try await verifiedSnapshotCacheFollowsDiskBytes(repository: repository)
         print("ArtifactStore tests passed: 7")
     }
 
@@ -48,7 +48,7 @@ struct ArtifactStoreHarness {
     /// 10 agent 的满尺寸 artifact 单次校验不再耗时数百毫秒.
     private static func validatesCalendarDaysStrictlyAndQuickly(
         repository: URL
-    ) throws {
+    ) async throws {
         for valid in ["2026-07-28", "2024-02-29", "2000-02-29", "0001-01-01", "2026-12-31"] {
             try storeExpect(CalendarDay.isValid(valid), "valid day rejected: \(valid)")
         }
@@ -122,7 +122,7 @@ struct ArtifactStoreHarness {
     /// 不合格的当前快照仍不得轮换为 previous; 不再写 .backup.json 并清理旧版遗留.
     private static func verifiedSnapshotCacheFollowsDiskBytes(
         repository: URL
-    ) throws {
+    ) async throws {
         let root = try temporaryRoot("verified-cache")
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try ArtifactStore(rootURL: root)
@@ -137,9 +137,9 @@ struct ArtifactStoreHarness {
         let staleBackup = store.snapshotsURL
             .appendingPathComponent("agent-usage.json.backup.json")
 
-        try store.publish(variant("a"), for: .agentUsage)
+        try await store.publish(variant("a"), for: .agentUsage)
         try Data("{}".utf8).write(to: staleBackup)
-        try store.publish(variant("b"), for: .agentUsage)
+        try await store.publish(variant("b"), for: .agentUsage)
         try storeExpect(
             !FileManager.default.fileExists(atPath: staleBackup.path),
             "publish should drop the redundant .backup.json"
@@ -156,7 +156,7 @@ struct ArtifactStoreHarness {
             reloaded.source == .current && reloaded.artifact == variant("external"),
             "external rewrite must not be masked by the cache"
         )
-        try store.publish(variant("c"), for: .agentUsage)
+        try await store.publish(variant("c"), for: .agentUsage)
         let rotated = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: previousURL))
         try storeExpect(rotated == variant("external"), "verified external snapshot rotates to previous")
 
@@ -175,7 +175,7 @@ struct ArtifactStoreHarness {
         } catch ArtifactValidationError.sensitiveField {
         }
         try JSONEncoder().encode(JSONValue.object(tainted)).write(to: currentURL)
-        try store.publish(variant("d"), for: .agentUsage)
+        try await store.publish(variant("d"), for: .agentUsage)
         let kept = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: previousURL))
         try storeExpect(kept == variant("external"), "invalid current snapshot must not become previous")
         let latest = try store.load(.agentUsage)
@@ -233,7 +233,7 @@ struct ArtifactStoreHarness {
 
     private static func validatesVersionedArtifacts(
         repository: URL
-    ) throws {
+    ) async throws {
         let validator = ArtifactValidator()
         for module in CollectorModule.allCases {
             for variant in ["valid", "partial", "empty"] {
@@ -277,7 +277,7 @@ struct ArtifactStoreHarness {
 
     private static func writesPrivateAtomicSnapshots(
         repository: URL
-    ) throws {
+    ) async throws {
         let root = try temporaryRoot("private")
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try ArtifactStore(rootURL: root)
@@ -286,7 +286,7 @@ struct ArtifactStoreHarness {
             module: .agentUsage
         )
         let successDate = Date(timeIntervalSince1970: 1_786_000_000)
-        try store.publish(
+        try await store.publish(
             artifact,
             for: .agentUsage,
             attemptedAt: successDate
@@ -344,7 +344,7 @@ struct ArtifactStoreHarness {
 
     private static func fallsBackAfterCorruptionAndWriteFailure(
         repository: URL
-    ) throws {
+    ) async throws {
         let root = try temporaryRoot("fallback")
         defer { try? FileManager.default.removeItem(at: root) }
         let baselineStore = try ArtifactStore(rootURL: root)
@@ -357,8 +357,8 @@ struct ArtifactStoreHarness {
             object["login"] = .string("second-fixture")
             second = .object(object)
         }
-        try baselineStore.publish(first, for: .agentUsage)
-        try baselineStore.publish(second, for: .agentUsage)
+        try await baselineStore.publish(first, for: .agentUsage)
+        try await baselineStore.publish(second, for: .agentUsage)
         try Data("{corrupted".utf8).write(
             to: baselineStore.snapshotURL(for: .agentUsage)
         )
@@ -389,7 +389,7 @@ struct ArtifactStoreHarness {
             }
         )
         do {
-            try failingStore.publish(first, for: .agentUsage)
+            try await failingStore.publish(first, for: .agentUsage)
             throw StoreTestFailure.expectation("replace failure was ignored")
         } catch ArtifactStoreError.storageFailure {
         }
@@ -411,7 +411,7 @@ struct ArtifactStoreHarness {
 
     private static func migratesAndRejectsUnknownSchemas(
         repository: URL
-    ) throws {
+    ) async throws {
         let migrationRoot = try temporaryRoot("migration")
         defer { try? FileManager.default.removeItem(at: migrationRoot) }
         let store = try ArtifactStore(rootURL: migrationRoot)
@@ -494,12 +494,12 @@ struct ArtifactStoreHarness {
 
     private static func clearCachesRemovesSnapshotsAndStaysUsable(
         repository: URL
-    ) throws {
+    ) async throws {
         let root = try temporaryRoot("clear")
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try ArtifactStore(rootURL: root)
         let artifact = try fixture(repository: repository, module: .agentUsage)
-        try store.publish(artifact, for: .agentUsage)
+        try await store.publish(artifact, for: .agentUsage)
         try store.clearSnapshotCaches()
         do {
             _ = try store.load(.agentUsage)
@@ -507,7 +507,7 @@ struct ArtifactStoreHarness {
         } catch ArtifactStoreError.noSnapshot {
         }
         // 清理后目录已重建且可再次发布 (下次刷新自动重建语义).
-        try store.publish(artifact, for: .agentUsage)
+        try await store.publish(artifact, for: .agentUsage)
         let reloaded = try store.load(.agentUsage)
         try storeExpect(
             reloaded.artifact == artifact,

@@ -464,7 +464,7 @@ static func schMergerDiagnosticPreserved(
         legacyID == CodexAccountIdentity.legacyServiceID(for: accountB),
         "前置条件: 两个账号必须共享 legacyID"
     )
-    try store.publish(
+    try await store.publish(
         .object([
             "schemaVersion": .integer(1),
             "module": .string("agent-usage"),

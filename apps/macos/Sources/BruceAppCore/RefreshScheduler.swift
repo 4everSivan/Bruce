@@ -122,6 +122,9 @@ package final class RefreshScheduler {
 
     package var onStatusChange: ((CollectorModule, ModuleRunState, String?) -> Void)?
     package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
+    /// C261: publish / 快照加载已校验解码的对象, 在 `onArtifactChange` 前交给 UI,
+    /// 让 AppModel 省去对同一 artifact 的再编码 + 再解码。
+    package var onArtifactValidationHint: ((CollectorModule, DecodedArtifact) -> Void)?
     /// 后台刷新发现 5h 窗口用量新跨越 80% 阈值; 手动刷新不触发.
     package var onQuotaAlerts: ((CollectorModule, [QuotaAlert]) -> Void)?
     /// 通用状态预警回调 (支持额度超限与网络出口阻断多态微卡 T24)
@@ -448,6 +451,7 @@ package final class RefreshScheduler {
                 now: clock.now(),
                 staleAfter: configuration.staleAfter
             )
+            onArtifactValidationHint?(module, stored.decoded)
             onArtifactChange?(module, stored.artifact)
             let runState: ModuleRunState = stored.metadata.isStale ? .stale : .fresh
             onStatusChange?(module, runState, nil)
@@ -797,6 +801,9 @@ package final class RefreshScheduler {
             state.lastErrorCategory = nil
             state.offlinePaused = false
             state.phase = .idle
+            if let decoded = run.publishedDecoded {
+                onArtifactValidationHint?(module, decoded)
+            }
             onArtifactChange?(module, artifact)
             // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
             windowBoundaries = SubscriptionBoundaryWakePolicy.boundaries(in: artifact)

@@ -59,6 +59,11 @@ final class ApplicationBootstrap {
                 for: DashboardModule(module)
             )
         }
+        // C261: 复用 publish/载入时已校验解码的对象, 紧随其后的 onArtifactChange
+        // 直接命中 AppModel 缓存, 避免主线程二次编码 + 解码。
+        scheduler.onArtifactValidationHint = { [weak model] module, decoded in
+            model?.setValidatedArtifactHint(decoded, for: DashboardModule(module))
+        }
         scheduler.onArtifactChange = { [weak model] module, artifact in
             model?.setArtifact(artifact, for: DashboardModule(module))
         }

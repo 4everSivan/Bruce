@@ -356,9 +356,20 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                     return
                 }
                 self.refreshPhase = (self.refreshPhase + 18).truncatingRemainder(dividingBy: 360)
-                self.refreshLabelImage(on: btn, force: true)
+                // C261: 刷新环逐帧只重绘图像, 不重建摘要 / 内容, 也不重新测量状态项宽度。
+                self.refreshAnimationFrame(on: btn)
             }
         }
+    }
+
+    /// 动效帧: 复用最近一次渲染内容与既有宽度, 仅按新相位重绘 `NSImage`。
+    private func refreshAnimationFrame(on button: NSStatusBarButton) {
+        guard let content = lastRenderedContent else {
+            refreshLabelImage(on: button, force: true)
+            return
+        }
+        let width = statusItem?.length ?? Self.iconOnlyLength
+        button.image = makeStatusItemImage(for: content, width: width)
     }
 
     private func stopRefreshAnimation() {

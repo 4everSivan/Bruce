@@ -193,8 +193,17 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var menuBarIconOnly: Bool = false
     /// 解码缓存: 避免同一 artifact 在面板与菜单栏摘要多次构建间重复执行
     /// ArtifactValidator decode.
+    /// C261: 以单调 `artifactRevision` 判等 —— 不再对整棵 `JSONValue` 做深度 `==`
+    /// (设置页单次渲染可触发十余次)。
     private var cachedDecodedArtifact: AgentUsageArtifact?
-    private var cachedArtifactRef: JSONValue?
+    private var cachedArtifactRevision: UInt64?
+    private var artifactRevision: UInt64 = 0
+    /// C261: `ArtifactStore.publish` 已校验解码的对象, 由 Pipeline/Scheduler 在写入前
+    /// 直接交给 AppModel, 省去本轮再编码 + 再解码 (~70ms)。
+    private var pendingDecodedAgentUsage: AgentUsageArtifact?
+    /// C261: 工作台分析快照按 (artifactRevision, range) 缓存, 视图正文与模型列表共享。
+    private var cachedAnalytics:
+        (revision: UInt64, range: AnalyticsTimeRange, snapshot: WorkbenchAnalytics.Snapshot)?
     /// 面板映射缓存: 按版本号失效, 避免 SwiftUI body 多次求值时重复映射.
     private var cachedPanelViewModel: PanelViewModel?
     private var cachedMenuBarSummary: MenuBarSummary?
@@ -281,8 +290,20 @@ package final class AppModel: ObservableObject {
         moduleArtifacts[module] = artifact
         invalidatePanelCache()
         if module == .agentUsage {
-            invalidateDecodedArtifactCache()
+            artifactRevision &+= 1
+            // C261: publish 路径已校验解码时直接复用; 其余路径 (启动加载 / 测试注入) 惰性解码。
+            cachedDecodedArtifact = pendingDecodedAgentUsage
+            cachedArtifactRevision = pendingDecodedAgentUsage == nil ? nil : artifactRevision
+            pendingDecodedAgentUsage = nil
         }
+    }
+
+    /// C261: `ArtifactStore.publish` 已通过 ArtifactValidator 的对象, 供随后的
+    /// `setArtifact` 复用, 避免同一 artifact 在主线程二次编码 + 解码。
+    /// 只接受 agent-usage 模块; 类型不符或未消费时会在下一次 `setArtifact` 丢弃。
+    package func setValidatedArtifactHint(_ decoded: DecodedArtifact, for module: DashboardModule) {
+        guard module == .agentUsage, case .agentUsage(let artifact) = decoded else { return }
+        pendingDecodedAgentUsage = artifact
     }
 
     // MARK: - 账单导出
@@ -682,32 +703,19 @@ package final class AppModel: ObservableObject {
     }
 
     /// 校验并解码 agent-usage artifact; 任何失败都视为缺失.
-    /// 结果按 artifact 内容缓存, 避免同一 artifact 多次解码.
+    /// 结果按 `artifactRevision` 缓存, 避免同一 artifact 多次解码.
     package func decodedAgentUsageArtifact() -> AgentUsageArtifact? {
-        let raw = moduleArtifacts[.agentUsage]
-        return decodedAgentUsageArtifact(from: raw)
-    }
-
-    /// 从指定 raw JSONValue 解码 agent-usage artifact, 带内容缓存.
-    /// 面板 VM 与菜单栏摘要共享同一解码结果.
-    private func decodedAgentUsageArtifact(from raw: JSONValue?) -> AgentUsageArtifact? {
-        guard let raw else { return nil }
-        if cachedArtifactRef == raw, let cached = cachedDecodedArtifact {
+        if cachedArtifactRevision == artifactRevision, let cached = cachedDecodedArtifact {
             return cached
         }
+        guard let raw = moduleArtifacts[.agentUsage] else { return nil }
         guard case .agentUsage(let decoded) = try? ArtifactValidator()
             .validate(raw, for: .agentUsage) else {
             return nil
         }
         cachedDecodedArtifact = decoded
-        cachedArtifactRef = raw
+        cachedArtifactRevision = artifactRevision
         return decoded
-    }
-
-    /// 使解码缓存失效 (artifact 变更时调用).
-    private func invalidateDecodedArtifactCache() {
-        cachedDecodedArtifact = nil
-        cachedArtifactRef = nil
     }
 
     /// 使面板和菜单栏标签缓存失效. 在任何影响映射输出的 @Published 属性写入时调用.
@@ -746,10 +754,20 @@ package final class AppModel: ObservableObject {
 
     /// 工作台一次性快照 (KPI / 模型归并 / 时序 / Agent 对比 / 今日 24h), 计算见 `WorkbenchAnalytics` (C070).
     /// 费用全部来自采集端按单价表 (含用户覆盖) 计价的明细桶, 这里不再接收覆盖表二次估算.
+    /// C261: 同一 artifactRevision + 时间范围只计算一次 (视图正文与模型列表共用结果)。
     package func analyticsSnapshot(range: AnalyticsTimeRange) -> WorkbenchAnalytics.Snapshot {
-        guard let artifact = decodedAgentUsageArtifact() else {
-            return WorkbenchAnalytics.empty(range: range)
+        if let cached = cachedAnalytics,
+           cached.revision == artifactRevision,
+           cached.range == range {
+            return cached.snapshot
         }
-        return WorkbenchAnalytics.make(artifact: artifact, range: range)
+        let snapshot: WorkbenchAnalytics.Snapshot
+        if let artifact = decodedAgentUsageArtifact() {
+            snapshot = WorkbenchAnalytics.make(artifact: artifact, range: range)
+        } else {
+            snapshot = WorkbenchAnalytics.empty(range: range)
+        }
+        cachedAnalytics = (artifactRevision, range, snapshot)
+        return snapshot
     }
 }

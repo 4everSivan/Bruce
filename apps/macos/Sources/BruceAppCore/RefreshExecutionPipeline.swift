@@ -55,19 +55,23 @@ struct CompletedRun: Sendable {
     let scope: RefreshScope
     /// 已成功 publish 的 artifact; nil = 本轮未写 store.
     let publishedArtifact: JSONValue?
+    /// C261: publish 已校验解码的对象, 供 UI 直接复用 (仅 agent-usage 路径非 nil).
+    let publishedDecoded: DecodedArtifact?
 
     init(
         output: CollectorRunOutput,
         credentialApply: CredentialUpdateApplyResult,
         includesManual: Bool,
         scope: RefreshScope,
-        publishedArtifact: JSONValue?
+        publishedArtifact: JSONValue?,
+        publishedDecoded: DecodedArtifact? = nil
     ) {
         self.output = output
         self.credentialApply = credentialApply
         self.includesManual = includesManual
         self.scope = scope
         self.publishedArtifact = publishedArtifact
+        self.publishedDecoded = publishedDecoded
     }
 }
 
@@ -367,7 +371,7 @@ struct RefreshExecutionPipeline {
         }
 
         // 6-8. credential apply → publish → quota (仅可发布路径)
-        return finishPublishablePath(output: output, request: request)
+        return await finishPublishablePath(output: output, request: request)
     }
 
     /// T15 降级: 采集已完成但回填 / 时间戳失败 —— 不发布本轮结果 (未回填的 artifact 会丢掉
@@ -424,7 +428,7 @@ struct RefreshExecutionPipeline {
     private func finishPublishablePath(
         output: CollectorRunOutput,
         request: RefreshPipelineRequest
-    ) -> RefreshPipelineResult {
+    ) async -> RefreshPipelineResult {
         let response = output.response
         let includesManual = request.intent.includesManual
         let emptyApply = CredentialUpdateApplyResult()
@@ -505,8 +509,9 @@ struct RefreshExecutionPipeline {
         // 7. publish — attemptedAt 取发布时刻 (非 request.now / 入口时刻),
         // 与迁出前 handleResult 使用 clock.now() 的语义一致, 避免 collect/recovery
         // 耗时导致 store lastSuccessAt 与 Scheduler lastSuccessAt 分叉.
+        let publishedDecoded: DecodedArtifact?
         do {
-            try store.publish(artifact, for: request.module, attemptedAt: now())
+            publishedDecoded = try await store.publish(artifact, for: request.module, attemptedAt: now())
         } catch {
             // 凭证已 apply; 发布失败不更新 lastPublishedDiagnostics
             return .publishFailed(error)
@@ -519,7 +524,8 @@ struct RefreshExecutionPipeline {
             credentialApply: applyResult,
             includesManual: includesManual,
             scope: request.intent.scope,
-            publishedArtifact: artifact
+            publishedArtifact: artifact,
+            publishedDecoded: publishedDecoded
         ))
     }
 

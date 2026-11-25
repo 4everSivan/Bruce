@@ -57,6 +57,8 @@ public struct SQLiteSchemaProbe: Sendable {
     }
 
     /// 探测指定数据库文件的 schema 兼容性.
+    /// C261: 建库检查、表存在性与各表 `PRAGMA table_info` 合并为一次 sqlite3 调用,
+    /// 用标记行分隔输出, 不再为每张表串行拉起子进程。
     public func probe(
         fileURL: URL,
         profile: SQLiteSchemaProfile,
@@ -66,10 +68,10 @@ public struct SQLiteSchemaProbe: Sendable {
             return .missing
         }
 
-        // 先检查文件是否可打开 (检测损坏或锁定)
+        let script = Self.probeScript(profile: profile)
         let openResult = await runSqlite(
             uri: "file:\(fileURL.path)?mode=ro",
-            sql: "SELECT 1;"
+            sql: script
         )
         switch openResult {
         case .timedOut:
@@ -81,58 +83,71 @@ public struct SQLiteSchemaProbe: Sendable {
             return .corrupted
         case .cancelled, .launchFailed:
             return .corrupted
-        case .success:
-            break
+        case .success(let output):
+            return Self.evaluate(output: output, profile: profile)
         }
+    }
 
-        // 检查每个需要的表和字段
+    /// 一次调用完成全部检查: 可打开性 / 每张表是否存在 / 每张表的列名.
+    /// 标记行 (`BRUCE_TABLE:` / `BRUCE_COLUMNS:`) 把多段输出切成可解析的块。
+    static func probeScript(profile: SQLiteSchemaProfile) -> String {
+        var script = "SELECT 1;\n"
+        for tableName in profile.tables.keys.sorted() {
+            let escaped = tableName.replacingOccurrences(of: "'", with: "''")
+            script += """
+            SELECT 'BRUCE_TABLE:\(tableName)' FROM sqlite_master \
+            WHERE type='table' AND name='\(escaped)';
+            SELECT 'BRUCE_COLUMNS:\(tableName)';
+            PRAGMA table_info('\(escaped)');
+
+            """
+        }
+        return script
+    }
+
+    /// 解析合并脚本的输出并对照 profile 判定兼容性.
+    static func evaluate(output: String, profile: SQLiteSchemaProfile) -> SQLiteSchemaProbeResult {
+        var presentTables = Set<String>()
+        var columnsByTable: [String: Set<String>] = [:]
+        var currentTable: String?
+        for line in outputLines(output) {
+            if line == "1" {
+                continue
+            }
+            if let table = marked(line, prefix: "BRUCE_TABLE:") {
+                presentTables.insert(table)
+                continue
+            }
+            if let table = marked(line, prefix: "BRUCE_COLUMNS:") {
+                columnsByTable[table] = []
+                currentTable = table
+                continue
+            }
+            guard let table = currentTable else { continue }
+            let fields = line.split(
+                separator: "|", omittingEmptySubsequences: false
+            )
+            guard fields.count >= 2 else { continue }
+            let name = fields[1].trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty {
+                columnsByTable[table, default: []].insert(name)
+            }
+        }
         for (tableName, columns) in profile.tables {
-            // 检查表是否存在 (精确匹配行, 不用子串)
-            let tableResult = await runSqlite(
-                uri: "file:\(fileURL.path)?mode=ro",
-                sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='\(tableName)';"
-            )
-
-            switch tableResult {
-            case .timedOut:
-                return .timedOut
-            case .nonZeroExit(_, let stderrSummary):
-                if Self.isLocked(stderrSummary: stderrSummary) {
-                    return .locked
-                }
-                return .corrupted
-            case .cancelled, .launchFailed:
-                return .corrupted
-            case .success(let output):
-                if !Self.outputLines(output).contains(tableName) {
-                    return .incompatible
-                }
+            guard presentTables.contains(tableName) else {
+                return .incompatible
             }
-
-            // 检查字段: 一次性取 table_info, 逐行解析 cid|name|type|... 精确比较
-            let columnResult = await runSqlite(
-                uri: "file:\(fileURL.path)?mode=ro",
-                sql: "PRAGMA table_info('\(tableName)');"
-            )
-            switch columnResult {
-            case .timedOut:
-                return .timedOut
-            case .nonZeroExit(_, let stderrSummary):
-                if Self.isLocked(stderrSummary: stderrSummary) {
-                    return .locked
-                }
-                return .corrupted
-            case .cancelled, .launchFailed:
-                return .corrupted
-            case .success(let output):
-                let actualColumns = Self.tableInfoColumnNames(output)
-                for column in columns where !actualColumns.contains(column) {
-                    return .incompatible
-                }
+            let actualColumns = columnsByTable[tableName] ?? []
+            for column in columns where !actualColumns.contains(column) {
+                return .incompatible
             }
         }
-
         return .available
+    }
+
+    private static func marked(_ line: String, prefix: String) -> String? {
+        guard line.hasPrefix(prefix) else { return nil }
+        return String(line.dropFirst(prefix.count))
     }
 
     /// locked 判定: 以 stderr 中的 locked/busy 消息为准, 不把任意非零退出当锁定.
