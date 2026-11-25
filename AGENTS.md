@@ -201,7 +201,7 @@ scripts/adflow-verify --card <卡号> --receipt
 | `cargo test --manifest-path core/collector/Cargo.toml --workspace` | Rust Collector 单元与集成测试 |
 | `zsh scripts/check-collector-fixtures.sh` | 测试 fixture 语法校验与敏感凭证扫描 |
 | `zsh scripts/check-no-python-assets.zsh` | 仓库内禁 Python 资产门禁（含自检；白名单仅 `scripts/adflow_verify.py`） |
-| `swift run --package-path apps/macos BruceOnboardingCoreHarness` | Onboarding Core 核心凭证、存储与门控边界测试（当前 180 项） |
+| `swift run --package-path apps/macos BruceOnboardingCoreHarness` | Onboarding Core 核心凭证、存储与门控边界测试（当前 184 项） |
 | `zsh scripts/build-test-app.sh --universal --install` | 构建 Universal 2 双架构 App 并安装至 `/Applications/Bruce.app` |
 
 ### 4. 数据安全与凭据管理规范
