@@ -3,9 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
-#[cfg(feature = "desktop")]
-use std::time::Instant;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "desktop")]
 use serde_json::Value;
@@ -102,6 +100,15 @@ pub struct SchedulerControl {
 /// 采集预算：mac 外层 `moduleSeconds + externalRequestSeconds + 5s 宽限` = 105s。
 pub const COLLECTION_WATCHDOG_SECS: u64 = 105;
 
+/// 全量刷新等待在途采集释放租约的上限：在途采集自有 105s 看门狗，到点必然放弃租约，
+/// 再留 5s 宽限；超过仍未释放才按失败处理 (C264 回归修正)。
+pub const COLLECTION_WAIT_SECS: u64 = COLLECTION_WATCHDOG_SECS + 5;
+// 等待上限必须覆盖在途采集的看门狗预算 (编译期保证)。
+const _: () = assert!(COLLECTION_WAIT_SECS > COLLECTION_WATCHDOG_SECS);
+
+/// 等待租约时的轮询间隔。
+const COLLECTION_WAIT_POLL: Duration = Duration::from_millis(100);
+
 /// 唤醒去重窗口（对齐 mac `wakeDedupSeconds = 60`）。
 pub const WAKE_DEDUP_SECS: u64 = 60;
 
@@ -187,6 +194,23 @@ impl SchedulerControl {
             generation,
             finished: false,
         })
+    }
+
+    /// 全量刷新取租约：定向 / 局部采集在途时排队等待其结束，而不是直接按失败返回
+    /// (C264 回归修正：改用租约前 `Mutex<()>` 即为排队语义；直接失败会让手动刷新静默
+    /// 丢失并把重试计数 +1 进入退避)。超过 `timeout` 仍未释放才返回 None。
+    pub fn wait_for_collection(&self, timeout: Duration) -> Option<CollectionLease<'_>> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(lease) = self.begin_collection() {
+                return Some(lease);
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return None;
+            }
+            std::thread::sleep(COLLECTION_WAIT_POLL.min(deadline - now));
+        }
     }
 
     /// 采集是否在途 (诊断/测试用)。
@@ -488,9 +512,11 @@ mod desktop {
         manual: bool,
     ) -> RefreshOutcome {
         let root = paths::data_root();
-        // 与定向刷新串行: 进行中的采集结束后再开始全量采集 (C264: 租约 + 看门狗)。
+        // 与定向 / 局部刷新串行: 进行中的采集结束后再开始全量采集 (C264: 租约 + 看门狗)。
+        // 只在等满看门狗预算仍未释放时才按失败处理 (在途采集到点必然放弃租约)。
         let control = app.state::<SchedulerControl>();
-        let Some(lease) = control.begin_collection() else {
+        let Some(lease) = control.wait_for_collection(Duration::from_secs(COLLECTION_WAIT_SECS))
+        else {
             return RefreshOutcome::Failed {
                 rate_limited: false,
             };
@@ -1031,6 +1057,52 @@ mod concurrency_tests {
         assert!(next.generation() > generation, "代数必须递增以隔离旧线程");
         drop(next);
         assert!(!control.collection_in_flight());
+    }
+
+    /// C264 回归: 全量刷新遇定向 / 局部采集在途时排队等待, 释放后立即取得租约,
+    /// 不得直接按失败返回 (手动刷新静默丢失 + 重试计数进入退避)。
+    #[test]
+    fn full_refresh_waits_for_in_flight_collection() {
+        let control = std::sync::Arc::new(SchedulerControl::new());
+        let held = control.begin_collection().expect("定向采集先取得租约");
+        let generation = held.generation();
+        let (sender, receiver) = mpsc::channel();
+        let waiter = {
+            let control = std::sync::Arc::clone(&control);
+            std::thread::spawn(move || {
+                let lease = control.wait_for_collection(Duration::from_secs(5));
+                let _ = sender.send(lease.as_ref().map(CollectionLease::generation));
+            })
+        };
+        assert!(
+            receiver.recv_timeout(Duration::from_millis(300)).is_err(),
+            "在途采集未结束前全量刷新必须等待, 不得提前返回"
+        );
+        drop(held);
+        let acquired = receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("租约释放后全量刷新应立即继续");
+        assert!(
+            acquired.is_some_and(|next| next > generation),
+            "释放后取得新代数的租约"
+        );
+        waiter.join().unwrap();
+        assert!(!control.collection_in_flight(), "全量刷新结束后租约释放");
+    }
+
+    /// 在途采集超过等待上限仍未释放时才放弃 (返回 None, 调用方按失败处理)。
+    #[test]
+    fn full_refresh_wait_gives_up_after_timeout() {
+        let control = SchedulerControl::new();
+        let _held = control.begin_collection().expect("首个租约应成功");
+        let started = Instant::now();
+        assert!(control
+            .wait_for_collection(Duration::from_millis(250))
+            .is_none());
+        assert!(
+            started.elapsed() >= Duration::from_millis(250),
+            "须等满上限"
+        );
     }
 
     /// C264: 唤醒去重窗口 60s, 与 mac wakeDedupSeconds 同口径。
