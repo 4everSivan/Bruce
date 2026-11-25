@@ -640,7 +640,6 @@ dependencies = [
 name = "collector-credential"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "collector-domain",
  "serde_json",
 ]

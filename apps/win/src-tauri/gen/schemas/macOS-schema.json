@@ -273,12 +273,6 @@
           "markdownDescription": "Enables the get_credential_accounts command without any pre-configured scope."
         },
         {
-          "description": "Enables the get_credential_fields command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-get-credential-fields",
-          "markdownDescription": "Enables the get_credential_fields command without any pre-configured scope."
-        },
-        {
           "description": "Enables the get_credential_rejections command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-credential-rejections",
@@ -355,12 +349,6 @@
           "type": "string",
           "const": "allow-import-claude-from-local",
           "markdownDescription": "Enables the import_claude_from_local command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the import_codex_auth command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-import-codex-auth",
-          "markdownDescription": "Enables the import_codex_auth command without any pre-configured scope."
         },
         {
           "description": "Enables the import_grok_from_local command without any pre-configured scope.",
@@ -451,12 +439,6 @@
           "type": "string",
           "const": "allow-save-credential-account",
           "markdownDescription": "Enables the save_credential_account command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the save_credentials_command command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-save-credentials-command",
-          "markdownDescription": "Enables the save_credentials_command command without any pre-configured scope."
         },
         {
           "description": "Enables the save_settings_command command without any pre-configured scope.",
@@ -669,12 +651,6 @@
           "markdownDescription": "Denies the get_credential_accounts command without any pre-configured scope."
         },
         {
-          "description": "Denies the get_credential_fields command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-get-credential-fields",
-          "markdownDescription": "Denies the get_credential_fields command without any pre-configured scope."
-        },
-        {
           "description": "Denies the get_credential_rejections command without any pre-configured scope.",
           "type": "string",
           "const": "deny-get-credential-rejections",
@@ -751,12 +727,6 @@
           "type": "string",
           "const": "deny-import-claude-from-local",
           "markdownDescription": "Denies the import_claude_from_local command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the import_codex_auth command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-import-codex-auth",
-          "markdownDescription": "Denies the import_codex_auth command without any pre-configured scope."
         },
         {
           "description": "Denies the import_grok_from_local command without any pre-configured scope.",
@@ -847,12 +817,6 @@
           "type": "string",
           "const": "deny-save-credential-account",
           "markdownDescription": "Denies the save_credential_account command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the save_credentials_command command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-save-credentials-command",
-          "markdownDescription": "Denies the save_credentials_command command without any pre-configured scope."
         },
         {
           "description": "Denies the save_settings_command command without any pre-configured scope.",

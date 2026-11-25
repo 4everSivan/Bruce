@@ -628,7 +628,6 @@ impl ProviderError {
             RuntimeError::DeadlineExceeded => {
                 ("PROVIDER_TIMEOUT", "Provider 查询超过截止时间", true)
             }
-            RuntimeError::Closed => ("PROVIDER_QUEUE_CLOSED", "Provider 队列已关闭", true),
             RuntimeError::InvalidLimits => {
                 ("PROVIDER_INVALID_LIMIT", "Provider 运行限额无效", false)
             }

@@ -57,7 +57,6 @@ impl RuntimeLimits {
 pub enum RuntimeError {
     Cancelled,
     DeadlineExceeded,
-    Closed,
     InvalidLimits,
 }
 

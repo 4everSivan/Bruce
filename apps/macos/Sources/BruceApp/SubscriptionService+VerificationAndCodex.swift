@@ -384,12 +384,6 @@ extension SubscriptionService {
         }
     }
 
-    /// OpenCode: 用 Keychain 现有凭证重新触发验证状态迁移
-    /// (凭证已存在但验证状态缺失/过期时, 由设置页"重新验证"触发).
-    func reverifyOpenCodeGo() {
-        Task { await reverify(.opencodeGo) }
-    }
-
     /// 用已存凭证重跑验证状态迁移 (设置页"重新验证"统一入口).
     /// 覆盖 kimi / deepseek / 火山引擎 / 智谱 (本地格式校验) 与
     /// claude / grok / opencodeGo (Evaluator 判定); codex 不提供.

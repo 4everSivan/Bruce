@@ -4,7 +4,7 @@
   "title": "Rust 三锁分裂治理、跨模块死代码清理、缓存引擎收口与巨型模块拆分",
   "version": "0.19.0",
   "type": "Refactor",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "fix/C265-cargo-workspace-unify-and-dead-code-cleanup",
   "is_hotfix": false,
   "target": {
@@ -19,7 +19,7 @@
     "command": "rg -n \"save_credentials_command|import_codex_auth|OnboardingConfigError|reverifyOpenCodeGo|CLAUDE_KEYCHAIN_SERVICE|RuntimeError::Closed\" apps/ core/collector/",
     "expected": "上述符号仅在定义/少数死分支或测试中出现；`core/collector/Cargo.toml` 全用 `=` 钉版；`apps/win/src-tauri/Cargo.toml` 标注 `tauri =2.11.6` 锁定说明",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "HEAD 复核：core/collector/Cargo.toml 全量 `=` 精确钉版；src-tauri 锁 tauri=2.11.6；collector-credential 主机读取层 0 生产调用（仅自身测试与 forbidden 字符串）；Windows save_credentials_command/import_codex_auth/get_credential_fields 仅注册未授权；OnboardingConfigError/reverifyOpenCodeGo 无调用；RuntimeError::Closed 仅定义与映射。已实施：collector-credential 611→261 行（删 CredentialReadError/CredentialSource/SystemCredentialSource/read_*_token/is_expired 及其测试）；删除三个不可达 Windows 命令与权限/清单；删除 RuntimeError::Closed 及匹配、OnboardingConfigError、reverifyOpenCodeGo 双端死链。未做：semver 解钉/Tauri 2.12 解冻/三锁收敛、路径原语下沉、benchmark 移出生产依赖、缓存抽象统一、巨型模块拆分；recordAttempt/onQuotaAlerts 有 Harness 依赖未删（卡内要求注明保留理由）。"
   },
   "callback": {
     "before": [

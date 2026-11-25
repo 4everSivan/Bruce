@@ -3,9 +3,9 @@
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[cfg(feature = "desktop")]
 use std::time::Instant;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "desktop")]
 use serde_json::Value;

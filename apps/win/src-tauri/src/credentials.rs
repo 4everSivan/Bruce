@@ -806,26 +806,6 @@ pub fn credential_rejections(root: &Path) -> Vec<Value> {
     }
     result
 }
-/// Explicit pasted CLI auth.json import; never opens or changes external files.
-pub fn import_codex_auth(root: &Path, document: &Value) -> Result<(), String> {
-    let tokens = document
-        .get("tokens")
-        .and_then(Value::as_object)
-        .ok_or("Codex auth.json 缺少 tokens 对象")?;
-    let id = tokens
-        .get("account_id")
-        .and_then(Value::as_str)
-        .filter(|id| valid_id(id))
-        .ok_or("Codex auth.json 缺少有效账号 ID")?;
-    let mut account = serde_json::Map::new();
-    account.insert("display_name".to_owned(), json!(id));
-    for key in ["access_token", "refresh_token", "id_token"] {
-        if let Some(value) = tokens.get(key).filter(|value| nonempty_string(Some(value))) {
-            account.insert(key.to_owned(), value.clone());
-        }
-    }
-    save_credential_account(root, "codexQuotaAccounts", id, &Value::Object(account))
-}
 /// 读取本机 Claude 登录态并保存为 `claude-cli` 账号 (C075 设置页「读取本机登录态」)。
 /// 仅只读外部文件; 无可用登录态时返回 `NotFound` 且不写入任何凭证。
 pub fn follow_local_claude(root: &Path, home: &Path) -> Result<ClaudeLocalStatus, String> {

@@ -558,12 +558,6 @@ public final class OnboardingConfigurationStore: @unchecked Sendable {
     }
 }
 
-// MARK: - OnboardingConfigError
-
-public enum OnboardingConfigError: Error, Equatable {
-    case storageFailure
-}
-
 // MARK: - SubscriptionCredentialAccount
 
 /// 订阅 provider 的 Keychain account 键. 当前 service 为

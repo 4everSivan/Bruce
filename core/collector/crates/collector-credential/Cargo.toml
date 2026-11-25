@@ -5,6 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-chrono = { workspace = true }
 collector-domain = { path = "../collector-domain" }
 serde_json = { workspace = true }

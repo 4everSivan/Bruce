@@ -27,7 +27,6 @@ pub(crate) use desktop::show_quota_alert;
 
 #[cfg(feature = "desktop")]
 mod desktop {
-    use std::collections::BTreeMap;
 
     use super::{credentials, paths, scheduler, settings};
     use crate::runtime_core::{
@@ -678,27 +677,6 @@ mod desktop {
     }
 
     #[tauri::command]
-    fn get_credential_fields() -> Vec<String> {
-        credentials::load_credentials(&paths::data_root())
-            .into_keys()
-            .collect()
-    }
-
-    /// 凭证合并语义 (明文凭证不回显前端):
-    /// 请求中带值的键覆盖, 显式 null 删除, 未提及的键保留原值。
-    #[tauri::command]
-    fn save_credentials_command(
-        app: tauri::AppHandle,
-        payloads: BTreeMap<String, Option<serde_json::Value>>,
-    ) -> Result<(), String> {
-        let root = paths::data_root();
-        credentials::save_credentials_patch(&root, &payloads)?;
-        // 凭证变化后立即刷新, 让订阅卡尽快呈现 出站额度。
-        app.state::<SchedulerControl>().request_manual_refresh();
-        Ok(())
-    }
-
-    #[tauri::command]
     fn get_credential_accounts() -> Vec<serde_json::Value> {
         credentials::credential_accounts(&paths::data_root())
     }
@@ -788,13 +766,6 @@ mod desktop {
             return Err("INVALID_EXTERNAL_URL".to_owned());
         }
         open_external_url(trimmed)
-    }
-
-    #[tauri::command]
-    fn import_codex_auth(app: tauri::AppHandle, auth: serde_json::Value) -> Result<(), String> {
-        credentials::import_codex_auth(&paths::data_root(), &auth)?;
-        app.state::<SchedulerControl>().request_manual_refresh();
-        Ok(())
     }
 
     /// 阻塞型网络请求移出主线程 (C109)。
@@ -1615,7 +1586,6 @@ mod desktop {
                 remove_credential_account,
                 save_credential_account,
                 rename_credential_account,
-                import_codex_auth,
                 codex_device_start,
                 codex_device_poll,
                 open_verification_page,
@@ -1629,8 +1599,6 @@ mod desktop {
                 get_settings,
                 save_settings_command,
                 credential_allowlist,
-                get_credential_fields,
-                save_credentials_command,
                 verify_subscription,
                 remove_provider_credentials,
                 ccswitch_status,

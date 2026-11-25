@@ -219,7 +219,7 @@
     },
     "C265": {
       "title": "Rust 三锁分裂治理、跨模块死代码清理、缓存引擎收口与巨型模块拆分",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "fix/C265-cargo-workspace-unify-and-dead-code-cleanup",
       "topic": "SystemOverview",
       "file": "docs/devel/change/C265.json"
