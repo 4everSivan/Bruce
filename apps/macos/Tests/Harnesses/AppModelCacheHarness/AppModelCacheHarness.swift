@@ -36,7 +36,8 @@ struct AppModelCacheHarness {
         try dashboardShortcutPolicyMapsFixedCards()
         try hourlyEmptyAndFirstExpandablePolicies()
         try subscriptionEmptyStateFollowsProviderConfiguration()
-        print("AppModelCache tests passed: 7")
+        try validatedHintServesOnlyTheNextArtifact()
+        print("AppModelCache tests passed: 8")
     }
 
     /// C157: 订阅空态随 provider 配置变化重算, 不得命中旧的面板缓存.
@@ -116,6 +117,32 @@ struct AppModelCacheHarness {
     }
 
     /// 守卫: artifact 更新后摘要必须重算, 不得跨 artifact 复用缓存.
+    /// C261: publish 交来的已校验对象只服务紧随其后的那一次 setArtifact (省去二次解码);
+    /// 下一次无提示的 setArtifact 必须按新 artifactRevision 重新解码, 不得沿用旧提示,
+    /// 非 agent-usage 模块的提示一律忽略。
+    private static func validatedHintServesOnlyTheNextArtifact() throws {
+        let donor = AppModel()
+        donor.setArtifact(makeArtifact(todayTotal: 300), for: .agentUsage)
+        guard let hinted = donor.decodedAgentUsageArtifact() else {
+            throw AppModelCacheFailure.expectation("前置: 夹具 artifact 应可解码")
+        }
+
+        let model = AppModel()
+        // 故意让提示与随后的 artifact 不同, 以观察提示确实被直接复用 (未重新解码)。
+        model.setValidatedArtifactHint(.agentUsage(hinted), for: .agentUsage)
+        model.setArtifact(makeArtifact(todayTotal: 100), for: .agentUsage)
+        try expect(
+            model.makeMenuBarSummary().todayTokens == 300,
+            "紧随其后的 setArtifact 应直接复用已校验对象"
+        )
+
+        model.setArtifact(makeArtifact(todayTotal: 200), for: .agentUsage)
+        try expect(
+            model.makeMenuBarSummary().todayTokens == 200,
+            "无提示的下一次 setArtifact 必须重新解码, 不得沿用旧提示"
+        )
+    }
+
     private static func menuBarSummaryRebuildsAfterArtifactChange() throws {
         let model = AppModel()
         model.setArtifact(makeArtifact(todayTotal: 100), for: .agentUsage)
