@@ -478,6 +478,41 @@ enum SoftwareUpdateServiceTests {
         try expectEqual(fixture.model.settingsErrorMessage, nil, "取消不告警")
     }
 
+    /// C256 回归: 取消下载后的暂存清理必须等在途下载 / 解包真正退出后再做。旧实现在取消
+    /// 瞬间删除 updates 目录, 与不响应取消的在途写入并发删写 (写入失败或残留包无人清理)。
+    static func cancelDownloadCleansUpAfterInFlightWriteFinishes() async throws {
+        let fixture = try ServiceFixture()
+        defer { fixture.tearDown() }
+        try fixture.serveInstallableRelease()
+        fixture.transport.holdDownload = true
+        fixture.transport.ignoresCancellation = true
+        let service = fixture.service!
+        await service.checkNow()
+        service.startDownload()
+        try await waitUntil("下载开始") { fixture.transport.downloadCount == 1 }
+        service.cancelDownload()
+        guard case .available = service.phase else {
+            throw UpdateHarnessFailure.expectation("取消立即回到 available, 实得 \(service.phase)")
+        }
+        // 在途写入随后完成 (不响应取消), 把安装包写进 updates 目录。
+        fixture.transport.holdDownload = false
+        let updatesRoot = fixture.root.appendingPathComponent("Application Support/Bruce/updates")
+        try await waitUntil("在途下载调用返回") { fixture.transport.finishedDownloads == 1 }
+        try expectEqual(
+            fixture.transport.completedDownloads,
+            1,
+            "取消后的清理不得与在途写入并发 (提前删目录会让写入失败)"
+        )
+        try await waitUntil("在途写入退出后清理暂存目录", timeout: 3) {
+            let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: updatesRoot.path)) ?? []
+            return leftovers.isEmpty
+        }
+        guard case .available = service.phase else {
+            throw UpdateHarnessFailure.expectation("清理后保持 available, 实得 \(service.phase)")
+        }
+        try expectEqual(fixture.model.settingsErrorMessage, nil, "取消不告警")
+    }
+
     static func postponeThenRecheckReturnsToReady() async throws {
         let fixture = try ServiceFixture()
         defer { fixture.tearDown() }

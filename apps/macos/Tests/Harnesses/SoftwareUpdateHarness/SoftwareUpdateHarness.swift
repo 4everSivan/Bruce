@@ -69,6 +69,7 @@ struct SoftwareUpdateHarness {
         try await run("下载包签名不通过") { try await SoftwareUpdateServiceTests.downloadRejectsForeignSignature() }
         try await run("下载失败") { try await SoftwareUpdateServiceTests.downloadFailureReturnsToAvailable() }
         try await run("取消下载") { try await SoftwareUpdateServiceTests.cancelDownloadReturnsImmediately() }
+        try await run("取消下载: 在途写入退出后再清理暂存 (C256)") { try await SoftwareUpdateServiceTests.cancelDownloadCleansUpAfterInFlightWriteFinishes() }
         try await run("稍后与再次就绪") { try await SoftwareUpdateServiceTests.postponeThenRecheckReturnsToReady() }
         try await run("安装并重启") { try await SoftwareUpdateServiceTests.installReplacesAndRelaunches() }
         try await run("安装失败回滚") { try await SoftwareUpdateServiceTests.installFailureRollsBackAndWarns() }

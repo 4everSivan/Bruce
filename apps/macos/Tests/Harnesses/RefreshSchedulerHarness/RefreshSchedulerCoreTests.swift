@@ -825,6 +825,50 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    /// C256 回归: 启用中的模块在首次刷新 (尚无成功快照) 即被取消 (stop→start 竞态)
+    /// 时必须回到 idle 并可再次调度; 旧实现按「有无缓存」判定, 把 enabled=true 的模块
+    /// 永久卡在 disabled, 重新 start 后刷新按钮也无效。
+    static func firstCancellationKeepsEnabledModuleSchedulable(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.blocksUntilReleased = true
+        let clock = ManualClock()
+        let timers = FakeTimerScheduler()
+        let (scheduler, _, root) = try makeScheduler(
+            repository: repository, executor: executor, clock: clock, timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        try refreshExpect(
+            scheduler.moduleState(for: .agentUsage)?.lastSuccessAt == nil,
+            "前置: 首次刷新尚无成功快照"
+        )
+
+        scheduler.stop()
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        let phase = scheduler.moduleState(for: .agentUsage)?.phase
+        try refreshExpect(
+            phase == .idle,
+            "启用中的模块首次取消必须回到 idle, got \(String(describing: phase))"
+        )
+
+        executor.blocksUntilReleased = false
+        scheduler.start()
+        scheduler.refresh(.agentUsage)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        try refreshExpect(
+            executor.runCount[.agentUsage] == 2,
+            "取消后再次刷新必须真正调度执行"
+        )
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        scheduler.stop()
+    }
+
     // 回归: 调度器 stop 后 (退出流程被触发但应用未退出), 手动刷新
     // 必须自愈恢复调度, 否则刷新按钮点击无效.
     static func manualRefreshAfterStopRecoversScheduler(

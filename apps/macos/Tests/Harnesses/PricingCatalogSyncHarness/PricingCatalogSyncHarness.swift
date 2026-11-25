@@ -31,6 +31,49 @@ final class MockPricingTransport: PricingCatalogTransport, @unchecked Sendable {
     }
 }
 
+/// C256: 拉取挂起直到放行, 并统计请求次数, 用于复现「自动同步在途时触发手动同步」。
+final class GatedPricingTransport: PricingCatalogTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+    private var count = 0
+    let data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    func fetchCatalog(from url: URL) async throws -> Data {
+        let alreadyReleased = lock.withLock { () -> Bool in
+            count += 1
+            return released
+        }
+        if !alreadyReleased {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.withLock { () -> Bool in
+                    if released { return true }
+                    self.continuation = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        }
+        return data
+    }
+
+    var fetchCount: Int { lock.withLock { count } }
+    var isWaiting: Bool { lock.withLock { continuation != nil } }
+
+    func release() {
+        let pending = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            released = true
+            defer { continuation = nil }
+            return continuation
+        }
+        pending?.resume()
+    }
+}
+
 @main
 @MainActor
 struct PricingCatalogSyncHarness {
@@ -82,6 +125,10 @@ struct PricingCatalogSyncHarness {
 
         try await run("自动同步：启动 30 秒 + 24 小时调度与静默容错") {
             try await testAutoSyncScheduleAndSilentFailure()
+        }
+
+        try await run("自动同步在途：不显示同步中，手动同步不并发第二次拉取 (C256)") {
+            try await testAutoSyncInFlightBlocksManualSyncSilently()
         }
 
         var parityCount = 0
@@ -454,6 +501,62 @@ struct PricingCatalogSyncHarness {
         guard case .updated = service.stage else {
             throw HarnessFailure(message: "Expected auto sync to update, got \(service.stage)")
         }
+    }
+
+    /// C256 回归: 在途互斥改用独立标记。旧实现以 `stage == .syncing` 判在途, 而自动同步
+    /// 不置 syncing, 导致自动同步在途时手动同步再发一次拉取 (两路并发写价卡文件)。
+    static func testAutoSyncInFlightBlocksManualSyncSilently() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let okJSON = """
+        {
+          "schemaVersion": 1,
+          "updatedAt": "2099-03-01",
+          "models": [
+            {"model": "k3-agent", "displayName": "K3", "vendor": "Kimi", "input": 3, "output": 15, "listed": true}
+          ]
+        }
+        """.data(using: .utf8)!
+        let transport = GatedPricingTransport(data: okJSON)
+        var simNow = Date(timeIntervalSince1970: 1785200000)
+        let service = PricingCatalogSyncService(
+            fileURL: tempDir.appendingPathComponent("pricing-catalog.json"),
+            transport: transport,
+            now: { simNow }
+        )
+        service.start()
+        defer {
+            service.stop()
+            BuiltinModelPricingCatalog.resetToBuiltin(
+                fileURL: tempDir.appendingPathComponent("pricing-catalog.json")
+            )
+        }
+
+        simNow = simNow.addingTimeInterval(31)
+        let autoSync = Task { @MainActor in await service.autoSyncTick() }
+        for _ in 0..<1_000 where !transport.isWaiting {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        try expect(transport.isWaiting, "前置: 自动同步应已发出拉取并挂起")
+        try expectEqual(service.stage, .idle, "自动同步在途不得把界面切成同步中")
+
+        service.syncNow()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try expectEqual(transport.fetchCount, 1, "自动同步在途时手动同步不得再发起第二次拉取")
+
+        transport.release()
+        await autoSync.value
+        // 在途的那一路可能是 start() 自带的调度循环发起的, 轮询等它收尾。
+        for _ in 0..<1_000 {
+            if case .updated = service.stage { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        guard case .updated = service.stage else {
+            throw HarnessFailure(message: "Expected auto sync to finish as updated, got \(service.stage)")
+        }
+        try expectEqual(transport.fetchCount, 1, "全程只拉取一次")
     }
 
     static func testParityWithFixture(repoRoot: URL) throws -> Int {

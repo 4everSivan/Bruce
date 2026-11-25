@@ -254,6 +254,9 @@ final class FakeUpdateTransport: UpdateTransport, @unchecked Sendable {
     private var _downloadError: UpdateInstallFailure?
     private var _holdFetch = false
     private var _holdDownload = false
+    private var _ignoresCancellation = false
+    private var _completedDownloads = 0
+    private var _finishedDownloads = 0
     private var _fetchCount = 0
     private var _headCount = 0
     private var _downloadCount = 0
@@ -289,6 +292,15 @@ final class FakeUpdateTransport: UpdateTransport, @unchecked Sendable {
         get { locked { _holdDownload } }
         set { locked { _holdDownload = newValue } }
     }
+    /// C256: 模拟不响应取消的在途写入 (真实解包子进程 / 分块落盘): 放行后照常写出文件。
+    var ignoresCancellation: Bool {
+        get { locked { _ignoresCancellation } }
+        set { locked { _ignoresCancellation = newValue } }
+    }
+    /// 已把文件真正写到目标路径的下载次数。
+    var completedDownloads: Int { locked { _completedDownloads } }
+    /// 下载调用已返回 (成功或抛错) 的次数。
+    var finishedDownloads: Int { locked { _finishedDownloads } }
     var fetchCount: Int { locked { _fetchCount } }
     var headCount: Int { locked { _headCount } }
     var downloadCount: Int { locked { _downloadCount } }
@@ -313,11 +325,13 @@ final class FakeUpdateTransport: UpdateTransport, @unchecked Sendable {
         progress: @escaping @Sendable (UpdateDownloadProgress) -> Void
     ) async throws {
         locked { _downloadCount += 1 }
+        defer { locked { _finishedDownloads += 1 } }
+        let honoursCancellation = !ignoresCancellation
         while holdDownload {
-            try Task.checkCancellation()
-            try await Task.sleep(nanoseconds: 5_000_000)
+            if honoursCancellation { try Task.checkCancellation() }
+            try? await Task.sleep(nanoseconds: 5_000_000)
         }
-        try Task.checkCancellation()
+        if honoursCancellation { try Task.checkCancellation() }
         if let downloadError {
             throw downloadError
         }
@@ -332,6 +346,7 @@ final class FakeUpdateTransport: UpdateTransport, @unchecked Sendable {
             try FileManager.default.removeItem(at: destination)
         }
         try FileManager.default.copyItem(at: source, to: destination)
+        locked { _completedDownloads += 1 }
     }
 }
 

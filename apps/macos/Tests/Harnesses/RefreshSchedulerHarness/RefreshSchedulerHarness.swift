@@ -34,6 +34,8 @@ struct RefreshSchedulerHarness {
         try await partialDetailSkipsInformationalDiagnostics(repository: repository)
         print("Refresh scheduler: stop")
         try await stopCancelsRunningTasks(repository: repository)
+        print("Refresh scheduler: first cancellation keeps enabled module schedulable")
+        try await firstCancellationKeepsEnabledModuleSchedulable(repository: repository)
         print("Refresh scheduler: manual refresh after stop recovers")
         try await manualRefreshAfterStopRecoversScheduler(repository: repository)
         print("Refresh scheduler: interval update")
@@ -293,6 +295,6 @@ struct RefreshSchedulerHarness {
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
         print("Refresh scheduler: policy transport validates envelope + ABI version (C263)")
         try policyTransportValidatesEnvelopeAndABI()
-        print("Refresh scheduler tests passed: 138")
+        print("Refresh scheduler tests passed: 139")
     }
 }
