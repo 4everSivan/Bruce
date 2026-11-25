@@ -1081,3 +1081,59 @@ fn artifact_total_cost_keeps_zero_priced_agents() {
         Some(1.5)
     );
 }
+
+/// C260 维护陷阱修正: 重放标记的计价指纹必须包含计价逻辑探针, 且探针真正命中价卡
+/// (全部未计价时指纹对逻辑变化不敏感, 等于没有守卫)。
+#[test]
+fn request_log_pricing_fingerprint_folds_real_cost_probes() {
+    use collector_domain::{ModelPricingOverride, PricingTable, RequestRecord};
+    use std::collections::HashMap;
+
+    let builtin = PricingTable::default();
+    let priced = crate::REQUEST_COST_PROBES
+        .iter()
+        .filter(|(model, timestamp_millis, input, _)| {
+            let probe = RequestRecord {
+                key: String::new(),
+                timestamp_millis: *timestamp_millis,
+                model: Some((*model).to_owned()),
+                raw_model: None,
+                project: None,
+                input: *input,
+                output: 0,
+                cache_read: 0,
+                cache_creation: 0,
+                cache_creation_1h: 0,
+                fidelity: String::new(),
+                latency_ms: None,
+                first_token_ms: None,
+            };
+            crate::request_cost(&builtin, &probe).0.is_some()
+        })
+        .count();
+    assert!(
+        priced >= crate::REQUEST_COST_PROBES.len() - 3,
+        "探针须大多命中内置价卡才能感知计价逻辑变化 (命中 {priced})"
+    );
+
+    let fingerprint = crate::request_log_pricing_fingerprint(&builtin);
+    assert_eq!(
+        fingerprint,
+        crate::request_log_pricing_fingerprint(&PricingTable::default()),
+        "同一价卡与代码下指纹必须稳定 (否则每轮都会重放)"
+    );
+    assert_ne!(
+        fingerprint,
+        builtin.fingerprint(),
+        "指纹必须折入计价探针结果, 而不只是价卡内容"
+    );
+    let overrides: HashMap<String, ModelPricingOverride> = serde_json::from_value(json!({
+        "claude-opus-5-5": {"inputPricePerMillion": 100.0}
+    }))
+    .unwrap();
+    assert_ne!(
+        fingerprint,
+        crate::request_log_pricing_fingerprint(&PricingTable::new(overrides)),
+        "价卡变化仍须使指纹变化"
+    );
+}

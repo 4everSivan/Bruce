@@ -411,7 +411,7 @@ fn persist_request_logs(
     // C260: 来源缓存零变更且价卡指纹与上次落盘一致时，近 30 天明细无需重新计价重放
     // (每轮 20 万行的定价 + clone + upsert); 仍打开库执行一次保留期清理。
     let source_signature = request_log_source_signature(&in_scope);
-    let pricing_fingerprint = pricing.fingerprint();
+    let pricing_fingerprint = request_log_pricing_fingerprint(pricing);
     let skip_replay = path.is_file()
         && !request_log_sources_changed(scan_stats)
         && replay_marker_matches(&path, source_signature, pricing_fingerprint);
@@ -479,7 +479,71 @@ fn persist_request_logs(
 }
 
 /// C260: 请求日志重放标记的 schema 版本; 版本不符时保守重放。
+///
+/// 计价与模型解析的代码变化已由 [`request_log_pricing_fingerprint`] 的探针自动覆盖;
+/// 只有改动「请求行 → `RequestLogEntry` 的字段映射」(如 status_code / fidelity /
+/// 延迟口径) 而计价结果不变时, 才需要手动递增本常量强制重放一次。
 const REQUEST_LOG_REPLAY_SCHEMA_VERSION: u64 = 1;
+
+/// 计价探针 (模型名, 发生时刻 ms, input, cache_creation_1h): 覆盖精确命中、大小写 /
+/// 厂商前缀 / 日期后缀归一、峰谷时段、长上下文分档、1h 缓存写与未知模型。
+const REQUEST_COST_PROBES: [(&str, i64, u64, u64); 14] = [
+    ("claude-opus-5-5", 1_764_000_000_000, 12_000, 0),
+    ("Claude-Opus-5-5", 1_764_000_000_000, 12_000, 0),
+    ("anthropic/claude-sonnet-5-5", 1_764_000_000_000, 12_000, 0),
+    ("claude-sonnet-5-5-20261101", 1_764_000_000_000, 12_000, 0),
+    ("claude-haiku-5-5", 1_764_000_000_000, 12_000, 4_000),
+    ("gpt-6.2-sol", 1_764_000_000_000, 12_000, 0),
+    ("gpt-6.2-sol", 1_764_000_000_000, 400_000, 0),
+    ("gemini-4-neon", 1_764_000_000_000, 400_000, 0),
+    ("models/gemini-3.5-flash", 1_764_000_000_000, 12_000, 0),
+    ("deepseek-chat", 1_764_000_000_000, 12_000, 0),
+    ("deepseek-chat", 1_764_043_200_000, 12_000, 0),
+    ("glm-5.3", 1_764_000_000_000, 300_000, 0),
+    ("k3", 1_764_000_000_000, 12_000, 0),
+    (
+        "bruce-replay-probe-unknown-model",
+        1_764_000_000_000,
+        12_000,
+        0,
+    ),
+];
+
+/// C260 重放标记的计价指纹 = 价卡内容 + 计价逻辑探针结果。
+///
+/// 价卡指纹只覆盖表内容; 升级后若归一 / 分档 / 计费公式代码变化而表不变, 仅凭它会
+/// 继续跳过重放, 让近 30 天明细保留旧口径。这里对固定探针跑真实的 `request_cost`,
+/// 把 (计价模型, 费用位模式) 折进指纹: 逻辑一变标记即失配, 自动重放一次。
+fn request_log_pricing_fingerprint(pricing: &PricingTable) -> u64 {
+    let mut hash = pricing.fingerprint();
+    for (model, timestamp_millis, input, cache_creation_1h) in REQUEST_COST_PROBES {
+        let probe = RequestRecord {
+            key: String::new(),
+            timestamp_millis,
+            model: Some(model.to_owned()),
+            raw_model: Some(model.to_owned()),
+            project: None,
+            input,
+            output: 3_000,
+            cache_read: 20_000,
+            cache_creation: 1_000,
+            cache_creation_1h,
+            fidelity: String::new(),
+            latency_ms: None,
+            first_token_ms: None,
+        };
+        let (cost, pricing_model) = request_cost(pricing, &probe);
+        fnv1a(
+            &mut hash,
+            pricing_model.as_deref().unwrap_or("-").as_bytes(),
+        );
+        fnv1a(
+            &mut hash,
+            &cost.map_or(u64::MAX, f64::to_bits).to_le_bytes(),
+        );
+    }
+    hash
+}
 
 /// C260: 本轮来源是否有任何缓存写入 / 重建 / 删除 —— 有则明细可能变化, 必须重放。
 fn request_log_sources_changed(stats: &ScanStats) -> bool {
