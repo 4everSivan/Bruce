@@ -146,8 +146,15 @@
       || (group.proxyPort ? `127.0.0.1:${group.proxyPort} · 尚未测试` : "尚未配置代理端口");
     block.append(node("div", result, { class: `egress-result ${toneFor(group.lastTestResult)}` }));
 
+    // 只列已添加的订阅; 已在该组但后来被移除的 Provider 仍显示以便解除。
+    const added = new Set(Object.keys(state.settings.subscriptionProviders || {}));
+    const visible = new Set([
+      ...(added.size ? added : (state.settings.enabledProviders || [])),
+      ...group.providers,
+    ]);
     const chips = node("div", null, { class: "egress-providers" });
     for (const [id, label] of Object.entries(PROVIDER_LABELS)) {
+      if (!visible.has(id)) continue;
       const on = group.providers.includes(id);
       const chip = node("button", label, {
         type: "button", class: on ? "egress-provider active" : "egress-provider", "aria-pressed": String(on),

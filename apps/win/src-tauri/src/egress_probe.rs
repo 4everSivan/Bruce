@@ -106,6 +106,7 @@ fn probe(port: u16) -> Result<Trace, String> {
 
 fn classify_proxy_error(error: &ureq::Error) -> String {
     match error {
+        ureq::Error::Status(407, _) => "EGRESS_PROXY_AUTH".to_owned(),
         ureq::Error::Status(_, _) => "EGRESS_BAD_STATUS".to_owned(),
         ureq::Error::Transport(transport) => {
             let text = transport.to_string().to_lowercase();
