@@ -66,7 +66,7 @@
         "item": "自动化测试",
         "true_if": "Windows Rust 与前端测试全绿 + `verify-local.sh` 全绿；覆盖出口拦截下发、请求日志筛选分页、看门狗超时恢复及损坏 `snapshot.json` 自动回退 `previous`",
         "false_if": "任一用例失败或仍缺核心容灾断言",
-        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。Windows crate：`cargo test` 默认特性与 `--no-default-features` 各 287 passed，两种特性组合 `clippy -D warnings` 通过（评审前 --no-default-features 有 7 处仅桌面可达项告警，301cd9c4 已修复）；`apps/win/tests/*.test.mjs` 159/159。覆盖：egress_groups_validate_and_round_trip、configured_request_injects_egress_rules、egress_state_maps_to_section_and_protected_snapshot、trace_parsing_masks_ips_and_rejects_bad_input、request_log_request_matches_mac_contract 与前端请求日志页 / 出口卡用例、watchdog_returns_values_and_times_out、collection_lease_is_exclusive_and_abandon_releases、corrupt_primary_falls_back_to_previous_snapshot、suppression_skips_all_external_quota_queries、wake_dedup_window_matches_mac；评审补 caf60a3c：full_refresh_waits_for_in_flight_collection / full_refresh_wait_gives_up_after_timeout（全量刷新遇采集在途排队等待，不再静默失败进退避）。WTS 锁屏与电源事件为 Windows API，未执行。",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。Windows crate：`cargo test` 默认特性与 `--no-default-features` 各 287 passed，两种特性组合 `clippy -D warnings` 通过（评审前 --no-default-features 有 7 处仅桌面可达项告警，301cd9c4 已修复）；`apps/win/tests/*.test.mjs` 159/159。覆盖：egress_groups_validate_and_round_trip、configured_request_injects_egress_rules、egress_state_maps_to_section_and_protected_snapshot、trace_parsing_masks_ips_and_rejects_bad_input、request_log_request_matches_mac_contract 与前端请求日志页 / 出口卡用例、watchdog_returns_values_and_times_out、collection_lease_is_exclusive_and_abandon_releases、corrupt_primary_falls_back_to_previous_snapshot、suppression_skips_all_external_quota_queries、wake_dedup_window_matches_mac；评审补 caf60a3c：full_refresh_waits_for_in_flight_collection / full_refresh_wait_gives_up_after_timeout（全量刷新遇采集在途排队等待，不再静默失败进退避）。WTS 锁屏与电源事件为 Windows API，未执行。 2026-11-25 推送后 CI 暴露 Windows 专属问题：power_events 缺 tauri::Manager 导入（commit 17525b43）与 watchdog 用例时序过紧（commit 52a038cb），均已修复；run 45567097835 全绿。",
         "result": true
       },
       {
@@ -89,7 +89,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "4c6e7379",
+    "commit": "cde5afe6",
     "tag": ""
   },
   "gate": {

@@ -69,7 +69,7 @@
         "item": "自动化测试",
         "true_if": "`cargo test --workspace` 与 `verify-local.sh` 全绿；覆盖 WAL 并发写入不报 `SQLITE_BUSY`、含 `?`/`#` 路径只读打开、ZCode 取消信号透传、Mach timebase 换算单测及 FFI 超限长度安全返回错误",
         "false_if": "任一用例失败或仍有 clippy 警告",
-        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：merge_waits_for_concurrent_writer_instead_of_failing_busy（WAL 并发写不报 BUSY）、external_sqlite_path_with_query_characters_is_not_parsed_as_uri、cpu_time_units_follow_mach_timebase、oversized_request_length_is_rejected_without_dereferencing。缺口：ZCode 取消信号透传未见专门用例，结果待人工裁定。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
+        "evidence": "2026-11-24 分支 fix/C251-C267-review-fixes（HEAD 12601971）`zsh scripts/verify-local.sh` Exit 0（run local-20261124-01，日志 local/logs/verify-local-c251-c270-fixes.log，1m20s）：Rust 54 套件 769 passed 且 fmt / clippy -D warnings 通过，20 Harness 全过，Node 契约 27/27；仅 7 条本机 ~/.cargo/config.toml 未用键警告。覆盖：merge_waits_for_concurrent_writer_instead_of_failing_busy（WAL 并发写不报 BUSY）、external_sqlite_path_with_query_characters_is_not_parsed_as_uri、cpu_time_units_follow_mach_timebase、oversized_request_length_is_rejected_without_dereferencing。缺口：ZCode 取消信号透传未见专门用例，结果待人工裁定。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。 2026-11-25 推送后 CI 暴露该 Unix 专属用例在 Windows 无法创建含 \"?\" 的文件名，已加 #[cfg(unix)]（commit eeab17c3），Windows 作业转绿。",
         "result": false
       },
       {
@@ -92,7 +92,7 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "4c6e7379",
+    "commit": "cde5afe6",
     "tag": ""
   },
   "gate": {

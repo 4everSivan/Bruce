@@ -86,8 +86,8 @@
         "item": "反向影响排查",
         "true_if": "GitHub Actions CI 各作业（verify/build-release-app/release/windows）及 `check-ci-tool-deps.mjs` 全兼容",
         "false_if": "CI 路径失配或签名发布步骤受损",
-        "evidence": "未实测：CI 未运行（分支未推送）；release / release-windows 仅在 tag 触发。check-ci-tool-deps 与 check-release-pipeline 本地通过。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
-        "result": false
+        "evidence": "未实测：CI 未运行（分支未推送）；release / release-windows 仅在 tag 触发。check-ci-tool-deps 与 check-release-pipeline 本地通过。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。 2026-11-25 推送后 GitHub Actions CI/CD run 45567097835（commit cde5afe6）：「本地验证套件 (macOS 26)」「Rust 验证 (Windows)」「构建测试版 App」三个作业全部 success。 PanelParity 仍随 macOS verify-local 执行。",
+        "result": true
       }
     ]
   },

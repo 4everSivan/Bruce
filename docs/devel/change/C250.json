@@ -63,8 +63,8 @@
         "item": "Windows CI 复验",
         "true_if": "推送后 CI/CD 的「Rust 验证 (Windows)」作业转绿，空库用例通过",
         "false_if": "Windows 作业仍失败",
-        "evidence": "未执行：本地未推送，Windows CI 未运行；按维护者签收口径记 false（ADVISORY），待推送后 CI 补证。 签收口径（2026-11-25）：维护者「签收所有卡片，然后推送」，该项未执行或存在未覆盖缺口，如实记 false（ADVISORY）。",
-        "result": false
+        "evidence": "2026-11-25 推送后 GitHub Actions「Rust 验证 (Windows)」作业转绿（run 45567097835，commit cde5afe6），空库用例通过。",
+        "result": true
       },
       {
         "item": "反向影响排查",
