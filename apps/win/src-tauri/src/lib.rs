@@ -641,6 +641,9 @@ mod desktop {
         let root = paths::data_root();
         let previous = settings::with_settings_lock(|| -> Result<AppSettings, String> {
             let previous = settings::load_settings(&root);
+            // C251: 界面回传的是它读到的整份设置; 后台独占字段一律以锁内磁盘值为准,
+            // 迟到的旧副本 (如看板缓存) 不得把刚写入的同步/检查时间回滚。
+            settings::keep_backend_owned_fields(&mut settings, &previous);
             let registered = app.state::<RegisteredHotkey>();
             let mut current = registered.0.lock().map_err(|_| "HOTKEY_LOCK_FAILED")?;
             // 录制态下旧热键处于注销状态: 先恢复登记, 替换流程才能按原语义注销旧键。

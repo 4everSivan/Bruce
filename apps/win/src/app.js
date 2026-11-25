@@ -201,7 +201,9 @@ async function reorderCards(from, to) {
   order.splice(toIndex, 0, order.splice(fromIndex, 1)[0]);
   currentSettings = { ...currentSettings, cardOrder: order };
   if (currentPanel) render(currentPanel);
-  try { await invoke("save_settings_command", { settings: currentSettings }); }
+  // C251: 以后端最新设置为基线只改 cardOrder; 看板缓存的整份副本可能早于设置窗口
+  // 或后台的写入, 直接回传会把它们回滚。
+  try { await invoke("save_settings_command", { settings: { ...await invoke("get_settings"), cardOrder: order } }); }
   catch (error) { showError(error); }
 }
 // 手柄由 cardHead 预置在标题之前 (mac DashboardDragHandle 位于展开按钮左侧、

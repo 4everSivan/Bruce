@@ -232,6 +232,15 @@ pub fn added_subscription_providers(
 /// 投影 —— 采集装配、看板订阅段过滤与额度门禁仍消费后者, 故在加载与保存两侧统一由前者
 /// 派生, 杜绝两个启用事实源漂移 (手改配置文件同样被纠正)。顺序取 `PROVIDERS` 稳定序,
 /// 保证采集装配顺序确定。
+/// 后台独占字段 (C251): 只由更新检查 / 价卡同步经 [`update_settings`] 写入，界面从不修改，
+/// 只会把读到的旧值原样回传。设置页保存时以锁内磁盘值覆盖回传值，避免界面持有的
+/// 陈旧整份副本把后台刚写入的字段回滚。
+pub fn keep_backend_owned_fields(incoming: &mut AppSettings, on_disk: &AppSettings) {
+    incoming.update_last_check_at = on_disk.update_last_check_at.clone();
+    incoming.update_skipped_version = on_disk.update_skipped_version.clone();
+    incoming.pricing_last_sync_at = on_disk.pricing_last_sync_at.clone();
+}
+
 pub fn sync_enabled_providers(settings: &mut AppSettings) {
     let added = added_subscription_providers(settings);
     settings.enabled_providers = PROVIDERS
@@ -978,5 +987,33 @@ mod tests {
             "两次更新各自只改自己的字段，不得互相覆盖"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// C251 残留: 界面持有的陈旧整份设置 (看板缓存) 保存时不得回滚后台独占字段，
+    /// 其余字段照常采用界面回传值。
+    #[test]
+    fn stale_ui_save_keeps_backend_owned_fields() {
+        let on_disk = AppSettings {
+            update_last_check_at: Some("2026-11-24T10:00:00+08:00".into()),
+            update_skipped_version: Some("0.19.1".into()),
+            pricing_last_sync_at: Some("2026-11-24T10:05:00+08:00".into()),
+            ..AppSettings::default()
+        };
+        let mut stale_ui = AppSettings {
+            card_order: vec!["subscription".into(), "usage".into()],
+            ..AppSettings::default()
+        };
+        keep_backend_owned_fields(&mut stale_ui, &on_disk);
+        assert_eq!(stale_ui.update_last_check_at, on_disk.update_last_check_at);
+        assert_eq!(
+            stale_ui.update_skipped_version,
+            on_disk.update_skipped_version
+        );
+        assert_eq!(stale_ui.pricing_last_sync_at, on_disk.pricing_last_sync_at);
+        assert_eq!(
+            stale_ui.card_order,
+            vec!["subscription".to_owned(), "usage".to_owned()],
+            "界面字段仍以回传值为准"
+        );
     }
 }

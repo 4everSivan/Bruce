@@ -576,6 +576,18 @@ test("collapsed cards drag-reorder and persist cardOrder", async () => {
   void stack;
 });
 
+test("card reorder saves on top of the latest backend settings, not the dashboard's cached copy (C251)", async () => {
+  const app = await boot();
+  // 看板启动后, 设置窗口改了动效偏好 (看板缓存仍是旧值)。
+  app.state.settings = { ...app.state.settings, motionPreference: "never" };
+  const handle = app.node("stack").children[0].querySelector(".drag-handle");
+  await handle.dispatch("dragstart");
+  await app.node("stack").children[2].dispatch("drop");
+  const saved = app.calls.filter((call) => call.command === "save_settings_command").pop();
+  assert.deepEqual([...saved.args.settings.cardOrder], ["subscription", "hourly", "usage"]);
+  assert.equal(saved.args.settings.motionPreference, "never", "拖拽排序不得回滚其他窗口刚写入的设置");
+});
+
 test("Nothing theme renders segmented meters and dot-matrix day columns", async () => {
   const app = await boot({ panel: structuredClone(fixture) });
   // Fluent: 连续量条 + 百分比宽度, 无分段
