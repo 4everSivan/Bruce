@@ -1,0 +1,99 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C270",
+  "title": "macOS Harness 迁移为 SwiftPM 标准 testTarget",
+  "version": "0.20.0",
+  "type": "Refactor",
+  "status": "pending",
+  "branch": "fix/C270-swiftpm-test-targets",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "Package.swift / Tests/Harnesses / scripts/verify-local.sh",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "C266 第三项要求把 macOS 20 个 `*Harness` 由 `executableTarget` 迁移为 SwiftPM 标准 `testTarget`（XCTest / Swift Testing），本批次未实施（C266 precheck：涉及全部 Harness 入口与 verify-local 调用方式，单列后续任务）。现状：Harness 以 `@main` 可执行文件运行、靠 `verify-local.sh` 自检漏接，失败定位只有首个抛错，IDE / `swift test` 无法发现与过滤用例。为让 C266 按已落地范围收口，该项自 C266 拆出单列（2026-11-24 维护者授权按建议处理）。",
+  "precheck": {
+    "description": "确认 Harness 仍为 executableTarget 且无 testTarget",
+    "command": "grep -c 'testTarget' apps/macos/Package.swift; grep -oE 'name: \"[A-Za-z]+Harness\"' apps/macos/Package.swift | wc -l",
+    "expected": "testTarget 计数为 0；Harness target 为 20 个",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C270-swiftpm-test-targets"
+    ],
+    "after": [
+      "swift test --package-path apps/macos",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C270 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Harness 迁移为 testTarget",
+      "before": "20 个 `*Harness` 为 `executableTarget`，`@main` 入口串行调用私有静态用例函数，首个失败即终止。",
+      "after": "分批改为 `.testTarget`，用例拆为可独立发现 / 过滤的测试函数；需要仓库根路径的用例改由测试资源或环境变量注入。",
+      "impact": "用例数与断言语义保持不变；IDE 与 `swift test --filter` 可直接运行单个用例。"
+    },
+    {
+      "scope": "verify-local 改用 swift test 并保持 SLA",
+      "before": "`verify-local.sh` 从 `--show-bin-path` 逐个调用 Harness 二进制，并以 Package.swift 解析结果自检漏接。",
+      "after": "改为一次 `swift test` 运行全部 testTarget，保留漏跑自检（testTarget 集合与用例数下限）与 1 分钟内全绿 SLA。",
+      "impact": "design/00 §3.4 与 AGENTS.md 标准验证命令表需同步更新。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 §3.4：verify-local 单次 `swift build --build-tests` 后从 bin 目录直接调用全部 `*Harness` 可执行文件",
+      "after": "design/00 §3.4：macOS 测试为 SwiftPM 标准 testTarget，verify-local 以 `swift test` 一次运行并保留漏跑自检与 1 分钟 SLA"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "`swift test` 发现并通过全部迁移后的用例，用例总数不少于迁移前各 Harness 计数之和；verify-local 全绿且 1 分钟内完成",
+        "false_if": "用例数减少、任一失败或 SLA 超时",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Xcode / `swift test --filter` 可单独运行任一用例并给出逐用例结果",
+        "false_if": "用例无法被发现或过滤",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "CI macOS verify 作业与 Release 构建不受影响，Panel 视图模型双端 golden 对拍仍在门禁内执行",
+        "false_if": "CI 作业失败或对拍漏跑",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

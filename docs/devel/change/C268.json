@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C268",
+  "title": "Swift 价卡/软件更新决策切换共享策略 FFI 与跨端重复映射收敛",
+  "version": "0.20.0",
+  "type": "Refactor",
+  "status": "pending",
+  "branch": "fix/C268-swift-policy-ffi-cutover",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceAppCore + core/collector/crates/collector-policy",
+    "component": "BuiltinModelPricingCatalog / PricingCatalogSyncService / SoftwareUpdateService / PolicyFFITransport / 品牌注册表",
+    "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "design_topic": "SharedPolicyCore"
+  },
+  "why": "C263 只完成了价卡与软件更新策略下沉的 Rust / Windows 一侧：`collector-policy` 已新增 `pricing`（`validate_catalog` 复用 domain `CatalogFile` 的 schema/模型校验与 `updatedAt` 防降级）与 `update`（宽/严 SemVer、下载域白名单、跳过与追平清除、清单可信判定）纯规则及 `pricingValidate` / `updateDecide` 策略操作，Windows `software_update.rs` 已改为 re-export。但 macOS 仍在 Swift 内维护价卡校验/防降级（`BuiltinModelPricingCatalog`、`PricingCatalogSyncService`）与软件更新 SemVer/白名单/跳过决策的整套重复实现（C263 估算约 1,400–1,900 行），两端规则只能靠 fixture 对拍约束、仍可能再次漂移（design/08 背景即「凡尚无共享 fixture 的规则两端都已各自漂移」）。C263 precheck 另记录 provider id 归一仍有 4 份、状态灯/错误文案与账号命名仍双写，本轮未收敛。该部分涉及 Swift 调用方与 UI 展示口径，属跨端大改，需单独批次与 mac 真机验收，故自 C263 拆出（2026-11-24 维护者授权按建议处理）。",
+  "precheck": {
+    "description": "确认 macOS 价卡校验/更新决策仍为 Swift 自实现、未调用 pricingValidate/updateDecide，且 provider id 归一与状态灯/账号命名仍多处维护",
+    "command": "rg -n \"pricingValidate|updateDecide\" apps/macos/Sources; rg -n \"struct BuiltinModelPricingCatalog|class PricingCatalogSyncService|func parseSemVer|skippedVersion\" apps/macos/Sources",
+    "expected": "第一条无命中（mac 未调用两项策略操作）；第二条命中 Swift 侧自实现的价卡目录、同步服务与 SemVer/跳过版本逻辑",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C268-swift-policy-ffi-cutover"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-policy -p collector-bridge",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C268 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 价卡校验与防降级切换 pricingValidate",
+      "before": "`PricingCatalogSyncService` / `BuiltinModelPricingCatalog` 在 Swift 内自行解析校验远端价卡、比较 `updatedAt` 防降级并判定 newer。",
+      "after": "经 `PolicyFFITransport` 调用 `pricingValidate`，以共享结果驱动接受/拒绝/防降级；删除 Swift 重复校验与比较逻辑，保留网络获取与落盘。",
+      "impact": "价卡同步结果与 Windows 同源；设置页价卡同步状态文案不变。"
+    },
+    {
+      "scope": "macOS 软件更新决策切换 updateDecide",
+      "before": "`SoftwareUpdateService` 在 Swift 内实现严格 SemVer 解析比较、下载域白名单、跳过版本与追平清除、清单可信判定。",
+      "after": "经 `PolicyFFITransport` 调用 `updateDecide` 取得决策；删除 Swift 重复实现，下载/安装/UI 状态机保持原样。",
+      "impact": "双端更新判定同源；`SoftwareUpdateHarness` 用例改为断言共享决策。"
+    },
+    {
+      "scope": "provider id 归一、状态灯/错误文案与账号命名单源",
+      "before": "provider id 归一 4 份，状态灯/错误文案与账号命名在 mac 与 Windows 各写一份。",
+      "after": "并入 `config/brand-registry.json` 生成链或共享策略输出，三端消费同一份映射，删除手写副本。",
+      "impact": "面板状态灯、错误文案与账号显示名双端一致；Panel 视图模型 golden 对拍保持通过。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "topic": "SharedPolicyCore",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local 全绿；collector-policy / collector-bridge 契约用例覆盖 pricingValidate、updateDecide；SoftwareUpdateHarness 与价卡相关 Harness 改为断言共享决策且全绿",
+        "false_if": "任一测试失败，或 Swift 侧仍保留与共享策略并行的校验/决策实现",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "mac 真机：价卡远端同步（正常 / 防降级 / 非法目录）与检查更新（有新版 / 已跳过 / 清单不可信）行为与切换前一致",
+        "false_if": "同步或更新判定结果、界面文案与切换前不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Windows 价卡同步与更新链路、Panel 视图模型双端 golden 对拍不受影响",
+        "false_if": "Windows 行为变化或对拍出现差异",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

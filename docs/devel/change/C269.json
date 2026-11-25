@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C269",
+  "title": "Rust 工作区锁收敛、巨型模块拆分与跨模块重复实现收口",
+  "version": "0.20.0",
+  "type": "Refactor",
+  "status": "pending",
+  "branch": "fix/C269-workspace-and-module-split",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/win + apps/macos",
+    "component": "Cargo workspace / collector-aggregate / collector-runtime / collector-local / collector-history / src-tauri lib.rs / BruceOnboardingCore / SettingsView / SubscriptionService / RefreshScheduler",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "C265 本批次只落地了 manifest 解钉（仍由三份 Cargo.lock 各自锁版本，tauri 运行版仍为 2.11.6）、collector-credential 死读取层与 Windows 不可达命令删除、`default_cache_root` 下沉、benchmark 移出生产构建与 JSON 缓存统一走 `cache_util`。C265 why 中列出、但既未实施也未写入其「未做」清单的项仍在代码中（2026-11-24 复核）：`collector-aggregate` 复制 `UsageContributionBuilder` 的字段与合并逻辑；`collector-runtime::PermitPool` 与工作线程数相等形同虚设；`context.rs` 的 `retry_count` / `credential_refresh_count` 恒 0；时间戳解析在 4 crate 间复制 8+ 份且阈值不一致；目录遍历 / `file_identity` 与 Unix SQLite 权限多处复制；macOS 6 处私有 `NothingTokens`、2 处不一致欢迎判断、`EgressRouteTester` 重复 `egress.rs`、Windows 重复 `ShellExecuteW`。C265 已登记未做：三份 Cargo.lock 合并为单一锁（需把 win crates 并入统一 workspace）与 tauri 2.12 实升级（需 Windows 真机 NSIS/updater 验证）、巨型模块拆分（`OnboardingConfiguration.swift` 1,443 行、`SettingsView.swift` 1,508 行、`collector-history/src/lib.rs` 1,814 行、`apps/win/src-tauri/src/lib.rs` 1,652 行等）。为让 C265 按已落地范围收口，剩余结构债自 C265 拆出单列（2026-11-24 维护者授权按建议处理）。",
+  "precheck": {
+    "description": "逐项确认 C265 遗留的重复实现、形同虚设样板与巨型模块在 HEAD 上仍存在",
+    "command": "rg -n \"PermitPool|retry_count|credential_refresh_count\" core/collector/crates; rg -ln \"NothingTokens\" apps/macos/Sources; rg -ln \"ShellExecuteW\" apps/win/src-tauri/src; rg -ln \"EgressRouteTester\" apps/macos/Sources; wc -l apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift apps/macos/Sources/BruceApp/SettingsView.swift core/collector/crates/collector-history/src/lib.rs apps/win/src-tauri/src/lib.rs; ls core/collector/Cargo.lock apps/win/src-tauri/Cargo.lock apps/win/viewmodel/Cargo.lock",
+    "expected": "各项仍命中；四个文件均超过约 1,400 行；三份 Cargo.lock 并存",
+    "is_completed": false,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C269-workspace-and-module-split"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C269 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Cargo 锁收敛与 Tauri 运行时升级",
+      "before": "core/collector、apps/win/viewmodel、apps/win/src-tauri 各自维护 Cargo.lock 与 target/；tauri 运行版 2.11.6，CI tauri-cli 2.12.x。",
+      "after": "评估并实施统一 workspace（或记录不合并的取舍），收敛共享 crate 版本分叉；有意 `cargo update` 升级 tauri 2.12 并完成 Windows NSIS/updater 真机验证。",
+      "impact": "构建只编一遍共享 crate；Windows 安装/更新链路需真机回归。"
+    },
+    {
+      "scope": "跨模块重复实现与形同虚设样板收口",
+      "before": "collector-aggregate ⟷ UsageContributionBuilder、时间戳解析 8+ 份、目录遍历 / file_identity、SQLite 权限、NothingTokens ×6、欢迎判断 ×2、ShellExecuteW ×2、EgressRouteTester ⟷ egress.rs 各自复制；PermitPool 与恒 0 计数器无实际作用。",
+      "after": "每类保留单一实现并让调用方复用（时间戳阈值统一并补边界单测）；删除或接通 PermitPool 与恒 0 计数器（仅测试使用者迁回测试模块或注明保留理由）。",
+      "impact": "采集口径与双端 golden 对拍保持不变；时间戳阈值统一可能改变极端输入的解析结果，需对拍确认。"
+    },
+    {
+      "scope": "巨型模块按单一职责拆分",
+      "before": "OnboardingConfiguration.swift / SettingsView.swift / SubscriptionService / RefreshScheduler / collector-history lib.rs / src-tauri lib.rs 超出 design/00 §3.1 约 1,500 行与单一职责边界。",
+      "after": "按 design/00 §3.1 规模边界分批拆为子模块或扩展文件，纯移动不改行为。",
+      "impact": "仅结构调整；全部 Harness 与 Rust 测试保持全绿。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local 全绿；src-tauri 两种特性组合 clippy -D warnings 通过；时间戳统一补齐阈值边界单测",
+        "false_if": "任一测试 / clippy 失败，或重复实现仍并存",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "tauri 升级后 Windows 真机安装、自动更新、托盘与设置页正常；mac 端设置页与订阅流程无回归",
+        "false_if": "安装 / 更新失败或界面行为回归",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Panel 视图模型 / 工作台双端 golden 对拍与 fixture 契约全部通过，采集总量与改动前一致",
+        "false_if": "对拍差异或采集口径变化",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

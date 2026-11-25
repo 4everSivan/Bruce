@@ -8,7 +8,9 @@
       "changes": [
         "C256",
         "C265",
-        "C266"
+        "C266",
+        "C269",
+        "C270"
       ]
     },
     "MenuBarIndicator": {
@@ -56,7 +58,8 @@
     "SharedPolicyCore": {
       "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
       "changes": [
-        "C263"
+        "C263",
+        "C268"
       ]
     },
     "AgentBrandIdentity": {
@@ -237,6 +240,27 @@
       "branch": "fix/C267-website-sync-and-repo-hygiene",
       "topic": "OfficialWebsite",
       "file": "docs/devel/change/C267.json"
+    },
+    "C268": {
+      "title": "Swift 价卡/软件更新决策切换共享策略 FFI 与跨端重复映射收敛",
+      "status": "pending",
+      "branch": "fix/C268-swift-policy-ffi-cutover",
+      "topic": "SharedPolicyCore",
+      "file": "docs/devel/change/C268.json"
+    },
+    "C269": {
+      "title": "Rust 工作区锁收敛、巨型模块拆分与跨模块重复实现收口",
+      "status": "pending",
+      "branch": "fix/C269-workspace-and-module-split",
+      "topic": "SystemOverview",
+      "file": "docs/devel/change/C269.json"
+    },
+    "C270": {
+      "title": "macOS Harness 迁移为 SwiftPM 标准 testTarget",
+      "status": "pending",
+      "branch": "fix/C270-swiftpm-test-targets",
+      "topic": "SystemOverview",
+      "file": "docs/devel/change/C270.json"
     }
   }
 }
