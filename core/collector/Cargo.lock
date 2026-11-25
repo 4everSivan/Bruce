@@ -220,6 +220,7 @@ name = "collector-policy"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "collector-domain",
  "serde",
  "serde_json",
 ]
