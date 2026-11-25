@@ -396,3 +396,42 @@ fn request_log_request_matches_mac_contract() {
     assert_eq!(value["context"]["model"], "gpt-5");
     assert!(bruce_win_lib::collector::build_request_log_request(&make(20, 10)).is_err());
 }
+
+/// C264: 出口国家组注入 context.egressRules (provider -> {country, port})。
+#[test]
+fn configured_request_injects_egress_rules() {
+    let settings = bruce_win_lib::settings::AppSettings {
+        egress_groups: vec![bruce_win_lib::settings::EgressGroup {
+            country: "JP".to_owned(),
+            providers: vec!["codex".to_owned(), "claude".to_owned()],
+            proxy_port: Some(18081),
+            last_test_result: None,
+        }],
+        ..Default::default()
+    };
+    let request = bruce_win_lib::collector::build_configured_request(
+        chrono::Local::now(),
+        &Default::default(),
+        &settings,
+    );
+    assert_eq!(request.context["egressRules"]["codex"]["country"], "JP");
+    assert_eq!(request.context["egressRules"]["codex"]["port"], 18081);
+    assert_eq!(request.context["egressRules"]["claude"]["country"], "JP");
+
+    // 缺端口: port=null, 由共享引擎按无效配置阻断 (fail-closed)。
+    let without_port = bruce_win_lib::settings::AppSettings {
+        egress_groups: vec![bruce_win_lib::settings::EgressGroup {
+            country: "US".to_owned(),
+            providers: vec!["grok".to_owned()],
+            proxy_port: None,
+            last_test_result: None,
+        }],
+        ..Default::default()
+    };
+    let request = bruce_win_lib::collector::build_configured_request(
+        chrono::Local::now(),
+        &Default::default(),
+        &without_port,
+    );
+    assert!(request.context["egressRules"]["grok"]["port"].is_null());
+}

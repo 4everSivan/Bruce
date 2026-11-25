@@ -114,6 +114,20 @@ pub struct AppSettings {
     /// 首次启动欢迎向导完成版本 (T22, 10-首次启动欢迎与引导向导 §4.2 R1; 0 表示尚未完成)。
     #[serde(default)]
     pub welcome_completed_version: u32,
+    /// 网络出口国家校验 (C264, design/11): 每个国家组配置本机回环代理端口与受管 Provider。
+    #[serde(default)]
+    pub egress_groups: Vec<EgressGroup>,
+}
+
+/// 单个出口国家组 (C264): `country` 为 ISO 3166-1 alpha-2 大写代码;
+/// `providers` 为受该组保护的订阅 Provider; `proxy_port` 缺失时受管 Provider 必须阻断。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EgressGroup {
+    pub country: String,
+    pub providers: Vec<String>,
+    pub proxy_port: Option<u16>,
+    pub last_test_result: Option<String>,
 }
 
 fn default_auto_sync_pricing_catalog() -> bool {
@@ -171,6 +185,7 @@ impl Default for AppSettings {
             auto_sync_pricing_catalog: true,
             pricing_last_sync_at: None,
             welcome_completed_version: 0,
+            egress_groups: Vec::new(),
         }
     }
 }
@@ -252,6 +267,7 @@ pub fn requires_collection(previous: &AppSettings, next: &AppSettings) -> bool {
         || providers(previous) != providers(next)
         || previous.pricing_overrides != next.pricing_overrides
         || previous.refresh_interval_secs != next.refresh_interval_secs
+        || previous.egress_groups != next.egress_groups
 }
 
 fn settings_path(root: &Path) -> PathBuf {
@@ -511,6 +527,44 @@ pub fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if settings.theme != "fluent" && settings.theme != "nothing" {
         return Err("主题仅支持 fluent / nothing".to_owned());
     }
+    if settings.egress_groups.len() > 32 {
+        return Err("出口国家组过多".to_owned());
+    }
+    let mut egress_countries = BTreeSet::new();
+    let mut egress_providers = BTreeSet::new();
+    for group in &settings.egress_groups {
+        // ISO 3166-1 alpha-2 大写; CLDR 宏地区代码不是国家, 与 mac 同口径拒绝。
+        const NON_ISO_CODES: [&str; 12] = [
+            "AC", "CP", "CQ", "DG", "EA", "EU", "EZ", "IC", "QO", "TA", "UN", "XK",
+        ];
+        if group.country.len() != 2
+            || !group.country.bytes().all(|byte| byte.is_ascii_uppercase())
+            || NON_ISO_CODES.contains(&group.country.as_str())
+        {
+            return Err("出口国家代码必须为 ISO 3166-1 alpha-2".to_owned());
+        }
+        if !egress_countries.insert(group.country.clone()) {
+            return Err("出口国家重复".to_owned());
+        }
+        for provider in &group.providers {
+            if !PROVIDERS.contains(&provider.as_str()) {
+                return Err("出口国家组包含未知服务".to_owned());
+            }
+            if !egress_providers.insert(provider.clone()) {
+                return Err("同一服务只能属于一个出口国家组".to_owned());
+            }
+        }
+        if group.proxy_port == Some(0) {
+            return Err("出口代理端口无效".to_owned());
+        }
+        if group
+            .last_test_result
+            .as_ref()
+            .is_some_and(|result| result.len() > 1024)
+        {
+            return Err("出口线路测试结果过长".to_owned());
+        }
+    }
     if !settings.hotkey.is_empty() && settings.hotkey.len() > 64 {
         return Err("热键配置过长".to_owned());
     }
@@ -584,6 +638,59 @@ mod tests {
         assert_eq!(load_settings(&first).theme, "nothing");
         let _ = std::fs::remove_dir_all(&first);
         let _ = std::fs::remove_dir_all(&second);
+    }
+
+    /// C264: 出口国家组校验与保存往返。
+    #[test]
+    fn egress_groups_validate_and_round_trip() {
+        let group = EgressGroup {
+            country: "JP".to_owned(),
+            providers: vec!["codex".to_owned(), "claude".to_owned()],
+            proxy_port: Some(18081),
+            last_test_result: Some("线路探测匹配 · JP · 192.0.***.***".to_owned()),
+        };
+        let settings = AppSettings {
+            egress_groups: vec![group.clone()],
+            ..AppSettings::default()
+        };
+        assert!(validate_settings(&settings).is_ok());
+        let root = temp_root();
+        save_settings(&root, &settings).unwrap();
+        assert_eq!(load_settings(&root).egress_groups, vec![group.clone()]);
+
+        let invalid = |mutate: fn(&mut EgressGroup)| {
+            let mut candidate = settings.clone();
+            mutate(&mut candidate.egress_groups[0]);
+            validate_settings(&candidate).is_err()
+        };
+        assert!(invalid(|group| group.country = "jp".to_owned()));
+        assert!(invalid(|group| group.country = "EU".to_owned()));
+        assert!(invalid(|group| group.providers = vec!["nope".to_owned()]));
+        assert!(invalid(|group| group.proxy_port = Some(0)));
+        assert!(validate_settings(&AppSettings {
+            egress_groups: vec![
+                group.clone(),
+                EgressGroup {
+                    country: "JP".to_owned(),
+                    ..EgressGroup::default()
+                },
+            ],
+            ..AppSettings::default()
+        })
+        .is_err());
+        assert!(validate_settings(&AppSettings {
+            egress_groups: vec![
+                group.clone(),
+                EgressGroup {
+                    country: "US".to_owned(),
+                    providers: vec!["codex".to_owned()],
+                    ..EgressGroup::default()
+                },
+            ],
+            ..AppSettings::default()
+        })
+        .is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -40,6 +40,47 @@ pub struct BalanceRow {
     pub amount_text: String,
 }
 
+/// 出口国家校验状态 (C264, design/11): collector 在 service 上写入 `egress` 原样映射。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EgressView {
+    /// allowed | blocked
+    pub status: String,
+    /// 阻断原因码 (EGRESS_COUNTRY_MISMATCH 等)。
+    pub reason: Option<String>,
+    pub expected: Option<String>,
+    pub observed: Option<String>,
+    pub masked_ip: Option<String>,
+}
+
+fn egress_view(value: Option<&Value>) -> Option<EgressView> {
+    let object = value?.as_object()?;
+    let status = object.get("status")?.as_str()?.to_owned();
+    Some(EgressView {
+        status,
+        reason: object
+            .get("reason")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        expected: object
+            .get("expected")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        observed: object
+            .get("observed")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        masked_ip: object
+            .get("maskedIp")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    })
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexAccountViewModel {
@@ -72,6 +113,12 @@ pub struct SubscriptionProviderSection {
     /// C224: 单账号段的上次成功时间文案 (仅 freshness=stale); 多账号段为 None,
     /// 由各账号子卡的 last_success_text 呈现 (对齐 mac section.lastSuccessText)。
     pub last_success_text: Option<String>,
+    /// C264: 出口国家校验结果; 未分组/无探测的服务不输出该字段。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub egress: Option<EgressView>,
+    /// C264: 出口阻断且展示的是历史快照 (design/11 快照保护)。
+    #[serde(skip_serializing_if = "is_false")]
+    pub has_protected_snapshot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -360,6 +407,8 @@ impl PanelViewModelMapper {
             captured_at: Option<String>,
             freshness: Option<String>,
             windows: Vec<SubscriptionWindowRow>,
+            egress: Option<EgressView>,
+            egress_blocked: bool,
         }
 
         let mut groups: BTreeMap<String, Vec<ParsedService>> = BTreeMap::new();
@@ -390,6 +439,8 @@ impl PanelViewModelMapper {
             let extra = get("extra").and_then(Value::as_str);
             let captured_at = get("capturedAt").and_then(Value::as_str);
             let freshness = get("freshness").and_then(Value::as_str);
+            let egress = egress_view(get("egress"));
+            let egress_blocked = egress.as_ref().is_some_and(|view| view.status == "blocked");
 
             let raw_windows = get("windows")
                 .and_then(Value::as_array)
@@ -494,6 +545,8 @@ impl PanelViewModelMapper {
                 captured_at: captured_at.map(str::to_owned),
                 freshness: freshness.map(str::to_owned),
                 windows,
+                egress,
+                egress_blocked,
             });
         }
 
@@ -550,6 +603,9 @@ impl PanelViewModelMapper {
                     }),
                     account_count_text: None,
                     last_success_text: section_last_success,
+                    egress: svc.egress.clone(),
+                    has_protected_snapshot: svc.egress_blocked
+                        && svc.freshness.as_deref() == Some("stale"),
                 });
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow。
@@ -577,6 +633,15 @@ impl PanelViewModelMapper {
                         .collect::<Vec<_>>(),
                 );
                 let collapsed = collapsed_window(&accounts);
+                // C264: 段落级出口状态取首个 blocked, 否则首个有探测结果的账号。
+                let section_egress = services
+                    .iter()
+                    .find(|service| service.egress_blocked)
+                    .and_then(|service| service.egress.clone())
+                    .or_else(|| services.iter().find_map(|service| service.egress.clone()));
+                let has_protected_snapshot = services.iter().all(|service| {
+                    service.egress_blocked && service.freshness.as_deref() == Some("stale")
+                });
                 sections.push(SubscriptionProviderSection {
                     id: provider.clone(),
                     name: group_display_name(provider),
@@ -590,6 +655,8 @@ impl PanelViewModelMapper {
                     balance: None,
                     account_count_text: Some(format!("{} 个账号", services.len())),
                     last_success_text: None,
+                    egress: section_egress,
+                    has_protected_snapshot,
                 });
             }
         }
@@ -877,5 +944,45 @@ mod tests {
         assert_eq!(ids, vec!["kimi_coding", "codex_acc1", "codex_acc2"]);
         assert_eq!(gated.agents.len(), 1);
         assert_eq!(gated.total_cost_usd, Some(4.25));
+    }
+
+    /// C264: service.egress 原样映射到 section; 阻断 + stale 标记快照保护,
+    /// 未分组服务不输出 egress 字段 (不扩大 mac golden 对拍契约)。
+    #[test]
+    fn egress_state_maps_to_section_and_protected_snapshot() {
+        let artifact = artifact_from(json!([
+            {
+                "id": "codex_acc1", "name": "Codex · A", "status": "error", "kind": "windows",
+                "capturedAt": "2026-07-28T11:00:00+08:00", "freshness": "stale",
+                "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 30.0}],
+                "egress": {
+                    "status": "blocked", "reason": "EGRESS_COUNTRY_MISMATCH",
+                    "expected": "JP", "observed": "US", "maskedIp": "192.0.***.***"
+                }
+            },
+            {
+                "id": "deepseek", "name": "DeepSeek", "status": "ok", "kind": "balance",
+                "windows": [], "balance": 12.0, "currency": "CNY"
+            }
+        ]));
+        let view = PanelViewModelMapper::default()
+            .make_subscription(&artifact, now(), &mut Vec::new())
+            .unwrap();
+        let codex = view.sections.iter().find(|s| s.id == "codex_acc1").unwrap();
+        assert_eq!(codex.egress.as_ref().unwrap().status, "blocked");
+        assert_eq!(
+            codex.egress.as_ref().unwrap().reason.as_deref(),
+            Some("EGRESS_COUNTRY_MISMATCH")
+        );
+        assert!(codex.has_protected_snapshot);
+        let coded = serde_json::to_value(codex).unwrap();
+        assert_eq!(coded["egress"]["observed"], "US");
+        assert_eq!(coded["hasProtectedSnapshot"], true);
+
+        let deepseek = view.sections.iter().find(|s| s.id == "deepseek").unwrap();
+        assert!(deepseek.egress.is_none());
+        let plain = serde_json::to_value(deepseek).unwrap();
+        assert!(plain.get("egress").is_none(), "未分组服务不得输出 egress");
+        assert!(plain.get("hasProtectedSnapshot").is_none());
     }
 }

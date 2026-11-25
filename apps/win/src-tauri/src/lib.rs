@@ -6,6 +6,7 @@
 pub mod alerts;
 pub mod collector;
 pub mod credentials;
+pub mod egress_probe;
 pub mod paths;
 pub mod pricing_sync;
 pub mod quota_policy;
@@ -456,6 +457,16 @@ mod desktop {
         )?;
         crate::runtime_core::write_export(&target, format!("\u{feff}{csv}").as_bytes())?;
         Ok(serde_json::json!({ "path": target }))
+    }
+
+    /// 设置页「测试线路」(C264): 经回环专用代理探测出口国家, 返回脱敏结论。
+    #[tauri::command]
+    async fn egress_test(country: String, port: u16) -> Result<serde_json::Value, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::egress_probe::test_route_json(&country, port)
+        })
+        .await
+        .map_err(|_| "EGRESS_TEST_JOIN_FAILED".to_owned())?
     }
 
     /// 设置页「请求日志」只读查询 (C264, design/14): 不启动全量刷新、不携带凭据。
@@ -1591,6 +1602,7 @@ mod desktop {
                 export_diagnostics,
                 get_usage_analytics,
                 get_request_log,
+                egress_test,
                 export_workbench_csv,
                 export_workbench_json,
                 get_model_prices,

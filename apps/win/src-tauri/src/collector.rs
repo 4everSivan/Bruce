@@ -226,6 +226,25 @@ pub fn build_configured_request(
             serde_json::to_value(&settings.pricing_overrides).unwrap_or_default(),
         );
     }
+    // C264: 网络出口国家校验规则注入 (design/11): provider -> {country, port}。
+    // 未分组的 provider 不出现; 配了国家但缺端口时 port=null, 共享引擎按无效配置阻断。
+    if !settings.egress_groups.is_empty() {
+        let mut rules = Map::new();
+        for group in &settings.egress_groups {
+            let rule = serde_json::json!({
+                "country": group.country,
+                "port": group.proxy_port,
+            });
+            for provider in &group.providers {
+                rules.insert(provider.clone(), rule.clone());
+            }
+        }
+        if !rules.is_empty() {
+            request
+                .context
+                .insert("egressRules".into(), Value::Object(rules));
+        }
+    }
     // T21: 本机存在生效的已同步价格表时向 context.pricingCatalog 注入 (Tier 2)
     let catalog_path = crate::pricing_sync::pricing_catalog_path();
     if let Some(catalog_value) = crate::pricing_sync::active_catalog_context_value(&catalog_path) {

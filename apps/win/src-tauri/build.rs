@@ -13,6 +13,7 @@ fn main() {
                 "export_diagnostics",
                 "get_usage_analytics",
                 "get_request_log",
+                "egress_test",
                 "export_workbench_csv",
                 "export_workbench_json",
                 "get_model_prices",
