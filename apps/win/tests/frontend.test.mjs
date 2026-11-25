@@ -3589,3 +3589,64 @@ test("usage card collapsed summary renders A4 rows, fallbacks and retires mini-w
     assert.ok(css.includes(cls), `styles.css 缺少样式 ${cls}`);
   }
 });
+
+test("repeated remove clicks keep a single danger confirm (C259)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }],
+    settings: { ...defaults, enabledProviders: ["kimi"] },
+  });
+  await app.node("provider-configure-kimi").click();
+  for (let i = 0; i < 3; i += 1) await app.node("cfg-remove-provider-kimi").click();
+  assert.equal(
+    app.node("provider-dialog").querySelectorAll(".cfg-confirm-danger").length,
+    1,
+    "连点「移除服务」只保留一个确认框",
+  );
+});
+
+test("provider guide link opens through the system browser command, not a bare _blank anchor (C259)", async () => {
+  const app = await boot({ html: "settings.html", settings: { ...defaults, enabledProviders: ["cline"] } });
+  await app.node("provider-configure-cline").click();
+  const dialog = app.node("provider-dialog");
+  const blankAnchors = [...dialog.querySelectorAll("a")].filter((anchor) => anchor.getAttribute("target") === "_blank");
+  assert.equal(blankAnchors.length, 0, "引导外链不得用 target=_blank 裸链");
+  await app.node("cfg-guide-link").click();
+  const opened = app.calls.filter((call) => call.command === "open_external_link").pop();
+  assert.ok(opened, "点击引导链接经 open_external_link 交给系统浏览器");
+  assert.equal(opened.args.url, "https://app.cline.bot");
+});
+
+test("closing the provider dialog stops Codex device-code polling (C259)", async () => {
+  const flush = async (times = 8) => {
+    for (let i = 0; i < times; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await settle();
+    }
+  };
+  const app = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["codex"] },
+    codexPoll: [],
+  });
+  const polls = () => app.calls.filter((call) => call.command === "codex_device_poll").length;
+  await app.node("provider-configure-codex").click();
+  await app.node("cfg-codex-login").click();
+  await flush();
+  assert.ok(polls() >= 1, "前置: 授权等待期间持续轮询");
+  await app.node("cfg-cancel-codex").click();
+  await flush(2);
+  const afterClose = polls();
+  await flush(12);
+  assert.equal(polls(), afterClose, "关闭弹窗后不得继续后台轮询");
+});
+
+test("pricing search filters the table in place and keeps the same input focused (C259)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const pane = () => app.node("pane-modelPricing-content");
+  const search = pane().querySelector(".pricing-search");
+  search.value = "不存在的模型";
+  await search.dispatch("input");
+  assert.match(pane().textContent, /未找到匹配的模型定价规则/);
+  assert.equal(pane().querySelector(".pricing-search"), search, "输入时只重绘表格, 不得重建搜索框 (否则每个字符都丢焦点)");
+});
