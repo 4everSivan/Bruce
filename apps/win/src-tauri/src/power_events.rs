@@ -5,6 +5,8 @@
 //! 60s 内重复触发由调度器去重。回调只向 Tauri 状态投递一个唤醒信号，不做任何 I/O。
 
 use tauri::AppHandle;
+#[cfg(windows)]
+use tauri::Manager;
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
