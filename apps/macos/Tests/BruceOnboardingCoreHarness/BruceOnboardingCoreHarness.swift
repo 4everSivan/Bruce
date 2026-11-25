@@ -55,6 +55,7 @@ struct BruceOnboardingCoreHarness {
         try await probeNonZeroExitCapturesStderrSummary()
         try await probeTimeoutForceKillsIgnoringSIGTERM()
         try await probeCallerCancellationTerminatesProcess()
+        try await probeForceKillGraceWaitDoesNotBusySpin()
         try await probeOutputCapTruncatesAndDrains()
         try await sqliteProbeAvailableForValidSchema()
         try await sqliteProbeMissingPath()
@@ -190,7 +191,7 @@ struct BruceOnboardingCoreHarness {
         try grokBotSliceNameAndAccountKeyMatchRustContract()
         try grokBotActiveAccountReaderBoundaries()
         try grokBotRegistryAndDispatch()
-        print("BruceOnboardingCore tests passed: 183")
+        print("BruceOnboardingCore tests passed: 184")
     }
 
     static func launchAtLoginConfigPersistenceRoundTrip() throws {

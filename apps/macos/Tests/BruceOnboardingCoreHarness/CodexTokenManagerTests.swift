@@ -40,7 +40,8 @@ enum CodexTokenManagerTests {
         try await missingRecordDistinctFromReadError()
         try await disconnectRemovesOnlyRequestedAccount()
         try await renameAccountUpdatesStatusAndPersists()
-        print("CodexTokenManager tests passed: 34")
+        try await disconnectDuringRefreshDoesNotResurrectAccount()
+        print("CodexTokenManager tests passed: 35")
     }
 
     private static let fixedNow = Date(timeIntervalSince1970: 1_752_000_000)
@@ -1463,6 +1464,78 @@ enum CodexTokenManagerTests {
     }
 
     // 单账号断开只删除目标 record, 同步移除 active 标记, 其他账号与状态快照保留.
+    /// 刷新请求挂起直到放行的 fake OAuth client (C255: 复现「刷新在途时断开账号」)。
+    private final class GatedOAuthClient: CodexOAuthClientProtocol, @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var released = false
+
+        var isWaiting: Bool { lock.withLock { continuation != nil } }
+
+        func refreshRequest(refreshToken: String) -> URLRequest {
+            URLRequest(url: CodexOAuthClient.defaultConfiguration().tokenURL)
+        }
+
+        func perform(
+            _ request: URLRequest,
+            session: (any URLSessionProtocol)?
+        ) async -> Result<CodexTokenResponse, CodexOAuthClientError> {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.withLock { () -> Bool in
+                    if released { return true }
+                    self.continuation = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+            return .success(CodexTokenResponse(
+                accessToken: "at-late", refreshToken: "rt-late",
+                idToken: nil, expiresIn: 3600, receivedAt: fixedNow
+            ))
+        }
+
+        func release() {
+            let pending = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                released = true
+                defer { continuation = nil }
+                return continuation
+            }
+            pending?.resume()
+        }
+    }
+
+    /// C255 回归: 刷新在途时断开账号, 迟到的刷新结果不得写回存储 (旧实现 await 后
+    /// 不校验取消 / 代次直接 saveRecord, 把用户刚删除的账号复活)。
+    private static func disconnectDuringRefreshDoesNotResurrectAccount() async throws {
+        let (store, _) = try makeStore(accounts: [
+            "acc-1": (access: "at", refresh: "rt", expiresIn: 30),
+        ])
+        let gate = GatedOAuthClient()
+        let manager = CodexTokenManager(
+            store: store,
+            client: gate,
+            clock: { fixedNow },
+            sleeper: { _ in try await Task.sleep(nanoseconds: 1) }
+        )
+        let refreshing = Task { await manager.validAccessToken(for: "acc-1") }
+        for _ in 0..<1_000 where !gate.isWaiting {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        guard gate.isWaiting else {
+            throw CodexTestFailure.expectation("前置: 刷新请求应已发出并挂起")
+        }
+
+        try await manager.disconnect(accountID: "acc-1")
+        gate.release()
+        let resolution = await refreshing.value
+        if case .success = resolution {
+            throw CodexTestFailure.expectation("断开后迟到的刷新不得返回可用 token")
+        }
+        guard try store.loadRecord(for: "acc-1") == nil else {
+            throw CodexTestFailure.expectation("断开后迟到的刷新结果把已删除账号写回了存储")
+        }
+    }
+
     private static func disconnectRemovesOnlyRequestedAccount() async throws {
         let (store, _) = try makeStore(accounts: [
             "acc-1": (access: "at-1", refresh: "rt-1", expiresIn: 3600),

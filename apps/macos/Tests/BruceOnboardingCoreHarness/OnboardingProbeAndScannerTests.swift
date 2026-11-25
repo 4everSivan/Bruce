@@ -61,6 +61,34 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// C255 回归: 超时后等待 SIGTERM 宽限期时执行分支已被取消, `try? await Task.sleep`
+    /// 会零挂起立即返回, 旧实现因此在整个宽限期内空转占满一个核。宽限期 1s 内
+    /// 本进程 CPU 时间必须远低于墙钟时间。
+    static func probeForceKillGraceWaitDoesNotBusySpin() async throws {
+        func cpuSeconds() -> Double {
+            var usage = rusage()
+            getrusage(RUSAGE_SELF, &usage)
+            let user = Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1_000_000
+            let system = Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1_000_000
+            return user + system
+        }
+        let probe = AsyncProcessProbe(timeout: 0.2, gracePeriod: 1.0)
+        let cpuBefore = cpuSeconds()
+        let start = Date()
+        let result = await probe.run(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "trap '' TERM; exec sleep 60"]
+        )
+        let elapsed = Date().timeIntervalSince(start)
+        let cpu = cpuSeconds() - cpuBefore
+        try coreExpect(result == .timedOut, "should be timedOut, got \(result)")
+        try coreExpect(elapsed >= 1.0, "前置: 应等满 SIGTERM 宽限期再 SIGKILL, took \(elapsed)s")
+        try coreExpect(
+            cpu < 0.4,
+            "宽限期等待不得空转: \(String(format: "%.2f", elapsed))s 墙钟内耗 CPU \(String(format: "%.2f", cpu))s"
+        )
+    }
+
     static func probeCallerCancellationTerminatesProcess() async throws {
         let probe = AsyncProcessProbe(timeout: 30, gracePeriod: 0.2)
         let task = Task {
