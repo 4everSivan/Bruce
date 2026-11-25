@@ -2,7 +2,7 @@ use super::{
     finish, line_may_match, number_u64, parse_json_line, scan_jsonl_file, SourceScan,
     SourceScanError,
 };
-use crate::cache_util::fingerprint_head_tail;
+use crate::cache_util::{fingerprint_head_tail, load_json_cache, write_json_atomic, CacheLoad};
 use crate::jsonl_cache::{
     file_drift_notice, truncated_usage_notice, CachedUsageObservation, UsageProbe,
     FILE_DRIFT_STREAK,
@@ -23,9 +23,9 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap};
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct CodexTokenCounters {
@@ -648,65 +648,6 @@ fn codex_path_key(path: &Path) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-enum CodexCacheLoad {
-    Missing,
-    Corrupt,
-    Loaded(CodexFileCache),
-}
-
-fn load_codex_file_cache(path: &Path) -> CodexCacheLoad {
-    match fs::read(path) {
-        Ok(data) => match serde_json::from_slice(&data) {
-            Ok(cache) => CodexCacheLoad::Loaded(cache),
-            Err(_) => CodexCacheLoad::Corrupt,
-        },
-        Err(error) if error.kind() == io::ErrorKind::NotFound => CodexCacheLoad::Missing,
-        Err(_) => CodexCacheLoad::Corrupt,
-    }
-}
-
-fn write_codex_file_cache(
-    path: &Path,
-    cache: &CodexFileCache,
-    cancellation: &CancellationToken,
-) -> Result<(), SourceScanError> {
-    cancellation.check()?;
-    let Some(parent) = path.parent() else {
-        return Ok(());
-    };
-    let _ = fs::create_dir_all(parent);
-    let temporary = parent.join(format!(
-        ".codex-files-v1.tmp-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let written = (|| -> io::Result<()> {
-        // C047: create_new + 显式 0600; C110: 序列化到内存后一次写入。
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        let mut file = options.open(&temporary)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        }
-        let mut bytes = serde_json::to_vec(cache)?;
-        bytes.push(b'\n');
-        file.write_all(&bytes)?;
-        drop(file);
-        fs::rename(&temporary, path)
-    })();
-    if written.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    cancellation.check()?;
-    // 缓存可再生: 写盘失败只影响下一轮命中率, 不影响本轮结果。
-    Ok(())
-}
-
 /// 解析一个 Codex rollout 文件为与窗口无关的用量观测 (C117: 供按文件缓存复用)。
 ///
 /// 解析状态 (当前模型、累计高水位、重放快照去重) 只在单个文件内有效, 故文件一旦变化
@@ -976,22 +917,22 @@ pub fn scan_codex_cached_with_cancellation(
     let groups = resolve_codex_files(groups, cancellation, &mut stats)?;
 
     let cache_path = codex_file_cache_path(cache_root);
-    let mut previous = match load_codex_file_cache(&cache_path) {
-        CodexCacheLoad::Loaded(cache)
+    let mut previous = match load_json_cache::<CodexFileCache>(&cache_path) {
+        CacheLoad::Entry(cache)
             if cache.schema_version == CODEX_FILE_CACHE_SCHEMA
                 && cache.timezone == window.timezone_name =>
         {
             cache.files
         }
-        CodexCacheLoad::Loaded(_) => {
+        CacheLoad::Entry(_) => {
             stats.cache_invalidations = stats.cache_invalidations.saturating_add(1);
             BTreeMap::new()
         }
-        CodexCacheLoad::Corrupt => {
+        CacheLoad::Corrupt => {
             stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
             BTreeMap::new()
         }
-        CodexCacheLoad::Missing => BTreeMap::new(),
+        CacheLoad::Missing => BTreeMap::new(),
     };
     let previous_count = previous.len();
     let mut files = BTreeMap::new();
@@ -1085,7 +1026,13 @@ pub fn scan_codex_cached_with_cancellation(
             timezone: window.timezone_name.clone(),
             files,
         };
-        write_codex_file_cache(&cache_path, &cache, cancellation)?;
+        // C265: 与 jsonl/sqlite/dsh/antigravity 共用 cache_util 的原子写;
+        // 取消/超时向上传播, 其余写盘错误只影响下一轮命中率 (缓存可再生)。
+        match write_json_atomic(&cache_path, &cache, cancellation) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(_) => {}
+        }
     }
     let _ = fs::remove_file(legacy_codex_tree_cache_path(cache_root));
     cancellation.check()?;
