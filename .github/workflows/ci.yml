@@ -99,7 +99,7 @@ jobs:
           # 两个二进制必须各自含双架构: App 本体与内置 Rust Collector 是分别构建的,
           # 任一退化为单架构都会让对应平台无法启动 (design/00 §3.3)。
           fail=0
-          for bin in dist/Bruce.app/Contents/MacOS/BruceApp dist/Bruce.app/Contents/Resources/Bruce-collector; do
+          for bin in local/dist/Bruce.app/Contents/MacOS/BruceApp local/dist/Bruce.app/Contents/Resources/Bruce-collector; do
             archs=$(lipo -archs "$bin")
             echo "$bin -> $archs"
             echo "$archs" | tr ' ' '\n' | grep -qx arm64 || { echo "缺少 arm64: $bin"; fail=1; }
@@ -107,14 +107,14 @@ jobs:
           done
           [ "$fail" -eq 0 ] || { echo "产物不是 Universal 2"; exit 1; }
           echo "Universal 2 校验通过"
-          dmg=$(ls dist/Bruce-*.dmg | head -n 1)
+          dmg=$(ls local/dist/Bruce-*.dmg | head -n 1)
           [ -s "$dmg" ] || { echo "DMG 产物缺失或为空"; exit 1; }
           hdiutil imageinfo "$dmg" >/dev/null || { echo "DMG 镜像结构损坏"; exit 1; }
           echo "DMG 镜像校验通过: $dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: Bruce-test-app
-          path: dist/
+          path: local/dist/
           if-no-files-found: error
 
   release:
@@ -135,7 +135,7 @@ jobs:
         run: zsh scripts/build-test-app.sh --universal --dmg
       - name: 生成 SHA256 校验和
         run: |
-          cd dist
+          cd local/dist
           shasum -a 256 Bruce.zip Bruce-*.dmg > SHA256SUMS
       - name: 生成发布说明 (从 CHANGELOG)
         run: zsh scripts/release-notes.sh "${GITHUB_REF_NAME#v}"
@@ -144,13 +144,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/Bruce.zip \
-            dist/Bruce-*.dmg \
-            dist/SHA256SUMS \
-            dist/release-notes-*.md \
+            local/dist/Bruce.zip \
+            local/dist/Bruce-*.dmg \
+            local/dist/SHA256SUMS \
+            local/dist/release-notes-*.md \
             --draft \
             --title "Bruce $GITHUB_REF_NAME" \
-            --notes-file dist/release-notes-${GITHUB_REF_NAME#v}.md
+            --notes-file local/dist/release-notes-${GITHUB_REF_NAME#v}.md
 
   release-windows:
     name: 发布 Windows 安装包

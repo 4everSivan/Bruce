@@ -4,7 +4,7 @@
 # 风格与 v0.1/v0.2 一致: "## Bruce vX 发布说明" + 中文小节
 # (新功能 (Added) / 调整与优化 (Changed)).
 # 用法: release-notes.sh <version> [changelog-path]
-# 输出: dist/release-notes-<version>.md (可用 BRUCE_OUT 覆盖)
+# 输出: local/dist/release-notes-<version>.md (可用 BRUCE_OUT 覆盖)
 
 set -euo pipefail
 
@@ -12,7 +12,7 @@ BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_VERSION="$1"
 BRUCE_CHANGELOG="${2:-$BRUCE_REPO_ROOT/CHANGELOG.md}"
-BRUCE_OUT="${BRUCE_OUT:-$BRUCE_REPO_ROOT/dist/release-notes-$BRUCE_VERSION.md}"
+BRUCE_OUT="${BRUCE_OUT:-$BRUCE_REPO_ROOT/local/dist/release-notes-$BRUCE_VERSION.md}"
 
 mkdir -p "$(dirname "$BRUCE_OUT")"
 

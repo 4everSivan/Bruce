@@ -8,14 +8,14 @@
 #
 # 用法:
 #   zsh scripts/package-dmg.sh [APP_PATH] [DMG_PATH] [VOLUME_NAME]
-#   若省略参数, 默认从 dist/Bruce.app 打包至 dist/Bruce-<VERSION>.dmg, 卷名为 "Bruce"
+#   若省略参数, 默认从 local/dist/Bruce.app 打包至 local/dist/Bruce-<VERSION>.dmg, 卷名为 "Bruce"
 
 set -euo pipefail
 
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 
-APP_PATH="${1:-$BRUCE_REPO_ROOT/dist/Bruce.app}"
+APP_PATH="${1:-$BRUCE_REPO_ROOT/local/dist/Bruce.app}"
 if [[ -z "${2:-}" ]]; then
     VERSION_FILE="$BRUCE_REPO_ROOT/VERSION"
     if [[ ! -f "$VERSION_FILE" ]]; then
@@ -23,7 +23,7 @@ if [[ -z "${2:-}" ]]; then
         exit 1
     fi
     BRUCE_VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
-    DMG_PATH="$BRUCE_REPO_ROOT/dist/Bruce-${BRUCE_VERSION}.dmg"
+    DMG_PATH="$BRUCE_REPO_ROOT/local/dist/Bruce-${BRUCE_VERSION}.dmg"
 else
     DMG_PATH="$2"
 fi

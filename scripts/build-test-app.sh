@@ -21,7 +21,7 @@ for arg in "$@"; do
             echo "用法: zsh scripts/build-test-app.sh [--install] [--universal] [--dmg]" >&2
             echo "  --install 额外复制到 /Applications/Bruce.app 并注册 LaunchServices" >&2
             echo "  --universal 同时构建 arm64 与 x86_64 通用二进制 (兼容所有 Intel 与 Apple Silicon Mac)" >&2
-            echo "  --dmg 额外生成 dist/Bruce-<version>.dmg 磁盘镜像安装包 (Release 附加资产)" >&2
+            echo "  --dmg 额外生成 local/dist/Bruce-<version>.dmg 磁盘镜像安装包 (Release 附加资产)" >&2
             exit 2
             ;;
     esac
@@ -30,7 +30,7 @@ done
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/apps/macos"
-BRUCE_DIST_DIR="$BRUCE_REPO_ROOT/dist"
+BRUCE_DIST_DIR="$BRUCE_REPO_ROOT/local/dist"
 BRUCE_OUTPUT_APP="$BRUCE_DIST_DIR/Bruce.app"
 BRUCE_OUTPUT_ZIP="$BRUCE_DIST_DIR/Bruce.zip"
 BRUCE_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-build.XXXXXX")
@@ -147,8 +147,8 @@ Bruce_validate_release_bundle "$BRUCE_STAGED_APP"
 
 echo "写入 dist 打包产物"
 mkdir -p "$BRUCE_DIST_DIR"
-if [[ "$BRUCE_OUTPUT_APP" != "$BRUCE_REPO_ROOT/dist/Bruce.app" ]] \
-    || [[ "$BRUCE_OUTPUT_ZIP" != "$BRUCE_REPO_ROOT/dist/Bruce.zip" ]]; then
+if [[ "$BRUCE_OUTPUT_APP" != "$BRUCE_REPO_ROOT/local/dist/Bruce.app" ]] \
+    || [[ "$BRUCE_OUTPUT_ZIP" != "$BRUCE_REPO_ROOT/local/dist/Bruce.zip" ]]; then
     echo "拒绝替换非预期输出路径" >&2
     exit 1
 fi
@@ -198,5 +198,5 @@ if [[ "$BRUCE_INSTALL_PREVIEW" == true ]]; then
     codesign --verify --deep --strict "$BRUCE_STABLE_APP"
     echo "Bruce Preview 已安装:"
     echo "  $BRUCE_STABLE_APP"
-    echo "请从该路径重新启动 Bruce; 不要直接运行 dist/Bruce.app"
+    echo "请从该路径重新启动 Bruce; 不要直接运行 local/dist/Bruce.app"
 fi
