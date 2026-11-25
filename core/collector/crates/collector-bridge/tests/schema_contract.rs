@@ -7,10 +7,7 @@ use collector_bridge::ALLOWED_CREDENTIAL_FIELDS;
 use serde_json::Value;
 
 fn schema(name: &str) -> Value {
-    let path = format!(
-        "{}/../../schemas/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = format!("{}/../../schemas/{name}", env!("CARGO_MANIFEST_DIR"));
     let body = std::fs::read_to_string(&path).expect("schema 文件应存在");
     serde_json::from_str(&body).expect("schema 必须是合法 JSON")
 }
@@ -30,7 +27,10 @@ fn request_schema_covers_bridge_modules_context_and_credentials() {
     let request = schema("request-v1.schema.json");
     let modules = strings(&request["properties"]["module"]["enum"]);
     assert!(modules.contains(&"agent-usage".to_owned()));
-    assert!(modules.contains(&"request-log".to_owned()), "request-log 模块必须可表达");
+    assert!(
+        modules.contains(&"request-log".to_owned()),
+        "request-log 模块必须可表达"
+    );
 
     let context = request["properties"]["context"]["properties"]
         .as_object()
@@ -58,7 +58,10 @@ fn request_schema_covers_bridge_modules_context_and_credentials() {
         "page",
         "pageSize",
     ] {
-        assert!(context.contains_key(field), "request context 缺字段 {field}");
+        assert!(
+            context.contains_key(field),
+            "request context 缺字段 {field}"
+        );
     }
 
     let credentials = request["properties"]["credentials"]["$ref"]
@@ -94,7 +97,10 @@ fn response_schema_includes_runtime_diagnostics() {
         "runtime",
         "internal",
     ] {
-        assert!(categories.contains(&category.to_owned()), "诊断分类缺 {category}");
+        assert!(
+            categories.contains(&category.to_owned()),
+            "诊断分类缺 {category}"
+        );
     }
 }
 
@@ -103,9 +109,9 @@ fn policy_schemas_cover_alert_decide() {
     let request = schema("policy-request-v1.schema.json");
     let cases = request["oneOf"].as_array().expect("policy request oneOf");
     assert!(
-        cases.iter().any(|case| {
-            case["properties"]["operation"]["const"] == "alertDecide"
-        }),
+        cases
+            .iter()
+            .any(|case| { case["properties"]["operation"]["const"] == "alertDecide" }),
         "policy-request 缺 alertDecide"
     );
 
@@ -117,12 +123,10 @@ fn policy_schemas_cover_alert_decide() {
         .expect("policy response result oneOf");
     assert!(
         results.iter().any(|case| {
-            case["required"]
-                .as_array()
-                .is_some_and(|required| {
-                    strings(&Value::Array(required.clone()))
-                        == ["state".to_owned(), "events".to_owned()]
-                })
+            case["required"].as_array().is_some_and(|required| {
+                strings(&Value::Array(required.clone()))
+                    == ["state".to_owned(), "events".to_owned()]
+            })
         }),
         "policy-response 缺 alertDecide {{state, events}}"
     );
