@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C269",
   "title": "Rust 工作区锁收敛、巨型模块拆分与跨模块重复实现收口",
-  "version": "0.21.0",
+  "version": "0.20.0",
   "type": "Refactor",
   "status": "pending",
   "branch": "fix/C269-workspace-and-module-split",

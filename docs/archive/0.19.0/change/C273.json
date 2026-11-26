@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C273",
   "title": "请求日志重放跳过改用请求行内容签名",
-  "version": "0.20.0",
+  "version": "0.19.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C273-replay-content-signature",
@@ -93,7 +93,7 @@
     "design_pinned": false,
     "changelog": true,
     "commit": "e5a0b90c",
-    "tag": "v0.20.0"
+    "tag": "v0.19.0"
   },
   "gate": {
     "tool": "adflow-verify",

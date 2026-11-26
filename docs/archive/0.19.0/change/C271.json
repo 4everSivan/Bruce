@@ -121,7 +121,7 @@
     "design_pinned": true,
     "changelog": true,
     "commit": "518b5d6bf2aee4d0d82e67fee1d2e5511aa58b35",
-    "tag": "v0.20.0"
+    "tag": "v0.19.0"
   },
   "gate": {
     "tool": "adflow-verify",

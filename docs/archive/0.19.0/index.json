@@ -1,6 +1,6 @@
 {
   "$schema": "adflow-archive-batch-v1",
-  "release": "0.20.0",
+  "release": "0.19.0",
   "archived_at": "2026-11-26",
   "cards": {
     "C248": {
@@ -10,7 +10,7 @@
       "branch": "fix/C248-request-log-ui",
       "topic": "RequestLog",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C248.json"
+      "file": "docs/archive/0.19.0/change/C248.json"
     },
     "C249": {
       "title": "请求日志模块评审收紧：刷新竞态、模型筛选、写放大与来源范围",
@@ -19,7 +19,7 @@
       "branch": "fix/C249-request-log-review",
       "topic": "RequestLog",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C249.json"
+      "file": "docs/archive/0.19.0/change/C249.json"
     },
     "C250": {
       "title": "请求日志测试隔离：Windows 采集用例注入请求库路径并封闭 bridge 空库用例",
@@ -28,7 +28,7 @@
       "branch": "fix/C250-request-log-test-isolation",
       "topic": "RequestLog",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C250.json"
+      "file": "docs/archive/0.19.0/change/C250.json"
     },
     "C251": {
       "title": "Windows 导出目录 ACL 破坏、预警 AB-BA 死锁与快照/配置并发修复",
@@ -37,7 +37,7 @@
       "branch": "fix/C251-win-export-acl-and-deadlock",
       "topic": "WindowsCompat",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C251.json"
+      "file": "docs/archive/0.19.0/change/C251.json"
     },
     "C252": {
       "title": "Windows Codex 设备登录落盘修复、C092 异常凭据读写隔离与域名/存储加固",
@@ -46,7 +46,7 @@
       "branch": "fix/C252-win-credentials-codex-and-security",
       "topic": "SubscriptionQuota",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C252.json"
+      "file": "docs/archive/0.19.0/change/C252.json"
     },
     "C253": {
       "title": "Rust 采集器 JSONL 缓存 TOCTOU 重复计费、空模型定价劫持与动态分档价卡修复",
@@ -55,7 +55,7 @@
       "branch": "fix/C253-collector-cache-toctou-and-pricing-bugs",
       "topic": "TokenUsage",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C253.json"
+      "file": "docs/archive/0.19.0/change/C253.json"
     },
     "C254": {
       "title": "采集器额度重试门禁、ClinePass 空真值与 Provider OAuth/限流重试修复",
@@ -64,7 +64,7 @@
       "branch": "fix/C254-collector-provider-quota-and-retry-guards",
       "topic": "SubscriptionQuota",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C254.json"
+      "file": "docs/archive/0.19.0/change/C254.json"
     },
     "C255": {
       "title": "macOS 异步探针忙等、主线程管道死锁、外部凭据白名单绕过与凭据并发修复",
@@ -73,7 +73,7 @@
       "branch": "fix/C255-macos-process-probe-credentials-and-reentrancy",
       "topic": "SubscriptionQuota",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C255.json"
+      "file": "docs/archive/0.19.0/change/C255.json"
     },
     "C256": {
       "title": "macOS 采集管道主线程阻塞、热键悬垂指针、调度器状态机与更新/同步并发修复",
@@ -82,7 +82,7 @@
       "branch": "fix/C256-macos-runtime-lifecycle-and-scheduler-races",
       "topic": "SystemOverview",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C256.json"
+      "file": "docs/archive/0.19.0/change/C256.json"
     },
     "C257": {
       "title": "SQLite WAL 事务锁竞态、外部只读库 busy_timeout、Mach CPU 指标与 FFI 边界加固",
@@ -91,7 +91,7 @@
       "branch": "fix/C257-sqlite-concurrency-wal-and-zcode-cancel",
       "topic": "RequestLog",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C257.json"
+      "file": "docs/archive/0.19.0/change/C257.json"
     },
     "C258": {
       "title": "Antigravity 双根缺席误报、step 计数修正与会话缓存生命周期完善",
@@ -100,7 +100,7 @@
       "branch": "fix/C258-antigravity-scan-errors-and-cache",
       "topic": "AntigravityUsage",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C258.json"
+      "file": "docs/archive/0.19.0/change/C258.json"
     },
     "C259": {
       "title": "Windows 预警窗/设置页交互缺陷、双端欢迎文案漂移与 Widget XSS/原型碰撞修复",
@@ -109,7 +109,7 @@
       "branch": "fix/C259-win-ui-bugs-and-widget-xss",
       "topic": "WindowsCompat",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C259.json"
+      "file": "docs/archive/0.19.0/change/C259.json"
     },
     "C260": {
       "title": "采集引擎热路径优化：历史库批量查询、写放大短路、请求日志按需持久化与代理连接池",
@@ -118,7 +118,7 @@
       "branch": "fix/C260-collector-hotpath-perf",
       "topic": "TokenUsage",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C260.json"
+      "file": "docs/archive/0.19.0/change/C260.json"
     },
     "C261": {
       "title": "macOS 主线程减负：消除深度 JSONValue 判等、分析正则缓存、后台落盘与轻量视图刷新",
@@ -127,7 +127,7 @@
       "branch": "fix/C261-macos-mainactor-and-analytics-perf",
       "topic": "AgentAnalytics",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C261.json"
+      "file": "docs/archive/0.19.0/change/C261.json"
     },
     "C262": {
       "title": "Windows 热路径磁盘 I/O 缓存、设置页 IPC 合并与看板 UI 状态保活",
@@ -136,7 +136,7 @@
       "branch": "fix/C262-win-hotpath-io-and-dom-state",
       "topic": "WindowsCompat",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C262.json"
+      "file": "docs/archive/0.19.0/change/C262.json"
     },
     "C263": {
       "title": "跨端单一事实源收敛：品牌色阶注册表统一生成与价卡/软件更新策略下沉 FFI",
@@ -145,7 +145,7 @@
       "branch": "fix/C263-unified-brand-and-shared-policy-tier1",
       "topic": "SharedPolicyCore",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C263.json"
+      "file": "docs/archive/0.19.0/change/C263.json"
     },
     "C264": {
       "title": "Windows 端对齐网络出口校验、请求日志与采集隔离/快照容灾能力",
@@ -154,7 +154,7 @@
       "branch": "fix/C264-win-feature-parity-and-collector-isolation",
       "topic": "WindowsCompat",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C264.json"
+      "file": "docs/archive/0.19.0/change/C264.json"
     },
     "C265": {
       "title": "Rust 三锁分裂治理、跨模块死代码清理、缓存引擎收口与巨型模块拆分",
@@ -163,7 +163,7 @@
       "branch": "fix/C265-cargo-workspace-unify-and-dead-code-cleanup",
       "topic": "SystemOverview",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C265.json"
+      "file": "docs/archive/0.19.0/change/C265.json"
     },
     "C266": {
       "title": "协议 Schema 同步与契约化、Release Universal 2 打包修复及 CI/测试流程提效",
@@ -172,7 +172,7 @@
       "branch": "fix/C266-schema-contracts-packaging-and-ci-pipeline",
       "topic": "SystemOverview",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C266.json"
+      "file": "docs/archive/0.19.0/change/C266.json"
     },
     "C267": {
       "title": "官网产品数据同步、仓库暂存脏文件清理（TD-013）与废弃 Demo 整理",
@@ -181,7 +181,7 @@
       "branch": "fix/C267-website-sync-and-repo-hygiene",
       "topic": "OfficialWebsite",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C267.json"
+      "file": "docs/archive/0.19.0/change/C267.json"
     },
     "C271": {
       "title": "看板 Nothing-only 收敛：界面风格收窄、Tab 页标题上移与 Hero 静态辉光",
@@ -190,7 +190,7 @@
       "branch": "feat/C271-nothing-only",
       "topic": "MenuBarIndicator",
       "version": "0.19.0",
-      "file": "docs/archive/0.20.0/change/C271.json"
+      "file": "docs/archive/0.19.0/change/C271.json"
     },
     "C272": {
       "title": "请求日志重放标记原子写入与瞬时占用重试",
@@ -198,8 +198,8 @@
       "status": "closed",
       "branch": "fix/C272-replay-marker-atomic",
       "topic": "RequestLog",
-      "version": "0.20.0",
-      "file": "docs/archive/0.20.0/change/C272.json"
+      "version": "0.19.0",
+      "file": "docs/archive/0.19.0/change/C272.json"
     },
     "C273": {
       "title": "请求日志重放跳过改用请求行内容签名",
@@ -207,8 +207,8 @@
       "status": "closed",
       "branch": "fix/C273-replay-content-signature",
       "topic": "RequestLog",
-      "version": "0.20.0",
-      "file": "docs/archive/0.20.0/change/C273.json"
+      "version": "0.19.0",
+      "file": "docs/archive/0.19.0/change/C273.json"
     }
   },
   "tasks": {
@@ -219,7 +219,7 @@
       "topic": "AntigravityUsage",
       "milestone": "M18-Agent请求日志与Antigravity接入",
       "depends_on": [],
-      "file": "docs/archive/0.20.0/task/T34.json"
+      "file": "docs/archive/0.19.0/task/T34.json"
     },
     "T35": {
       "title": "请求日志独立存储与 30 天保留",
@@ -228,7 +228,7 @@
       "topic": "RequestLog",
       "milestone": "M18-Agent请求日志与Antigravity接入",
       "depends_on": [],
-      "file": "docs/archive/0.20.0/task/T35.json"
+      "file": "docs/archive/0.19.0/task/T35.json"
     },
     "T36": {
       "title": "Claude/Codex/Antigravity 请求行采集与幂等",
@@ -240,7 +240,7 @@
         "T34",
         "T35"
       ],
-      "file": "docs/archive/0.20.0/task/T36.json"
+      "file": "docs/archive/0.19.0/task/T36.json"
     },
     "T37": {
       "title": "请求日志 Bridge 查询模块",
@@ -251,7 +251,7 @@
       "depends_on": [
         "T35"
       ],
-      "file": "docs/archive/0.20.0/task/T37.json"
+      "file": "docs/archive/0.19.0/task/T37.json"
     },
     "T38": {
       "title": "Mac 请求日志页与详情 Sheet",
@@ -264,7 +264,7 @@
         "T36",
         "T37"
       ],
-      "file": "docs/archive/0.20.0/task/T38.json"
+      "file": "docs/archive/0.19.0/task/T38.json"
     },
     "T39": {
       "title": "Grok Bot 订阅用量适配",
@@ -273,7 +273,7 @@
       "topic": "SubscriptionQuota",
       "milestone": "M19-Grok Bot订阅用量",
       "depends_on": [],
-      "file": "docs/archive/0.20.0/task/T39.json"
+      "file": "docs/archive/0.19.0/task/T39.json"
     }
   },
   "topics": {

@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C270",
   "title": "macOS Harness 迁移为 SwiftPM 标准 testTarget",
-  "version": "0.21.0",
+  "version": "0.20.0",
   "type": "Refactor",
   "status": "pending",
   "branch": "fix/C270-swiftpm-test-targets",

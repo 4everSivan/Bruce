@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C268",
   "title": "Swift 价卡/软件更新决策切换共享策略 FFI 与跨端重复映射收敛",
-  "version": "0.21.0",
+  "version": "0.20.0",
   "type": "Refactor",
   "status": "pending",
   "branch": "fix/C268-swift-policy-ffi-cutover",

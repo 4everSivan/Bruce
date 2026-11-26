@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C272",
   "title": "请求日志重放标记原子写入与瞬时占用重试",
-  "version": "0.20.0",
+  "version": "0.19.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C272-replay-marker-atomic",
@@ -93,7 +93,7 @@
     "design_pinned": false,
     "changelog": true,
     "commit": "26a3cd5e013083aa2a0e454ce0c6646c0175e0ba",
-    "tag": "v0.20.0"
+    "tag": "v0.19.0"
   },
   "gate": {
     "tool": "adflow-verify",

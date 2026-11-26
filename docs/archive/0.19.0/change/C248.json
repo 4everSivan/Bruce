@@ -147,7 +147,7 @@
     "design_pinned": true,
     "changelog": true,
     "commit": "dc7728c",
-    "tag": "v0.20.0"
+    "tag": "v0.19.0"
   },
   "gate": {
     "tool": "adflow-verify",
