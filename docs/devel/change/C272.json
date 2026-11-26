@@ -4,7 +4,7 @@
   "title": "请求日志重放标记原子写入与瞬时占用重试",
   "version": "0.20.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C272-replay-marker-atomic",
   "is_hotfix": false,
   "target": {
@@ -60,10 +60,10 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261126-02",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认签收，提交推送",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -98,7 +98,11 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.8.1",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-11-26",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认签收，提交推送",
+    "signed_rejection_count": 0
   }
 }
