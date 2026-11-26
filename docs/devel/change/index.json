@@ -6,18 +6,13 @@
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
       "changes": [
-        "C256",
-        "C265",
-        "C266",
         "C269",
         "C270"
       ]
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
-      "changes": [
-        "C271"
-      ]
+      "changes": []
     },
     "PricingEngine": {
       "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
@@ -25,33 +20,19 @@
     },
     "WindowsCompat": {
       "design_doc": "docs/devel/design/05-Windows平台适配.md",
-      "changes": [
-        "C251",
-        "C259",
-        "C262",
-        "C264"
-      ]
+      "changes": []
     },
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
-      "changes": [
-        "C252",
-        "C254",
-        "C255"
-      ]
+      "changes": []
     },
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
-      "changes": [
-        "C253",
-        "C260"
-      ]
+      "changes": []
     },
     "AgentAnalytics": {
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
-      "changes": [
-        "C261"
-      ]
+      "changes": []
     },
     "SoftwareUpdate": {
       "design_doc": "docs/devel/design/07-软件更新.md",
@@ -60,7 +41,6 @@
     "SharedPolicyCore": {
       "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
       "changes": [
-        "C263",
         "C268"
       ]
     },
@@ -82,168 +62,18 @@
     },
     "OfficialWebsite": {
       "design_doc": "docs/devel/design/13-官方网站.md",
-      "changes": [
-        "C267"
-      ]
+      "changes": []
     },
     "RequestLog": {
       "design_doc": "docs/devel/design/14-Agent请求日志.md",
-      "changes": [
-        "C248",
-        "C249",
-        "C250",
-        "C257",
-        "C272"
-      ]
+      "changes": []
     },
     "AntigravityUsage": {
       "design_doc": "docs/devel/design/15-Antigravity接入.md",
-      "changes": [
-        "C258"
-      ]
+      "changes": []
     }
   },
   "cards": {
-    "C248": {
-      "title": "请求日志 ZCode 请求行、速度口径、默认筛选与模型价卡更新",
-      "status": "closed",
-      "branch": "fix/C248-request-log-ui",
-      "topic": "RequestLog",
-      "file": "docs/devel/change/C248.json"
-    },
-    "C249": {
-      "title": "请求日志模块评审收紧：刷新竞态、模型筛选、写放大与来源范围",
-      "status": "closed",
-      "branch": "fix/C249-request-log-review",
-      "topic": "RequestLog",
-      "file": "docs/devel/change/C249.json"
-    },
-    "C250": {
-      "title": "请求日志测试隔离：Windows 采集用例注入请求库路径并封闭 bridge 空库用例",
-      "status": "closed",
-      "branch": "fix/C250-request-log-test-isolation",
-      "topic": "RequestLog",
-      "file": "docs/devel/change/C250.json"
-    },
-    "C251": {
-      "title": "Windows 导出目录 ACL 破坏、预警 AB-BA 死锁与快照/配置并发修复",
-      "status": "closed",
-      "branch": "fix/C251-win-export-acl-and-deadlock",
-      "topic": "WindowsCompat",
-      "file": "docs/devel/change/C251.json"
-    },
-    "C252": {
-      "title": "Windows Codex 设备登录落盘修复、C092 异常凭据读写隔离与域名/存储加固",
-      "status": "closed",
-      "branch": "fix/C252-win-credentials-codex-and-security",
-      "topic": "SubscriptionQuota",
-      "file": "docs/devel/change/C252.json"
-    },
-    "C253": {
-      "title": "Rust 采集器 JSONL 缓存 TOCTOU 重复计费、空模型定价劫持与动态分档价卡修复",
-      "status": "closed",
-      "branch": "fix/C253-collector-cache-toctou-and-pricing-bugs",
-      "topic": "TokenUsage",
-      "file": "docs/devel/change/C253.json"
-    },
-    "C254": {
-      "title": "采集器额度重试门禁、ClinePass 空真值与 Provider OAuth/限流重试修复",
-      "status": "closed",
-      "branch": "fix/C254-collector-provider-quota-and-retry-guards",
-      "topic": "SubscriptionQuota",
-      "file": "docs/devel/change/C254.json"
-    },
-    "C255": {
-      "title": "macOS 异步探针忙等、主线程管道死锁、外部凭据白名单绕过与凭据并发修复",
-      "status": "closed",
-      "branch": "fix/C255-macos-process-probe-credentials-and-reentrancy",
-      "topic": "SubscriptionQuota",
-      "file": "docs/devel/change/C255.json"
-    },
-    "C256": {
-      "title": "macOS 采集管道主线程阻塞、热键悬垂指针、调度器状态机与更新/同步并发修复",
-      "status": "closed",
-      "branch": "fix/C256-macos-runtime-lifecycle-and-scheduler-races",
-      "topic": "SystemOverview",
-      "file": "docs/devel/change/C256.json"
-    },
-    "C257": {
-      "title": "SQLite WAL 事务锁竞态、外部只读库 busy_timeout、Mach CPU 指标与 FFI 边界加固",
-      "status": "closed",
-      "branch": "fix/C257-sqlite-concurrency-wal-and-zcode-cancel",
-      "topic": "RequestLog",
-      "file": "docs/devel/change/C257.json"
-    },
-    "C258": {
-      "title": "Antigravity 双根缺席误报、step 计数修正与会话缓存生命周期完善",
-      "status": "closed",
-      "branch": "fix/C258-antigravity-scan-errors-and-cache",
-      "topic": "AntigravityUsage",
-      "file": "docs/devel/change/C258.json"
-    },
-    "C259": {
-      "title": "Windows 预警窗/设置页交互缺陷、双端欢迎文案漂移与 Widget XSS/原型碰撞修复",
-      "status": "closed",
-      "branch": "fix/C259-win-ui-bugs-and-widget-xss",
-      "topic": "WindowsCompat",
-      "file": "docs/devel/change/C259.json"
-    },
-    "C260": {
-      "title": "采集引擎热路径优化：历史库批量查询、写放大短路、请求日志按需持久化与代理连接池",
-      "status": "closed",
-      "branch": "fix/C260-collector-hotpath-perf",
-      "topic": "TokenUsage",
-      "file": "docs/devel/change/C260.json"
-    },
-    "C261": {
-      "title": "macOS 主线程减负：消除深度 JSONValue 判等、分析正则缓存、后台落盘与轻量视图刷新",
-      "status": "closed",
-      "branch": "fix/C261-macos-mainactor-and-analytics-perf",
-      "topic": "AgentAnalytics",
-      "file": "docs/devel/change/C261.json"
-    },
-    "C262": {
-      "title": "Windows 热路径磁盘 I/O 缓存、设置页 IPC 合并与看板 UI 状态保活",
-      "status": "closed",
-      "branch": "fix/C262-win-hotpath-io-and-dom-state",
-      "topic": "WindowsCompat",
-      "file": "docs/devel/change/C262.json"
-    },
-    "C263": {
-      "title": "跨端单一事实源收敛：品牌色阶注册表统一生成与价卡/软件更新策略下沉 FFI",
-      "status": "closed",
-      "branch": "fix/C263-unified-brand-and-shared-policy-tier1",
-      "topic": "SharedPolicyCore",
-      "file": "docs/devel/change/C263.json"
-    },
-    "C264": {
-      "title": "Windows 端对齐网络出口校验、请求日志与采集隔离/快照容灾能力",
-      "status": "closed",
-      "branch": "fix/C264-win-feature-parity-and-collector-isolation",
-      "topic": "WindowsCompat",
-      "file": "docs/devel/change/C264.json"
-    },
-    "C265": {
-      "title": "Rust 三锁分裂治理、跨模块死代码清理、缓存引擎收口与巨型模块拆分",
-      "status": "closed",
-      "branch": "fix/C265-cargo-workspace-unify-and-dead-code-cleanup",
-      "topic": "SystemOverview",
-      "file": "docs/devel/change/C265.json"
-    },
-    "C266": {
-      "title": "协议 Schema 同步与契约化、Release Universal 2 打包修复及 CI/测试流程提效",
-      "status": "closed",
-      "branch": "fix/C266-schema-contracts-packaging-and-ci-pipeline",
-      "topic": "SystemOverview",
-      "file": "docs/devel/change/C266.json"
-    },
-    "C267": {
-      "title": "官网产品数据同步、仓库暂存脏文件清理（TD-013）与废弃 Demo 整理",
-      "status": "closed",
-      "branch": "fix/C267-website-sync-and-repo-hygiene",
-      "topic": "OfficialWebsite",
-      "file": "docs/devel/change/C267.json"
-    },
     "C268": {
       "title": "Swift 价卡/软件更新决策切换共享策略 FFI 与跨端重复映射收敛",
       "status": "pending",
@@ -264,20 +94,6 @@
       "branch": "fix/C270-swiftpm-test-targets",
       "topic": "SystemOverview",
       "file": "docs/devel/change/C270.json"
-    },
-    "C271": {
-      "title": "看板 Nothing-only 收敛：界面风格收窄、Tab 页标题上移与 Hero 静态辉光",
-      "status": "closed",
-      "branch": "feat/C271-nothing-only",
-      "topic": "MenuBarIndicator",
-      "file": "docs/devel/change/C271.json"
-    },
-    "C272": {
-      "title": "请求日志重放标记原子写入与瞬时占用重试",
-      "status": "closed",
-      "branch": "fix/C272-replay-marker-atomic",
-      "topic": "RequestLog",
-      "file": "docs/devel/change/C272.json"
     }
   }
 }

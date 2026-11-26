@@ -1,6 +1,6 @@
 # 版本与阶段归档库 (archive/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-11-24 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-11-26 ｜ **status**: active
 
 ## 1. 简介
 
@@ -22,6 +22,7 @@
 
 | 项目版本或阶段 | 归档路径 | 归档日期 | 范围说明 |
 |---|---|---|---|
+| v0.20.0 | `docs/archive/0.20.0/` | 2026-11-26 | C248–C267、C271、C272（22 张 closed：请求日志模块与工作台、Windows 适配与加固批次、采集/调度热路径、跨端共享策略首批、依赖与死代码治理、Schema 契约与 Universal 2 打包、官网同步、Nothing 收敛、请求日志重放标记加固）+ T34–T39（6 张 completed：Antigravity 接入、请求粒度台账 T35–T38、Grok Bot 订阅周用量）；T01–T04 未声明 version，留在活跃区；0.19.0 未单独发布，其终态卡经人工决定随本批次归档，卡内 version 原样保留；C268–C270 待办卡归入 0.21.0，留在活跃区 |
 | v0.18.0 | `docs/archive/0.18.0/` | 2026-11-18 | C226–C247（22 张 closed：0.17.1 批次——总账瘦身、DST/采集与测试治理、面板高度与快捷键、订阅卡收起摘要、出口探测退避与分类、官网版式与动效、订阅失败问题卡、官网 GitHub Pages 入口）+ T28–T33（6 张 completed：订阅额度预警四层重构 T28–T32、官网移动端适配 T33）；T01–T04 未声明 version，留在活跃区；0.17.1 未单独发布，其终态卡经人工决定随本批次归档，卡内 version 原样保留 |
 | v0.17.0 | `docs/archive/0.17.0/` | 2026-11-06 | C190–C225（36 张 closed：采集口径与台账健壮性修复 C190–C201、热力图/订阅卡与预警配置 C202–C209、面板交互与主题视觉 C210–C225）+ T26（1 张 completed：用量历史聚合台账）+ T27（1 张 completed：官方网站落地主仓与 Pages 发布）；T01–T04 未声明 version，留在活跃区；2026-11-06 补入 C179–C189（11 张 closed）+ T22–T25（4 张 completed）：0.16.1 未单独发布，其 `sync.commit` 均已包含于 v0.17.0 tag，卡内 `version` 原样保留 |
 | v0.16.0 | `docs/archive/0.16.0/` | 2026-11-02 | C157–C178（22 张 closed：订阅卡空态与动效、额度预警气泡、刷新间隔失焦保存、时序趋势图、品牌徽章、打包资源清单、额度轮询门禁、GPT-6.1 价卡、CI 依赖，以及 C171–C178 对抗审查修复批次）+ T19–T21（3 张 completed：模型价格表远端同步与维护页）；T01–T04 未声明 version，留在活跃区 |
@@ -98,6 +99,17 @@ git tag -a <version> -m "Release <version>"
 ## 附：项目既有约定（升级保留）
 
 > 本节为 Bruce 项目在 ad-flow 早期版本下积累的项目级约定，规范升级时逐字保留；其余受管章节已同步至 v1.8.1。
+
+**归档实况（2026-11-26，随 v0.20.0 tag 封箱）**
+
+| 项 | 实况 |
+|---|---|
+| 变更卡 | 22 张（C248–C267、C271、C272），全部 `closed`；`sync.tag` 统一填写 `v0.20.0`；0.19.0 未单独发布，卡内 `version` 原样保留；C268–C270 待办卡版本置 `0.21.0`，留在活跃区 |
+| 任务卡 | 6 张（T34–T39：Antigravity 接入 T34、请求粒度台账 T35–T38、Grok Bot 订阅周用量 T39），全部 `completed`；T01–T04 未声明 version，留在活跃区 |
+| 批次预检 | 归档前 `scripts/adflow-verify --release 0.20.0` Exit 0，以 `RELEASE_STRANDED` 报出 0.19.0 终态卡 27 张（21 C + 6 T），人工决定随本批次归档；归档后普通校验与 `--release 0.20.0` 均 Exit 0（仅既有 `CHECKS_NOT_ALL_TRUE` / `TASKS_NOT_ALL_DONE` ADVISORY） |
+| 版本纪律 | 根 `VERSION`、`website/VERSION`、`apps/win/src-tauri/tauri.conf.json`、README 徽章与正文版本行统一为 `0.20.0` |
+| 卡片内容 | 迁移仅改物理位置与 C 卡 `sync.tag`，验收、`gate`、状态与 `version` 未改写 |
+| 断链核验 | CHANGELOG 22 处批次卡链接已改写为 `docs/archive/0.20.0/...`，全仓无残留活跃路径引用 |
 
 **归档实况（2026-11-18，随 v0.18.0 tag 封箱）**
 
