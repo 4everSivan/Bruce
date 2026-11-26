@@ -24,6 +24,7 @@
 - **官网数据同步与仓库整理（[C267](docs/devel/change/C267.json)）**：官网同步 11 Agents / 11 Providers（补 Antigravity、Grok Bot，修正 Kimi 路径与 StepFun 计费类型）并开放 Windows 安装包下载，契约测试同步；km 产物（`.cards` / `.staging`）按维护者口径继续入库（TD-013 关闭）；清理 3 个无引用的 Windows 预览 demo。
 
 ### Fixed
+- **请求日志重放标记读写加固（[C272](docs/devel/change/C272.json)）**：重放标记改为同目录临时文件 + `rename` 原子替换，读写遇 Windows Defender / 索引器瞬时占用时最多重试 3 次（15ms 退避，`NotFound` 立即判定），修复 Windows CI 上 `request_log_rows_are_idempotent_and_keep_aggregate_parity` 偶发失败（重放跳过指标 0≠1）；标记仍为性能提示，最终失败只导致下一轮重放，不产生诊断或数据错误。
 - **请求日志模块评审收紧（[C249](docs/devel/change/C249.json)）**：
   - **查询调度**：Mac 请求日志页原以 `guard !isLoading` 丢弃并发查询，后台 30s / artifact 刷新进行中切换 Agent、模型、页码或页大小时新查询被静默丢弃，界面显示新筛选而表格仍是旧数据；改为按代次后发先至——用户查询总会发出并使旧结果作废，后台刷新在忙时跳过；总量收缩使当前页越界时回到最后一页再查。视图模型下沉到 `BruceAppCore`，`RequestLogHarness` 覆盖后发先至、忙时跳过与越界回退。
   - **模型菜单**：collector 的 `models` 改为不含模型条件的分面候选，选中模型后菜单不再只剩一项；计数与汇总合并为一次聚合查询；空库响应同样返回零值 `summary` 与空 `models`。

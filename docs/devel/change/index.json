@@ -274,7 +274,7 @@
     },
     "C272": {
       "title": "请求日志重放标记原子写入与瞬时占用重试",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C272-replay-marker-atomic",
       "topic": "RequestLog",
       "file": "docs/devel/change/C272.json"
