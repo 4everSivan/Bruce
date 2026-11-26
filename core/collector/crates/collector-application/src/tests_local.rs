@@ -927,10 +927,57 @@ fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
         "覆盖价必须写入请求日志"
     );
     let fourth = collect_agent_usage_with_dependencies(&repriced, &empty_http()).unwrap();
+    // C272: 失败时附带标记内容, 便于 Windows 上复现瞬时 I/O 问题时定位。
+    let marker_body = std::fs::read_to_string(home.join("request-log.sqlite.replay.json"))
+        .unwrap_or_else(|error| format!("<读取失败: {error}>"));
     assert_eq!(
         fourth.metrics.request_log_replay_skipped, 1,
-        "同价卡再次跳过"
+        "同价卡再次跳过; 标记: {marker_body}"
     );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// C272: 重放标记读写: 覆盖写让旧指纹失效、损坏标记判不匹配, 且不残留临时文件。
+#[test]
+fn replay_marker_round_trip_replaces_atomically_and_ignores_corruption() {
+    let home = history_test_home("request-log-marker");
+    let db = home.join("request-log.sqlite");
+
+    assert!(
+        !crate::replay_marker_matches(&db, 11, 22),
+        "标记不存在时必须判不匹配"
+    );
+
+    crate::write_replay_marker(&db, 11, 22);
+    assert!(crate::replay_marker_matches(&db, 11, 22));
+    assert!(
+        !crate::replay_marker_matches(&db, 12, 22),
+        "来源签名变化必须失配"
+    );
+    assert!(
+        !crate::replay_marker_matches(&db, 11, 23),
+        "价卡指纹变化必须失配"
+    );
+
+    // 覆盖写: 旧指纹失效, 新指纹生效。
+    crate::write_replay_marker(&db, 33, 44);
+    assert!(!crate::replay_marker_matches(&db, 11, 22));
+    assert!(crate::replay_marker_matches(&db, 33, 44));
+
+    // 损坏标记按不匹配处理; 下一轮重放后会重写。
+    std::fs::write(home.join("request-log.sqlite.replay.json"), "{not-json").unwrap();
+    assert!(!crate::replay_marker_matches(&db, 33, 44));
+    crate::write_replay_marker(&db, 33, 44);
+    assert!(crate::replay_marker_matches(&db, 33, 44));
+
+    let leftovers: Vec<String> = std::fs::read_dir(&home)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".tmp-"))
+        .collect();
+    assert!(leftovers.is_empty(), "不得残留临时文件: {leftovers:?}");
 
     std::fs::remove_dir_all(&home).ok();
 }

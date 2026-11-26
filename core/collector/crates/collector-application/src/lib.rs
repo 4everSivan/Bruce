@@ -485,6 +485,11 @@ fn persist_request_logs(
 /// 延迟口径) 而计价结果不变时, 才需要手动递增本常量强制重放一次。
 const REQUEST_LOG_REPLAY_SCHEMA_VERSION: u64 = 1;
 
+/// C272: 重放标记读写的尝试次数与退避。Windows 上 Defender / 索引器会短暂占用
+/// 刚写入的文件, 单次失败不应让标记丢失或让本轮误判为需要重放。
+const REPLAY_MARKER_ATTEMPTS: usize = 3;
+const REPLAY_MARKER_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(15);
+
 /// 计价探针 (模型名, 发生时刻 ms, input, cache_creation_1h): 覆盖精确命中、大小写 /
 /// 厂商前缀 / 日期后缀归一、峰谷时段、长上下文分档、1h 缓存写与未知模型。
 const REQUEST_COST_PROBES: [(&str, i64, u64, u64); 14] = [
@@ -588,7 +593,22 @@ fn replay_marker_path(db: &Path) -> PathBuf {
 }
 
 fn replay_marker_matches(db: &Path, source_signature: u64, pricing_fingerprint: u64) -> bool {
-    let Ok(body) = fs::read_to_string(replay_marker_path(db)) else {
+    let path = replay_marker_path(db);
+    let mut body = None;
+    for attempt in 0..REPLAY_MARKER_ATTEMPTS {
+        match fs::read_to_string(&path) {
+            Ok(content) => {
+                body = Some(content);
+                break;
+            }
+            // 首次运行或标记被清理是正常状态, 不重试。
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
+            Err(_) if attempt + 1 == REPLAY_MARKER_ATTEMPTS => return false,
+            // C272: Windows 上刚写完的标记可能被 Defender / 索引器瞬时占用。
+            Err(_) => std::thread::sleep(REPLAY_MARKER_RETRY_DELAY),
+        }
+    }
+    let Some(body) = body else {
         return false;
     };
     let Ok(value) = serde_json::from_str::<Value>(&body) else {
@@ -612,8 +632,36 @@ fn write_replay_marker(db: &Path, source_signature: u64, pricing_fingerprint: u6
         "source_signature": source_signature,
         "pricing_fingerprint": pricing_fingerprint,
     });
-    // 标记只是跳过提示: 写失败最多导致下一轮重放, 不计诊断。
-    let _ = fs::write(&marker, body.to_string());
+    // C272: 先写临时文件再 rename 原子替换, 覆盖写遇到瞬时占用时退避重试;
+    // 标记只是跳过提示, 最终失败最多导致下一轮重放, 不计诊断。
+    let body = body.to_string();
+    for attempt in 0..REPLAY_MARKER_ATTEMPTS {
+        if write_replay_marker_once(&marker, &body) {
+            return;
+        }
+        if attempt + 1 < REPLAY_MARKER_ATTEMPTS {
+            std::thread::sleep(REPLAY_MARKER_RETRY_DELAY);
+        }
+    }
+}
+
+fn write_replay_marker_once(marker: &Path, body: &str) -> bool {
+    let mut name = marker
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_default();
+    name.push(format!(".tmp-{}", std::process::id()));
+    let temp = marker.with_file_name(name);
+    if fs::write(&temp, body).is_err() {
+        let _ = fs::remove_file(&temp);
+        return false;
+    }
+    // rename 让并发读者只看到完整标记; Windows 上可原子覆盖已存在的目标。
+    if fs::rename(&temp, marker).is_err() {
+        let _ = fs::remove_file(&temp);
+        return false;
+    }
+    true
 }
 
 /// Read-only request-log page for the `request-log` Bridge module.

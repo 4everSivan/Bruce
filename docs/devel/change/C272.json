@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C272",
+  "title": "请求日志重放标记原子写入与瞬时占用重试",
+  "version": "0.20.0",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C272-replay-marker-atomic",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-application::persist_request_logs（replay marker 读写）",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "why": "Windows CI 运行 45739973476（提交 518b5d6b）在 Rust 验证 (Windows) 的 Rust workspace 测试中失败：request_log_rows_are_idempotent_and_keep_aggregate_parity 第四次采集断言 request_log_replay_skipped 期望 1、实际 0（tests_local.rs:930「同价卡再次跳过」）。同一提交的 macOS job、并发与后续 Windows job 均通过，本地 macOS 连跑 20 次亦全绿，属 Windows 专属间歇失败。根因在重放标记的文件 I/O：write_replay_marker 单次 fs::write 且用 `let _ =` 静默忽略失败，replay_marker_matches 单次 read_to_string、任何错误（含 Windows Defender/索引器对刚写入文件的瞬时共享冲突）都直接判不匹配。标记丢失或读取失败会使下一轮多做一次近 30 天全量重放，指标从 1 变 0。该路径虽仅影响性能、不影响数据正确性，但会让 CI 反复红灯并让 Windows 用户周期性承担无谓重放，需从 I/O 语义上加固。",
+  "precheck": {
+    "description": "核对当前 HEAD 是否已具备标记原子写与读写重试（应无）",
+    "command": "rg -n \"fn replay_marker_path|fn replay_marker_matches|fn write_replay_marker\" -A 14 core/collector/crates/collector-application/src/lib.rs",
+    "expected": "write_replay_marker 为单次 fs::write 且忽略错误；replay_marker_matches 单次 read_to_string，失败即 false；无临时文件 / rename / 重试",
+    "is_completed": false,
+    "evidence": "2026-11-26 HEAD 9de6aad9 复核命中：lib.rs:590-593 replay_marker_matches 用 `let Ok(body) = fs::read_to_string(...) else { return false; }` 单次读取；lib.rs:602-616 write_replay_marker 先 create_dir_all 后 `let _ = fs::write(&marker, body.to_string());` 单次覆盖写并静默忽略失败；两条路径均无临时文件、rename 或重试。"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C272-replay-marker-atomic"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C272 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "重放标记写入（write_replay_marker）",
+      "before": "单次 fs::write 直接覆盖标记文件，失败用 `let _ =` 静默丢弃；覆盖写期间并发读取可能看到截断内容。",
+      "after": "先在标记同目录写临时文件（名称含进程号），再用 fs::rename 原子替换；最多 3 次尝试（15ms 退避），仍失败则保持 best-effort 静默并清理临时文件，最多导致下一轮重放。",
+      "impact": "collector-application::persist_request_logs 每轮至多一次标记写入；跳过语义与指标不变。"
+    },
+    {
+      "scope": "重放标记读取（replay_marker_matches）",
+      "before": "单次 read_to_string，任何错误（含瞬时共享冲突）直接判不匹配，下一轮多一次全量重放。",
+      "after": "NotFound 立即判不匹配；其他错误最多重试 3 次（15ms 退避）后判不匹配；命中/失配判定与解析逻辑不变。",
+      "impact": "同函数；仅在标记文件被占用时最坏增加约 30ms，正常路径零额外开销。"
+    },
+    {
+      "scope": "标记回归用例与失败诊断",
+      "before": "只有端到端重放用例覆盖标记；标记工具函数无直接用例，端到端断言失败只输出 0/1。",
+      "after": "新增标记读写直接用例：写入后可匹配、覆盖写后新指纹生效、外部不一致指纹不匹配、损坏标记不匹配、写入后目录无临时文件残留；端到端断言失败时附带标记文件内容，便于 Windows CI 复现时定位。",
+      "impact": "collector-application tests_local 测试用例。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/14-Agent请求日志.md",
+    "topic": "RequestLog",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261126-02",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace 与 zsh scripts/verify-local.sh 退出码 0，新增标记读写用例与既有重放用例全绿",
+        "false_if": "存在任何测试失败、报错或新增路径未被用例覆盖",
+        "evidence": "zsh scripts/verify-local.sh EXIT=0（/tmp/c272-verify-local.log）：Rust workspace 全部 test result ok（collector-application 59 passed，新增 replay_marker_round_trip_replaces_atomically_and_ignores_corruption 通过）；cargo test --workspace EXIT=0；cargo clippy --workspace --all-targets -D warnings EXIT=0；Swift 构建 + 全部 Harness 通过（含请求日志 Harness all checks passed）；顶层 Node 契约测试 27 passed；Windows 前端用例全绿。",
+        "result": true
+      },
+      {
+        "item": "Windows 瞬时占用防护",
+        "true_if": "标记写入为临时文件 + rename 原子替换；读取遇瞬时错误最多重试 3 次（NotFound 立即返回）；标记丢失/损坏仍只导致下一轮重放，不产生诊断或数据错误",
+        "false_if": "仍存在单次写入失败即丢标记，或读取一次失败即判不匹配的路径",
+        "evidence": "lib.rs:write_replay_marker 改为同目录临时文件写入 + fs::rename 原子替换（write_replay_marker_once），最多 REPLAY_MARKER_ATTEMPTS=3 次、15ms 退避；replay_marker_matches 对 NotFound 立即返回 false，其他读取错误重试至多 3 次后判不匹配；最终失败仍不产生诊断。tests_local::replay_marker_round_trip_replaces_atomically_and_ignores_corruption 覆盖不存在/命中/签名与指纹失配/覆盖写/损坏标记/无临时残留。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "request_log_replay_skipped 仍为 0/1 语义；保留期清理、来源签名与价卡指纹判定不变；无新增诊断或产物字段变化",
+        "false_if": "跳过语义、指标或清理行为出现回归，或引入诊断干扰",
+        "evidence": "verify-local EXIT=0：请求日志端到端用例 request_log_rows_are_idempotent_and_keep_aggregate_parity（含 skip=0/1 断言与价卡变更重放）通过；request_log_prunes_expired_rows_without_new_entries_and_never_creates_a_store 通过；collector-application 59 passed；artifact 契约、Harness 双端对拍与 Windows 前端用例均全绿，无新增诊断码或产物字段。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
