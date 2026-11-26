@@ -235,13 +235,7 @@ fn assemble(context: &RunContext<'_>, gathered: Gathered) -> Result<Assembled, C
     cancellation_fence(context, &quota.credential_updates)?;
     let mut diagnostics = local.diagnostics;
     let pricing_table = resolve_pricing_table(context.request);
-    persist_request_logs(
-        context,
-        &local.agents,
-        &local.scan_stats,
-        &pricing_table,
-        &mut diagnostics,
-    );
+    persist_request_logs(context, &local.agents, &pricing_table, &mut diagnostics);
     let agents = build_agents(context, &local.agents, &pricing_table);
     // C124: 未授予 externalQuotas (无订阅凭证 / 未同意授权) 或本轮只做本地统计时,
     // 额度 worker 不会启动, quota 为空: 不输出占位 service, 也不消费/产生额度诊断。
@@ -355,7 +349,6 @@ fn resolve_pricing_table(request: &BridgeRequest) -> PricingTable {
 fn persist_request_logs(
     context: &RunContext<'_>,
     agents: &BTreeMap<String, LocalAgentResult>,
-    scan_stats: &ScanStats,
     pricing: &PricingTable,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -408,13 +401,12 @@ fn persist_request_logs(
         return;
     }
 
-    // C260: 来源缓存零变更且价卡指纹与上次落盘一致时，近 30 天明细无需重新计价重放
-    // (每轮 20 万行的定价 + clone + upsert); 仍打开库执行一次保留期清理。
+    // C260/C273: 请求行内容与价卡指纹均与上次落盘一致时, 近 30 天明细无需重新计价
+    // 重放 (每轮 20 万行的定价 + clone + upsert); 仍打开库执行一次保留期清理。
     let source_signature = request_log_source_signature(&in_scope);
     let pricing_fingerprint = request_log_pricing_fingerprint(pricing);
-    let skip_replay = path.is_file()
-        && !request_log_sources_changed(scan_stats)
-        && replay_marker_matches(&path, source_signature, pricing_fingerprint);
+    let skip_replay =
+        path.is_file() && replay_marker_matches(&path, source_signature, pricing_fingerprint);
     context
         .metrics
         .request_log_replay_skipped
@@ -483,7 +475,9 @@ fn persist_request_logs(
 /// 计价与模型解析的代码变化已由 [`request_log_pricing_fingerprint`] 的探针自动覆盖;
 /// 只有改动「请求行 → `RequestLogEntry` 的字段映射」(如 status_code / fidelity /
 /// 延迟口径) 而计价结果不变时, 才需要手动递增本常量强制重放一次。
-const REQUEST_LOG_REPLAY_SCHEMA_VERSION: u64 = 1;
+///
+/// C273: 2 = 来源签名改为请求行内容签名 (旧形状标记自动失效, 升级后重放一次)。
+const REQUEST_LOG_REPLAY_SCHEMA_VERSION: u64 = 2;
 
 /// C272: 重放标记读写的尝试次数与退避。Windows 上 Defender / 索引器会短暂占用
 /// 刚写入的文件, 单次失败不应让标记丢失或让本轮误判为需要重放。
@@ -550,30 +544,69 @@ fn request_log_pricing_fingerprint(pricing: &PricingTable) -> u64 {
     hash
 }
 
-/// C260: 本轮来源是否有任何缓存写入 / 重建 / 删除 —— 有则明细可能变化, 必须重放。
-fn request_log_sources_changed(stats: &ScanStats) -> bool {
-    stats.cache_rebuilds > 0
-        || stats.cache_appends > 0
-        || stats.cache_corruptions > 0
-        || stats.cache_invalidations > 0
-        || stats.cache_deletions > 0
-        || stats.io_errors > 0
-}
-
-/// C260: 范围内来源的数据形状签名 (agent 集合 / found / 请求行数 / 截断数)。
-/// 缓存全命中时它与来源内容一一对应, 用于判定重放结果是否与上次一致。
+/// C273: 范围内请求行的内容签名 (agent 集合 / found / 截断数 / 每行业务字段)。
+///
+/// 直接覆盖真正要落库的内容: 来源未变时签名稳定; 行数不变但 Token / 模型 / 耗时
+/// 等数值就地变化时签名也会失配, 因此跳过判定不再依赖 cache 事件计数, 不会被
+/// Windows 共享缓存目录上的瞬时读取失败 / 校验失败 / 删除误判为「来源已变化」。
 fn request_log_source_signature(in_scope: &[(&str, &LocalAgentResult)]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for (agent_id, result) in in_scope {
-        fnv1a(&mut hash, agent_id.as_bytes());
+        fnv1a_text(&mut hash, agent_id);
         fnv1a(&mut hash, &[u8::from(result.found)]);
         fnv1a(
             &mut hash,
             &(result.requests.rows.len() as u64).to_le_bytes(),
         );
         fnv1a(&mut hash, &result.requests.truncated.to_le_bytes());
+        for row in &result.requests.rows {
+            fnv1a_text(&mut hash, &row.key);
+            fnv1a(&mut hash, &row.timestamp_millis.to_le_bytes());
+            for text in [
+                row.model.as_deref(),
+                row.raw_model.as_deref(),
+                row.project.as_deref(),
+            ] {
+                fnv1a_option_text(&mut hash, text);
+            }
+            for value in [
+                row.input,
+                row.output,
+                row.cache_read,
+                row.cache_creation,
+                row.cache_creation_1h,
+            ] {
+                fnv1a(&mut hash, &value.to_le_bytes());
+            }
+            fnv1a_text(&mut hash, &row.fidelity);
+            for value in [row.latency_ms, row.first_token_ms] {
+                match value {
+                    Some(value) => {
+                        fnv1a(&mut hash, &[1]);
+                        fnv1a(&mut hash, &value.to_le_bytes());
+                    }
+                    None => fnv1a(&mut hash, &[0]),
+                }
+            }
+        }
     }
     hash
+}
+
+/// 长度前缀的文本哈希: 避免相邻字段串接造成跨字段碰撞。
+fn fnv1a_text(hash: &mut u64, text: &str) {
+    fnv1a(hash, &(text.len() as u64).to_le_bytes());
+    fnv1a(hash, text.as_bytes());
+}
+
+fn fnv1a_option_text(hash: &mut u64, text: Option<&str>) {
+    match text {
+        Some(text) => {
+            fnv1a(hash, &[1]);
+            fnv1a_text(hash, text);
+        }
+        None => fnv1a(hash, &[0]),
+    }
 }
 
 fn fnv1a(hash: &mut u64, bytes: &[u8]) {

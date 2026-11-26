@@ -4,7 +4,6 @@ use crate::{
     collect_agent_usage, collect_agent_usage_with_dependencies, finalize_local_agent,
     LocalAgentResult, LOCAL_SOURCE_NOTICE,
 };
-use collector_local::ScanStats;
 use serde_json::json;
 use std::sync::atomic::AtomicUsize;
 
@@ -927,12 +926,19 @@ fn request_log_rows_are_idempotent_and_keep_aggregate_parity() {
         "覆盖价必须写入请求日志"
     );
     let fourth = collect_agent_usage_with_dependencies(&repriced, &empty_http()).unwrap();
-    // C272: 失败时附带标记内容, 便于 Windows 上复现瞬时 I/O 问题时定位。
+    // C273: 失败时附带标记内容与缓存事件计数, 便于 Windows 复现时定位。
     let marker_body = std::fs::read_to_string(home.join("request-log.sqlite.replay.json"))
         .unwrap_or_else(|error| format!("<读取失败: {error}>"));
+    let stats = &fourth.scan_stats;
     assert_eq!(
         fourth.metrics.request_log_replay_skipped, 1,
-        "同价卡再次跳过; 标记: {marker_body}"
+        "同价卡再次跳过; 标记: {marker_body}; scan_stats: appends={} rebuilds={} corrupt={} invalid={} del={} io={}",
+        stats.cache_appends,
+        stats.cache_rebuilds,
+        stats.cache_corruptions,
+        stats.cache_invalidations,
+        stats.cache_deletions,
+        stats.io_errors
     );
 
     std::fs::remove_dir_all(&home).ok();
@@ -971,6 +977,17 @@ fn replay_marker_round_trip_replaces_atomically_and_ignores_corruption() {
     crate::write_replay_marker(&db, 33, 44);
     assert!(crate::replay_marker_matches(&db, 33, 44));
 
+    // C273: 旧形状签名 (schema_version=1) 的标记必须失效。
+    std::fs::write(
+        home.join("request-log.sqlite.replay.json"),
+        json!({"schema_version": 1, "source_signature": 33, "pricing_fingerprint": 44}).to_string(),
+    )
+    .unwrap();
+    assert!(
+        !crate::replay_marker_matches(&db, 33, 44),
+        "旧 schema 标记必须失效"
+    );
+
     let leftovers: Vec<String> = std::fs::read_dir(&home)
         .unwrap()
         .filter_map(|entry| entry.ok())
@@ -978,6 +995,75 @@ fn replay_marker_round_trip_replaces_atomically_and_ignores_corruption() {
         .filter(|name| name.contains(".tmp-"))
         .collect();
     assert!(leftovers.is_empty(), "不得残留临时文件: {leftovers:?}");
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// C273: 行数不变但请求行内容变化时必须重放, 跳过判定不依赖缓存事件计数。
+#[test]
+fn request_log_replays_when_row_content_changes_without_row_count_change() {
+    use collector_request_log::{RequestLogFilter, RequestLogStore};
+
+    let home = history_test_home("request-log-content");
+    let claude = home.join("claude").join("project");
+    std::fs::create_dir_all(&claude).unwrap();
+    let session = claude.join("session.jsonl");
+    let write_session = |input_tokens: u64| {
+        std::fs::write(
+            &session,
+            json!({
+                "type": "assistant",
+                "message": {
+                    "id": "msg_content_1",
+                    "model": "claude-opus-5-5",
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": input_tokens, "output_tokens": 2}
+                },
+                "timestamp": "2026-07-28T03:00:00Z",
+                "sessionId": "session-1"
+            })
+            .to_string()
+                + "\n",
+        )
+        .unwrap();
+    };
+    let history_db = home.join("usage-history.sqlite");
+    let request = history_request(&home, &history_db);
+
+    write_session(10);
+    let first = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert_eq!(first.metrics.request_log_replay_skipped, 0);
+    let second = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert_eq!(
+        second.metrics.request_log_replay_skipped, 1,
+        "来源不变应跳过重放"
+    );
+
+    // 同一条请求的 input 10 -> 3000: 行数不变, 内容签名必须失配并重放。
+    write_session(3_000);
+    let third = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert_eq!(
+        third.metrics.request_log_replay_skipped, 0,
+        "行内容变化必须重放"
+    );
+    let store = RequestLogStore::open(&home.join("request-log.sqlite")).unwrap();
+    let page = store
+        .query(&RequestLogFilter {
+            start: 0,
+            end: i64::MAX,
+            page: 0,
+            page_size: 50,
+            ..RequestLogFilter::default()
+        })
+        .unwrap();
+    assert_eq!(page.total, 1, "同一请求不得重复插入");
+    assert_eq!(page.entries[0].input, 3_000, "重放必须更新库内行");
+
+    let fourth = collect_agent_usage_with_dependencies(&request, &empty_http()).unwrap();
+    assert_eq!(
+        fourth.metrics.request_log_replay_skipped, 1,
+        "内容稳定后再次跳过"
+    );
 
     std::fs::remove_dir_all(&home).ok();
 }
@@ -1081,7 +1167,6 @@ fn request_log_reports_truncation_and_stores_the_matched_price_key() {
     crate::persist_request_logs(
         &context,
         &agents,
-        &ScanStats::default(),
         &PricingTable::default(),
         &mut diagnostics,
     );

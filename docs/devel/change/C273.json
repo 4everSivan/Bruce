@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C273",
+  "title": "请求日志重放跳过改用请求行内容签名",
+  "version": "0.20.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "fix/C273-replay-content-signature",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector",
+    "component": "collector-application::persist_request_logs（重放签名与跳过判定）",
+    "design_doc": "docs/devel/design/14-Agent请求日志.md",
+    "design_topic": "RequestLog"
+  },
+  "why": "v0.20.0 tag 触发的 CI（run 45747693306）在 Windows 再次失败于 request_log_rows_are_idempotent_and_keep_aggregate_parity：第四次采集 request_log_replay_skipped 期望 1、实际 0。C272 已把标记读写改为原子写 + 重试，失败信息中的标记内容 `{\"pricing_fingerprint\":14079784208255382734,\"schema_version\":1,\"source_signature\":10967008044721410125}` 与本地 macOS 复算的第三次签名 / 指纹完全一致，证明标记写入、读取与指纹计算均正常；本地四轮采集的 scan_stats 全部为 0，而 CI 第四轮 skip 仍为 0，说明失败来自 `request_log_sources_changed(scan_stats)` 缓存事件门禁：Windows 上共享 LOCALAPPDATA 缓存目录的瞬时读取失败 / 校验失败 / 删除会被保守判成「来源有变化」，从而禁用跳过。原 `source_signature` 只覆盖 agent/found/行数/截断数（形状），必须依赖缓存事件才能发现「行数不变但内容变了」；现改为直接对请求行内容做签名，跳过判定不再依赖缓存噪声，同时保留对内容变化的敏感度。",
+  "precheck": {
+    "description": "核对当前跳过判定仍依赖 scan_stats 缓存事件，且来源签名仅为形状签名",
+    "command": "rg -n \"fn request_log_sources_changed|fn request_log_source_signature|let skip_replay\" -A 10 core/collector/crates/collector-application/src/lib.rs",
+    "expected": "skip_replay 含 !request_log_sources_changed(scan_stats)；source_signature 仅哈希 agent_id / found / rows.len / truncated",
+    "is_completed": false,
+    "evidence": "2026-11-26 HEAD 9baf53ef 复核：lib.rs 的 skip_replay 由 path.is_file() && !request_log_sources_changed(scan_stats) && replay_marker_matches(...) 三条件组成；request_log_source_signature 只哈希 agent_id、found、rows.len()、truncated；request_log_sources_changed 对 cache_rebuilds/appends/corruptions/invalidations/deletions/io_errors 任一非零即判变化。CI run 45747693306 的失败信息显示标记指纹与本地一致（本地四轮 scan_stats 全 0、skip 依次 false/true/false/true），确认失败发生在缓存事件门禁而非标记本身。"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C273-replay-content-signature"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C273 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "重放来源签名口径（request_log_source_signature）",
+      "before": "形状签名：逐 agent 哈希 agent_id、found、请求行数、截断数；行内容变化但行数不变时无法识别，需依赖缓存事件门禁。",
+      "after": "内容签名：在 agent 维度之外，逐请求行哈希 request_key、occurred_at、model / raw_model、project、input / output / cache_read / cache_creation / cache_creation_1h、fidelity、latency_ms、first_token_ms；内容不变则签名稳定，行内容就地变化也会失配。标记 schema_version 1 → 2，升级后旧形状标记自动失效并重放一次。",
+      "impact": "collector-application::persist_request_logs；每轮刷新多一次请求行哈希（O(行数)，与既有 upsert 遍历同量级）。"
+    },
+    {
+      "scope": "跳过判定（skip_replay）",
+      "before": "请求库存在 && 本轮无缓存写入/重建/删除/IO 错误 && 标记匹配，三者同时成立才跳过重放。",
+      "after": "请求库存在 && 标记匹配即跳过重放；删除 request_log_sources_changed 门禁与 scan_stats 参数。缓存重建/瞬时 IO 噪声若未改变请求行内容不再触发无谓重放；内容变化由内容签名捕获。",
+      "impact": "persist_request_logs 调用签名（assemble 与 tests_local 直接调用同步调整）；C272 的标记原子写与读重试保留。"
+    },
+    {
+      "scope": "回归用例与失败诊断",
+      "before": "只有「来源不变 → 跳过」的端到端用例；无「行数不变但内容变化必须重放」用例。",
+      "after": "新增用例：改写同一条 Claude 请求的 input_tokens（行数不变）后下一轮必须重放并更新库内行；既有 skip=1 / 价卡变化重放用例保留；端到端断言失败信息附带标记内容与第四轮 scan_stats 计数，便于 Windows 复现定位。",
+      "impact": "collector-application tests_local 测试用例。"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/14-Agent请求日志.md",
+    "topic": "RequestLog",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261126-03",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cargo test --workspace 与 zsh scripts/verify-local.sh 退出码 0，新增内容变化重放用例与既有跳过/价卡用例全绿",
+        "false_if": "存在任何测试失败、报错或新增路径未被用例覆盖",
+        "evidence": "zsh scripts/verify-local.sh EXIT=0（/tmp/c273-verify-local.log）：Rust workspace 全部 test result ok（collector-application 60 passed，新增 request_log_replays_when_row_content_changes_without_row_count_change 通过）；cargo test --workspace EXIT=0；cargo clippy --workspace --all-targets -D warnings EXIT=0；Swift 构建 + 全部 Harness 通过；顶层 Node 契约测试 27 passed；Windows 前端用例全绿。请求日志主用例本地连续 15 轮全绿。",
+        "result": true
+      },
+      {
+        "item": "跳过判定与内容敏感度",
+        "true_if": "来源不变时第四次采集 skip=1 且不依赖 scan_stats；同一请求行数值就地变化（行数不变）时强制重放并更新库内行；旧 schema_version=1 标记失效重放一次",
+        "false_if": "仍依赖缓存事件门禁、内容变化被跳过或旧标记被误用",
+        "evidence": "lib.rs 的 skip_replay 现仅由 path.is_file() && replay_marker_matches(内容签名, 价卡指纹) 决定，request_log_sources_changed 与 scan_stats 门禁已删除；request_log_source_signature 逐行哈希 key/timestamp/model/raw_model/project/5 组 Token/fidelity/latency/first_token（长度前缀防跨字段碰撞）；schema_version 1→2。用例覆盖：来源不变 skip=1；input 10→3000（行数不变）skip=0 且库内行更新为 3000；随后再次 skip=1；旧 schema_version=1 标记判不匹配。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "request_log_replay_skipped 仍为 0/1 语义；保留期清理、价卡指纹与 upsert 行为不变；C272 原子写/读重试保留；无新增诊断或产物字段变化",
+        "false_if": "跳过语义、指标或清理行为回归，或删除 C272 的 I/O 加固",
+        "evidence": "verify-local EXIT=0：请求日志既有用例（幂等重放、截断、过期清理、价卡变更重放、模型计价指纹）全部通过；C272 的临时文件 + rename 原子写与读取重试保留；request_log_replay_skipped 仍为 0/1 语义，保留期清理照常执行，无新增诊断码或产物字段。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "2026-11-26",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认",
+    "signed_rejection_count": 0
+  }
+}
