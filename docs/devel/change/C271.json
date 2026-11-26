@@ -83,7 +83,7 @@
         "item": "自动化测试",
         "true_if": "zsh scripts/verify-local.sh 退出码 0（Rust fmt/test/clippy + Swift build + 全部 Harness + 顶层 Node 契约测试）",
         "false_if": "存在任何测试失败、报错或未覆盖回归用例",
-        "evidence": "zsh scripts/verify-local.sh EXIT=0（/tmp/bruce-verify5.log：Rust fmt/test/clippy + Swift 构建 + 20 个 Harness + 顶层 Node 契约测试全绿）；node --test tests/unit/*.test.mjs 27 passed；apps/win/tests/frontend.test.mjs 142 passed；win settings Rust 单测 15 passed；node scripts/build-site.mjs --strict EXIT=0",
+        "evidence": "zsh scripts/verify-local.sh EXIT=0（rebase 到 origin/main 后 /tmp/bruce-verify6.log：Rust fmt/test/clippy + Swift 构建 + 20 个 Harness + 顶层 Node 契约测试全绿）；node --test tests/unit/*.test.mjs 27 passed；apps/win/tests/frontend.test.mjs 142 passed；win settings Rust 单测 15 passed；node scripts/build-site.mjs --strict EXIT=0",
         "result": true
       },
       {
