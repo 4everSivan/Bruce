@@ -117,14 +117,6 @@ public enum AppearancePreference: String, Codable, Equatable, Sendable, CaseIter
     }
 }
 
-/// 模糊风格偏好 (仅液态玻璃模式下展示). regular 标准, clear 通透,
-/// material 哑光/材质; 持久化为 rawValue 字符串.
-public enum GlassStylePreference: String, Codable, Equatable, Sendable, CaseIterable {
-    case regular
-    case clear
-    case material
-}
-
 /// 全局界面动效偏好 (C145). system 跟随系统「减弱动态效果」; always 始终播放
 /// (忽略系统设置, 供本机开启减弱动态效果但希望看到应用内动效的用户显式 opt-in);
 /// never 始终不播放. 持久化为 rawValue 字符串.
@@ -173,8 +165,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var appearanceMode: AppearancePreference?
     /// 界面风格. nil 表示缺键: 由 ThemeResolution 按能力回落.
     public var interfaceStyle: InterfaceStylePreference?
-    /// 模糊风格 (液态玻璃子选项). nil 表示标准玻璃.
-    public var glassStyle: GlassStylePreference?
     /// 订阅 provider 展示顺序 (rawValue 列表). nil 表示使用 CaseIterable 默认顺序;
     /// 用户在设置页调整顺序后写入. 仅包含已添加的 provider.
     public var subscriptionProviderOrder: [String]?
@@ -239,11 +229,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         motionPreference ?? .system
     }
 
-    /// 解析后的模糊风格: nil 一律回落标准.
-    public var resolvedGlassStyle: GlassStylePreference {
-        glassStyle ?? .regular
-    }
-
     /// 解析后的全局快捷键: nil 一律回落未设置.
     public var resolvedDashboardHotkey: GlobalHotkey? {
         dashboardHotkey
@@ -280,19 +265,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         )
     }
 
-    /// 按当前进程能力解析完整主题 (界面风格 + 模糊 + 是否用玻璃 API).
-    public func resolvedTheme(
-        isLiquidGlassSupported: Bool = LiquidGlassCapability.isSupported
-    ) -> ResolvedTheme {
-        ThemeResolution.resolve(
-            interfaceStyle: interfaceStyle,
-            glassStyle: glassStyle,
-            isSupported: isLiquidGlassSupported
-        )
+    /// C271: 运行态主题恒为 Nothing.
+    public var resolvedTheme: ResolvedTheme {
+        .nothing
     }
-
-    /// 解析后的界面风格 (依赖当前系统能力) 由 resolvedTheme 提供;
-    /// 无独立计算属性, 避免绕过能力回落逻辑.
 
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
@@ -307,7 +283,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         refreshIntervalMinutes: Int? = nil,
         appearanceMode: AppearancePreference? = nil,
         interfaceStyle: InterfaceStylePreference? = nil,
-        glassStyle: GlassStylePreference? = nil,
         subscriptionProviderOrder: [String]? = nil,
         dashboardHotkey: GlobalHotkey? = nil,
         keychainAccessConfigured: Bool = false,
@@ -327,7 +302,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.appearanceMode = appearanceMode
         self.interfaceStyle = interfaceStyle
-        self.glassStyle = glassStyle
         self.subscriptionProviderOrder = subscriptionProviderOrder
         self.dashboardHotkey = dashboardHotkey
         self.keychainAccess = keychainAccess ?? KeychainAccessConfiguration(
@@ -370,10 +344,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         // 非法字符串与缺键一样按 nil (由 ThemeResolution 回落)
         interfaceStyle = try? container.decodeIfPresent(
             InterfaceStylePreference.self, forKey: .interfaceStyle
-        )
-        // 非法字符串与缺键一样按 nil (标准模糊)
-        glassStyle = try? container.decodeIfPresent(
-            GlassStylePreference.self, forKey: .glassStyle
         )
         // 旧配置缺该键或显式 null 一律按 nil, 不因新增字段拒绝加载
         subscriptionProviderOrder = try container.decodeIfPresent(
@@ -422,7 +392,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case refreshIntervalMinutes
         case appearanceMode
         case interfaceStyle
-        case glassStyle
         case subscriptionProviderOrder
         case dashboardHotkey
         case keychainAccess
@@ -447,7 +416,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         )
         try container.encodeIfPresent(appearanceMode, forKey: .appearanceMode)
         try container.encodeIfPresent(interfaceStyle, forKey: .interfaceStyle)
-        try container.encodeIfPresent(glassStyle, forKey: .glassStyle)
         try container.encodeIfPresent(
             subscriptionProviderOrder, forKey: .subscriptionProviderOrder
         )

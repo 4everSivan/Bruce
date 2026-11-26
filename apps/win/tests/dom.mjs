@@ -183,7 +183,7 @@ export const requestLogFixture = {
 };
 
 export const defaults = {
-  refreshIntervalSecs: 1800, theme: "fluent",
+  refreshIntervalSecs: 1800, theme: "nothing",
   cardOrder: ["usage", "subscription", "hourly"], hotkey: "", consentVersion: 0,
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek"], providerOrder: [], pricingOverrides: {},
   layoutMode: "stack", activeCardId: "usage",

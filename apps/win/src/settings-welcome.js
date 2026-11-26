@@ -423,31 +423,21 @@
     // 2. 主题风格 + 看板布局 + 快捷唤出设置
     const prefsGrid = node("div", null, { class: "welcome-prefs-grid" });
 
-    // 2a. 界面风格
+    // 2a. 界面风格 (C271: 产品级收敛为 Nothing, 其他风格留占位)
     const styleBox = node("div", null, { class: "welcome-pref-box" });
     styleBox.append(node("div", "界面视觉风格", { class: "welcome-section-label" }));
     const styleRow = node("div", null, { class: "welcome-choice-row" });
-    const curTheme = coreState.settings?.theme || "fluent";
-    for (const [val, label, desc] of [
-      ["fluent", "经典 Fluent", "深色材质层"],
-      ["nothing", "Nothing 极简", "纯黑点阵工业风"],
-    ]) {
-      const btn = node("button", null, {
-        type: "button",
-        class: `welcome-choice-btn${curTheme === val ? " active" : ""}`,
-        "data-theme-choice": val,
-      });
-      btn.append(
-        node("span", label, { class: "welcome-choice-title" }),
-        node("span", desc, { class: "welcome-choice-sub" })
-      );
-      btn.addEventListener("click", async () => {
-        await persist({ theme: val });
-        if (S.loadSettings) await S.loadSettings();
-        renderWelcomeWizard();
-      });
-      styleRow.append(btn);
-    }
+    const nothingTile = node("div", null, { class: "welcome-choice-btn active" });
+    nothingTile.append(
+      node("span", "Nothing 极简", { class: "welcome-choice-title" }),
+      node("span", "纯黑点阵工业风", { class: "welcome-choice-sub" })
+    );
+    const soonTile = node("div", null, { class: "welcome-choice-btn soon" });
+    soonTile.append(
+      node("span", "更多界面风格", { class: "welcome-choice-title" }),
+      node("span", "敬请期待", { class: "welcome-choice-sub" })
+    );
+    styleRow.append(nothingTile, soonTile);
     styleBox.append(styleRow);
     prefsGrid.append(styleBox);
 

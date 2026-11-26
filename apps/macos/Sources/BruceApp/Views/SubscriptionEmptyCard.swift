@@ -31,14 +31,9 @@ struct SubscriptionEmptyCard: View {
     var onToggleCollapse: () -> Void = {}
     var onAction: () -> Void = {}
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var expandedHeight: CGFloat = 0
-
-    private var isNothing: Bool {
-        theme.interfaceStyle == .nothing
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -76,10 +71,8 @@ struct SubscriptionEmptyCard: View {
 
     private var statusLabel: some View {
         Text(viewModel.statusText)
-            .font(isNothing ? NothingFont.mono(9) : .system(size: 10.5))
-            .foregroundStyle(isNothing
-                ? AnyShapeStyle(EmptyNothingTokens.disabled(colorScheme))
-                : AnyShapeStyle(Color.secondary))
+            .font(NothingFont.mono(9))
+            .foregroundStyle(AnyShapeStyle(EmptyNothingTokens.disabled(colorScheme)))
     }
 
     // MARK: - 展开态
@@ -89,8 +82,8 @@ struct SubscriptionEmptyCard: View {
             emptyMessage
             Button(action: onAction) {
                 Text(viewModel.actionTitle)
-                    .font(isNothing ? NothingFont.mono(10) : .system(size: 11, weight: .medium))
-                    .tracking(isNothing ? 0.6 : 0)
+                    .font(NothingFont.mono(10))
+                    .tracking(0.6)
             }
             .panelGlassButtonStyle()
             .accessibilityLabel(viewModel.actionTitle)
@@ -106,31 +99,23 @@ struct SubscriptionEmptyCard: View {
         VStack(spacing: 7) {
             Image(systemName: viewModel.systemImage)
                 .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(isNothing
-                    ? AnyShapeStyle(EmptyNothingTokens.secondary(colorScheme))
-                    : AnyShapeStyle(Color.secondary))
+                .foregroundStyle(AnyShapeStyle(EmptyNothingTokens.secondary(colorScheme)))
                 .frame(width: 36, height: 36)
                 .overlay {
-                    RoundedRectangle(cornerRadius: isNothing ? 2 : 9, style: .continuous)
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .strokeBorder(
-                            isNothing
-                                ? EmptyNothingTokens.borderVisible(colorScheme)
-                                : Color.primary.opacity(0.18),
+                            EmptyNothingTokens.borderVisible(colorScheme),
                             style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                         )
                 }
 
             Text(viewModel.title)
-                .font(isNothing ? NothingFont.ui(11.5, weight: .semibold) : .system(size: 12.5, weight: .semibold))
-                .foregroundStyle(isNothing
-                    ? AnyShapeStyle(EmptyNothingTokens.display(colorScheme))
-                    : AnyShapeStyle(Color.primary))
+                .font(NothingFont.ui(11.5, weight: .semibold))
+                .foregroundStyle(AnyShapeStyle(EmptyNothingTokens.display(colorScheme)))
 
             Text(viewModel.message)
-                .font(isNothing ? NothingFont.ui(10) : .system(size: 10.5))
-                .foregroundStyle(isNothing
-                    ? AnyShapeStyle(EmptyNothingTokens.secondary(colorScheme))
-                    : AnyShapeStyle(Color.secondary))
+                .font(NothingFont.ui(10))
+                .foregroundStyle(AnyShapeStyle(EmptyNothingTokens.secondary(colorScheme)))
                 .multilineTextAlignment(.center)
                 .lineSpacing(1.5)
                 .frame(maxWidth: 258)

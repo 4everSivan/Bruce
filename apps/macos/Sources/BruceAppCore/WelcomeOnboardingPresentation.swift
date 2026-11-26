@@ -104,17 +104,8 @@ package enum WelcomeOnboardingPresentation {
         return "暂未发现活跃源（仍可启用）"
     }
 
-    /// Step 3 菜单栏预览条指标读数文案 (联动 Nothing 主题斜杠与纯图标开关).
-    package static func menuBarPreviewMetricsText(
-        isNothingTheme: Bool,
-        iconOnly: Bool
-    ) -> String {
-        if iconOnly {
-            return ""
-        }
-        if isNothingTheme {
-            return "68% / 124K / $1.28"
-        }
-        return "68%  124K  $1.28"
+    /// Step 3 菜单栏预览条指标读数文案 (联动纯图标开关).
+    package static func menuBarPreviewMetricsText(iconOnly: Bool) -> String {
+        iconOnly ? "" : "68% / 124K / $1.28"
     }
 }

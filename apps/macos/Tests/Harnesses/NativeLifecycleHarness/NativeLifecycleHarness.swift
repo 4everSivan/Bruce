@@ -85,9 +85,67 @@ struct NativeLifecycleHarness {
         try stackShortcutLocatesHeaderWithMinimalScroll()
         try cardHeaderHandleStaysInsideCardGutter()
         try decorativeDashboardMotionStaysRemoved()
+        try nothingOnlyHeaderAndHeroGlowSourceGuards()
         try welcomeOnboardingPresentationMatchesParityFixture()
         try launchAtLoginServiceMockAndStateTransitions()
-        print("Native lifecycle tests passed: 23")
+        print("Native lifecycle tests passed: 24")
+    }
+
+    /// C271: Nothing-only 收敛、Tab 页标题上移与 Hero 静态辉光的源码守卫.
+    private static func nothingOnlyHeaderAndHeroGlowSourceGuards() throws {
+        let macos = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // NativeLifecycleHarness.swift -> NativeLifecycleHarness/
+            .deletingLastPathComponent() // -> Harnesses/
+            .deletingLastPathComponent() // -> Tests/
+            .deletingLastPathComponent() // -> macos/
+        let theme = try String(
+            contentsOf: macos.appendingPathComponent("Sources/BruceOnboardingCore/ThemeResolution.swift"),
+            encoding: .utf8
+        )
+        try expect(
+            !theme.contains("case classic") && !theme.contains("case liquidGlass"),
+            "C271: 经典 / 液态玻璃枚举必须退役"
+        )
+        try expect(
+            theme.contains("static let nothing = ResolvedTheme"),
+            "C271: 运行态主题必须收敛为唯一 Nothing 常量"
+        )
+
+        let header = try String(
+            contentsOf: macos.appendingPathComponent("Sources/BruceApp/MenuBarViews.swift"),
+            encoding: .utf8
+        )
+        try expect(
+            header.contains("model.selectedCardID.pageTitle"),
+            "C271: Tab 顶栏必须渲染当前页标题"
+        )
+        try expect(
+            header.components(separatedBy: "showsHeader: false").count - 1 >= 4,
+            "C271: Tab 模式卡构造必须隐藏卡内标题行"
+        )
+
+        let hero = try String(
+            contentsOf: macos.appendingPathComponent("Sources/BruceApp/Views/UsageHeroCard.swift"),
+            encoding: .utf8
+        )
+        try expect(
+            hero.contains("Self.accent.opacity(colorScheme == .dark ? 0.55 : 0.42)"),
+            "C271: Hero 近层辉光参数缺失"
+        )
+        try expect(
+            hero.contains("Self.accent.opacity(colorScheme == .dark ? 0.30 : 0.24)"),
+            "C271: Hero 远层辉光参数缺失"
+        )
+
+        let models = try String(
+            contentsOf: macos.appendingPathComponent("Sources/BruceAppCore/PanelModels.swift"),
+            encoding: .utf8
+        )
+        try expect(
+            models.contains("case .subscription: return \"订阅用量\"")
+                && models.contains("case .hourly: return \"Agent 用量\""),
+            "C271: 页面标题必须与卡内标题同源"
+        )
     }
 
     /// C187: 仪表盘/气泡跳转设置中心的顺序固定为 关闭面板 → 写入深链 → 打开设置，
@@ -427,16 +485,14 @@ struct NativeLifecycleHarness {
     /// C233: 拖拽手柄必须完整落在卡片左边距内 —— 手柄一旦宽过边距就得挤占标题行,
     /// 标题又会在每次收放时横移.
     private static func cardHeaderHandleStaysInsideCardGutter() throws {
-        for isNothing in [false, true] {
-            try expect(
-                DashboardCardHeaderLayout.handleWidth(isNothing: isNothing) > 0,
-                "drag handle must have a positive width (isNothing: \(isNothing))"
-            )
-            try expect(
-                DashboardCardHeaderLayout.handleFitsGutter(isNothing: isNothing),
-                "drag handle must fit inside the card gutter (isNothing: \(isNothing))"
-            )
-        }
+        try expect(
+            DashboardCardHeaderLayout.handleWidth > 0,
+            "drag handle must have a positive width"
+        )
+        try expect(
+            DashboardCardHeaderLayout.handleFitsGutter,
+            "drag handle must fit inside the card gutter"
+        )
     }
 
     /// C233: 已移除的装饰性动效不得回流到看板视图 (量条扫光 / 高光 / 入场生长、
@@ -715,11 +771,11 @@ struct NativeLifecycleHarness {
             "normal menu bar content must use a native gauge icon"
         )
         try expect(
-            content.metricText == "124k  $1.28",
-            "menu bar content must preserve compact metric formatting"
+            content.metricText == "124K / $1.28",
+            "menu bar content must use Nothing compact metric formatting"
         )
         try expect(
-            content.accessibilityLabel.contains("今日 Token 124k")
+            content.accessibilityLabel.contains("今日 Token 124K")
                 && content.accessibilityLabel.contains("今日费用 $1.28"),
             "menu bar accessibility content must describe visible metrics"
         )
@@ -754,16 +810,11 @@ struct NativeLifecycleHarness {
         let nothingContent = MenuBarStatusItemContentBuilder().build(
             metrics: [.minimumRemainingQuota, .todayTokens, .todayCost],
             summary: summary,
-            isRefreshing: false,
-            isNothingTheme: true
+            isRefreshing: false
         )
         try expect(
             nothingContent.metricText == "68% / 124K / $1.28",
             "nothing theme must format metrics with uppercase units and slash separators"
-        )
-        try expect(
-            nothingContent.isNothingTheme == true,
-            "nothing theme content must flag isNothingTheme"
         )
     }
 
@@ -827,16 +878,12 @@ struct NativeLifecycleHarness {
     /// 本用例按修复后的模式 (缓存字体 + 闭包内仅 `draw(in:)`, 排版高度经字体度量推导)
     /// 高频光栅化双主题指标文本, 断言全程稳定出图.
     private static func menuBarImageRenderingSurvivesHighFrequencyRedraw() throws {
-        let classicFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let nothingFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
-        let classicTexts = ["124k  $1.28", "1.2M  $12.4", "--  $--"]
         let nothingTexts = ["68% / 124K / $1.28", "9% / 2.4M / $240", "-- / -- / --"]
 
         for iteration in 0..<2_000 {
-            let isNothingTheme = iteration.isMultiple(of: 2)
-            let font = isNothingTheme ? nothingFont : classicFont
-            let texts = isNothingTheme ? nothingTexts : classicTexts
-            let text = texts[iteration % texts.count]
+            let font = nothingFont
+            let text = nothingTexts[iteration % nothingTexts.count]
             let canvas = NSSize(width: 96, height: 22)
 
             let image = NSImage(size: canvas, flipped: false) { _ in
@@ -1024,10 +1071,10 @@ struct NativeLifecycleHarness {
             )
         }
 
-        for item in fixture.menuBarPreviewMetricsCases {
+        // C271: 仅 Nothing 格式仍可达; 旧 Fluent 格式用例随主题退役跳过.
+        for item in fixture.menuBarPreviewMetricsCases where item.isNothingTheme {
             try expect(
                 WelcomeOnboardingPresentation.menuBarPreviewMetricsText(
-                    isNothingTheme: item.isNothingTheme,
                     iconOnly: item.iconOnly
                 ) == item.expected,
                 "menuBarPreviewMetricsText mismatch"

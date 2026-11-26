@@ -61,10 +61,14 @@
     // (配色模式 / 钥匙串 / 外部 CLI 来源为 mac 独有能力, Windows 恒深色且无钥匙串;
     // 原「版本」行已迁维护页软件更新卡 —— 07 §4.2 R3 方案 B)。
     const c1 = card(host);
-    const theme = node("select", null, { id: "setting-theme" });
-    theme.append(node("option", "经典", { value: "fluent" }), node("option", "Nothing", { value: "nothing" }));
-    row(c1, "界面风格", segmented(theme, (value, revert) => persist({ theme: value }, { revert })),
-      "经典为深色材质面板; Nothing 为纯色平面风格, 无模糊无玻璃 (Windows 恒深色)");
+    // C271: 界面风格产品级收敛为 Nothing; 其他风格留占位文字, 不再提供切换控件.
+    const themeStatic = node("div", null, { class: "row-static-style" });
+    themeStatic.append(
+      node("span", "Nothing", { class: "row-static-value" }),
+      node("span", "敬请期待", { class: "row-sub" })
+    );
+    row(c1, "界面风格", themeStatic,
+      "Nothing 为纯色平面风格; 更多界面风格敬请期待");
     // C145: 全局界面动效总开关 (与 mac 通用页同名同三态).
     const motion = node("select", null, { id: "setting-motion-preference" });
     motion.append(
@@ -863,7 +867,6 @@
     if (byId("setting-tray-hover-preview")) byId("setting-tray-hover-preview").checked = coreState.settings.trayHoverPreview !== false;
     syncToggleState("setting-tray-hover-preview");
     if (byId("setting-hotkey")) byId("setting-hotkey").value = coreState.settings.hotkey || "";
-    if (byId("setting-theme")) byId("setting-theme").value = coreState.settings.theme;
     if (byId("setting-layout-mode")) byId("setting-layout-mode").value = coreState.settings.layoutMode || "stack";
     if (byId("setting-motion-preference")) byId("setting-motion-preference").value = coreState.settings.motionPreference || "system";
     if (byId("setting-usage-consent")) byId("setting-usage-consent").checked = coreState.settings.consentVersion === 1;

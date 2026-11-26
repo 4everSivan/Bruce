@@ -47,13 +47,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private static let statusItemLength: CGFloat = 74
     private static let iconOnlyLength: CGFloat = 28
 
-    /// 菜单栏指标文本排版字体 (T-0 / T-4 主题各一), 控制器级缓存避免高频重绘反复构造 (C203).
-    private static let classicMetricFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-    private static let nothingMetricFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
-
-    private static func metricFont(nothingTheme: Bool) -> NSFont {
-        nothingTheme ? nothingMetricFont : classicMetricFont
-    }
+    /// 菜单栏指标文本排版字体 (Nothing T-4), 控制器级缓存避免高频重绘反复构造 (C203).
+    private static let metricFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
     private var lastRenderedContent: MenuBarStatusItemContent?
     private var refreshTimer: Timer?
     private var refreshPhase: CGFloat = 0
@@ -301,13 +296,11 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         force: Bool = false
     ) {
         let summary = model.makeMenuBarSummary()
-        let isNothing = coordinator.resolvedTheme.interfaceStyle == .nothing
         let content = MenuBarStatusItemContentBuilder().build(
             metrics: model.menuBarMetrics,
             summary: summary,
             isRefreshing: isRefreshing,
-            iconOnly: model.menuBarIconOnly,
-            isNothingTheme: isNothing
+            iconOnly: model.menuBarIconOnly
         )
 
         if isRefreshing {
@@ -385,7 +378,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         guard !content.metricText.isEmpty else {
             return Self.iconOnlyLength
         }
-        let font = Self.metricFont(nothingTheme: content.isNothingTheme)
+        let font = Self.metricFont
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
         ]
@@ -401,7 +394,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// - 卫星定位点 (The Satellite): r=1.8pt 锚定于当前弧端 (内核点缀 0.75pt 高光微核)
     /// - 动态色阶: 绿 (>50%) / 警示橙 (20%~50%) / 科技红 (<20% 或异常)
     /// - 刷新态: 卫星定位点在 refreshPhase 驱动下沿轨顺时针 60fps 平滑自旋，呈现机械陀飞轮秒针滑过的精密质感
-    /// - 排版联动: 经典/液态玻璃为 T-0 (12pt monospacedDigit + 双空格),
+    /// - 排版联动: Nothing 为 T-4 (12.5pt SF Mono Semibold + 斜杠弱化),
     ///   Nothing 主题自动切换为 T-4 (12.5pt SF Mono Semibold + 弱化斜杠分隔)
     private func makeStatusItemImage(
         for content: MenuBarStatusItemContent,
@@ -561,7 +554,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             // 排版尺寸一律经闭包外测量 (targetStatusItemLength) 或字体度量推导;
             // 字体取控制器级缓存, 避免高频重绘时反复构造.
             if !content.metricText.isEmpty {
-                let font = Self.metricFont(nothingTheme: content.isNothingTheme)
+                let font = Self.metricFont
 
                 let attrString = NSMutableAttributedString(
                     string: content.metricText,
@@ -572,18 +565,16 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 )
 
                 // Nothing T-4 模式下弱化 " / " 斜杠分隔符
-                if content.isNothingTheme {
-                    let fullString = content.metricText as NSString
-                    var searchRange = NSRange(location: 0, length: fullString.length)
-                    while searchRange.location < fullString.length {
-                        let foundRange = fullString.range(of: " / ", options: [], range: searchRange)
-                        if foundRange.location != NSNotFound {
-                            attrString.addAttribute(.foregroundColor, value: separatorColor, range: foundRange)
-                            let nextLoc = foundRange.location + foundRange.length
-                            searchRange = NSRange(location: nextLoc, length: fullString.length - nextLoc)
-                        } else {
-                            break
-                        }
+                let fullString = content.metricText as NSString
+                var searchRange = NSRange(location: 0, length: fullString.length)
+                while searchRange.location < fullString.length {
+                    let foundRange = fullString.range(of: " / ", options: [], range: searchRange)
+                    if foundRange.location != NSNotFound {
+                        attrString.addAttribute(.foregroundColor, value: separatorColor, range: foundRange)
+                        let nextLoc = foundRange.location + foundRange.length
+                        searchRange = NSRange(location: nextLoc, length: fullString.length - nextLoc)
+                    } else {
+                        break
                     }
                 }
 

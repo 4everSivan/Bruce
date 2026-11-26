@@ -464,6 +464,11 @@ Windows Tauri 后端 (Rust)
     - **网络出口国家校验（C264，design/11）**：设置持久化 `egressGroups`（ISO 国家代码 + 受管 Provider + 本机回环代理端口 + 上次测试结论，同 Provider 跨组唯一、缺端口交由共享引擎判无效并阻断）；采集请求注入 `context.egressRules`（provider → {country, port}）；视图模型把 service `egress` 映射为 section `egress` / `hasProtectedSnapshot`（缺失字段不输出，保持 mac golden 契约）；仪表盘阻断态渲染 30pt 单行问题卡（原因标题 + 保护承诺 + 去设置/重测）、百分比「(已保护)」与重置列「已拦截」、折叠态黄点与国旗微标；设置页「网络出口国家校验」卡支持快捷/手输国家、端口、Provider 归属、测试线路（`egress_test` 经回环代理访问 Cloudflare Trace，返回脱敏匹配/不匹配/国内/代理失败文案）与解散（不动凭据）。
     - **睡眠唤醒去重**：`power_events::start` 经 `PowerRegisterSuspendResumeNotification`（`DEVICE_NOTIFY_CALLBACK`）注册系统回调，收到 `PBT_APMRESUMEAUTOMATIC` / `PBT_APMRESUMESUSPEND` 时向调度器投递唤醒信号；调度循环以 `wake_pending` 区分手动/唤醒来源，距上次采集尝试不足 `WAKE_DEDUP_SECS=60`（mac `wakeDedupSeconds`）时不重复刷新。唤醒刷新按自动刷新处理，不绕过额度冷却与离线闸门。Windows 真机行为（实际睡眠/唤醒、代理线路）仍待人工验收。
 
+40. **界面风格产品级收敛为 Nothing（C271）**：
+    - 看板固定 `theme-nothing`；`theme-fluent` 主题类与设置中的主题下拉退役，`settings.theme` 一律为 `nothing`（旧值在加载侧迁移，其余字段保留）。
+    - 设置中心「界面风格」行改为静态 `Nothing` + 禁用态「敬请期待」，不再提供经典 / Nothing 切换；设置窗口壳层仍为 Fluent（C067），不受影响。
+    - 一致性与回归：`frontend.test.mjs` 的 HUD / Nothing 量条 / 徽章用例改为 Nothing-only 口径；`settings_coverage.rs` 的默认值与校验边界同步（仅 `nothing` 合法）。
+
 ### 6.1 Rust 端改动清单（收敛后）
 
 | # | 改动 | 位置 | 内容 | 实施状态 |

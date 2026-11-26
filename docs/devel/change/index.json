@@ -15,7 +15,9 @@
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
-      "changes": []
+      "changes": [
+        "C271"
+      ]
     },
     "PricingEngine": {
       "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
@@ -261,6 +263,13 @@
       "branch": "fix/C270-swiftpm-test-targets",
       "topic": "SystemOverview",
       "file": "docs/devel/change/C270.json"
+    },
+    "C271": {
+      "title": "看板 Nothing-only 收敛：界面风格收窄、Tab 页标题上移与 Hero 静态辉光",
+      "status": "verified",
+      "branch": "feat/C271-nothing-only",
+      "topic": "MenuBarIndicator",
+      "file": "docs/devel/change/C271.json"
     }
   }
 }

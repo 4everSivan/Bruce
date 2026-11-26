@@ -7,7 +7,7 @@ import SwiftUI
 /// Nothing 主题本文件级颜色 token: 数值唯一来源为定稿原型
 /// _adflow_backup/original_docs/design/dashboard-nothing-prototype.html (勿自创数值).
 /// 仅在 `theme.interfaceStyle == .nothing` 分支消费;
-/// classic / liquidGlass 代码路径绝不可触碰.
+/// C271 起仅保留 Nothing 单路径.
 private enum NothingTokens {
     /// 文字 display: dark #FFFFFF / light #000000.
     static func display(_ scheme: ColorScheme) -> Color {
@@ -64,7 +64,7 @@ private func nothingThresholdColor(for level: MeterLevel) -> Color {
 }
 
 // 订阅用量卡: 原生 SwiftUI 版, 视觉以 panel-layout-v8.html 的订阅用量区为准.
-// 只排内容, 卡片容器 (液态玻璃背景, 圆角, 阴影) 由 wave 3 统一装配.
+// 只排内容, 卡片容器 (纯色背景, 圆角) 由装配层统一提供.
 // 数据全部来自 BruceAppCore 的 SubscriptionViewModel, 组件不读取任何凭证或 artifact.
 
 /// 订阅用量卡: 标题行 + 若干 provider 段, 段间 1pt 分隔线.
@@ -75,6 +75,8 @@ struct SubscriptionCard: View {
     /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你摘要.
     var isCollapsed: Bool = false
     var onToggleCollapse: () -> Void = {}
+    /// C271: Tab 模式不再渲染卡内标题行 (标题已上移到顶栏); 栈模式保持默认 true.
+    var showsHeader: Bool = true
     /// 各 Provider 刷新按钮呈现状态, key 为 SubscriptionProviderID rawValue;
     /// section 无法归一为已知 Provider 或缺键时不渲染按钮 (fail-closed).
     var refreshControls: [String: SubscriptionRefreshControlPresentation] = [:]
@@ -85,7 +87,6 @@ struct SubscriptionCard: View {
     /// 面板可见性: 隐藏时不得挂载逐帧动画载体 (C044, 见 DashboardPanelAnimationPolicy).
     var panelVisible: Bool = true
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.motionSuppressed) private var motionSuppressed
     /// 展开态正文的自然高度 (C148); 折叠时容器按显式高度动画收到 0.
@@ -93,15 +94,17 @@ struct SubscriptionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CollapsibleCardHeader(
-                title: "订阅用量",
-                isCollapsed: isCollapsed,
-                onToggle: onToggleCollapse,
-                cardID: .subscription
-            ) {
-                EmptyView()
-            } mini: {
-                collapsedMini
+            if showsHeader {
+                CollapsibleCardHeader(
+                    title: "订阅用量",
+                    isCollapsed: isCollapsed,
+                    onToggle: onToggleCollapse,
+                    cardID: .subscription
+                ) {
+                    EmptyView()
+                } mini: {
+                    collapsedMini
+                }
             }
 
             // C148: 正文高度是显式可动画值, 由标题行按钮的同一条 withAnimation 驱动.
@@ -130,14 +133,7 @@ struct SubscriptionCard: View {
             ForEach(Array(viewModel.sections.enumerated()), id: \.element.id) { index, section in
                 if index > 0 {
                     Rectangle()
-                        .fill(
-                            theme.interfaceStyle == .nothing
-                                ? NothingTokens.border(colorScheme)
-                                : Color.adaptive(
-                                    light: Color.black.opacity(0.05),
-                                    dark: Color.white.opacity(0.10)
-                                )
-                        )
+                        .fill(NothingTokens.border(colorScheme))
                         .frame(height: 1)
                 }
                 ProviderSectionView(
@@ -152,7 +148,6 @@ struct SubscriptionCard: View {
             // 订阅卡底栏: 左侧为 Nothing 三档阈值图例, 右侧与图例平齐展示最后刷新时间 (updatedText).
             SubscriptionFooterView(
                 updatedText: viewModel.updatedText,
-                isNothing: theme.interfaceStyle == .nothing,
                 colorScheme: colorScheme
             )
         }
@@ -563,8 +558,6 @@ private struct BalanceDualSlotView: View {
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
@@ -581,14 +574,14 @@ private struct BalanceDualSlotView: View {
     private var leftSlot: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("可用余额")
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
-                .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(NothingTokens.disabled(colorScheme))
 
             let balanceText = section.balance?.amountText ?? "--"
             Text(balanceText)
-                .font(isNothing ? NothingFont.mono(13, weight: .bold) : .system(size: 14, weight: .bold))
+                .font(NothingFont.mono(13, weight: .bold))
                 .monospacedDigit()
-                .foregroundStyle(isNothing ? NothingTokens.display(colorScheme) : Color.primary.opacity(0.9))
+                .foregroundStyle(NothingTokens.display(colorScheme))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
@@ -596,25 +589,12 @@ private struct BalanceDualSlotView: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(
-            isNothing
-                ? NothingTokens.surfaceRaised(colorScheme)
-                : Color.adaptive(
-                    light: Color.black.opacity(0.035),
-                    dark: Color.white.opacity(0.06)
-                ),
+            NothingTokens.surfaceRaised(colorScheme),
             in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(
-                    isNothing
-                        ? NothingTokens.border(colorScheme)
-                        : Color.adaptive(
-                            light: Color.black.opacity(0.065),
-                            dark: Color.white.opacity(0.10)
-                        ),
-                    lineWidth: isNothing ? 1 : 0.5
-                )
+                .strokeBorder(NothingTokens.border(colorScheme), lineWidth: 1)
         )
     }
 
@@ -623,8 +603,8 @@ private struct BalanceDualSlotView: View {
     private var rightSlot: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("订阅状态")
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
-                .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(NothingTokens.disabled(colorScheme))
 
             HStack(spacing: 4) {
                 Circle()
@@ -634,8 +614,8 @@ private struct BalanceDualSlotView: View {
                 // C225: 态名与点色取顶部状态灯同一张映射表, 不再直出状态码、不再恒绿.
                 let statusText = DashboardStatusToneResolver.statusLabel(for: section.status)
                 Text(statusText)
-                    .font(isNothing ? NothingFont.mono(11, weight: .medium) : .system(size: 12, weight: .medium))
-                    .foregroundStyle(isNothing ? NothingTokens.secondary(colorScheme) : Color.primary.opacity(0.8))
+                    .font(NothingFont.mono(11, weight: .medium))
+                    .foregroundStyle(NothingTokens.secondary(colorScheme))
                     .lineLimit(1)
             }
         }
@@ -643,25 +623,12 @@ private struct BalanceDualSlotView: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(
-            isNothing
-                ? NothingTokens.surfaceRaised(colorScheme)
-                : Color.adaptive(
-                    light: Color.black.opacity(0.035),
-                    dark: Color.white.opacity(0.06)
-                ),
+            NothingTokens.surfaceRaised(colorScheme),
             in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(
-                    isNothing
-                        ? NothingTokens.border(colorScheme)
-                        : Color.adaptive(
-                            light: Color.black.opacity(0.065),
-                            dark: Color.white.opacity(0.10)
-                        ),
-                    lineWidth: isNothing ? 1 : 0.5
-                )
+                .strokeBorder(NothingTokens.border(colorScheme), lineWidth: 1)
         )
     }
 
@@ -688,31 +655,22 @@ private struct WindowRowView: View {
     let row: SubscriptionWindowRow
     var protectedSnapshot: Bool = false
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
-
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
     var body: some View {
         HStack(spacing: 8) {
             Text(row.label)
-                .font(isNothing ? NothingFont.mono(10) : .system(size: 10))
+                .font(NothingFont.mono(10))
                 .foregroundStyle(labelStyle)
                 .frame(width: 62, alignment: .leading)
             // usedPercent 是已用比例, 量条从 0 向 100 填充已用量 (消耗式);
             // 百分比文字 percentText 同样是已用值 (如 "68%"), 与量条语义一致.
             let meterLevel = MeterLevel(usedPercent: row.usedPercent)
             MeterBar(usedFraction: row.usedPercent / 100, level: meterLevel)
-            // Nothing 下百分比按档位取阈值色 (定稿 .meter-head .v),
-            // classic / liquidGlass 保持默认前景色不变.
-            if isNothing {
-                percentText
-                    .foregroundStyle(nothingThresholdColor(for: meterLevel))
-            } else {
-                percentText
-            }
+            percentText
+                .foregroundStyle(nothingThresholdColor(for: meterLevel))
             Text(row.resetText)
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                .font(NothingFont.mono(9))
                 .foregroundStyle(resetStyle)
                 .frame(width: 48, alignment: .trailing)
         }
@@ -722,46 +680,34 @@ private struct WindowRowView: View {
 
     private var percentText: some View {
         Text(row.percentText)
-            .font(isNothing ? NothingFont.mono(12, weight: .bold) : .system(size: 10, weight: .semibold))
+            .font(NothingFont.mono(12, weight: .bold))
             .monospacedDigit()
             .frame(width: 46, alignment: .trailing)
     }
 
     private var labelStyle: AnyShapeStyle {
-        isNothing
-            ? AnyShapeStyle(NothingTokens.secondary(colorScheme))
-            : AnyShapeStyle(.secondary)
+        AnyShapeStyle(NothingTokens.secondary(colorScheme))
     }
 
     private var resetStyle: AnyShapeStyle {
-        isNothing
-            ? AnyShapeStyle(NothingTokens.disabled(colorScheme))
-            : AnyShapeStyle(.secondary)
+        AnyShapeStyle(NothingTokens.disabled(colorScheme))
     }
 }
 
-/// 收起态迷你量条: 5pt 高, 填充取该 provider 最紧张窗口的已用比例.
-/// classic / liquidGlass: 与 MeterBar 同款三档渐变; Nothing: 直角 + 阈值纯色.
+/// 收起态迷你量条: 5pt 高, 直角 + 阈值纯色, 填充取该 provider 最紧张窗口的已用比例.
 private struct MiniMeterBar: View {
     let usedFraction: Double
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
     private var level: MeterLevel { MeterLevel(usedPercent: usedFraction * 100) }
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: isNothing ? 0 : 3, style: .continuous)
-                    .fill(isNothing
-                        ? NothingTokens.emptySegment(colorScheme)
-                        : Color.adaptive(
-                            light: Color.black.opacity(0.07),
-                            dark: Color.white.opacity(0.12)
-                        ))
-                RoundedRectangle(cornerRadius: isNothing ? 0 : 3, style: .continuous)
+                Rectangle()
+                    .fill(NothingTokens.emptySegment(colorScheme))
+                Rectangle()
                     .fill(fillStyle)
                     .frame(width: proxy.size.width * min(max(usedFraction, 0), 1))
             }
@@ -770,21 +716,7 @@ private struct MiniMeterBar: View {
     }
 
     private var fillStyle: AnyShapeStyle {
-        if isNothing {
-            return AnyShapeStyle(nothingThresholdColor(for: level))
-        }
-        let colors: [Color]
-        switch level {
-        case .normal:
-            colors = [Color(hex: "#30d158"), Color(hex: "#66d4a3")]
-        case .warning:
-            colors = [Color(hex: "#ff9f0a"), Color(hex: "#ffd60a")]
-        case .critical:
-            colors = [Color(hex: "#ff453a"), Color(hex: "#ff6961")]
-        }
-        return AnyShapeStyle(LinearGradient(
-            colors: colors, startPoint: .leading, endPoint: .trailing
-        ))
+        AnyShapeStyle(nothingThresholdColor(for: level))
     }
 }
 
@@ -808,13 +740,11 @@ private enum MeterLevel: Hashable {
 
 }
 
-/// 量条: 消耗式填充 (已用量从 0 向 100 增长), 数值变化直接落定终值, 不挂任何动画 (C233).
-/// classic / liquidGlass: 高 5pt 圆角渐变条; Nothing: 24 段方角分段条.
+/// 量条: 24 段方角分段条, 消耗式填充, 数值变化直接落定终值, 不挂任何动画 (C233).
 private struct MeterBar: View {
     let usedFraction: Double
     let level: MeterLevel
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
     private var clampedFraction: CGFloat {
@@ -822,45 +752,12 @@ private struct MeterBar: View {
     }
 
     var body: some View {
-        if theme.interfaceStyle == .nothing {
-            NothingSegmentedMeter(
-                usedFraction: Double(clampedFraction),
-                level: level,
-                colorScheme: colorScheme
-            )
-            .frame(height: 10)
-        } else {
-            legacyBody
-                .frame(height: 5)
-        }
-    }
-
-    private var legacyBody: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color.adaptive(
-                        light: Color.black.opacity(0.07),
-                        dark: Color.white.opacity(0.12)
-                    ))
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(gradient)
-                    .frame(width: proxy.size.width * clampedFraction)
-            }
-        }
-    }
-
-    private var gradient: LinearGradient {
-        let colors: [Color]
-        switch level {
-        case .normal:
-            colors = [Color(hex: "#30d158"), Color(hex: "#66d4a3")]
-        case .warning:
-            colors = [Color(hex: "#ff9f0a"), Color(hex: "#ffd60a")]
-        case .critical:
-            colors = [Color(hex: "#ff453a"), Color(hex: "#ff6961")]
-        }
-        return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+        NothingSegmentedMeter(
+            usedFraction: Double(clampedFraction),
+            level: level,
+            colorScheme: colorScheme
+        )
+        .frame(height: 10)
     }
 }
 
@@ -898,9 +795,7 @@ private struct NothingSegmentedMeter: View {
 private struct ProviderAccountCard: View {
     let account: CodexAccountViewModel
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -932,12 +827,7 @@ private struct ProviderAccountCard: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .background(
-            isNothing
-                ? NothingTokens.surfaceRaised(colorScheme)
-                : Color.adaptive(
-                    light: Color.white.opacity(0.35),
-                    dark: Color.white.opacity(0.10)
-                ),
+            NothingTokens.surfaceRaised(colorScheme),
             in: RoundedRectangle(
                 cornerRadius: 6,
                 style: .continuous
@@ -945,15 +835,7 @@ private struct ProviderAccountCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(
-                    isNothing
-                        ? NothingTokens.border(colorScheme)
-                        : Color.adaptive(
-                            light: Color.black.opacity(0.065),
-                            dark: Color.white.opacity(0.18)
-                        ),
-                    lineWidth: 1
-                )
+                .strokeBorder(NothingTokens.border(colorScheme), lineWidth: 1)
         )
     }
 }
@@ -968,46 +850,21 @@ private struct BalanceChip: View {
     let accessibilityText: String
     let color: Color
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
-
     var body: some View {
-        Group {
-            if isNothing {
-                HStack(spacing: 4) {
-                    Circle().fill(color).frame(width: 4, height: 4)
-                    Text(amountText)
-                        .font(NothingFont.mono(9))
-                        .foregroundStyle(NothingTokens.secondary(colorScheme))
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
-                )
-            } else {
-                HStack(spacing: 4) {
-                    Circle().fill(color).frame(width: 4, height: 4)
-                    Text(amountText)
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.primary.opacity(0.85))
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(Color.adaptive(
-                    light: Color.white.opacity(0.55),
-                    dark: Color.white.opacity(0.12)
-                ), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.adaptive(
-                    light: Color.white.opacity(0.6),
-                    dark: Color.white.opacity(0.18)
-                ), lineWidth: 0.5))
-            }
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 4, height: 4)
+            Text(amountText)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(NothingTokens.secondary(colorScheme))
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .overlay(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }
@@ -1017,98 +874,55 @@ private struct BalanceChip: View {
 
 /// 账号属性标签 (例如多账号场景下的 "国际" 站点标记):
 /// Nothing 主题: 3pt 方角, 1px 加强边框, NothingFont.mono(8.5);
-/// Classic / Liquid Glass 主题: 微型圆角胶囊, 主题 accent 色调 (C220 对齐 Nothing 杏 / 绿).
+/// Nothing 主题: 3pt 方角 + 1px 加强边框 + Space Mono.
 private struct AccountTagChip: View {
     let text: String
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
-    /// 面板主题 accent (C220): 浅色杏 #D4A843 / 深色绿 #4A9E5C.
-    private var accent: Color {
-        Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
-    }
-
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
-
     var body: some View {
-        if isNothing {
-            Text(text)
-                .font(NothingFont.mono(8.5))
-                .foregroundStyle(NothingTokens.secondary(colorScheme))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 0.5)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
-                )
-        } else {
-            Text(text)
-                .font(.system(size: 8.5, weight: .medium))
-                .foregroundStyle(accent)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(
-                    accent.opacity(colorScheme == .dark ? 0.22 : 0.12),
-                    in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .strokeBorder(accent.opacity(0.3), lineWidth: 0.5)
-                )
-        }
+        Text(text)
+            .font(NothingFont.mono(8.5))
+            .foregroundStyle(NothingTokens.secondary(colorScheme))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 0.5)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
+            )
     }
 }
 
 // MARK: - 订阅卡底栏 (三档阈值图例 + 最后刷新时间)
 
-/// 订阅卡底部栏: 1pt 边框分隔线, 左侧为 Nothing 三档阈值图例 (<50/50–79/≥80),
+/// 订阅卡底部栏: 1pt 边框分隔线, 左侧 Nothing 三档阈值图例 (<50/50–79/≥80),
 /// 右侧与图例平齐展示最后刷新时间 (updatedText).
-/// 当既非 Nothing 主题且无 updatedText 时隐藏.
 private struct SubscriptionFooterView: View {
     let updatedText: String?
-    let isNothing: Bool
     let colorScheme: ColorScheme
 
     var body: some View {
-        if isNothing || updatedText != nil {
-            VStack(alignment: .leading, spacing: 0) {
-                Rectangle()
-                    .fill(
-                        isNothing
-                            ? NothingTokens.border(colorScheme)
-                            : Color.adaptive(
-                                light: Color.black.opacity(0.05),
-                                dark: Color.white.opacity(0.10)
-                            )
-                    )
-                    .frame(height: 1)
-                    .padding(.top, isNothing ? 11 : 8)
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(NothingTokens.border(colorScheme))
+                .frame(height: 1)
+                .padding(.top, 11)
 
-                HStack(alignment: .center, spacing: 0) {
-                    if isNothing {
-                        HStack(spacing: 12) {
-                            legendItem(color: NothingTokens.success, text: "<50")
-                            legendItem(color: NothingTokens.warning, text: "50–79")
-                            legendItem(color: NothingTokens.accent, text: "≥80")
-                        }
-                    }
-
-                    if let updatedText {
-                        Spacer(minLength: 8)
-                        if isNothing {
-                            Text(updatedText)
-                                .font(NothingFont.mono(9))
-                                .foregroundStyle(NothingTokens.disabled(colorScheme))
-                        } else {
-                            Text(updatedText)
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+            HStack(alignment: .center, spacing: 0) {
+                HStack(spacing: 12) {
+                    legendItem(color: NothingTokens.success, text: "<50")
+                    legendItem(color: NothingTokens.warning, text: "50–79")
+                    legendItem(color: NothingTokens.accent, text: "≥80")
                 }
-                .padding(.top, isNothing ? 10 : 8)
+
+                if let updatedText {
+                    Spacer(minLength: 8)
+                    Text(updatedText)
+                        .font(NothingFont.mono(9))
+                        .foregroundStyle(NothingTokens.disabled(colorScheme))
+                }
             }
+            .padding(.top, 10)
         }
     }
 

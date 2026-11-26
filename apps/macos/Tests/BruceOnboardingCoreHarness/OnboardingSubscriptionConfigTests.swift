@@ -412,143 +412,17 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
-    /// glassStyle / interfaceStyle: 缺键与非法值回落; 主题解析能力矩阵.
-    static func configGlassStyleDecodeAndFallback() throws {
-        // 缺键 -> nil -> 标准模糊
-        let missing = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(#"{"schemaVersion": 2}"#.utf8)
-        )
-        try coreExpect(missing.glassStyle == nil, "缺键必须为 nil")
-        try coreExpect(
-            missing.resolvedGlassStyle == .regular,
-            "缺键必须回落标准玻璃"
-        )
-        try coreExpect(missing.interfaceStyle == nil, "interfaceStyle 缺键为 nil")
-
-        // 非法字符串 -> nil, 不拒绝加载
-        let invalid = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(#"{"schemaVersion": 2, "glassStyle": "neon"}"#.utf8)
-        )
-        try coreExpect(invalid.glassStyle == nil, "非法字符串必须按 nil 处理")
-        try coreExpect(
-            invalid.resolvedGlassStyle == .regular,
-            "非法值必须回落标准玻璃"
-        )
-
-        // 合法值原样生效
-        let valid = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(#"{"schemaVersion": 2, "glassStyle": "clear"}"#.utf8)
-        )
-        try coreExpect(
-            valid.resolvedGlassStyle == .clear,
-            "合法值 clear 必须原样生效"
-        )
-
-        // 旧配置仅 glassStyle: 支持系统 -> 液态玻璃 + clear
-        let legacyTheme = ThemeResolution.resolve(
-            interfaceStyle: valid.interfaceStyle,
-            glassStyle: valid.glassStyle,
-            isSupported: true
-        )
-        try coreExpect(
-            legacyTheme.interfaceStyle == .liquidGlass,
-            "旧配置在支持系统上默认液态玻璃"
-        )
-        try coreExpect(legacyTheme.glassStyle == .clear, "保留 clear 模糊")
-        try coreExpect(legacyTheme.usesLiquidGlassEffects, "clear 应使用玻璃 API")
-
-        // 旧配置: 不支持系统 -> classic
-        let legacyClassic = ThemeResolution.resolve(
-            interfaceStyle: nil,
-            glassStyle: .clear,
-            isSupported: false
-        )
-        try coreExpect(
-            legacyClassic.interfaceStyle == .classic,
-            "不支持系统必须 classic"
-        )
-        try coreExpect(
-            !legacyClassic.usesLiquidGlassEffects,
-            "classic 不得使用玻璃 API"
-        )
-
-        // 注入: 存储 liquidGlass 但不支持 -> classic
-        let forced = ThemeResolution.resolve(
-            interfaceStyle: .liquidGlass,
-            glassStyle: .regular,
-            isSupported: false
-        )
-        try coreExpect(forced.interfaceStyle == .classic, "注入不支持强制 classic")
-
-        // 注入: 支持 + liquidGlass
-        let ok = ThemeResolution.resolve(
-            interfaceStyle: .liquidGlass,
-            glassStyle: .material,
-            isSupported: true
-        )
-        try coreExpect(ok.interfaceStyle == .liquidGlass, "支持时保留 liquidGlass")
-        try coreExpect(
-            !ok.usesLiquidGlassEffects,
-            "material 不走 glassEffect"
-        )
-
-        // interfaceStyle 往返
-        let withInterface = try JSONDecoder().decode(
-            OnboardingConfiguration.self,
-            from: Data(
-                #"{"schemaVersion": 2, "interfaceStyle": "classic", "glassStyle": "clear"}"#
-                    .utf8
-            )
-        )
-        try coreExpect(
-            withInterface.interfaceStyle == .classic,
-            "interfaceStyle classic 解码"
-        )
-        try coreExpect(
-            withInterface.resolvedTheme(isLiquidGlassSupported: true).interfaceStyle
-                == .classic,
-            "显式 classic 在支持系统上仍为 classic"
-        )
-
-        // 原子读写往返
-        let tempDir = makeTempDir("config-glass-style")
-        try FileManager.default.createDirectory(
-            at: tempDir, withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
-        var config = OnboardingConfiguration()
-        config.glassStyle = .material
-        config.interfaceStyle = .classic
-        try store.save(config)
-        try coreExpect(
-            store.load()?.glassStyle == .material,
-            "glassStyle 往返必须一致"
-        )
-        try coreExpect(
-            store.load()?.interfaceStyle == .classic,
-            "interfaceStyle 往返必须一致"
-        )
-    }
-
-    /// nothing 主题: 解码与相邻字段保全, 旧版本降级模拟, store 往返
-    /// 与 ThemeResolution 能力矩阵 (3 x isSupported 共 6 组).
+    /// nothing 主题 (C271): 解码、旧值兼容与 store 往返.
     static func configNothingStyleDecodeAndResolution() throws {
-        // 合法值: "nothing" 经 decodeIfPresent 原样生效, 相邻字段不丢失
+        // 合法值: "nothing" 经 decodeIfPresent 原样生效, 相邻字段不丢失.
         let valid = try JSONDecoder().decode(
             OnboardingConfiguration.self,
             from: Data(
-                #"{"schemaVersion": 2, "interfaceStyle": "nothing", "appearanceMode": "dark", "refreshIntervalMinutes": 15, "glassStyle": "clear"}"#
+                #"{"schemaVersion": 2, "interfaceStyle": "nothing", "appearanceMode": "dark", "refreshIntervalMinutes": 15}"#
                     .utf8
             )
         )
-        try coreExpect(
-            valid.interfaceStyle == .nothing,
-            "interfaceStyle nothing 解码"
-        )
+        try coreExpect(valid.interfaceStyle == .nothing, "interfaceStyle nothing 解码")
         try coreExpect(
             valid.appearanceMode == .dark,
             "interfaceStyle 解码不得丢失相邻 appearanceMode"
@@ -558,51 +432,32 @@ extension BruceOnboardingCoreHarness {
             "interfaceStyle 解码不得丢失相邻 refreshIntervalMinutes"
         )
         try coreExpect(
-            valid.glassStyle == .clear,
-            "interfaceStyle 解码不得丢失相邻 glassStyle"
-        )
-        try coreExpect(
-            valid.resolvedTheme(isLiquidGlassSupported: true).interfaceStyle
-                == .nothing,
-            "nothing 在支持系统上透传"
-        )
-        try coreExpect(
-            valid.resolvedTheme(isLiquidGlassSupported: false).interfaceStyle
-                == .nothing,
-            "nothing 在低版本系统上仍透传"
+            valid.resolvedTheme.interfaceStyle == .nothing,
+            "C271: 运行态主题恒为 Nothing"
         )
 
-        // 旧版本降级模拟: 旧枚举 (无 nothing case) 读到 "nothing" 时
-        // decodeIfPresent 抛 typeMismatch 被 try? 吞掉回落 nil.
-        enum LegacyInterfaceStyle: String, Codable {
-            case classic
-            case liquidGlass
-        }
-        let legacyDecoded = try? JSONDecoder().decode(
-            LegacyInterfaceStyle.self,
-            from: Data(#""nothing""#.utf8)
+        // 旧 classic / liquidGlass 值不再可解码: 回落 nil, 相邻字段不丢失, 运行态仍 Nothing.
+        let legacy = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "interfaceStyle": "classic", "appearanceMode": "dark"}"#
+                    .utf8
+            )
         )
         try coreExpect(
-            legacyDecoded == nil,
-            "旧版本枚举读到 nothing 必须回落 nil"
-        )
-        let legacyFallback = ThemeResolution.resolve(
-            interfaceStyle: nil,
-            glassStyle: .clear,
-            isSupported: true
-        )
-        // 旧 app 读不到 nothing 时 interfaceStyle 回落 nil, 沿用旧 app 自身的
-        // 现网默认 (26+ -> liquidGlass, 14-25 -> classic), 不得引入回归.
-        try coreExpect(
-            legacyFallback.interfaceStyle == .liquidGlass,
-            "旧版本回落 nil 后必须沿用现网默认 (26+ -> liquidGlass)"
+            legacy.interfaceStyle == nil,
+            "旧 classic 值必须解码为 nil"
         )
         try coreExpect(
-            legacyFallback.usesLiquidGlassEffects,
-            "旧版本回落 (26+ 默认 liquidGlass) 走玻璃 API"
+            legacy.appearanceMode == .dark,
+            "旧值解码失败不得丢失相邻字段"
+        )
+        try coreExpect(
+            legacy.resolvedTheme.interfaceStyle == .nothing,
+            "旧配置必须解析为 Nothing"
         )
 
-        // 同一条 try? decodeIfPresent 路径: 非法字符串回落 nil 且不炸整份 config
+        // 非法字符串同样按 nil 处理, 不炸整份 config.
         let invalid = try JSONDecoder().decode(
             OnboardingConfiguration.self,
             from: Data(
@@ -610,73 +465,22 @@ extension BruceOnboardingCoreHarness {
                     .utf8
             )
         )
-        try coreExpect(
-            invalid.interfaceStyle == nil,
-            "非法 interfaceStyle 必须按 nil 处理"
-        )
+        try coreExpect(invalid.interfaceStyle == nil, "非法 interfaceStyle 必须按 nil 处理")
         try coreExpect(
             invalid.appearanceMode == .dark,
             "interfaceStyle 非法值不得丢失相邻字段"
         )
 
-        // ThemeResolution.resolve 矩阵: (.classic/.liquidGlass/.nothing)
-        // x (isSupported true/false) 共 6 组
-        for isSupported in [true, false] {
-            let classic = ThemeResolution.resolve(
-                interfaceStyle: .classic,
-                glassStyle: .regular,
-                isSupported: isSupported
-            )
+        // ThemeResolution: nil / .nothing 一律收敛为 Nothing.
+        for stored: InterfaceStylePreference? in [nil, .nothing] {
+            let resolved = ThemeResolution.resolve(interfaceStyle: stored)
             try coreExpect(
-                classic.interfaceStyle == .classic,
-                "classic 必须原样透传"
-            )
-            try coreExpect(
-                !classic.usesLiquidGlassEffects,
-                "classic 不得使用玻璃 API"
-            )
-
-            let liquid = ThemeResolution.resolve(
-                interfaceStyle: .liquidGlass,
-                glassStyle: .regular,
-                isSupported: isSupported
-            )
-            if isSupported {
-                try coreExpect(
-                    liquid.interfaceStyle == .liquidGlass,
-                    "支持系统时 liquidGlass 透传"
-                )
-                try coreExpect(
-                    liquid.usesLiquidGlassEffects,
-                    "支持 + regular 必须走玻璃 API"
-                )
-            } else {
-                try coreExpect(
-                    liquid.interfaceStyle == .classic,
-                    "不支持系统时 liquidGlass 降级 classic"
-                )
-                try coreExpect(
-                    !liquid.usesLiquidGlassEffects,
-                    "降级 classic 后不得使用玻璃 API"
-                )
-            }
-
-            let nothing = ThemeResolution.resolve(
-                interfaceStyle: .nothing,
-                glassStyle: .regular,
-                isSupported: isSupported
-            )
-            try coreExpect(
-                nothing.interfaceStyle == .nothing,
-                "nothing 不随玻璃能力降级, 必须原样透传"
-            )
-            try coreExpect(
-                !nothing.usesLiquidGlassEffects,
-                "nothing 不得使用玻璃 API"
+                resolved.interfaceStyle == .nothing,
+                "C271: 任何 stored 偏好都必须收敛为 Nothing"
             )
         }
 
-        // store 原子读写往返
+        // store 原子读写往返.
         let tempDir = makeTempDir("config-nothing")
         try FileManager.default.createDirectory(
             at: tempDir, withIntermediateDirectories: true
@@ -685,15 +489,10 @@ extension BruceOnboardingCoreHarness {
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
         var config = OnboardingConfiguration()
         config.interfaceStyle = .nothing
-        config.glassStyle = .material
         try store.save(config)
         try coreExpect(
             store.load()?.interfaceStyle == .nothing,
             "interfaceStyle nothing 往返必须一致"
-        )
-        try coreExpect(
-            store.load()?.glassStyle == .material,
-            "nothing 往返不得影响 glassStyle"
         )
     }
 

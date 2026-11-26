@@ -20,18 +20,19 @@ struct HourlyLineCard: View {
     /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你折线.
     var isCollapsed: Bool = false
     var onToggleCollapse: () -> Void = {}
+    /// C271: Tab 模式不再渲染卡内标题行 (标题已上移到顶栏); 栈模式保持默认 true.
+    var showsHeader: Bool = true
     /// C212: 卡片内刷新入口 (Agent 用量模块).
     var onRefresh: () -> Void = {}
     /// C212: 刷新中禁用并旋转图标.
     var isRefreshing: Bool = false
-    /// 14 日柱当前悬停的日期列 (经典 / 液态玻璃柱顶总量与 Nothing 点阵柱共用).
+    /// 14 日柱当前悬停的日期列 (Nothing 点阵柱使用).
     @State private var hoveredDayDate: String?
     /// 面板可见性 (C044): 隐藏时不挂载刷新进度环.
     var panelVisible: Bool = true
     @Environment(\.motionSuppressed) private var motionSuppressed
     /// 展开态正文的自然高度 (C148); 折叠时容器按显式高度动画收到 0.
     @State private var expandedHeight: CGFloat = 0
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
     /// - Parameters:
@@ -41,6 +42,7 @@ struct HourlyLineCard: View {
     ///   - initiallyExpandedAgentIDs: 初始展开的 agent id; nil 表示按 C212 规则默认打开第一个可展开行.
     ///   - isCollapsed: 卡片收起态.
     ///   - onToggleCollapse: 标题行收放回调.
+    ///   - showsHeader: C271 Tab 模式隐藏卡内标题行.
     ///   - onRefresh: 正文刷新回调.
     ///   - isRefreshing: 刷新中状态.
     ///   - panelVisible: 面板可见性, 用于刷新图标旋转门控.
@@ -50,6 +52,7 @@ struct HourlyLineCard: View {
         dailyLegend: [UsageLegendItem] = [],
         initiallyExpandedAgentIDs: Set<String>? = nil,
         isCollapsed: Bool = false,
+        showsHeader: Bool = true,
         onToggleCollapse: @escaping () -> Void = {},
         onRefresh: @escaping () -> Void = {},
         isRefreshing: Bool = false,
@@ -59,6 +62,7 @@ struct HourlyLineCard: View {
         self.dailyDays = dailyDays
         self.dailyLegend = dailyLegend
         self.isCollapsed = isCollapsed
+        self.showsHeader = showsHeader
         self.onToggleCollapse = onToggleCollapse
         self.onRefresh = onRefresh
         self.isRefreshing = isRefreshing
@@ -70,15 +74,17 @@ struct HourlyLineCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CollapsibleCardHeader(
-                title: "Agent 用量",
-                isCollapsed: isCollapsed,
-                onToggle: onToggleCollapse,
-                cardID: .hourly
-            ) {
-                EmptyView()
-            } mini: {
-                collapsedMini
+            if showsHeader {
+                CollapsibleCardHeader(
+                    title: "Agent 用量",
+                    isCollapsed: isCollapsed,
+                    onToggle: onToggleCollapse,
+                    cardID: .hourly
+                ) {
+                    EmptyView()
+                } mini: {
+                    collapsedMini
+                }
             }
             // C148: 正文高度是显式可动画值, 由标题行按钮的同一条 withAnimation 驱动.
             ZStack(alignment: .top) {
@@ -154,16 +160,14 @@ struct HourlyLineCard: View {
     private var collapsedMini: some View {
         if viewModel.isEmptyToday {
             Text("暂无用量")
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 9.5))
-                .foregroundStyle(isNothing ? nothingTokens.disabled : Color.secondary)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(nothingTokens.disabled)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .transition(.opacity)
         } else {
             let points = viewModel.collapsedPoints
             let maxPoint = max(points.max() ?? 0, 1)
-            let lineColor = isNothing
-                ? nothingTokens.secondary
-                : Color.primary.opacity(0.5)
+            let lineColor = nothingTokens.secondary
             HStack(spacing: 15) {
                 Chart(Array(points.enumerated()), id: \.offset) { point in
                     LineMark(
@@ -172,19 +176,6 @@ struct HourlyLineCard: View {
                     )
                     .foregroundStyle(lineColor)
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
-                    if !isNothing {
-                        AreaMark(
-                            x: .value("时", point.offset),
-                            y: .value("量", point.element)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [lineColor.opacity(0.18), lineColor.opacity(0.02)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                    }
                 }
                 .chartYScale(domain: 0...(Double(maxPoint) * 1.1))
                 .chartXAxis(.hidden)
@@ -194,24 +185,16 @@ struct HourlyLineCard: View {
                 // 阻断继承父级的折叠动画事务，避免迷你折线在进入时执行线条形变或插值拉扯，保持静态保真
                 .transaction { $0.animation = nil }
                 Text(viewModel.collapsedPeakText)
-                    .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                    .font(NothingFont.mono(9))
                     .monospacedDigit()
-                    .foregroundStyle(isNothing
-                        ? nothingTokens.disabled
-                        : Color.primary.opacity(0.5))
+                    .foregroundStyle(nothingTokens.disabled)
                     .fixedSize()
             }
             .transition(.opacity)
         }
     }
 
-    // MARK: - Nothing 主题判定
-
-    /// Nothing 主题判定: 所有视觉差异必须收拢在该条件内,
-    /// classic / liquidGlass 走原有代码路径, 渲染结果逐像素等价.
-    private var isNothing: Bool {
-        theme.interfaceStyle == .nothing
-    }
+    // MARK: - Nothing 主题 token
 
     /// Nothing 单色文本/表面 token (定稿 CTX 数值, 按外观取值).
     private var nothingTokens: NothingTokens {
@@ -226,7 +209,7 @@ struct HourlyLineCard: View {
             dailyChart
                 // 与标题和高柱标注之间留足间距, 避免遮挡;
                 // Nothing 列顶悬停标注向上 overlay 11pt, 需要更大上方留白.
-                .padding(.top, isNothing ? 20 : 8)
+                .padding(.top, 20)
             dailyDateAxis
                 .padding(.top, 3)
             if !dailyLegend.isEmpty {
@@ -236,92 +219,20 @@ struct HourlyLineCard: View {
         }
     }
 
-    /// 区块小标题: Nothing 用 .label 样式 (mono 10 + 字距 + secondary),
-    /// 其余主题保持 10pt 半粗 + 字距.
+    /// 区块小标题: .label 样式 (mono 10 + 字距 + secondary).
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
-            .font(isNothing ? NothingFont.mono(10) : .system(size: 10, weight: .semibold))
-            .tracking(isNothing ? 0.9 : 0.4)
-            .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.55))
+            .font(NothingFont.mono(10))
+            .tracking(0.9)
+            .foregroundStyle(nothingTokens.secondary)
     }
 
     private var maxDayTotal: Int {
         max(dailyDays.map(\.total).max() ?? 0, 1)
     }
 
-    @ViewBuilder
     private var dailyChart: some View {
-        if isNothing {
-            nothingDailyChart
-        } else {
-            dailyChartClassic
-        }
-    }
-
-    private var dailyChartClassic: some View {
-        Chart {
-            ForEach(dailyDays, id: \.date) { day in
-                if day.segments.isEmpty {
-                    // 无量日保留零值占位, 让总量标注和列位不塌掉.
-                    BarMark(
-                        x: .value("日期", day.date),
-                        y: .value("Tokens", 0)
-                    )
-                    .foregroundStyle(.clear)
-                    .annotation(position: .top) {
-                        dayTotalLabel(day)
-                    }
-                } else {
-                    ForEach(day.segments, id: \.agentID) { segment in
-                        BarMark(
-                            x: .value("日期", day.date),
-                            y: .value("Tokens", segment.value)
-                        )
-                        .foregroundStyle(Color(hex: segment.color.hex))
-                        .cornerRadius(1.5)
-                        .annotation(position: .top) {
-                            // 只在每列最顶端分段上标注当日总量.
-                            if segment.agentID == day.segments.last?.agentID {
-                                dayTotalLabel(day)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // 固定 Y 域, 各列按同一比例尺呈现.
-        // C218: 顶部留 20% 余量给最高柱的 .annotation(.top) 总量标注, 避免被
-        // chart frame 裁掉上半截; 最高柱约 83% 高.
-        .chartYScale(domain: 0...(Double(maxDayTotal) * 1.20))
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .frame(height: 68)
-        // C222: 总量标注默认隐藏, 悬停该日期列才显示 (与 Nothing 点阵柱同语义).
-        // chartOverlay 用 plotFrame + value(atX:) 精确映射日期, 不受图表内边距影响.
-        .chartOverlay { proxy in
-            GeometryReader { geometry in
-                Rectangle()
-                    .fill(Color.clear)
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            guard let plotFrame = proxy.plotFrame else {
-                                hoveredDayDate = nil
-                                return
-                            }
-                            let frame = geometry[plotFrame]
-                            guard frame.contains(location) else {
-                                hoveredDayDate = nil
-                                return
-                            }
-                            hoveredDayDate = proxy.value(atX: location.x - frame.minX, as: String.self)
-                        case .ended:
-                            hoveredDayDate = nil
-                        }
-                    }
-            }
-        }
+        nothingDailyChart
     }
 
     // MARK: Nothing 点阵柱状图
@@ -449,8 +360,8 @@ struct HourlyLineCard: View {
             Spacer()
             Text("今天")
         }
-        .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
-        .foregroundStyle(isNothing ? nothingTokens.disabled : Color.primary.opacity(0.55))
+        .font(NothingFont.mono(9))
+        .foregroundStyle(nothingTokens.disabled)
     }
 
     /// agent 图例: 色块 + 名称, 描述柱状图分段颜色.
@@ -463,21 +374,20 @@ struct HourlyLineCard: View {
                     AgentBrandBadge(
                         asset: AgentBrandPalette.asset(forAgent: item.agentID),
                         seriesHex: item.color.hex,
-                        size: isNothing ? 9 : 12,
+                        size: 9,
                         nothingHex: PanelAgentColor.nothingRampHex(
                             agentID: item.agentID,
                             darkMode: colorScheme == .dark
                         ),
                         fallbackMonogram: String(item.name.prefix(1)).uppercased(),
-                        // C218: 图例 12pt 也保留品牌真彩/位图与系列色环, 不退回系列色瓷砖.
-                        usesBrandChrome: !isNothing
+                        usesBrandChrome: false
                     )
                     Text(item.name)
                 }
             }
         }
-        .font(isNothing ? NothingFont.mono(9) : .system(size: 9.5))
-        .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.75))
+        .font(NothingFont.mono(9))
+        .foregroundStyle(nothingTokens.secondary)
         // C217: 卡片内容由 .clipped() 裁在内容左缘, 徽章 seriesRing 外扩 1.5pt,
         // 首项贴边会缺左边; 留 3pt 让色环与 tile 左圆角完整.
         .padding(.leading, 3)
@@ -537,27 +447,23 @@ struct HourlyLineCard: View {
             VStack(spacing: 7) {
                 Image(systemName: "waveform.path.ecg")
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(isNothing ? nothingTokens.secondary : Color.secondary)
+                    .foregroundStyle(nothingTokens.secondary)
                     .frame(width: 36, height: 36)
                     .overlay {
-                        RoundedRectangle(cornerRadius: isNothing ? 2 : 9, style: .continuous)
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .strokeBorder(
-                                isNothing
-                                    ? Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#333333"))
-                                    : Color.primary.opacity(0.18),
+                                Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#333333")),
                                 style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                             )
                     }
 
                 Text(title)
-                    .font(isNothing
-                        ? NothingFont.ui(11.5, weight: .semibold)
-                        : .system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(isNothing ? nothingTokens.primary : Color.primary)
+                    .font(NothingFont.ui(11.5, weight: .semibold))
+                    .foregroundStyle(nothingTokens.primary)
 
                 Text("检测到 Agent 活动后，这里会显示今日逐小时折线与模型、项目明细。")
-                    .font(isNothing ? NothingFont.ui(10) : .system(size: 10.5))
-                    .foregroundStyle(isNothing ? nothingTokens.secondary : Color.secondary)
+                    .font(NothingFont.ui(10))
+                    .foregroundStyle(nothingTokens.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(1.5)
                     .frame(maxWidth: 258)
@@ -577,15 +483,9 @@ struct HourlyLineCard: View {
 
     /// 行间 1pt 分隔线, 对应 mockup `border-top: 1px solid rgba(0,0,0,.05)`;
     /// 深色下改为低透明白. Nothing 下用 border token 纯色.
-    @ViewBuilder
     private var rowDivider: some View {
-        if isNothing {
-            nothingTokens.border
-                .frame(height: 1)
-        } else {
-            Color.adaptive(light: Color.black.opacity(0.05), dark: Color.white.opacity(0.10))
-                .frame(height: 1)
-        }
+        nothingTokens.border
+            .frame(height: 1)
     }
 
     @ViewBuilder
@@ -616,105 +516,64 @@ struct HourlyLineCard: View {
         .contentShape(Rectangle())
     }
 
-    /// 行首: Nothing 用绿阶色点 (7pt) 区分 agent, 与柱状图分段/图例同源;
-    /// 其余主题保持品牌色块.
+    /// 行首: Nothing 用绿阶色点 (7pt) 区分 agent, 与柱状图分段/图例同源.
     private func headRow(_ row: HourlyAgentRow, expanded: Bool, index: Int) -> some View {
         HStack(spacing: 7) {
-            // Agent 品牌徽章 (C161): Nothing 走绿阶单色, 其余真彩档.
+            // Agent 品牌徽章 (C161): Nothing 走绿阶单色.
             AgentBrandBadge(
                 asset: AgentBrandPalette.asset(forAgent: row.agentID),
                 seriesHex: row.color.hex,
-                size: isNothing ? 9 : 14,
+                size: 9,
                 nothingHex: PanelAgentColor.nothingRampHex(
                     agentID: row.agentID,
                     darkMode: colorScheme == .dark
                 ),
                 fallbackMonogram: String(row.name.prefix(1)).uppercased()
             )
-            if isNothing {
-                Text(row.name)
-                    .font(NothingFont.ui(12, weight: .medium))
-                    .foregroundStyle(nothingTokens.primary)
-            } else {
-                Text(row.name)
-                    .font(.system(size: 11, weight: .semibold))
-            }
+            Text(row.name)
+                .font(NothingFont.ui(12, weight: .medium))
+                .foregroundStyle(nothingTokens.primary)
             if row.isExpandable {
-                if isNothing {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(nothingTokens.disabled)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(nothingTokens.disabled)
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
             }
             Spacer(minLength: 7)
-            if isNothing {
-                Text(row.todayTotalText)
-                    .font(NothingFont.mono(12, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(nothingTokens.primary)
-            } else {
-                Text(row.todayTotalText)
-                    .font(.system(size: 11, weight: .bold))
-                    .monospacedDigit()
-            }
+            Text(row.todayTotalText)
+                .font(NothingFont.mono(12, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(nothingTokens.primary)
         }
         // C217: 行首徽章同样避让 .clipped() 左缘, 3pt 留白保证系列色环完整.
         .padding(.leading, 3)
     }
 
-    /// 24 点折线 (0-23 时): agent 色 1.5pt 线 + 淡渐变面积;
-    /// Nothing 主题取外观 accent (深色 #30D158 / 浅色 #D4A843, C221), 与明细条同源.
+    /// 24 点折线 (0-23 时): 外观 accent (深色 #30D158 / 浅色 #D4A843, C221) 线 + 淡渐变面积.
     private func hourlyChart(_ row: HourlyAgentRow, index: Int) -> some View {
-        let color = agentColor(row)
         let maxPoint = max(row.points.max() ?? 0, 1)
         let heroAccent = Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#30D158"))
         return Chart(Array(row.points.enumerated()), id: \.offset) { point in
-            if isNothing {
-                LineMark(
-                    x: .value("时", point.offset),
-                    y: .value("量", point.element)
+            LineMark(
+                x: .value("时", point.offset),
+                y: .value("量", point.element)
+            )
+            .foregroundStyle(heroAccent)
+            .lineStyle(StrokeStyle(lineWidth: 1.5))
+            AreaMark(
+                x: .value("时", point.offset),
+                y: .value("量", point.element)
+            )
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [
+                        heroAccent.opacity(colorScheme == .dark ? 0.16 : 0.12),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-                .foregroundStyle(heroAccent)
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
-                AreaMark(
-                    x: .value("时", point.offset),
-                    y: .value("量", point.element)
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            heroAccent.opacity(colorScheme == .dark ? 0.16 : 0.12),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            } else {
-                LineMark(
-                    x: .value("时", point.offset),
-                    y: .value("量", point.element)
-                )
-                .foregroundStyle(color)
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
-                AreaMark(
-                    x: .value("时", point.offset),
-                    y: .value("量", point.element)
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [color.opacity(0.18), color.opacity(0.02)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            }
+            )
         }
         // 顶部留一点余量, 避免峰值线被裁掉.
         .chartYScale(domain: 0...(Double(maxPoint) * 1.1))
@@ -743,9 +602,7 @@ struct HourlyLineCard: View {
             if !row.models.isEmpty {
                 compactShareSection(
                     title: "模型占比",
-                    countText: isNothing
-                        ? "\(row.models.count) MODELS"
-                        : "\(row.models.count) 个模型",
+                    countText: "\(row.models.count) MODELS",
                     bars: row.models,
                     colorAt: { modelTierColor(row: row, index: $0) }
                 )
@@ -757,9 +614,7 @@ struct HourlyLineCard: View {
                 }
                 compactShareSection(
                     title: "项目占比",
-                    countText: isNothing
-                        ? "\(row.projects.count) WORKSPACES"
-                        : "\(row.projects.count) 个工程",
+                    countText: "\(row.projects.count) WORKSPACES",
                     bars: row.projects,
                     colorAt: { projectTierColor(index: $0) }
                 )
@@ -779,13 +634,13 @@ struct HourlyLineCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title)
-                    .font(isNothing ? NothingFont.mono(9) : .system(size: 9, weight: .semibold))
-                    .tracking(isNothing ? 0.8 : 0.3)
-                    .foregroundStyle(isNothing ? nothingTokens.secondary : Color.primary.opacity(0.55))
+                    .font(NothingFont.mono(9, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(nothingTokens.secondary)
                 Spacer(minLength: 8)
                 Text(countText)
-                    .font(isNothing ? NothingFont.mono(8.5) : .system(size: 9))
-                    .foregroundStyle(isNothing ? nothingTokens.disabled : Color.secondary)
+                    .font(NothingFont.mono(8.5))
+                    .foregroundStyle(nothingTokens.disabled)
             }
             .padding(.bottom, 5)
 
@@ -796,7 +651,7 @@ struct HourlyLineCard: View {
     }
 
     /// 单行: 序号 / 名称 / 内联占比条 / 百分比 / Token.
-    /// 经典与 Nothing 只换字体、圆角与色阶, 不改变行结构.
+    /// 仅换字体、圆角与色阶, 不改变行结构.
     private func compactShareRow(
         _ bar: DistributionBar,
         index: Int,
@@ -804,30 +659,26 @@ struct HourlyLineCard: View {
     ) -> some View {
         HStack(spacing: 6) {
             Text(String(format: "%02d", index + 1))
-                .font(isNothing
-                    ? NothingFont.mono(8.5, weight: .bold)
-                    : .system(size: 8.5, weight: .semibold, design: .monospaced))
+                .font(NothingFont.mono(8.5, weight: .bold))
                 .foregroundStyle(color)
-                .frame(width: isNothing ? 16 : 18, alignment: .leading)
+                .frame(width: 16, alignment: .leading)
             Text(bar.name)
-                .font(isNothing ? NothingFont.mono(9.5) : .system(size: 9.5))
-                .foregroundStyle(isNothing ? nothingTokens.primary : Color.primary.opacity(0.9))
+                .font(NothingFont.mono(9.5))
+                .foregroundStyle(nothingTokens.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: isNothing ? 92 : 100, alignment: .leading)
+                .frame(width: 92, alignment: .leading)
             compactShareBar(share: bar.share, color: color)
                 .frame(maxWidth: .infinity)
             Text(Self.sharePercentText(bar.share))
-                .font(isNothing
-                    ? NothingFont.mono(9.5, weight: .bold)
-                    : .system(size: 9.5, weight: .semibold))
+                .font(NothingFont.mono(9.5, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(color)
                 .frame(width: 28, alignment: .trailing)
             Text(bar.totalText)
-                .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                .font(NothingFont.mono(9))
                 .monospacedDigit()
-                .foregroundStyle(isNothing ? nothingTokens.disabled : Color.secondary)
+                .foregroundStyle(nothingTokens.disabled)
                 .frame(width: 42, alignment: .trailing)
         }
         .frame(height: 19)
@@ -838,14 +689,9 @@ struct HourlyLineCard: View {
     private func compactShareBar(share: Double, color: Color) -> some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
-                    .fill(isNothing
-                        ? nothingTokens.raised
-                        : Color.adaptive(
-                            light: Color.black.opacity(0.08),
-                            dark: Color.white.opacity(0.12)
-                        ))
-                RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
+                Rectangle()
+                    .fill(nothingTokens.raised)
+                Rectangle()
                     .fill(color)
                     .frame(width: max(2, proxy.size.width * min(max(share, 0), 1)))
             }
@@ -856,29 +702,18 @@ struct HourlyLineCard: View {
     /// 两段之间的 1px 发丝分隔线.
     private var compactSectionDivider: some View {
         Rectangle()
-            .fill(isNothing
-                ? nothingTokens.border
-                : Color.adaptive(
-                    light: Color.black.opacity(0.08),
-                    dark: Color.white.opacity(0.12)
-                ))
+            .fill(nothingTokens.border)
             .frame(height: 1)
     }
 
-    /// 模型档位色: 经典沿用 agent 四档色阶; Nothing 用绿阶.
+    /// 模型档位色: Nothing 绿阶.
     private func modelTierColor(row: HourlyAgentRow, index: Int) -> Color {
-        if isNothing {
-            return nothingTierColor(index: index)
-        }
-        return Color(hex: row.color.distributionHex(at: index))
+        nothingTierColor(index: index)
     }
 
-    /// 项目档位色: 经典沿用冻结青阶; Nothing 用绿阶.
+    /// 项目档位色: Nothing 绿阶.
     private func projectTierColor(index: Int) -> Color {
-        if isNothing {
-            return nothingTierColor(index: index)
-        }
-        return Color(hex: Self.projectBarShades[min(index, Self.projectBarShades.count - 1)])
+        nothingTierColor(index: index)
     }
 
     /// Nothing 档位色 (与 hero accent / agent ramp 同源): 深色亮绿→暗绿, 浅色杏色三档 (C221).
@@ -903,17 +738,6 @@ struct HourlyLineCard: View {
 
     // MARK: - 颜色
 
-    private func agentColor(_ row: HourlyAgentRow) -> Color {
-        Color(hex: row.color.hex)
-    }
-
-    /// 项目分布同色系阶梯 (青→浅青), 与 agent 主色分离且段间可区分.
-    private static let projectBarShades = [
-        "#30b0c7",
-        "#55c2d4",
-        "#7ad4e1",
-        "#9fe5ed",
-    ]
 }
 
 // MARK: - Nothing 主题样式辅助

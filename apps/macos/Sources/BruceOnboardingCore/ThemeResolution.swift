@@ -2,89 +2,35 @@ import Foundation
 
 // MARK: - InterfaceStylePreference
 
-/// 界面风格: 经典 (全版本), 液态玻璃 (需 macOS 26+)
-/// 与 Nothing 单色点阵仪器面板风 (不依赖玻璃 API, macOS 14+ 全版本可用).
+/// 界面风格 (C271): 产品仅保留 Nothing 单色点阵仪器面板风.
+/// 经典 (高斯云母) 与液态玻璃 (系统玻璃 / 材质退化) 已产品级退役,
+/// 磁盘上遗留的 `classic` / `liquidGlass` 字符串不再能解码为可选项.
 public enum InterfaceStylePreference: String, Codable, Equatable, Sendable, CaseIterable {
-    case classic
-    case liquidGlass
     case nothing
-}
-
-// MARK: - LiquidGlassCapability
-
-/// 液态玻璃能力探测. 生产默认读系统版本; 测试可注入固定布尔.
-public enum LiquidGlassCapability: Sendable {
-    /// 当前进程是否支持系统液态玻璃 API (macOS 26+).
-    public static var isSupported: Bool {
-        if #available(macOS 26, *) {
-            return true
-        }
-        return false
-    }
 }
 
 // MARK: - ResolvedTheme
 
-/// 运行时已解析的主题: 始终可安全驱动渲染分支.
+/// 运行时已解析的主题: C271 起只有 Nothing 一种, 恒可安全驱动渲染.
 public struct ResolvedTheme: Equatable, Sendable {
     public let interfaceStyle: InterfaceStylePreference
-    /// 仅当 interfaceStyle == .liquidGlass 时用于玻璃变体; classic 下仍可有值但不驱动玻璃 API.
-    public let glassStyle: GlassStylePreference
-    public let usesLiquidGlassEffects: Bool
 
-    public init(
-        interfaceStyle: InterfaceStylePreference,
-        glassStyle: GlassStylePreference,
-        usesLiquidGlassEffects: Bool
-    ) {
+    public init(interfaceStyle: InterfaceStylePreference = .nothing) {
         self.interfaceStyle = interfaceStyle
-        self.glassStyle = glassStyle
-        self.usesLiquidGlassEffects = usesLiquidGlassEffects
     }
+
+    /// 唯一运行态主题.
+    public static let nothing = ResolvedTheme()
 }
 
 // MARK: - ThemeResolution
 
-/// 纯函数主题解析: stored 偏好 + 能力旗标 -> ResolvedTheme.
+/// 纯函数主题解析 (C271): 任何 stored 偏好都收敛为 Nothing.
 public enum ThemeResolution: Sendable {
-    /// - Parameters:
-    ///   - interfaceStyle: 磁盘存储的界面风格; nil 表示缺键.
-    ///   - glassStyle: 磁盘存储的模糊风格; nil 表示缺键.
-    ///   - isSupported: 是否支持液态玻璃 (可注入).
+    /// - Parameter interfaceStyle: 磁盘存储的界面风格; 旧值 / nil 一律忽略.
     public static func resolve(
-        interfaceStyle: InterfaceStylePreference?,
-        glassStyle: GlassStylePreference?,
-        isSupported: Bool
+        interfaceStyle: InterfaceStylePreference?
     ) -> ResolvedTheme {
-        let blur = glassStyle ?? .regular
-        let interface: InterfaceStylePreference
-        switch interfaceStyle {
-        case .classic:
-            interface = .classic
-        case .liquidGlass:
-            // 不支持玻璃 API (macOS 26-) 时降级 classic.
-            interface = isSupported ? .liquidGlass : .classic
-        case .nothing:
-            // Nothing 不依赖玻璃 API, macOS 14+ 全版本可用,
-            // 不随 isSupported 降级, 原样透传.
-            interface = .nothing
-        case nil:
-            // 26+ 且无 interfaceStyle: 旧配置默认液态玻璃 (保持现网体验);
-            // 26- 降级 classic.
-            interface = isSupported ? .liquidGlass : .classic
-        }
-        let usesEffects = isSupported && interface == .liquidGlass && blur.usesGlassMaterial
-        return ResolvedTheme(
-            interfaceStyle: interface,
-            glassStyle: blur,
-            usesLiquidGlassEffects: usesEffects
-        )
-    }
-}
-
-extension GlassStylePreference {
-    /// 是否在液态玻璃模式下走真实 glassEffect (material 为材质退化).
-    public var usesGlassMaterial: Bool {
-        self != .material
+        .nothing
     }
 }

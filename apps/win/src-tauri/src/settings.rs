@@ -166,7 +166,8 @@ impl Default for AppSettings {
             subscription_providers: None,
             pricing_overrides: BTreeMap::new(),
             refresh_interval_secs: DEFAULT_REFRESH_INTERVAL_SECS,
-            theme: "fluent".to_owned(),
+            // C271: 界面风格产品级收敛为 Nothing.
+            theme: "nothing".to_owned(),
             card_order: vec![
                 "usage".to_owned(),
                 "subscription".to_owned(),
@@ -350,6 +351,9 @@ fn load_settings_uncached(root: &Path) -> AppSettings {
             // 纵深防御: validate 只拦保存入口, 手改文件可携带越界间隔
             // (如 0 会造成零间隔 busy-loop 采集), 加载侧统一钳制 (C007)。
             settings.refresh_interval_secs = settings.refresh_interval_secs.clamp(60, 86_400);
+            // C271: 经典 / 液态玻璃退役, 旧 theme 值在加载侧迁移为 Nothing
+            // (保留其余字段, 不因退役值回落整份默认配置).
+            settings.theme = "nothing".to_owned();
             // 先按原样校验 (未知 Provider 仍一律拒绝), 再派生启用集合 (C090):
             // 手改文件造成的 enabled 漂移在此纠正, 不影响既有「非法即回落默认」语义。
             if validate_settings(&settings).is_ok() {
@@ -533,8 +537,8 @@ pub fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if !(60..=86_400).contains(&settings.refresh_interval_secs) {
         return Err("刷新间隔必须在 60 秒到 24 小时之间".to_owned());
     }
-    if settings.theme != "fluent" && settings.theme != "nothing" {
-        return Err("主题仅支持 fluent / nothing".to_owned());
+    if settings.theme != "nothing" {
+        return Err("主题仅支持 nothing".to_owned());
     }
     if settings.egress_groups.len() > 32 {
         return Err("出口国家组过多".to_owned());
@@ -742,8 +746,11 @@ mod tests {
             "updateLastCheckAt": null,
             "updateSkippedVersion": null
         });
-        let parsed: AppSettings = serde_json::from_value(legacy).expect("旧配置必须可解析");
+        let mut parsed: AppSettings = serde_json::from_value(legacy).expect("旧配置必须可解析");
         assert_eq!(parsed.motion_preference, "system");
+        // C271: 旧 theme 值在加载侧迁移为 Nothing, 其余字段不受影响.
+        assert_eq!(parsed.theme, "fluent");
+        parsed.theme = "nothing".to_owned();
         assert!(validate_settings(&parsed).is_ok());
     }
 

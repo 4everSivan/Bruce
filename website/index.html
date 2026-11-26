@@ -89,39 +89,39 @@
 
       <div class="hero__right">
         <div class="deck-host" id="panel-stage">
-          <div class="deck" id="panel-deck" role="group" aria-label="三种原生材质的菜单栏面板样张">
-            <div class="deck__item" data-theme="nothing" style="--i:0">
-              <button class="deck__peek" type="button" data-deck-theme="nothing" aria-expanded="false" aria-controls="panel-nothing-sheet">
-                <span class="deck__peek-k">Nothing 点阵</span>
+          <div class="deck" id="panel-deck" role="group" aria-label="Nothing 单色平面菜单栏面板样张">
+            <div class="deck__item" data-theme="quota" style="--i:0">
+              <button class="deck__peek" type="button" data-deck-theme="quota" aria-expanded="false" aria-controls="panel-quota-sheet">
+                <span class="deck__peek-k">Nothing</span>
                 <span class="deck__peek-v"></span>
               </button>
-              <div class="deck__sheet" id="panel-nothing-sheet">
-                <div class="bruce-panel" id="panel-nothing"></div>
+              <div class="deck__sheet" id="panel-quota-sheet">
+                <div class="bruce-panel" id="panel-quota"></div>
               </div>
             </div>
-            <div class="deck__item" data-theme="liquid" style="--i:1">
-              <button class="deck__peek" type="button" data-deck-theme="liquid" aria-expanded="false" aria-controls="panel-liquid-sheet">
-                <span class="deck__peek-k">液态玻璃</span>
+            <div class="deck__item" data-theme="hourly" style="--i:1">
+              <button class="deck__peek" type="button" data-deck-theme="hourly" aria-expanded="false" aria-controls="panel-hourly-sheet">
+                <span class="deck__peek-k">Nothing</span>
                 <span class="deck__peek-v"></span>
               </button>
-              <div class="deck__sheet" id="panel-liquid-sheet">
-                <div class="bruce-panel" id="panel-liquid"></div>
+              <div class="deck__sheet" id="panel-hourly-sheet">
+                <div class="bruce-panel" id="panel-hourly"></div>
               </div>
             </div>
-            <div class="deck__item" data-theme="classic" style="--i:2">
-              <button class="deck__peek" type="button" data-deck-theme="classic" aria-expanded="false" aria-controls="panel-classic-sheet">
-                <span class="deck__peek-k">经典材质</span>
+            <div class="deck__item" data-theme="token" style="--i:2">
+              <button class="deck__peek" type="button" data-deck-theme="token" aria-expanded="false" aria-controls="panel-token-sheet">
+                <span class="deck__peek-k">Nothing</span>
                 <span class="deck__peek-v"></span>
               </button>
-              <div class="deck__sheet" id="panel-classic-sheet">
-                <div class="bruce-panel" id="panel-classic"></div>
+              <div class="deck__sheet" id="panel-token-sheet">
+                <div class="bruce-panel" id="panel-token"></div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="deck-switcher" id="deck-switcher">
-          <span class="deck-switcher__hint">点击任意面板提至前景 · 样例数据</span>
+          <span class="deck-switcher__hint">点击任意卡片提至前景 · Nothing 单色平面 · 样例数据</span>
         </div>
       </div>
 
@@ -136,7 +136,7 @@
       <div class="section__head">
         <div class="section__folio">
           <span class="section__eyebrow"><span class="idx">01</span><span class="sep">/</span><span class="name">菜单栏面板</span></span>
-          <span class="section__meta">440pt 定宽 · 无内部滚动条 · 3 套原生材质</span>
+          <span class="section__meta">440pt 定宽 · 无内部滚动条 · Nothing 单色平面</span>
         </div>
         <div class="section__title">
           <h2 class="h2" id="panel-title">收在菜单栏里，点开就是<b class="hl">整本实况账</b></h2>
@@ -146,7 +146,7 @@
       <div class="anatomy">
         <div class="anatomy__copy">
           <p class="body-copy">平时收在屏幕右上角，只占一枚 22pt 单环配额轨与最多三项实时读数；点开即落下 440pt 宽的无边框原生面板，窗口高度随卡片展开自动贴合，不藏二级深页。</p>
-          <p class="body-copy">三张卡片支持单独收起与拖拽排布。点击下方卡片条目或右侧面板顶栏图标，可切换查看各卡片在对应原生材质下的真实排版。</p>
+          <p class="body-copy">三张卡片支持单独收起与拖拽排布。点击下方卡片条目或右侧面板顶栏图标，可切换查看各卡片的真实排版。</p>
           <p class="panel-hint">注：右侧界面按 SwiftUI 源码尺寸与色值在网页中 1:1 绘制，数值为本机样例快照。</p>
         </div>
 
@@ -168,7 +168,7 @@
             <span class="anatomy-tab__body">
               <span class="anatomy-tab__top">
                 <span class="n">订阅用量</span>
-                <span class="anatomy-tab__skin">经典材质</span>
+                <span class="anatomy-tab__skin">Nothing 点阵</span>
               </span>
               <span class="d">各服务商 5 小时、周、月计费窗口进度与重置时刻；支持多账号折叠子卡与余额型双槽视图。</span>
             </span>
@@ -179,7 +179,7 @@
             <span class="anatomy-tab__body">
               <span class="anatomy-tab__top">
                 <span class="n">Agent 用量</span>
-                <span class="anatomy-tab__skin">液态玻璃</span>
+                <span class="anatomy-tab__skin">Nothing 点阵</span>
               </span>
               <span class="d">近 14 日多 Agent 堆叠柱状分布与今日 0–23 时活跃曲线，展开可核对模型占比。</span>
             </span>
@@ -471,7 +471,7 @@
         <span class="dl-line__go" aria-hidden="true">→</span>
       </a>
       <div class="colophon__download-foot">
-        <span>液态玻璃材质需 macOS 26+（低版本自动回落经典材质）· MIT 许可证</span>
+        <span>Nothing 单色平面 · MIT 许可证</span>
         <span>
           <a class="foot-link" href="https://github.com/4everSivan/Bruce/releases" target="_blank" rel="noopener">历史版本与 SHA-256 清单 ↗</a>
           &nbsp;·&nbsp;

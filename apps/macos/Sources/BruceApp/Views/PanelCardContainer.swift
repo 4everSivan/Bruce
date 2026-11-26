@@ -5,19 +5,13 @@ import SwiftUI
 
 // 面板装配层共享的卡片容器与底栏按钮样式.
 
-/// 面板卡片容器: 液态玻璃模式下 glassEffect (圆角 16); 经典/哑光退化为材质或半透明填充;
-/// Nothing 主题按定稿为纯色卡片 (圆角 5) + 1px 边框, 无高光无阴影.
+/// 面板卡片容器 (C271): Nothing 纯色卡片 + 1px 边框, 无高光无阴影.
 struct PanelCardContainer<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.BruceResolvedTheme) private var theme
     private let content: Content
 
     init(@ViewBuilder content: () -> Content) {
         self.content = content()
-    }
-
-    private var isNothingSurface: Bool {
-        theme.interfaceStyle == .nothing
     }
 
     private var shape: RoundedRectangle {
@@ -28,10 +22,7 @@ struct PanelCardContainer<Content: View>: View {
     }
 
     private var surfaceTokens: DashboardGlassSurfaceTokens {
-        DashboardGlassSurfaceTokens.resolve(
-            theme: theme,
-            colorScheme: colorScheme
-        )
+        DashboardGlassSurfaceTokens.resolve(colorScheme: colorScheme)
     }
 
     var body: some View {
@@ -43,28 +34,20 @@ struct PanelCardContainer<Content: View>: View {
                 shape.strokeBorder(surfaceTokens.borderColor, lineWidth: 1)
             }
             .clipShape(shape)
-            .shadow(
-                color: surfaceTokens.shadowColor,
-                radius: isNothingSurface ? 0 : 5,
-                y: 1
-            )
     }
 
     @ViewBuilder
     private var cardBackground: some View {
         dashboardGlassBackground(
-            theme: theme,
             shape: shape,
             colorScheme: colorScheme,
-            fallback: .card,
             surface: .card
         )
     }
-
 }
 
 extension View {
-    /// 面板底栏按钮: 液态玻璃模式使用自适应控件面, 避免白色背景下失去对比度.
+    /// 面板底栏按钮: C271 起固定 Nothing 纯色控件面.
     @ViewBuilder
     func panelGlassButtonStyle() -> some View {
         modifier(PanelGlassButtonStyleModifier())
@@ -72,44 +55,14 @@ extension View {
 }
 
 private struct PanelGlassButtonStyleModifier: ViewModifier {
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
-        if plan.usesInteractiveGlass {
-            if #available(macOS 26, *) {
-                content.buttonStyle(
-                    DashboardPanelGlassButtonStyle(
-                        tokens: DashboardGlassSurfaceTokens.resolve(
-                            theme: theme,
-                            colorScheme: colorScheme
-                        )
-                    )
-                )
-            } else {
-                content
-            }
-        } else if theme.interfaceStyle == .nothing {
-            content.buttonStyle(
-                NothingPanelButtonStyle(
-                    tokens: DashboardGlassSurfaceTokens.resolve(
-                        theme: theme,
-                        colorScheme: colorScheme
-                    )
-                )
+        content.buttonStyle(
+            NothingPanelButtonStyle(
+                tokens: DashboardGlassSurfaceTokens.resolve(colorScheme: colorScheme)
             )
-        } else {
-            // 经典高斯模糊主题下挂载自适应高斯控件面 (小圆角 3pt)
-            content.buttonStyle(
-                DashboardPanelGlassButtonStyle(
-                    tokens: DashboardGlassSurfaceTokens.resolve(
-                        theme: theme,
-                        colorScheme: colorScheme
-                    )
-                )
-            )
-        }
+        )
     }
 }
 
@@ -137,38 +90,6 @@ private struct NothingPanelButtonStyle: ButtonStyle {
                     .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-    }
-}
-
-/// 面板底栏使用稳定的低对比度控件面, 避免系统 `.glass` 在
-/// 通透背景与 SwiftUI 外观不一致时生成高亮白块. 只作用于底栏按钮,
-/// 不改变按钮 action 或尺寸链路.
-private struct DashboardPanelGlassButtonStyle: ButtonStyle {
-    let tokens: DashboardGlassSurfaceTokens
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            // Anchor controls to the same resolved surface matrix as panel and
-            // cards. A clear panel must not turn controls into white blocks.
-            .foregroundStyle(tokens.controlForegroundColor)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(
-                configuration.isPressed
-                    ? tokens.controlPressedFillColor
-                    : tokens.controlFillColor,
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
-            }
-            .shadow(
-                color: tokens.controlShadowColor,
-                radius: 3,
-                y: 1
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
     }
 }
 
@@ -225,19 +146,11 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     @ViewBuilder let status: Status
     @ViewBuilder let mini: Mini
 
-    @Environment(\.BruceResolvedTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.motionSuppressed) private var motionSuppressed
     @State private var hovering = false
 
-    private var isNothing: Bool {
-        theme.interfaceStyle == .nothing
-    }
-
-    /// 标题定宽: 在 Nothing 主题下定宽 84 (与 Demo A 严格齐平); 经典主题维持 92.
-    private var resolvedTitleWidth: CGFloat {
-        isNothing ? 84 : 92
-    }
+    /// 标题定宽 84 (与 Demo A 严格齐平).
+    private var resolvedTitleWidth: CGFloat { 84 }
 
     var body: some View {
         Button {
@@ -245,12 +158,10 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                 onToggle()
             }
         } label: {
-            HStack(spacing: isNothing ? 8 : 15) {
+            HStack(spacing: 8) {
                 Text(title)
-                    .font(isNothing
-                        ? NothingFont.ui(11.5, weight: .semibold)
-                        : .system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
+                    .font(NothingFont.ui(11.5, weight: .semibold))
+                    .foregroundStyle(nothingTitleColor)
                     .frame(width: resolvedTitleWidth, alignment: .leading)
                 // 收起摘要与展开态状态件常驻同一个占位盒, 两者都贴右缘;
                 // C233: 直接换位, 不随收放事务淡入淡出 (半透明叠在一起读作糊成一团).
@@ -289,10 +200,10 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     private var gutterHandle: some View {
         Group {
             if let cardID {
-                DashboardDragHandle(isNothing: isNothing)
+                DashboardDragHandle()
                     .draggable(cardID.rawValue)
             } else {
-                DashboardDragHandle(isNothing: isNothing)
+                DashboardDragHandle()
             }
         }
         .frame(width: DashboardCardHeaderLayout.cardHorizontalPadding)
@@ -307,11 +218,9 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     }
 }
 
-/// 全风格卡片拖拽手柄: 仅在卡片缩小/折叠状态下渲染, 且物理独立于折叠展开 Button 之外.
-/// - Nothing 主题: 经典 2x3 方形点阵 (尺寸 10x14), 悬停暗灰背景.
-/// - Classic / Liquid 主题: 极简 6 点圆形点阵, 自适应次级文本色, 悬停轻质微光背景.
+/// Nothing 卡片拖拽手柄: 2x3 方形点阵 (尺寸 10x14), 悬停暗灰背景.
+/// 仅在卡片缩小/折叠状态下渲染, 且物理独立于折叠展开 Button 之外.
 struct DashboardDragHandle: View {
-    let isNothing: Bool
     @State private var hovering = false
 
     var body: some View {
@@ -330,9 +239,7 @@ struct DashboardDragHandle: View {
         .padding(.vertical, 4)
         .background(
             hovering
-                ? (isNothing
-                    ? Color.adaptive(light: Color(hex: "#E0E0E0"), dark: Color(hex: "#222222"))
-                    : Color.primary.opacity(0.08))
+                ? Color.adaptive(light: Color(hex: "#E0E0E0"), dark: Color(hex: "#222222"))
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: 2, style: .continuous)
         )
@@ -341,23 +248,13 @@ struct DashboardDragHandle: View {
         .help("拖拽调整卡片顺序")
     }
 
-    @ViewBuilder
     private var dot: some View {
-        if isNothing {
-            Rectangle()
-                .fill(hovering ? Color.primary : Color.secondary.opacity(0.4))
-                .frame(
-                    width: DashboardCardHeaderLayout.handleDotSize(isNothing: true),
-                    height: DashboardCardHeaderLayout.handleDotSize(isNothing: true)
-                )
-        } else {
-            Circle()
-                .fill(hovering ? Color.primary : Color.secondary.opacity(0.45))
-                .frame(
-                    width: DashboardCardHeaderLayout.handleDotSize(isNothing: false),
-                    height: DashboardCardHeaderLayout.handleDotSize(isNothing: false)
-                )
-        }
+        Rectangle()
+            .fill(hovering ? Color.primary : Color.secondary.opacity(0.4))
+            .frame(
+                width: DashboardCardHeaderLayout.handleDotSize,
+                height: DashboardCardHeaderLayout.handleDotSize
+            )
     }
 }
 

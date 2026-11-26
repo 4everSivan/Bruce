@@ -60,7 +60,7 @@ private struct SpinningRefreshIcon: View {
     }
 }
 
-/// 菜单栏原生液态玻璃面板: 纵向卡片 (按 PanelViewModel 非 nil 渲染) + 底栏.
+/// 菜单栏 Nothing 面板: 纵向卡片 (按 PanelViewModel 非 nil 渲染) + 底栏.
 /// 卡片栈包 ScrollView: 内容超出屏幕可用高度时封顶出滚动条, 不足时高度自适应;
 /// 底栏在滚动区外固定; 卡片全空时展示未配置引导.
 struct MenuBarDashboardView: View {
@@ -73,11 +73,6 @@ struct MenuBarDashboardView: View {
     /// C157: 空态卡「添加订阅」直达设置「订阅额度」页.
     let openSubscriptionSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
-
-    /// Nothing 主题判定: 仅影响 token (字体/颜色/圆角/间距), 不改布局结构.
-    private var isNothingTheme: Bool {
-        coordinator.resolvedTheme.interfaceStyle == .nothing
-    }
 
     /// 面板理想尺寸变化回调 (宿主控制器据此跟随调整承载窗口尺寸).
     var onContentSizeChange: ((CGSize) -> Void)?
@@ -114,9 +109,7 @@ struct MenuBarDashboardView: View {
                 headerHairline
             }
             .background {
-                if isNothingTheme {
-                    Rectangle().fill(nothingFooterBackgroundColor)
-                }
+                Rectangle().fill(nothingFooterBackgroundColor)
             }
             .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
                 guard height > 0, abs(height - headerHeight) > 0.5 else { return }
@@ -187,11 +180,8 @@ struct MenuBarDashboardView: View {
                 actionFooter
             }
             .background {
-                // Nothing: 底栏按定稿为整段纯色 (dark 纯黑 / light #F5F5F5),
-                // 与发线 (#222222/#E8E8E8) 构成分层; 其余主题不加背景.
-                if isNothingTheme {
-                    Rectangle().fill(nothingFooterBackgroundColor)
-                }
+                // Nothing 底栏按定稿为整段纯色 (dark 纯黑 / light #F5F5F5).
+                Rectangle().fill(nothingFooterBackgroundColor)
             }
             .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
                 guard height > 0, abs(height - footerHeight) > 0.5 else { return }
@@ -257,19 +247,11 @@ struct MenuBarDashboardView: View {
         14
     }
 
-    /// 面板外边框颜色:
-    /// - Nothing 主题: 1px 硬朗发线 (#222222 dark / #E8E8E8 light), 零多余光晕.
-    /// - Classic / Liquid Glass: 半透明自适应发线 (dark 14% 白 / light 10% 黑), 兼顾 Windows Fluent 与 Mac 毛玻璃.
+    /// 面板外边框颜色: 1px 硬朗发线 (#222222 dark / #E8E8E8 light), 零多余光晕.
     private var panelBorderColor: Color {
-        if isNothingTheme {
-            return colorScheme == .dark
-                ? Color(hex: "#222222")
-                : Color(hex: "#E8E8E8")
-        }
-        return Color.adaptive(
-            light: Color.black.opacity(0.10),
-            dark: Color.white.opacity(0.14)
-        )
+        colorScheme == .dark
+            ? Color(hex: "#222222")
+            : Color(hex: "#E8E8E8")
     }
 
     /// 面板目标尺寸 (C148): 顶栏 + 卡片栈理想高度 + 底栏.
@@ -297,22 +279,31 @@ struct MenuBarDashboardView: View {
             panel: panel
         )
 
-        HStack(spacing: isNothingTheme ? 8 : 10) {
-            // 左侧：四色状态灯 (C100, hover 显示原因) + 统一品牌字 Bruce
+        HStack(spacing: 8) {
+            // 左侧：四色状态灯 (C100, hover 显示原因) + 统一品牌字 Bruce;
+            // C271: Tab 模式在 Bruce 后追加 1px 分隔线与当前页标题 (方案 B).
             HStack(spacing: 6) {
                 topHeaderStatusDot(status: resolvedStatus, isLive: isLive)
-                if isNothingTheme {
-                    Text("Bruce")
-                        .font(NothingFont.ui(11, weight: .bold))
-                        .tracking(0.8)
+                Text("Bruce")
+                    .font(NothingFont.ui(11, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.adaptive(
+                        light: Color(hex: "#1A1A1A"),
+                        dark: Color(hex: "#E8E8E8")
+                    ))
+                if model.layoutMode == .tabbed {
+                    Rectangle()
+                        .fill(Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#333333")))
+                        .frame(width: 1, height: 10)
+                        .padding(.horizontal, 1)
+                    Text(model.selectedCardID.pageTitle)
+                        .font(NothingFont.ui(12.5, weight: .semibold))
                         .foregroundStyle(Color.adaptive(
                             light: Color(hex: "#1A1A1A"),
                             dark: Color(hex: "#E8E8E8")
                         ))
-                } else {
-                    Text("Bruce")
-                        .font(.system(size: 11.5, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color.primary)
+                        .lineLimit(1)
+                        .transition(.opacity)
                 }
             }
 
@@ -342,16 +333,14 @@ struct MenuBarDashboardView: View {
                     selectTab(cardID)
                 } label: {
                     Image(systemName: cardID.systemImage)
-                        .font(.system(size: isNothingTheme ? 10.5 : 11, weight: .semibold))
+                        .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(
                             isSelected
-                                ? (isNothingTheme
-                                    // Nothing 选中态取 hero accent (浅橘 #D4A843 / 深绿 #4A9E5C), 不再铺药丸底 (C214)
-                                    ? Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
-                                    : Color.primary)
+                                // Nothing 选中态取 hero accent (浅橘 #D4A843 / 深绿 #4A9E5C), 不再铺药丸底 (C214)
+                                ? Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
                                 : Color.secondary
                         )
-                        .frame(width: isNothingTheme ? 24 : 27, height: isNothingTheme ? 20 : 22)
+                        .frame(width: 24, height: 20)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -363,9 +352,7 @@ struct MenuBarDashboardView: View {
             // 仅保留 1px 发丝描边作边界; 容器无填充、无选中胶囊/滑块 (C214).
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(
-                    isNothingTheme
-                        ? Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030"))
-                        : Color.primary.opacity(0.10),
+                    Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030")),
                     lineWidth: 1
                 )
         }
@@ -376,34 +363,19 @@ struct MenuBarDashboardView: View {
     private func headerAgentStatusText(activeCount: Int) -> some View {
         HStack(spacing: 4) {
             if activeCount > 0 {
-                if isNothingTheme {
-                    Text("\(activeCount) AGENTS RUNNING")
-                        .font(NothingFont.mono(9))
-                        .foregroundStyle(Color.adaptive(
-                            light: Color(hex: "#666666"),
-                            dark: Color(hex: "#8A8A8A")
-                        ))
-                } else {
-                    Text("● \(activeCount) AGENTS ACTIVE")
-                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.adaptive(
-                            light: Color(hex: "#0A7D3B"),
-                            dark: Color(hex: "#30D158")
-                        ))
-                }
+                Text("\(activeCount) AGENTS RUNNING")
+                    .font(NothingFont.mono(9))
+                    .foregroundStyle(Color.adaptive(
+                        light: Color(hex: "#666666"),
+                        dark: Color(hex: "#8A8A8A")
+                    ))
             } else {
-                if isNothingTheme {
-                    Text("STANDBY")
-                        .font(NothingFont.mono(9))
-                        .foregroundStyle(Color.adaptive(
-                            light: Color(hex: "#999999"),
-                            dark: Color(hex: "#666666")
-                        ))
-                } else {
-                    Text("STANDBY")
-                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
+                Text("STANDBY")
+                    .font(NothingFont.mono(9))
+                    .foregroundStyle(Color.adaptive(
+                        light: Color(hex: "#999999"),
+                        dark: Color(hex: "#666666")
+                    ))
             }
         }
     }
@@ -434,21 +406,13 @@ struct MenuBarDashboardView: View {
     private func statusDotColor(for tone: DashboardStatusTone) -> Color {
         switch tone {
         case .ok:
-            return isNothingTheme
-                ? Color.adaptive(light: Color(hex: "#2E7D32"), dark: Color(hex: "#4A9E5C"))
-                : Color.adaptive(light: Color(hex: "#0A7D3B"), dark: Color(hex: "#30D158"))
+            return Color.adaptive(light: Color(hex: "#2E7D32"), dark: Color(hex: "#4A9E5C"))
         case .warn:
-            return isNothingTheme
-                ? Color.adaptive(light: Color(hex: "#B8860B"), dark: Color(hex: "#D4A843"))
-                : Color.adaptive(light: Color(hex: "#B25000"), dark: Color(hex: "#D4A843"))
+            return Color.adaptive(light: Color(hex: "#B8860B"), dark: Color(hex: "#D4A843"))
         case .error:
-            return isNothingTheme
-                ? Color.adaptive(light: Color(hex: "#C62828"), dark: Color(hex: "#D71921"))
-                : Color.adaptive(light: Color(hex: "#C62828"), dark: Color(hex: "#E5534B"))
+            return Color.adaptive(light: Color(hex: "#C62828"), dark: Color(hex: "#D71921"))
         case .neutral:
-            return isNothingTheme
-                ? Color.adaptive(light: Color(hex: "#999999"), dark: Color(hex: "#666666"))
-                : Color.adaptive(light: Color(hex: "#8E8E93"), dark: Color(hex: "#8A8A8A"))
+            return Color.adaptive(light: Color(hex: "#999999"), dark: Color(hex: "#666666"))
         }
     }
 
@@ -508,8 +472,8 @@ struct MenuBarDashboardView: View {
         )
         .animation(motionSuppressed ? nil : .easeOut(duration: 0.24), value: tabCardHeight)
         .clipped()
-        .padding(.horizontal, isNothingTheme ? 10 : 12)
-        .padding(.top, isNothingTheme ? 8 : 10)
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
         .padding(.bottom, 10)
     }
 
@@ -522,6 +486,7 @@ struct MenuBarDashboardView: View {
                     UsageHeroCard(
                         viewModel: usage,
                         isCollapsed: false,
+                        showsHeader: false,
                         onToggleCollapse: {}
                     )
                 }
@@ -535,6 +500,7 @@ struct MenuBarDashboardView: View {
                         viewModel: subscription,
                         isCollapsed: false,
                         onToggleCollapse: {},
+                        showsHeader: false,
                         refreshControls: subscriptionRefreshControls(for: subscription),
                         onRefreshProvider: { provider in
                             coordinator.refreshSubscription(provider)
@@ -560,6 +526,7 @@ struct MenuBarDashboardView: View {
                         dailyDays: panel.usage?.days ?? [],
                         dailyLegend: panel.usage?.legend ?? [],
                         isCollapsed: false,
+                        showsHeader: false,
                         onToggleCollapse: {},
                         onRefresh: refreshAgentUsage,
                         isRefreshing: isAgentUsageRefreshing,
@@ -579,6 +546,7 @@ struct MenuBarDashboardView: View {
                 UsageHeroCard(
                     viewModel: usage,
                     isCollapsed: false,
+                    showsHeader: false,
                     onToggleCollapse: {}
                 )
             }
@@ -588,6 +556,7 @@ struct MenuBarDashboardView: View {
                     viewModel: subscription,
                     isCollapsed: false,
                     onToggleCollapse: {},
+                    showsHeader: false,
                     refreshControls: subscriptionRefreshControls(for: subscription),
                     onRefreshProvider: { provider in
                         coordinator.refreshSubscription(provider)
@@ -607,6 +576,7 @@ struct MenuBarDashboardView: View {
                     dailyDays: panel.usage?.days ?? [],
                     dailyLegend: panel.usage?.legend ?? [],
                     isCollapsed: false,
+                    showsHeader: false,
                     onToggleCollapse: {},
                     onRefresh: refreshAgentUsage,
                     isRefreshing: isAgentUsageRefreshing,
@@ -647,7 +617,7 @@ struct MenuBarDashboardView: View {
             || panel.subscription != nil
             || panel.subscriptionEmpty != nil
             || panel.hourly != nil
-        VStack(spacing: isNothingTheme ? 8 : 10) {
+        VStack(spacing: 8) {
             ForEach(model.cardOrder) { cardID in
                 renderCard(cardID, panel: panel)
                     .id(cardID)
@@ -672,8 +642,8 @@ struct MenuBarDashboardView: View {
                 emptyPanelState
             }
         }
-        .padding(.horizontal, isNothingTheme ? 10 : 12)
-        .padding(.top, isNothingTheme ? 8 : 10)
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
         .padding(.bottom, 10)
     }
 
@@ -743,11 +713,9 @@ struct MenuBarDashboardView: View {
                     .font(.system(size: 28))
                     .foregroundStyle(.secondary)
                 Text("未配置模块, 前往设置")
-                    .font(isNothingTheme
-                        ? NothingFont.ui(13, weight: .semibold)
-                        : .headline)
+                    .font(NothingFont.ui(13, weight: .semibold))
                 Button("打开设置", action: openSettings)
-                    .font(isNothingTheme ? NothingFont.ui(13) : nil)
+                    .font(NothingFont.ui(13))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
@@ -807,14 +775,9 @@ struct MenuBarDashboardView: View {
     }
 
     private var footerHairlineColor: Color {
-        if isNothingTheme {
-            return colorScheme == .dark
-                ? Color(hex: "#222222")
-                : Color(hex: "#E8E8E8")
-        }
-        return colorScheme == .dark
-            ? Color.primary.opacity(0.15)
-            : Color.white.opacity(0.5)
+        colorScheme == .dark
+            ? Color(hex: "#222222")
+            : Color(hex: "#E8E8E8")
     }
 
     /// Nothing 底栏背景色: dark 纯黑 / light #F5F5F5 (定稿 token).

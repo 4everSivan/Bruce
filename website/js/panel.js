@@ -11,14 +11,14 @@
   var deck = document.getElementById("panel-deck");
   if (!deck || !D) return;
 
-  var THEMES = ["classic", "liquid", "nothing"];
-  var slotOrder = ["nothing", "liquid", "classic"]; /* slot 0 (back) -> slot 2 (front) */
+  var THEMES = ["quota", "hourly", "token"];
+  var slotOrder = ["quota", "hourly", "token"];
   var DECK_W = 776;
   var STEP_Y = 42;
   var CARD_LABEL = { token: "Token 用量", quota: "订阅用量", hourly: "Agent 用量" };
   var CARD_INDEX = { token: 0, quota: 1, hourly: 2 };
   var narrowMq = window.matchMedia("(max-width: 720px)");
-  var front = "classic";
+  var front = "token";
 
   function slot(theme) {
     return document.getElementById("panel-" + theme);
@@ -34,11 +34,11 @@
     return el ? el.closest(".deck__sheet") : null;
   }
 
-  var M = "classic";
-  var CARD = { nothing: "token", liquid: "hourly", classic: "quota" };
+  var M = "nothing";
+  var CARD = { quota: "quota", hourly: "hourly", token: "token" };
 
   /* ---------- 01 看板：可交互的卡片预览 ----------------------------- */
-  var ANATOMY_THEMES = { token: "nothing", quota: "classic", hourly: "liquid" };
+  var ANATOMY_THEMES = { token: "nothing", quota: "nothing", hourly: "nothing" };
   var anatomyPanel = document.getElementById("anatomy-panel");
   var anatomyBox = document.getElementById("anatomy-panelbox");
   var anatomyStage = document.getElementById("anatomy-stage");
@@ -55,6 +55,15 @@
   /* ---------- formatters ------------------------------------------ */
   function trim(s) {
     return String(parseFloat(s));
+  }
+  function heroNumHtml(n) {
+    var text = fmtTokens(n);
+    var i = text.indexOf(".");
+    if (i < 0) return '<span class="bp-hero__num">' + text + "</span>";
+    return (
+      '<span class="bp-hero__num">' + text.slice(0, i) +
+      '<i class="bp-hero__dot"></i>' + text.slice(i + 1) + "</span>"
+    );
   }
   function fmtTokens(n) {
     if (n < 1e3) return String(Math.round(n));
@@ -107,13 +116,13 @@
 
   function renderHeroMenubar() {
     if (!heroMenubar) return;
-    heroMenubar.innerHTML = statusItemPillHtml("classic", false);
+    heroMenubar.innerHTML = statusItemPillHtml("nothing", false);
   }
 
   function updateAnatomyMenubar(theme) {
     if (!anatomyMenubar) return;
-    var skinText = theme === "nothing" ? "Nothing" : theme === "liquid" ? "液态玻璃" : "经典";
-    var isNothing = theme === "nothing";
+    var skinText = "Nothing";
+    var isNothing = true;
 
     if (!anatomyMenubar.dataset.mounted) {
       var wifiSvg =
@@ -279,7 +288,7 @@
 
     var body =
       '<div class="bp-hero">' +
-      '<span class="bp-hero__num">' + fmtTokens(t.total) + "</span>" +
+      heroNumHtml(t.total) +
       '<span class="bp-hero__unit">tokens</span>' +
       '<span class="bp-hero__cost">' + fmtCost(t.cost) + "</span>" +
       "</div>" +
@@ -295,14 +304,7 @@
       '<span class="bp-heatmap__legend">少' + legendSwatches + "多</span>" +
       "<span>26/11/04</span></div></div>";
 
-    return card(
-      "token",
-      cardHead("Token 用量", {
-        key: "token",
-        aside: '<span class="bp-live"><i></i>LIVE</span>',
-      }),
-      body
-    );
+    return card("token", "", body);
   }
 
   /* ---------- hourly card ------------------------------------------ */
@@ -314,7 +316,6 @@
     });
 
     var cols;
-    if (M === "nothing") {
       cols = H.bars
         .map(function (d) {
           var on = Math.max(1, Math.round((d.total / max) * 24));
@@ -328,24 +329,6 @@
           );
         })
         .join("");
-    } else {
-      cols = H.bars
-        .map(function (d, i) {
-          var segs = "";
-          d.parts
-            .slice()
-            .reverse()
-            .forEach(function (p) {
-              var h = Math.max(1, (p.tokens / max) * 65);
-              segs +=
-                '<span class="bp-bars__seg" style="height:' + h + "px;background:" + p.color +
-                ";--d:" + i * 24 + 'ms"></span>';
-            });
-          return '<div class="bp-bars__col" title="' + fmtTokens(d.total) + ' tokens">' + segs + "</div>";
-        })
-        .join("");
-    }
-
     var legend = H.agents
       .map(function (a) {
         return '<span><i style="background:' + a.color + '"></i>' + a.name + "</span>";
@@ -362,7 +345,7 @@
           return x.toFixed(1) + "," + y.toFixed(1);
         });
         var gid = (uid || M) + "-ag" + idx;
-        var lineColor = M === "nothing" ? "#1c8c3d" : h.color;
+        var lineColor = "#1c8c3d";
         var line =
           '<svg class="bp-agent__line" style="--d:' + (50 + idx * 45) + 'ms" viewBox="0 0 386 26" preserveAspectRatio="none" aria-hidden="true">' +
           "<defs><linearGradient id='" + gid + "' x1='0' y1='0' x2='0' y2='1'>" +
@@ -415,7 +398,7 @@
       '<div class="bp-hr-head"><span>逐小时</span><span>0 – 23 时</span></div>' +
       rows;
 
-    return card("hourly", cardHead("Agent 用量", { key: "hourly" }), body);
+    return card("hourly", "", body);
   }
 
   /* ---------- subscription card ------------------------------------ */
@@ -423,7 +406,6 @@
     var level = w.used >= 80 ? "critical" : w.used >= 50 ? "warning" : "normal";
     var meter;
     var dStyle = delayMs != null ? ";--d:" + delayMs + "ms" : "";
-    if (M === "nothing") {
       var total = 24;
       var on = Math.round((Math.min(100, w.used) / 100) * total);
       var cells = "";
@@ -433,11 +415,6 @@
         cells += '<i class="bp-seg-cell' + cls + '"></i>';
       }
       meter = '<span class="bp-meter bp-meter--seg" data-level="' + level + '">' + cells + "</span>";
-    } else {
-      meter =
-        '<span class="bp-meter"><span class="bp-meter__fill" data-level="' + level +
-        '" style="width:' + Math.min(100, w.used) + "%" + dStyle + '"></span></span>';
-    }
     return (
       '<div class="bp-window">' +
       '<span class="bp-window__k">' + w.k + "</span>" +
@@ -512,7 +489,7 @@
     var body =
       s.sections.map(providerBlock).join("") +
       '<div class="bp-subfoot"><span>' + s.updated + "</span></div>";
-    return card("quota", cardHead("订阅用量", { key: "quota" }), body);
+    return card("quota", "", body);
   }
 
   /* ---------- shell ------------------------------------------------- */
@@ -538,8 +515,10 @@
         ICON[t[1]] + "</span>"
       );
     }).join("");
+    var pageTitle = (TABS.filter(function (t) { return t[0] === cardName; })[0] || TABS[0])[2];
     return (
       '<header class="bp-head"><span class="bp-dot"></span><span class="bp-brand">Bruce</span>' +
+      '<span class="bp-brandsep"></span><span class="bp-pagetitle">' + pageTitle + "</span>" +
       '<div class="bp-head__right"><div class="bp-tabs"' +
       (interactive ? ' role="tablist" aria-label="切换卡片"' : ' aria-hidden="true"') +
       ">" +
@@ -608,7 +587,7 @@
   function render() {
     THEMES.forEach(function (theme) {
       var el = slot(theme);
-      if (el) el.innerHTML = surface(theme, CARD[theme]);
+      if (el) el.innerHTML = surface("nothing", CARD[theme]);
       var it = item(theme);
       if (it) {
         var sIdx = slotOrder.indexOf(theme);

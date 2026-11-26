@@ -805,12 +805,9 @@ struct WelcomeOnboardingView: View {
     // MARK: - Step 3: 外观与快捷唤出
 
     private var step3AppearanceView: some View {
-        let isNothing = coordinator.resolvedTheme.interfaceStyle == .nothing
         let previewMetrics = WelcomeOnboardingPresentation.menuBarPreviewMetricsText(
-            isNothingTheme: isNothing,
             iconOnly: coordinator.menuBarIconOnly
         )
-        let glassSupported = coordinator.liquidGlassSupported()
 
         return VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 5) {
@@ -842,7 +839,7 @@ struct WelcomeOnboardingView: View {
                         if !previewMetrics.isEmpty {
                             Text(previewMetrics)
                                 .font(.system(
-                                    size: isNothing ? 12.5 : 12,
+                                    size: 12.5,
                                     weight: .semibold,
                                     design: .monospaced
                                 ))
@@ -897,36 +894,21 @@ struct WelcomeOnboardingView: View {
                     .strokeBorder(SettingsDemoTokens.separator, lineWidth: 1)
             )
 
-            // 界面风格三选一
+            // 界面风格 (C271 收敛为 Nothing)
             VStack(alignment: .leading, spacing: 6) {
-                Text("界面风格（即时生效）")
+                Text("界面风格")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(SettingsDemoTokens.text2)
                 HStack(spacing: 8) {
                     styleOptionTile(
-                        title: "经典材质",
-                        subtitle: "高对比毛玻璃暗色卡片",
-                        selected: coordinator.interfaceStyle == .classic,
-                        enabled: true
-                    ) {
-                        coordinator.setInterfaceStyle(.classic)
-                    }
-                    styleOptionTile(
-                        title: "液态玻璃",
-                        subtitle: glassSupported ? "macOS 26 原生通透折射" : "需 macOS 26+",
-                        selected: coordinator.interfaceStyle == .liquidGlass,
-                        enabled: glassSupported
-                    ) {
-                        coordinator.setInterfaceStyle(.liquidGlass)
-                    }
-                    styleOptionTile(
                         title: "Nothing 点阵",
-                        subtitle: "纯黑工业点阵 + 12.5pt 等宽",
-                        selected: coordinator.interfaceStyle == .nothing,
+                        subtitle: "纯黑工业点阵 + 等宽字体",
+                        selected: true,
                         enabled: true
-                    ) {
-                        coordinator.setInterfaceStyle(.nothing)
-                    }
+                    ) {}
+                    Text("更多界面风格敬请期待")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(SettingsDemoTokens.text3)
                 }
             }
 

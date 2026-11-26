@@ -10,7 +10,6 @@ final class DashboardGlassPanelController: NSViewController {
     private let rootView = DashboardGlassRootView()
     private var theme: ResolvedTheme
     private var surfaceView: NSView?
-    private var surfacePlan: DashboardGlassSurfacePlan
     private var surfaceStyle: DashboardGlassSurfaceStyle
     /// 面板配色模式映射; nil 表示跟随系统, 由 effectiveAppearance 决定 tint 明暗.
     private var preferredColorScheme: ColorScheme?
@@ -22,11 +21,8 @@ final class DashboardGlassPanelController: NSViewController {
     ) {
         self.hostingController = NSHostingController(rootView: AnyView(rootView))
         self.theme = theme
-        self.surfacePlan = DashboardGlassSurfacePlan.resolve(theme: theme)
         self.surfaceStyle = DashboardGlassSurfaceStyle.resolve(
-            theme: theme,
-            appearance: preferredColorScheme == .dark ? .dark : .light,
-            capabilities: .current
+            appearance: preferredColorScheme == .dark ? .dark : .light
         )
         self.preferredColorScheme = preferredColorScheme
         super.init(nibName: nil, bundle: nil)
@@ -64,18 +60,14 @@ final class DashboardGlassPanelController: NSViewController {
     /// 主题变化时只更新视觉层, 不重建面板和 SwiftUI 状态.
     func updateSurface(theme: ResolvedTheme, preferredColorScheme: ColorScheme?) {
         self.theme = theme
-        let nextPlan = DashboardGlassSurfacePlan.resolve(theme: theme)
         let nextStyle = DashboardGlassSurfaceStyle.resolve(
-            theme: theme,
-            appearance: dashboardAppearance(for: preferredColorScheme),
-            capabilities: .current
+            appearance: dashboardAppearance(for: preferredColorScheme)
         )
         let appearanceChanged = preferredColorScheme != self.preferredColorScheme
         self.preferredColorScheme = preferredColorScheme
-        guard nextPlan != surfacePlan || nextStyle != surfaceStyle || appearanceChanged else {
+        guard nextStyle != surfaceStyle || appearanceChanged else {
             return
         }
-        surfacePlan = nextPlan
         surfaceStyle = nextStyle
         guard isViewLoaded else { return }
         installSurface()
@@ -84,9 +76,7 @@ final class DashboardGlassPanelController: NSViewController {
     private func refreshSurfaceForEffectiveAppearance() {
         guard preferredColorScheme == nil, isViewLoaded else { return }
         let nextStyle = DashboardGlassSurfaceStyle.resolve(
-            theme: theme,
-            appearance: dashboardAppearance(for: nil),
-            capabilities: .current
+            appearance: dashboardAppearance(for: nil)
         )
         guard nextStyle != surfaceStyle else { return }
         surfaceStyle = nextStyle
@@ -95,9 +85,7 @@ final class DashboardGlassPanelController: NSViewController {
 
     private func installSurface() {
         surfaceStyle = DashboardGlassSurfaceStyle.resolve(
-            theme: theme,
-            appearance: dashboardAppearance(for: preferredColorScheme),
-            capabilities: .current
+            appearance: dashboardAppearance(for: preferredColorScheme)
         )
         // 主题切换后圆角跟随 (nothing=10, 其余=22); updateSurface 的
         // 相等性短路对 nothing↔其他主题恒不命中 (plan 的 backend/material
@@ -121,8 +109,6 @@ final class DashboardGlassPanelController: NSViewController {
         surfaceView = surface
 
         // Native surface is deliberately a sibling behind SwiftUI content.
-        // NSGlassEffectView.contentView embeds content in the effect itself and
-        // makes text/chart rendering too soft for this dashboard.
         view.addSubview(hostingController.view)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
         // C148: 宿主视图四边贴合窗口 (不再用显式高度约束). 面板高度由控制器
@@ -143,67 +129,11 @@ final class DashboardGlassPanelController: NSViewController {
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
     }
 
+    /// C271: Nothing 纯色不透明平面, 吃主题 panelTint, 零模糊零阴影.
     private func makeSurface() -> NSView {
-        if surfacePlan.reduceTransparencyFallback {
-            return DashboardOpaqueSurfaceView()
-        }
-
-        switch surfacePlan.backend {
-        case .flatMonochrome:
-            // Nothing: 纯色不透明平面, 吃主题 panelTint (而非系统 windowBackgroundColor),
-            // 零模糊零阴影; 复用 OpaqueSurfaceView 的绘制路径但喂入主题色.
-            return DashboardOpaqueSurfaceView(
-                backgroundColor: nsColor(for: surfaceStyle.panelTint)
-            )
-        case .nativeLiquidGlass:
-            if #available(macOS 26, *) {
-                let glass = NSGlassEffectView()
-                glass.style = surfacePlan.panelMaterial == .clear ? .clear : .regular
-                glass.cornerRadius = panelCornerRadius
-                // Keep the native backdrop visible while anchoring its
-                // luminance to the content appearance. A clear surface can
-                // otherwise sample a white document window and turn the dark
-                // dashboard content into white-on-white text.
-                glass.tintColor = nativeGlassTintColor()
-                return glass
-            }
-            return makeMaterialSurface()
-        case .appKitMaterial:
-            return makeMaterialSurface()
-        case .swiftUIFallback:
-            let fallback = NSView()
-            fallback.wantsLayer = true
-            fallback.layer?.backgroundColor = NSColor.clear.cgColor
-            return fallback
-        }
-    }
-
-    private func makeMaterialSurface() -> NSVisualEffectView {
-        let effect = NSVisualEffectView()
-        effect.material = material(for: surfacePlan.panelMaterial)
-        effect.blendingMode = .behindWindow
-        effect.state = .followsWindowActiveState
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = panelCornerRadius
-        effect.layer?.masksToBounds = true
-
-        let tintView = NSView()
-        tintView.wantsLayer = true
-        tintView.layer?.backgroundColor = nsColor(for: surfaceStyle.panelTint).cgColor
-        tintView.translatesAutoresizingMaskIntoConstraints = false
-        effect.addSubview(tintView)
-        NSLayoutConstraint.activate([
-            tintView.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
-            tintView.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
-            tintView.topAnchor.constraint(equalTo: effect.topAnchor),
-            tintView.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
-        ])
-        return effect
-    }
-
-    @available(macOS 26, *)
-    private func nativeGlassTintColor() -> NSColor {
-        nsColor(for: surfaceStyle.panelTint)
+        DashboardOpaqueSurfaceView(
+            backgroundColor: nsColor(for: surfaceStyle.panelTint)
+        )
     }
 
     /// tint 明暗判定: 显式配色模式 (light/dark) 优先, 跟随系统 (nil) 时读 effectiveAppearance.
@@ -233,33 +163,9 @@ final class DashboardGlassPanelController: NSViewController {
         )
     }
 
-    /// Nothing 主题下面板窗口应使用的背景色; 其余主题返回 nil,
-    /// 表示维持 install() 设定的透明窗口行为 (hasShadow=true / .clear).
-    /// 供 MenuBarStatusItemController 在主题切换后刷新面板级属性.
+    /// C271: 面板窗口恒使用 Nothing 面板色, 供 MenuBarStatusItemController 刷新窗口级属性.
     var panelWindowTintColor: NSColor? {
-        guard theme.interfaceStyle == .nothing else { return nil }
-        return nsColor(for: surfaceStyle.panelTint)
-    }
-
-    private func material(
-        for material: DashboardGlassMaterial
-    ) -> NSVisualEffectView.Material {
-        switch material {
-        case .standard:
-            return .hudWindow
-        case .clear:
-            return .underWindowBackground
-        case .matte:
-            return .windowBackground
-        case .classic:
-            // 经典风格升级为高斯模糊主题 (方案 A 柔光云母高斯):
-            // 暗色采用高透深邃的 .hudWindow，浅色采用柔和透光的 .popover
-            return isDarkAppearance ? .hudWindow : .popover
-        case .nothing:
-            // Nothing plan 走 .flatMonochrome 纯色路径, 不会进入 NSVisualEffectView;
-            // 此分支仅为穷尽 switch, 兜底 contentBackground.
-            return .contentBackground
-        }
+        nsColor(for: surfaceStyle.panelTint)
     }
 }
 

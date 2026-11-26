@@ -1,6 +1,6 @@
 import Foundation
 
-// 菜单栏液态玻璃面板的 artifact -> view model 映射入口.
+// 菜单栏 Nothing 面板的 artifact -> view model 映射入口.
 // 纯逻辑, 不含 SwiftUI 视图代码; 模型见 PanelModels, 规则见 SubscriptionPresentationPolicy,
 // 用量/订阅映射见 UsageMapping / SubscriptionMapping.
 

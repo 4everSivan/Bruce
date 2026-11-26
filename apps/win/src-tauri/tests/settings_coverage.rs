@@ -26,7 +26,7 @@ fn temp_root() -> PathBuf {
 fn defaults_match_mac_scheduler_configuration() {
     let settings = AppSettings::default();
     assert_eq!(settings.refresh_interval_secs, 1800, "mac 默认刷新周期");
-    assert_eq!(settings.theme, "fluent");
+    assert_eq!(settings.theme, "nothing", "C271: 默认即 Nothing");
     assert_eq!(settings.card_order, vec!["usage", "subscription", "hourly"]);
     assert!(settings.hotkey.is_empty(), "对齐 mac 默认不注册热键");
     assert_eq!(settings.panel_x, None);
@@ -200,16 +200,12 @@ fn validate_refresh_interval_bounds_inclusive() {
 #[test]
 fn validate_theme_and_hotkey_boundaries() {
     assert!(validate_settings(&AppSettings {
-        theme: "fluent".to_owned(),
-        ..Default::default()
-    })
-    .is_ok());
-    assert!(validate_settings(&AppSettings {
         theme: "nothing".to_owned(),
         ..Default::default()
     })
     .is_ok());
-    for theme in ["glass", "", "Nothing"] {
+    // C271: 经典 / 液态玻璃退役, 仅 nothing 合法.
+    for theme in ["fluent", "glass", "", "Nothing"] {
         assert!(validate_settings(&AppSettings {
             theme: theme.to_owned(),
             ..Default::default()

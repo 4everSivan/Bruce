@@ -1,0 +1,136 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C271",
+  "title": "看板 Nothing-only 收敛：界面风格收窄、Tab 页标题上移与 Hero 静态辉光",
+  "version": "0.19.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C271-nothing-only",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win + docs",
+    "component": "ThemeResolution / SettingsView / WelcomeOnboardingView / BruceGlassSurfaceCore / MenuBarViews / UsageHeroCard / SubscriptionCard / HourlyLineCard / apps/win/src/{app.js,settings-maintenance.js,styles.css}",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "维护者 2026-11-25 决定将产品界面风格产品级收敛为 Nothing：经典（高斯云母）与液态玻璃（系统玻璃 / 材质退化）整体退役，不再作为可选项出现；设置「界面风格」仅保留静态 Nothing 与禁用态「更多界面风格敬请期待」，旧偏好迁移为 Nothing。与此同时按已选 demo 定稿实施两项看板调整：Tab 模式把卡片内页面标题上移到顶栏（方案 B：状态灯 + Bruce │ 当前页标题，右侧三图标开关不变），并移除 Tab 模式卡内标题行；Token 用量卡 Hero 大数字增加静态氛围辉光（方案 C：数字本体双层 drop-shadow，无动画）。",
+  "precheck": {
+    "description": "核对当前三风格选项、卡内标题行与 Hero 无辉光的现状",
+    "command": "rg -n \"液态玻璃|InterfaceStylePreference|CollapsibleCardHeader|heroGradient\" apps/macos/Sources/BruceApp/SettingsView.swift apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift | head -40",
+    "expected": "设置存在经典 / 液态玻璃选项；Tab 三卡均渲染 CollapsibleCardHeader；Hero 数字无 shadow",
+    "is_completed": false,
+    "evidence": "2026-11-25 HEAD 复核：SettingsView 界面风格分段仍含经典 / 液态玻璃；ThemeResolution 支持 three styles；UsageHeroCard.heroNumber 无 shadow；MenuBarViews.renderSingleTabCard 以 onToggleCollapse:{} 传入标题行。"
+  },
+  "callback": {
+    "before": [
+      "git checkout feat/C271-nothing-only"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "node --test tests/unit/*.test.mjs",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "scripts/adflow-verify --card C271 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "界面风格产品级收窄为 Nothing（mac）",
+      "before": "设置提供经典 / 液态玻璃 / Nothing 三选一；ThemeResolution 按 stored 偏好与玻璃能力解析三种风格；BruceGlassSurfaceCore / DashboardGlassPanelController 按主题切换材质与玻璃路径。",
+      "after": "InterfaceStylePreference 仅保留 nothing；解析恒为 Nothing，旧 classic / liquidGlass / glassStyle 值可读但忽略；设置仅显示静态 Nothing + 禁用态「更多界面风格敬请期待」；模糊风格行与玻璃能力提示退役；首次引导主题步骤改为 Nothing 固定展示；NSGlassEffectView / NSVisualEffectView、材质矩阵与视图内经典/液态玻璃分支已删除，看板收敛为 Nothing 单路径。",
+      "impact": "设置中心通用页、首次引导、面板外观、GlassSurfaceCore、Harness 主题用例"
+    },
+    {
+      "scope": "界面风格双端一致（Windows）",
+      "before": "Windows 看板存在 theme-fluent / theme-nothing 两套样式，设置「界面风格」下拉与首次启动向导均提供经典 / Nothing。",
+      "after": "看板固定 theme-nothing；设置与首次启动向导的界面风格改为静态 Nothing + 禁用态「更多界面风格敬请期待」；theme select、welcome 风格选项与 applyTheme 分支退役；旧 theme 值迁移为 nothing。设置窗口 Fluent 壳层不受影响。",
+      "impact": "apps/win/src/{index.html,app.js,settings-maintenance.js,settings-state.js,styles.css} 与前端用例"
+    },
+    {
+      "scope": "Tab 模式页面标题上移与卡内标题移除（mac）",
+      "before": "顶栏左区为状态灯 + Bruce；三张卡在 Tab 模式仍渲染 CollapsibleCardHeader（onToggleCollapse 为空，纯占位），卡片标题为 Token 用量 / 订阅用量 / Agent 用量。",
+      "after": "顶栏左区为状态灯 + Bruce + 1px 分隔线 + 当前页标题（13pt semibold；Nothing 12.5pt）；Tab 模式三卡不再渲染标题行，正文直接起排并做 +2pt 顶部光学补偿；栈模式保持标题行、折叠与拖拽不变；标题文案与卡内标题同源。",
+      "impact": "MenuBarViews、UsageHeroCard、SubscriptionCard、HourlyLineCard、SubscriptionEmptyCard、PanelCardContainer、设计 03 FR-5 / 规则 11"
+    },
+    {
+      "scope": "Token 用量 Hero 数字静态辉光（mac，Windows 后对齐）",
+      "before": "Hero 数字仅渐变 / Nothing Doto 纯色，无阴影或光晕。",
+      "after": "Nothing Hero 数字叠加双层 accent drop-shadow（浅色 3px 42% + 11px 24%；深色 5px 55% + 16px 30%），纯静态、无动画、无定时器，不改字号 / 渐变 / 布局。",
+      "impact": "UsageHeroCard.heroNumber、设计 03 规则 13 / 新增规则 29"
+    },
+    {
+      "scope": "官网同步为 Nothing-only",
+      "before": "官网首屏三套材质样张（Nothing / 液态玻璃 / 经典）、各卡片按材质切换的解剖演示、设置示意的界面风格与模糊风格分段、页脚液态玻璃说明。",
+      "after": "官网只展示 Nothing 单色平面：Token / 订阅 / Agent 三张卡片以同一 Nothing 材质堆叠呈现、设置示意静态 Nothing（不设「敬请期待」）、规格表与页脚同步；移除主题切换与两套主题宣传。",
+      "impact": "website/index.html、js/{panel,settings}.js、css/{panel,settings}.css、spec/system-spec.md 与官网契约测试"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-5 顶栏三图标导航 + 卡内标题；FR-8/FR-9 经典 / 液态玻璃表面矩阵与模糊风格；规则 13 仅允许基础动效、Hero 静态纯色。",
+      "after": "新增规则 27：界面风格产品级收敛为 Nothing（经典 / 液态玻璃退役，设置静态 Nothing + 敬请期待，旧偏好迁移）；新增规则 28：Tab 模式 Bruce │ 当前页标题上移、移除卡内标题行；新增规则 29：Hero 数字允许静态双层 drop-shadow，禁止循环。设计 04 通用页顺序与设计 05 Windows 同步。"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261126-01",
+    "user_quote": "确认签收，提交并推送",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0（Rust fmt/test/clippy + Swift build + 全部 Harness + 顶层 Node 契约测试）",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "zsh scripts/verify-local.sh EXIT=0（/tmp/bruce-verify5.log：Rust fmt/test/clippy + Swift 构建 + 20 个 Harness + 顶层 Node 契约测试全绿）；node --test tests/unit/*.test.mjs 27 passed；apps/win/tests/frontend.test.mjs 142 passed；win settings Rust 单测 15 passed；node scripts/build-site.mjs --strict EXIT=0",
+        "result": true
+      },
+      {
+        "item": "界面风格仅 Nothing",
+        "true_if": "设置界面风格仅显示静态 Nothing 与禁用态「敬请期待」；磁盘旧 classic / liquidGlass 偏好启动后解析为 Nothing；首次引导无风格选择",
+        "false_if": "仍可选择或在运行态解析出经典 / 液态玻璃",
+        "evidence": "设置页截图 local/deploy-evidence/settings-theme.png；旧 classic / liquidGlass 解码为 nil、解析恒 Nothing；枚举仅 .nothing；NSGlassEffectView / NSVisualEffectView、材质矩阵与视图内经典/液态玻璃分支已删除；源码 rg 无 glassStyle / LiquidGlass 残留",
+        "result": true
+      },
+      {
+        "item": "顶栏标题与卡内标题",
+        "true_if": "Tab 模式顶栏显示 Bruce │ 当前页标题且切页同步；三卡无卡内标题行；栈模式标题行与折叠不变",
+        "false_if": "标题重复出现、切页不同步或栈模式交互受损",
+        "evidence": "看板截图 local/deploy-evidence/panel-token-purge.png 与 panel-subscription-purge.png：顶栏 Bruce │ 当前页标题、卡片无标题行；NativeLifecycleHarness 源码守卫 showsHeader:false ≥ 4；栈模式标题行保留",
+        "result": true
+      },
+      {
+        "item": "Hero 辉光",
+        "true_if": "Token Hero 数字呈现静态双层 accent 辉光，切页/刷新不重播、无逐帧动画",
+        "false_if": "无辉光、出现呼吸/循环动画或影响数字布局",
+        "evidence": "local/deploy-evidence/hero-glow.png：Doto 数字双层辉光；源码守卫近层/远层 accent 参数存在",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "订阅卡额度条、Agent 卡图表/Space Mono 字体、底栏与预警气泡在 Nothing 下渲染正常；Windows 看板无 theme-fluent 残留可见样式",
+        "false_if": "任一关联视图出现颜色/字体/布局回归或配置迁移异常",
+        "evidence": "verify-local EXIT=0；Windows 前端 142 passed、settings 单测 15 passed；官网 unit 27 passed + build-site 严格模式通过；site-nothing.png 为三卡同材质 Nothing 样张，Hero 双层 drop-shadow/方形小数点、面板 14/卡片 8、Space Grotesk 品牌、选中仅图标变色均按当前版本校准；设置/看板/官网未见回归",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.8.1",
+    "ran_at": "2026-11-26",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified",
+    "signed_quote": "确认签收，提交并推送",
+    "signed_rejection_count": 0
+  }
+}

@@ -228,6 +228,7 @@
 }
 
 .st-row__control { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.st-static-value { font-size: 13px; font-weight: 600; }
 
 /* switch */
 .st-switch {

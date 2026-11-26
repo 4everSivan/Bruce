@@ -84,14 +84,12 @@ test("settings window navigation switches categories and persists configuration"
   await app.document.querySelector('[data-category="modelPricing"]').click();
   assert.equal(app.node("pane-modelPricing").classList.contains("hidden"), false);
   await app.document.querySelector('[data-category="general"]').click();
-  // 界面风格为 mac FluentSegmentedPicker 等价分段按钮, 隐藏 <select> 仍是值载体
-  const themeChoices = () => [...app.node("pane-general").querySelectorAll(".fluent-seg")][0].querySelectorAll(".seg-opt");
-  assert.deepEqual([...themeChoices()].map((n) => n.textContent), ["经典", "Nothing"]);
-  assert.equal(themeChoices()[0].classList.contains("active"), true, "读取设置后同步选中项");
-  await themeChoices()[1].click();
-  assert.equal(app.node("setting-theme").value, "nothing");
-  assert.equal(themeChoices()[1].getAttribute("aria-checked"), "true");
-  // 设置即时生效 (C069): 分段点击即保存, 热键在 change (失焦/回车) 时保存
+  // C271: 界面风格产品级收敛为 Nothing, 不再有分段/下拉控件; 原位保留「敬请期待」.
+  assert.equal(app.node("setting-theme"), null, "主题 select 必须退役");
+  const styleRow = [...app.node("pane-general").querySelectorAll(".fluent-row")]
+    .find((row) => row.textContent.includes("界面风格"));
+  assert.match(styleRow.textContent, /Nothing/);
+  assert.match(styleRow.textContent, /敬请期待/);
   assert.equal(app.state.settings.theme, "nothing");
   app.node("setting-hotkey").value = "Control+Shift+J";
   await app.node("setting-hotkey").dispatch("change");
@@ -452,7 +450,7 @@ test("agent rows default-open first expandable agent and toggle details", async 
   assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "true");
   assert.deepEqual([...row.querySelectorAll(".detail-compact-title")].map((n) => n.textContent), ["模型占比", "项目占比"]);
   assert.equal(row.querySelectorAll(".detail-compact").length, 2, "模型与项目两段同构");
-  assert.deepEqual([...row.querySelectorAll(".detail-compact-count")].map((n) => n.textContent), ["5 个模型", "2 个工程"]);
+  assert.deepEqual([...row.querySelectorAll(".detail-compact-count")].map((n) => n.textContent), ["5 MODELS", "2 WORKSPACES"]);
   // 模型 5 条 (含「其他」与极小份额) + 项目 2 条, 全部渲染 (前端不得截断)
   assert.equal(row.querySelectorAll(".detail-compact-row").length, 7);
   assert.match(row.textContent, /其他/);
@@ -590,12 +588,8 @@ test("card reorder saves on top of the latest backend settings, not the dashboar
 
 test("Nothing theme renders segmented meters and dot-matrix day columns", async () => {
   const app = await boot({ panel: structuredClone(fixture) });
-  // Fluent: 连续量条 + 百分比宽度, 无分段
-  assert.equal(app.node("stack").querySelectorAll(".meter.segmented").length, 0);
-  assert.equal(app.node("stack").querySelectorAll(".day-dots").length, 0);
-  // 切到 Nothing (真实 settings-updated 链路) 后重建卡片
-  app.state.settings.theme = "nothing";
-  await app.emit("settings-updated", app.state.settings);
+  // C271: Nothing 为唯一界面风格, 启动即分段量条 + 点阵日柱.
+  assert.equal(app.node("stack").querySelectorAll(".meter.segmented").length, 3);
   const stack = app.node("stack");
   // 量条: 每条 24 段 (codex 5h 7% → round(0.07×24)=2 段填充; 7d 70% → 17 段)
   const segmented = [...stack.querySelectorAll(".meter.segmented")];
@@ -1018,10 +1012,11 @@ test("credential accounts are keyed objects and save clears secret inputs", asyn
 test("invalid credentials/price overrides do not persist and command failures are visible", async () => {
   // 非法单价覆盖 (来自配置文件的越界值) 必须在任何即时保存时被拦下, 控件回滚
   const app = await boot({ html: "settings.html", settings: { ...defaults, pricingOverrides: { broken: { inputPricePerMillion: -1 } } } });
-  const themeChoices = [...app.node("pane-general").querySelectorAll(".fluent-seg")][0].querySelectorAll(".seg-opt");
-  await themeChoices[1].click();
+  // C271: 主题行已退役, 用看板布局分段触发即时保存.
+  const layoutChoices = [...app.node("pane-general").querySelectorAll(".fluent-seg")][1].querySelectorAll(".seg-opt");
+  await layoutChoices[1].click();
   assert.equal(app.calls.some(call => call.command === "save_settings_command"), false, "非法覆盖不得写回");
-  assert.equal(app.node("setting-theme").value, "fluent", "保存失败回滚分段选择");
+  assert.equal(app.node("setting-layout-mode").value, "stack", "保存失败回滚分段选择");
   assert.equal(app.node("settings-status").dataset.tone, "warn");
   // 命令失败 (热键冲突) 要在界面可见, 且热键框回滚为已生效值
   const failing = await boot({ html: "settings.html", reject: { save_settings_command: "热键冲突" } });
@@ -1357,23 +1352,6 @@ test("tab switcher keeps a hairline border and tints the active icon without a p
   assert.doesNotMatch(js, /tab-active-pill/, "滑块位移逻辑退役");
 });
 
-test("classic daily bars scale by day total and stack segments by in-day share (C067)", async () => {
-  const app = await boot();
-  const bars = [...app.node("stack").querySelectorAll(".day-bars")];
-  // fixture 两日 127K / 184K: 峰值日比例 1, 另一日 127/184
-  assert.equal(bars.length, 2);
-  assert.equal(bars[1].style["--ratio"], "1.0000");
-  assert.equal(Number(bars[0].style["--ratio"]).toFixed(2), (127 / 184).toFixed(2));
-  for (const bar of bars) {
-    const total = bar.children.reduce((sum, seg) => sum + parseFloat(seg.style.height), 0);
-    assert.ok(Math.abs(total - 100) < 0.01, "段高为当日内份额, 合计 100%");
-  }
-  // 修复前 .day 由内容定高, flex:1 的柱容器恒为 0 高 —— 必须撑满图表高度
-  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-  assert.match(css, /\.daily-chart \.day\s*\{[^}]*height:\s*100%/);
-  assert.match(css, /\.daily-chart \.day-bars\s*\{[^}]*var\(--ratio/);
-});
-
 test("card header follows mac CollapsibleCardHeader order and embeds the collapsed mini summary (C067)", async () => {
   const app = await boot();
   const usage = app.node("stack").querySelector('[data-card="usage"]');
@@ -1409,16 +1387,13 @@ test("model usage chevron toggles top-3 and full list without an extra text row 
   assert.match(app.node("stack").textContent, /暂无模型数据/);
 });
 
-test("HUD header mirrors mac dashboardTopHeader in both themes (C067 / C100)", async () => {
+test("HUD header mirrors mac dashboardTopHeader (C067 / C100 / C271)", async () => {
   const app = await boot();
   assert.equal(app.node("runtime-status"), null, "C100 移除 SYS.OK 文字牌");
   assert.equal(app.document.querySelector(".hud-brand").textContent, "Bruce", "品牌字统一为 Bruce");
   assert.equal(app.node("hud-dot-wrap").classList.contains("tone-ok"), true);
   assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "运行正常");
-  assert.equal(app.node("hud-agents").textContent, "● 2 AGENTS ACTIVE");
-  app.state.settings.theme = "nothing";
-  await app.emit("settings-updated", app.state.settings);
-  assert.equal(app.document.querySelector(".hud-brand").textContent, "Bruce", "Nothing 主题品牌字同样统一为 Bruce");
+  // C271: 唯一界面风格为 Nothing, 运行态文案即 Nothing 口径.
   assert.equal(app.node("hud-agents").textContent, "2 AGENTS RUNNING");
   // 运行态异常由顶部四色状态灯 (C100) 与 hover 原因承载
   await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "stale" } });
@@ -3139,8 +3114,8 @@ test("agent brand badges replace colour dots on settings and dashboard (C161)", 
   const dashboard = await boot();
   const legendBadges = [...dashboard.document.querySelectorAll(".daily-legend .ab-badge")];
   assert.ok(legendBadges.length >= 1);
-  assert.ok(legendBadges.every((badge) => badge.style.getPropertyValue("--ab-size") === "12px"), "C218: 图例徽章收敛到 12px");
-  assert.ok(legendBadges.every((badge) => badge.classList.contains("ab-badge--ring")), "C218: 12px 图例仍带品牌系列色环");
+  assert.ok(legendBadges.every((badge) => badge.style.getPropertyValue("--ab-size") === "9px"), "C271: Nothing 图例徽章收敛到 9px");
+  assert.ok(legendBadges.every((badge) => !badge.classList.contains("ab-badge--ring")), "Nothing 单色档不带走品牌色环");
   assert.ok(dashboard.document.querySelectorAll(".agent-row .ab-badge").length >= 1);
   assert.equal(dashboard.document.querySelectorAll(".daily-legend .sw").length, 0, "图例不应再留旧色块");
 });

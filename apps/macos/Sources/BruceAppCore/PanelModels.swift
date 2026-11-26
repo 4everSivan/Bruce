@@ -1,6 +1,6 @@
 import Foundation
 
-// 菜单栏液态玻璃面板的 view model 与展示格式化.
+// 菜单栏 Nothing 面板的 view model 与展示格式化.
 // 纯数据与格式化, 不含映射逻辑; 卡片组件只消费这里的 view model.
 // 视觉与条件渲染语义以 panel-layout-v8.html 和设计文档 §3 为准.
 
@@ -948,6 +948,16 @@ package enum DashboardCardID: String, CaseIterable, Equatable, Sendable, Identif
         }
     }
 
+    /// C271: 页面标题 —— 与卡内标题同源, 供 Tab 模式顶栏使用;
+    /// `title` 继续承担 tooltip 面的短名, 两者不得混用.
+    package var pageTitle: String {
+        switch self {
+        case .usage: return "Token 用量"
+        case .subscription: return "订阅用量"
+        case .hourly: return "Agent 用量"
+        }
+    }
+
     package var systemImage: String {
         switch self {
         case .usage: return "chart.bar.xaxis"
@@ -1039,19 +1049,17 @@ package enum DashboardCardHeaderLayout {
     /// 手柄悬停底左右内边距 (pt).
     package static let handleHorizontalPadding: Double = 3
 
-    /// 手柄单点边长: Nothing 方点 2pt, 其余主题圆点 2.2pt.
-    package static func handleDotSize(isNothing: Bool) -> Double {
-        isNothing ? 2 : 2.2
-    }
+    /// 手柄单点边长: Nothing 方点 2pt.
+    package static let handleDotSize: Double = 2
 
     /// 手柄整体宽度: 两列点 + 列间距 + 左右内边距.
-    package static func handleWidth(isNothing: Bool) -> Double {
-        handleDotSize(isNothing: isNothing) * 2 + handleDotSpacing + handleHorizontalPadding * 2
+    package static var handleWidth: Double {
+        handleDotSize * 2 + handleDotSpacing + handleHorizontalPadding * 2
     }
 
     /// 手柄是否完整落在卡片左边距内 (不压标题, 不出卡片).
-    package static func handleFitsGutter(isNothing: Bool) -> Bool {
-        handleWidth(isNothing: isNothing) <= cardHorizontalPadding
+    package static var handleFitsGutter: Bool {
+        handleWidth <= cardHorizontalPadding
     }
 }
 

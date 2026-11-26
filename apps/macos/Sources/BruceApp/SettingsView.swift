@@ -358,13 +358,9 @@ struct SettingsView: View {
 
     // MARK: - 通用面板
 
-    /// 通用偏好: 外观, 界面风格, 模糊风格, 自动刷新与菜单栏指标.
+    /// 通用偏好: 外观, 界面风格 (C271 收敛为 Nothing), 自动刷新与菜单栏指标.
     var generalPane: some View {
-        let glassSupported = coordinator.liquidGlassSupported()
-        let showBlurStyles = glassSupported
-            && coordinator.resolvedTheme.interfaceStyle == .liquidGlass
-
-        return VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
             FluentCard {
                 FluentRow(
                     "配色模式",
@@ -384,40 +380,16 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "界面风格",
-                    sub: glassSupported
-                        ? "经典为材质面板; 液态玻璃使用系统玻璃效果; Nothing 为纯色平面风格, 无模糊无玻璃"
-                        : "液态玻璃需要 macOS 26; 当前可使用经典或 Nothing",
+                    sub: "Nothing 为纯色平面风格; 更多界面风格敬请期待",
                     divided: true
                 ) {
-                    FluentSegmentedPicker(
-                        options: [
-                            ("经典", InterfaceStylePreference.classic),
-                            ("液态玻璃", InterfaceStylePreference.liquidGlass),
-                            ("Nothing", InterfaceStylePreference.nothing),
-                        ],
-                        selection: Binding(
-                            get: { coordinator.interfaceStyle },
-                            set: { coordinator.setInterfaceStyle($0) }
-                        )
-                    )
-                }
-                if showBlurStyles {
-                    FluentRow(
-                        "模糊风格",
-                        sub: "标准与通透为系统液态玻璃, 哑光退化为材质质感",
-                        divided: true
-                    ) {
-                        FluentSegmentedPicker(
-                            options: [
-                                ("标准", GlassStylePreference.regular),
-                                ("通透", GlassStylePreference.clear),
-                                ("哑光", GlassStylePreference.material),
-                            ],
-                            selection: Binding(
-                                get: { coordinator.glassStyle },
-                                set: { coordinator.setGlassStyle($0) }
-                            )
-                        )
+                    HStack(spacing: 8) {
+                        Text("Nothing")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(SettingsDemoTokens.text)
+                        Text("敬请期待")
+                            .font(.system(size: 11))
+                            .foregroundStyle(SettingsDemoTokens.text3)
                     }
                 }
                 // C145: 全局界面动效总开关. 「始终播放」只作用于 Bruce 自身动效,
@@ -715,10 +687,6 @@ struct SettingsView: View {
         return max(0.0, min(100.0, percentage)) / 100.0
     }
 
-    var isNothingTheme: Bool {
-        coordinator.resolvedTheme.interfaceStyle == .nothing
-    }
-
     func metricValue(_ metric: MenuBarMetric) -> String {
         let summary = model.makeMenuBarSummary()
         let formatter = MenuBarMetricFormatter()
@@ -728,10 +696,8 @@ struct SettingsView: View {
     var menuBarPreviewText: String {
         let summary = model.makeMenuBarSummary()
         let formatter = MenuBarMetricFormatter()
-        let isNothing = isNothingTheme
-        let separator = isNothing ? " / " : "  "
-        return model.menuBarMetrics.map { formatter.string(for: $0, summary: summary, uppercaseUnit: isNothing) }
-            .joined(separator: separator)
+        return model.menuBarMetrics.map { formatter.string(for: $0, summary: summary, uppercaseUnit: true) }
+            .joined(separator: " / ")
     }
 
     /// C183: 德系包豪斯单轨星规预览图标
@@ -825,13 +791,8 @@ struct SettingsView: View {
                     HStack(spacing: 6) {
                         menuBarPreviewIcon
                         if !coordinator.menuBarIconOnly {
-                            if isNothingTheme {
-                                Text(menuBarPreviewText)
-                                    .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
-                            } else {
-                                Text(menuBarPreviewText)
-                                    .font(.system(size: 12, weight: .regular, design: .default).monospacedDigit())
-                            }
+                            Text(menuBarPreviewText)
+                                .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
                         }
                     }
                     .foregroundStyle(isPreviewLight ? Color.black.opacity(0.9) : Color.white.opacity(0.95))

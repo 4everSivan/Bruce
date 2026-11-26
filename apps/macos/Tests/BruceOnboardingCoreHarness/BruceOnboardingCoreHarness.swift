@@ -138,7 +138,6 @@ struct BruceOnboardingCoreHarness {
         try await disconnectRemovesRecordButKeepsOthers()
         try configAppearanceModeDecodeAndFallback()
         try appearancePreferenceCycleOrder()
-        try configGlassStyleDecodeAndFallback()
         try configNothingStyleDecodeAndResolution()
         try codexAccountIdentityServiceIDMatchesRustContract()
         try codexAccountIdentityLegacyID()

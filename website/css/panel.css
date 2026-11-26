@@ -35,36 +35,6 @@
     backdrop-filter 420ms var(--ease);
 }
 
-/* liquid glass: frosted refractive glass with specular top rim */
-.bp-surface[data-material="liquid"] {
-  --bp-card: rgba(255, 255, 255, 0.68);
-  background: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.82) 0%,
-    rgba(243, 248, 245, 0.76) 52%,
-    rgba(248, 246, 241, 0.80) 100%
-  );
-  border-color: rgba(22, 26, 34, 0.09);
-  -webkit-backdrop-filter: blur(40px) saturate(190%);
-  backdrop-filter: blur(40px) saturate(190%);
-  box-shadow:
-    0 34px 72px -26px rgba(20, 24, 34, 0.34),
-    0 12px 26px -16px rgba(20, 24, 34, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.65);
-}
-
-/* 叠放态下提高磨砂底板不透明度，彻底杜绝下层卡片文字透印重影 */
-.deck .bp-surface[data-material="liquid"] {
-  --bp-card: rgba(255, 255, 255, 0.95);
-  background: linear-gradient(
-    155deg,
-    rgba(252, 253, 252, 0.98) 0%,
-    rgba(241, 246, 243, 0.96) 54%,
-    rgba(247, 245, 240, 0.98) 100%
-  );
-}
-
 /* ---- panel header ---------------------------------------------- */
 .bp-head {
   display: flex;
@@ -139,6 +109,22 @@
   box-shadow: 0 1px 5px rgba(15, 23, 42, 0.05), inset 0 0 0 1px rgba(0, 0, 0, 0.045);
   overflow: hidden;
   transition: background-color 420ms var(--ease);
+}
+
+.bp-brandsep {
+  width: 1px;
+  height: 10px;
+  background: #cccccc;
+  margin: 0 2px;
+  flex: 0 0 auto;
+}
+
+.bp-pagetitle {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1a1a1a;
+  white-space: nowrap;
 }
 
 .bp-card__head {
@@ -1378,8 +1364,8 @@
    Nothing 主题 · 按真机参考图校准（Doto 真点阵 / 琥珀色系 / 大圆角）
    ================================================================ */
 .bp-surface[data-material="nothing"] {
-  --n-amber: #c9a24a;
-  --n-amber-deep: #a8842f;
+  --n-amber: #d4a843;
+  --n-amber-deep: #b8860b;
   border-radius: 22px;
   background: #f7f7f8;
   border-color: #ececec;
@@ -1439,7 +1425,7 @@
   background: #efefe9;
   border-color: #e2e2da;
 }
-.bp-surface[data-material="nothing"] .bp-month.is-current .bp-month__v { color: #c9a24a; }
+.bp-surface[data-material="nothing"] .bp-month.is-current .bp-month__v { color: #d4a843; }
 .bp-surface[data-material="nothing"] .bp-month__k { color: #9b9b9b; font-size: 9.5px; }
 .bp-surface[data-material="nothing"] .bp-month__v { font-size: 13.5px; }
 
@@ -1508,7 +1494,7 @@
   color: #8a8a8a;
 }
 .bp-surface[data-material="nothing"] .bp-seg--xs .bp-win.is-on {
-  background: #c9a24a;
+  background: #d4a843;
   color: #fff;
 }
 
@@ -1529,9 +1515,9 @@
 .bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="3"],
 .bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="3"] { background: #d6b877; }
 .bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="4"],
-.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="4"] { background: #c9a24a; }
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="4"] { background: #d4a843; }
 .bp-surface[data-material="nothing"] .bp-heatmap__cell[data-level="5"],
-.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="5"] { background: #a8842f; }
+.bp-surface[data-material="nothing"] .bp-heatmap__legend i[data-level="5"] { background: #b8860b; }
 
 .bp-surface[data-material="nothing"] .bp-section__title {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
@@ -1568,8 +1554,8 @@
   font-variation-settings: "ROND" 0;
   letter-spacing: 0.03em;
   line-height: 1.08;
-  color: #c9a24a;
-  -webkit-text-fill-color: #c9a24a;
+  color: #d4a843;
+  -webkit-text-fill-color: #d4a843;
   background: none;
   -webkit-background-clip: border-box;
   background-clip: border-box;
@@ -1604,9 +1590,9 @@
   z-index: -1;
   background: radial-gradient(
     50% 50% at 50% 55%,
-    rgba(201, 162, 74, 0.42),
-    rgba(201, 162, 74, 0.16) 45%,
-    rgba(201, 162, 74, 0) 72%
+    rgba(212, 168, 67, 0.42),
+    rgba(212, 168, 67, 0.16) 45%,
+    rgba(212, 168, 67, 0) 72%
   );
   filter: blur(9px);
   pointer-events: none;
@@ -1615,7 +1601,7 @@
 .bp-surface[data-material="nothing"] .bp-hero__num {
   position: relative;
   z-index: 1;
-  text-shadow: 0 0 20px rgba(201, 162, 74, 0.42);
+  text-shadow: 0 0 20px rgba(212, 168, 67, 0.42);
 }
 
 /* 点阵数字：放宽行高避免顶部被裁，氛围灯对准数字 */
@@ -1629,9 +1615,9 @@
   height: 86px;
   background: radial-gradient(
     50% 50% at 50% 52%,
-    rgba(201, 162, 74, 0.5),
-    rgba(201, 162, 74, 0.18) 46%,
-    rgba(201, 162, 74, 0) 74%
+    rgba(212, 168, 67, 0.5),
+    rgba(212, 168, 67, 0.18) 46%,
+    rgba(212, 168, 67, 0) 74%
   );
 }
 
@@ -1862,3 +1848,165 @@
   background: rgba(0, 0, 0, 0.06);
   color: rgba(0, 0, 0, 0.82);
 }
+
+/* ================================================================
+   C271 · 按当前 Nothing 版本校准（唯一权威覆盖，置于文件末尾）
+   面板 14 / 卡片 8 / 1px #E8E8E8；品牌 Space Grotesk；选中仅图标变色；
+   Hero 数字双层静态 drop-shadow；方形小数点；等宽单位与成本。
+   ================================================================ */
+.bp-surface[data-material="nothing"] {
+  --n-amber: #d4a843;
+  --n-amber-deep: #b8860b;
+  border-radius: 14px;
+  background: #f5f5f5;
+  border-color: #e8e8e8;
+}
+
+.bp-surface[data-material="nothing"] .bp-card {
+  border-radius: 8px;
+  border-color: #e8e8e8;
+  background: #fff;
+}
+
+.bp-surface[data-material="nothing"] .bp-brand {
+  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: none;
+  color: #1a1a1a;
+}
+
+.bp-surface[data-material="nothing"] .bp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2e7d32;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.22);
+  margin-left: 3px;
+}
+
+.bp-surface[data-material="nothing"] .bp-tabs {
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+}
+
+.bp-surface[data-material="nothing"] .bp-tab {
+  width: 24px;
+  height: 20px;
+  border-radius: 2px;
+  background: transparent;
+  color: #666666;
+}
+
+.bp-surface[data-material="nothing"] .bp-tab:hover { background: transparent; color: #1a1a1a; }
+
+.bp-surface[data-material="nothing"] .bp-tab[aria-selected="true"] {
+  background: transparent;
+  color: #d4a843;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero {
+  padding-top: 6px;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__num {
+  position: relative;
+  z-index: 1;
+  font-family: "Doto", "Space Mono", ui-monospace, monospace;
+  font-size: 52px;
+  font-weight: 700;
+  font-variation-settings: "ROND" 0;
+  letter-spacing: -1.04px;
+  line-height: 1.2;
+  color: #d4a843;
+  -webkit-text-fill-color: #d4a843;
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  text-shadow: none;
+  filter:
+    drop-shadow(0 0 3px rgba(212, 168, 67, 0.42))
+    drop-shadow(0 0 11px rgba(212, 168, 67, 0.24));
+}
+
+/* 方形小数点：4×4，压基线，左右各 4pt（与 App 一致） */
+.bp-hero__dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin: 0 4px;
+  background: #d4a843;
+  vertical-align: baseline;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__unit {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: #666666;
+}
+
+.bp-surface[data-material="nothing"] .bp-hero__cost {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 17px;
+  font-weight: 400;
+  color: #1a1a1a;
+}
+
+/* 旧版径向光晕退役：仅保留数字本体双层辉光 */
+.bp-surface[data-material="nothing"] .bp-hero::after {
+  display: none;
+  content: none;
+}
+
+.bp-surface[data-material="nothing"] .bp-section__title {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #666666;
+}
+
+.bp-surface[data-material="nothing"] .bp-breakdown dt {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #666666;
+}
+
+.bp-surface[data-material="nothing"] .bp-breakdown dd {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.bp-surface[data-material="nothing"] .bp-month {
+  border-radius: 3px;
+  border-color: #e8e8e8;
+  background: transparent;
+}
+
+.bp-surface[data-material="nothing"] .bp-month.is-current {
+  background: #f0f0f0;
+  border-color: #cccccc;
+}
+
+.bp-surface[data-material="nothing"] .bp-month.is-current .bp-month__v { color: #d4a843; }
+
+/* C271: 覆盖旧的 -0.01em 规则, 对齐 App 的 -1.04px 字距 */
+.bp-surface[data-material="nothing"] .bp-card[data-card="token"] .bp-hero__num { letter-spacing: -1.04px; }
+
+/* C271: 旧版选中黑底退役, 与 App 一致仅图标变色 */
+.bp-surface[data-material="nothing"] .bp-tab.is-active {
+  background: transparent;
+  color: #d4a843;
+}
+.bp-surface[data-material="nothing"] .bp-tab:hover { background: transparent; }

@@ -164,8 +164,7 @@ for booleans, trailing `fluentButton()` / `.fluentButton(.primary)` / `.fluentBu
 | Row title | Subtitle | Control |
 |---|---|---|
 | 配色模式 | 立即作用于菜单栏面板与设置窗口 | segmented: 跟随系统 / 浅色 / 深色 (`:372-386`) |
-| 界面风格 | …经典/液态玻璃/Nothing… | segmented: 经典 / 液态玻璃 / Nothing (`:388-405`) |
-| 模糊风格 (only in Liquid Glass) | 标准与通透为系统液态玻璃, 哑光退化为材质质感 | segmented: 标准 / 通透 / 哑光 (`:408-424`) |
+| 界面风格 | Nothing 单色平面（C271 起唯一风格） | 静态 `Nothing` (`:388-405`) |
 | 界面动效 | 关闭后全应用不做过渡动画; 「始终播放」会忽略系统「减弱动态效果」 | segmented: 跟随系统 / 始终播放 / 始终关闭 (`:428-443`) |
 | 仪表盘卡片布局 | 纵向级联可滚轮纵览… | segmented: 纵向级联 / 顶栏 Tab (`:446-460`) |
 | 刷新间隔 | …订阅额度最短 3 分钟查询一次, 遇 429 限流时自动冷却 | presets 3 / 6 min + custom 1–1440 (`:462-468`) |

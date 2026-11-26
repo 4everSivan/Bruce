@@ -34,7 +34,7 @@ private enum BubbleNothingTokens {
 /// 规格契约:
 /// - 宽度固定 280pt;
 /// - 全主题自适应:
-///   - Classic / LiquidGlass: 柔白/高斯底座 + 10pt 胶囊 + SF Pro 字体 + 4pt 胶囊进度条;
+///   - C271 起仅保留 Nothing 形态;
 ///   - Nothing: 纯黑/白底座 + 8pt 硬朗方角 + Space Grotesk / Space Mono 点阵字体 + 14 段方块点阵迷你进度条;
 /// - 左侧 24pt 品牌瓷砖徽章 (ProviderBrandBadge, Nothing 模式自动跟随 3pt 方角与柔彩图元);
 /// - 多态条目支持:
@@ -77,16 +77,11 @@ struct QuotaAlertBubbleView: View {
         self.onHoverChange = onHoverChange
     }
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var now: Date = Date()
     @State private var timer: Timer?
     @State private var hasAppeared: Bool = false
-
-    private var isNothing: Bool {
-        theme.interfaceStyle == .nothing
-    }
 
     private static let isoFormatterWithFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -116,14 +111,13 @@ struct QuotaAlertBubbleView: View {
         .padding(.vertical, 8)
         .frame(width: 280)
         .background(
-            RoundedRectangle(cornerRadius: isNothing ? 8 : 10, style: .continuous)
-                .fill(isNothing ? BubbleNothingTokens.surface(colorScheme) : Color(nsColor: .windowBackgroundColor).opacity(0.96))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(BubbleNothingTokens.surface(colorScheme))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 8 : 10, style: .continuous)
-                .stroke(isNothing ? BubbleNothingTokens.borderVisible(colorScheme) : Color.primary.opacity(0.12), lineWidth: isNothing ? 1 : 0.5)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(BubbleNothingTokens.borderVisible(colorScheme), lineWidth: 1)
         )
-        .shadow(color: isNothing ? Color.clear : Color.black.opacity(0.16), radius: isNothing ? 0 : 8, x: 0, y: isNothing ? 0 : 4)
         .contentShape(Rectangle())
         .onHover { isHovered in
             onHoverChange(isHovered)
@@ -178,8 +172,8 @@ struct QuotaAlertBubbleView: View {
                     // 首行: 服务名 (左) ... [每5小时] (卡片感) + 倒计时 (右, 间距 6pt)
                     HStack(alignment: .center, spacing: 4) {
                         Text(alert.serviceName)
-                            .font(isNothing ? NothingFont.ui(11, weight: .semibold) : .system(size: 11, weight: .semibold))
-                            .foregroundStyle(isNothing ? BubbleNothingTokens.display(colorScheme) : .primary)
+                            .font(NothingFont.ui(11, weight: .semibold))
+                            .foregroundStyle(BubbleNothingTokens.display(colorScheme))
                             .lineLimit(1)
                             .truncationMode(.tail)
 
@@ -191,7 +185,7 @@ struct QuotaAlertBubbleView: View {
 
                             if let countdown {
                                 Text(countdown)
-                                    .font(isNothing ? NothingFont.mono(9.5, weight: .bold) : .system(size: 9, weight: .semibold, design: .monospaced))
+                                    .font(NothingFont.mono(9.5, weight: .bold))
                                     .foregroundStyle(alertColor)
                                     .fixedSize()
                             }
@@ -201,46 +195,27 @@ struct QuotaAlertBubbleView: View {
 
                     // 次行: 进度条 (左) + 百分比放到进度条右边
                     HStack(alignment: .center, spacing: 6) {
-                        if isNothing {
-                            // Nothing 风格: 14 段方块点阵迷你进度条 (03 §6 规则 298), 带逐段点亮动画
-                            ZStack(alignment: .leading) {
-                                HStack(spacing: 1.5) {
-                                    ForEach(0..<14, id: \.self) { _ in
-                                        Rectangle()
-                                            .fill(BubbleNothingTokens.emptySegment(colorScheme))
-                                            .frame(height: 4)
-                                    }
-                                }
-                                NothingFilledSegmentsShape(
-                                    fraction: usedFraction,
-                                    segmentCount: 14,
-                                    spacing: 1.5
-                                )
-                                .fill(alertColor)
-                            }
-                            .frame(height: 4)
-                        } else {
-                            // 4pt 胶囊进度条, 带从 0 增长平滑弹簧动画
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule()
-                                        .fill(Color.primary.opacity(0.10))
+                        // 14 段方块点阵迷你进度条 (03 §6 规则 298), 带逐段点亮动画.
+                        ZStack(alignment: .leading) {
+                            HStack(spacing: 1.5) {
+                                ForEach(0..<14, id: \.self) { _ in
+                                    Rectangle()
+                                        .fill(BubbleNothingTokens.emptySegment(colorScheme))
                                         .frame(height: 4)
-
-                                    Capsule()
-                                        .fill(alertColor)
-                                        .frame(
-                                            width: max(4, min(geo.size.width, geo.size.width * CGFloat(usedFraction))),
-                                            height: 4
-                                        )
                                 }
                             }
-                            .frame(height: 4)
+                            NothingFilledSegmentsShape(
+                                fraction: usedFraction,
+                                segmentCount: 14,
+                                spacing: 1.5
+                            )
+                            .fill(alertColor)
                         }
+                        .frame(height: 4)
 
                         // 百分比置于进度条右边
                         Text("\(percent)%")
-                            .font(isNothing ? NothingFont.mono(11, weight: .bold) : .system(size: 11, weight: .bold, design: .rounded))
+                            .font(NothingFont.mono(11, weight: .bold))
                             .foregroundStyle(alertColor)
                             .fixedSize()
                     }
@@ -253,14 +228,9 @@ struct QuotaAlertBubbleView: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(isNothing ? NothingFont.mono(8.5, weight: .bold) : .system(size: 8, weight: .bold))
-                    .foregroundStyle(isNothing ? BubbleNothingTokens.secondary(colorScheme) : .secondary)
+                    .font(NothingFont.mono(8.5, weight: .bold))
+                    .foregroundStyle(BubbleNothingTokens.secondary(colorScheme))
                     .frame(width: 14, height: 14)
-                    .background(
-                        isNothing
-                            ? RoundedRectangle(cornerRadius: 2, style: .continuous).fill(Color.clear)
-                            : RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06))
-                    )
             }
             .buttonStyle(.plain)
             .help("关闭提示")
@@ -292,8 +262,8 @@ struct QuotaAlertBubbleView: View {
                     // 首行: 服务名 (左) + 琥珀色微胶囊标签 (右)
                     HStack(alignment: .center, spacing: 4) {
                         Text(alert.serviceName)
-                            .font(isNothing ? NothingFont.ui(11, weight: .semibold) : .system(size: 11, weight: .semibold))
-                            .foregroundStyle(isNothing ? BubbleNothingTokens.display(colorScheme) : .primary)
+                            .font(NothingFont.ui(11, weight: .semibold))
+                            .foregroundStyle(BubbleNothingTokens.display(colorScheme))
                             .lineLimit(1)
                             .truncationMode(.tail)
 
@@ -305,8 +275,8 @@ struct QuotaAlertBubbleView: View {
 
                     // 次行: 精炼拦截保护文案
                     Text(alert.explanation)
-                        .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
-                        .foregroundStyle(isNothing ? BubbleNothingTokens.secondary(colorScheme) : .secondary)
+                        .font(NothingFont.mono(9))
+                        .foregroundStyle(BubbleNothingTokens.secondary(colorScheme))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -318,14 +288,9 @@ struct QuotaAlertBubbleView: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(isNothing ? NothingFont.mono(8.5, weight: .bold) : .system(size: 8, weight: .bold))
-                    .foregroundStyle(isNothing ? BubbleNothingTokens.secondary(colorScheme) : .secondary)
+                    .font(NothingFont.mono(8.5, weight: .bold))
+                    .foregroundStyle(BubbleNothingTokens.secondary(colorScheme))
                     .frame(width: 14, height: 14)
-                    .background(
-                        isNothing
-                            ? RoundedRectangle(cornerRadius: 2, style: .continuous).fill(Color.clear)
-                            : RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06))
-                    )
             }
             .buttonStyle(.plain)
             .help("关闭提示")
@@ -335,78 +300,42 @@ struct QuotaAlertBubbleView: View {
     /// 琥珀色出口拦截微胶囊标签
     @ViewBuilder
     private func egressBadge(_ text: String) -> some View {
-        if isNothing {
-            Text(text)
-                .font(NothingFont.mono(8.5, weight: .bold))
-                .foregroundStyle(BubbleNothingTokens.warning)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(BubbleNothingTokens.emptySegment(colorScheme).opacity(0.40))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(BubbleNothingTokens.borderVisible(colorScheme), lineWidth: 1)
-                )
-        } else {
-            Text(text)
-                .font(.system(size: 8.5, weight: .semibold))
-                .foregroundStyle(Color(hex: "#D97706")) // 暖琥珀橙
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 4.5)
-                .padding(.vertical, 1.5)
-                .background(
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .fill(Color(hex: "#F59E0B").opacity(colorScheme == .dark ? 0.18 : 0.12))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .strokeBorder(Color(hex: "#F59E0B").opacity(colorScheme == .dark ? 0.35 : 0.25), lineWidth: 0.5)
-                )
-        }
+        Text(text)
+            .font(NothingFont.mono(8.5, weight: .bold))
+            .foregroundStyle(BubbleNothingTokens.warning)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(BubbleNothingTokens.emptySegment(colorScheme).opacity(0.40))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(BubbleNothingTokens.borderVisible(colorScheme), lineWidth: 1)
+            )
     }
 
     /// 「每5小时」卡片感标签 Chip (带圆角底座与边框，严格单行不折行)
     @ViewBuilder
     private func windowCardChip(_ label: String) -> some View {
         let text = formattedWindowLabel(label)
-        if isNothing {
-            Text(text)
-                .font(NothingFont.mono(8.5))
-                .foregroundStyle(BubbleNothingTokens.secondary(colorScheme))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 0.5)
-                .background(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(BubbleNothingTokens.emptySegment(colorScheme).opacity(0.35))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(BubbleNothingTokens.borderVisible(colorScheme), lineWidth: 1)
-                )
-        } else {
-            Text(text)
-                .font(.system(size: 8.5, weight: .medium))
-                .foregroundStyle(Color.secondary)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 4.5)
-                .padding(.vertical, 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.05))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                )
-        }
+        Text(text)
+            .font(NothingFont.mono(8.5))
+            .foregroundStyle(BubbleNothingTokens.secondary(colorScheme))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 0.5)
+            .background(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(BubbleNothingTokens.emptySegment(colorScheme).opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(BubbleNothingTokens.borderVisible(colorScheme), lineWidth: 1)
+            )
     }
 
     private func formattedWindowLabel(_ label: String) -> String {
@@ -429,24 +358,13 @@ struct QuotaAlertBubbleView: View {
     // MARK: - 辅助计算
 
     private func alertTierColor(tier: Int) -> Color {
-        if isNothing {
-            switch tier {
-            case 95:
-                return BubbleNothingTokens.accent
-            case 80:
-                return BubbleNothingTokens.warning
-            default:
-                return BubbleNothingTokens.success
-            }
-        } else {
-            switch tier {
-            case 95:
-                return Color(hex: "#EF4444") // 霓虹红 (Critical)
-            case 80:
-                return Color(hex: "#F59E0B") // 预警橙 (Warning)
-            default:
-                return Color(hex: "#EAB308") // 琥珀黄 (Notice)
-            }
+        switch tier {
+        case 95:
+            return BubbleNothingTokens.accent
+        case 80:
+            return BubbleNothingTokens.warning
+        default:
+            return BubbleNothingTokens.success
         }
     }
 

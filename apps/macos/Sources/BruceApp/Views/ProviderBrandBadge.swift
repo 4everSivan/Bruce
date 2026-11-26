@@ -20,10 +20,7 @@ struct ProviderBrandBadge: View {
     /// 配置弹窗标题 20pt; 圆角与首字母字号按比例缩放, 15pt 保持既有定稿值。
     var size: CGFloat = 15
 
-    @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
-
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
     /// 与 Nothing 风格统一紧凑圆角 3pt; 随尺寸等比放大。
     private var cornerRadius: CGFloat {
@@ -60,14 +57,10 @@ struct ProviderBrandBadge: View {
         }
     }
 
-    private var glyphColor: Color {
-        isNothing ? nothingBrandColor : .white
-    }
+    private var glyphColor: Color { nothingBrandColor }
 
     private var backgroundColor: Color {
-        isNothing
-            ? nothingBrandColor.opacity(colorScheme == .dark ? 0.16 : 0.12)
-            : brandColor
+        nothingBrandColor.opacity(colorScheme == .dark ? 0.16 : 0.12)
     }
 
     private var brandColor: Color {

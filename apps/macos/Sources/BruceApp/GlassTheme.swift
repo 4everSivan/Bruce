@@ -34,13 +34,9 @@ extension Color {
 
 // MARK: - 主题环境
 
-/// 面板与设置页共享的已解析主题; 默认 classic + regular (安全回落).
+/// 面板与设置页共享的已解析主题; C271 起默认即 Nothing.
 private struct BruceResolvedThemeKey: EnvironmentKey {
-    static let defaultValue = ResolvedTheme(
-        interfaceStyle: .classic,
-        glassStyle: .regular,
-        usesLiquidGlassEffects: false
-    )
+    static let defaultValue = ResolvedTheme.nothing
 }
 
 extension EnvironmentValues {
@@ -52,27 +48,7 @@ extension EnvironmentValues {
 
 // MARK: - Dashboard surface tokens
 
-extension DashboardGlassSurfaceCapabilities {
-    /// Runtime capability probe stays at the AppKit boundary; the core matrix
-    /// receives these values as plain booleans and remains deterministic.
-    static var current: Self {
-        Self(
-            nativeLiquidGlass: LiquidGlassCapability.isSupported,
-            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
-            increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        )
-    }
-}
-
-extension DashboardGlassSurfacePlan {
-    /// Production convenience: tests call the pure overload with injected
-    /// capabilities, while UI call sites use the current system capabilities.
-    static func resolve(theme: ResolvedTheme) -> Self {
-        resolve(theme: theme, capabilities: .current)
-    }
-}
-
-/// SwiftUI adapter for the pure surface matrix. It contains no layout or
+/// SwiftUI adapter for the pure Nothing surface tokens. No layout or
 /// business state; all values come from the shared Panel/Card/Control plan.
 struct DashboardGlassSurfaceTokens {
     let panelTintColor: Color
@@ -86,17 +62,9 @@ struct DashboardGlassSurfaceTokens {
     let controlBorderColor: Color
     let controlShadowColor: Color
 
-    static func resolve(
-        theme: ResolvedTheme,
-        colorScheme: ColorScheme
-    ) -> Self {
+    static func resolve(colorScheme: ColorScheme) -> Self {
         let appearance: DashboardGlassAppearance = colorScheme == .dark ? .dark : .light
-        let style = DashboardGlassSurfaceStyle.resolve(
-            theme: theme,
-            appearance: appearance,
-            capabilities: .current
-        )
-        return Self(style: style)
+        return Self(style: DashboardGlassSurfaceStyle.resolve(appearance: appearance))
     }
 
     private init(style: DashboardGlassSurfaceStyle) {
@@ -132,89 +100,14 @@ enum DashboardGlassSurface {
 /// 统一面板/卡片背景实现. 几何形状由调用方提供, 本函数不改变布局.
 @ViewBuilder
 func dashboardGlassBackground(
-    theme: ResolvedTheme,
     shape: RoundedRectangle,
     colorScheme: ColorScheme = .light,
-    fallback: DashboardGlassFallback = .material,
     surface: DashboardGlassSurface = .panel
 ) -> some View {
-    let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
-    let tokens = DashboardGlassSurfaceTokens.resolve(
-        theme: theme,
-        colorScheme: colorScheme
-    )
-    if plan.backend == .flatMonochrome {
-        // Nothing: 纯色不透明填充, 零玻璃零材质零阴影; 短路在所有玻璃分支之前,
-        // 不触碰既有 classic / liquidGlass 路径.
-        if surface == .card {
-            shape.fill(tokens.cardFillColor)
-        } else {
-            shape.fill(tokens.panelTintColor)
-        }
-    } else if plan.backend == .nativeLiquidGlass {
-        if #available(macOS 26, *) {
-            // The AppKit panel is the single native glass surface. A second
-            // SwiftUI glass layer can become an opaque light sheet when the
-            // backdrop and SwiftUI color scheme disagree. Native cards use a
-            // shared style token instead: it keeps the local content readable
-            // while the AppKit panel still supplies the backdrop.
-            if surface == .card {
-                shape.fill(tokens.cardFillColor)
-            } else {
-                // else 分支 surface 恒为 .panel: 面板玻璃直接使用用户选择的模糊风格.
-                Color.clear.glassEffect(
-                    theme.glassStyle.liquidGlassAPI,
-                    in: shape
-                )
-            }
-        } else {
-            dashboardGlassFallback(
-                shape: shape,
-                colorScheme: colorScheme,
-                fallback: fallback
-            )
-        }
-    } else if surface == .card && (plan.cardMaterial == .matte || plan.cardMaterial == .classic) {
-        // 哑光与经典档位卡片: 消费主题对应的真实卡片填充 token (避免 fallback 0.45 白引发水泥灰)
+    let tokens = DashboardGlassSurfaceTokens.resolve(colorScheme: colorScheme)
+    if surface == .card {
         shape.fill(tokens.cardFillColor)
     } else {
-        dashboardGlassFallback(
-            shape: shape,
-            colorScheme: colorScheme,
-            fallback: fallback
-        )
-    }
-}
-
-@ViewBuilder
-private func dashboardGlassFallback(
-    shape: RoundedRectangle,
-    colorScheme: ColorScheme,
-    fallback: DashboardGlassFallback
-) -> some View {
-    switch fallback {
-    case .material:
-        shape.fill(.regularMaterial)
-    case .card:
-        if colorScheme == .dark {
-            shape.fill(.regularMaterial)
-        } else {
-            shape.fill(Color.white.opacity(0.45))
-        }
-    }
-}
-
-// MARK: - GlassStyle -> 系统 Glass (仅 26+)
-
-extension GlassStylePreference {
-    /// 映射到系统 Glass 类型; 调用方必须包在 #available(macOS 26, *).
-    @available(macOS 26, *)
-    var liquidGlassAPI: Glass {
-        switch self {
-        case .regular, .material:
-            return .regular
-        case .clear:
-            return .clear
-        }
+        shape.fill(tokens.panelTintColor)
     }
 }

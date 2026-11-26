@@ -13,7 +13,6 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
     package let outerQuotaRatio: Double?
     package let innerQuotaRatio: Double?
     package let subscriptionQuotaRatio: Double?
-    package let isNothingTheme: Bool
 
     package init(
         iconName: String,
@@ -22,8 +21,7 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
         remainingQuotaRatio: Double? = nil,
         outerQuotaRatio: Double? = nil,
         innerQuotaRatio: Double? = nil,
-        subscriptionQuotaRatio: Double? = nil,
-        isNothingTheme: Bool = false
+        subscriptionQuotaRatio: Double? = nil
     ) {
         self.iconName = iconName
         self.metricText = metricText
@@ -33,7 +31,6 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
         self.remainingQuotaRatio = remainingQuotaRatio ?? innerQuotaRatio ?? outerQuotaRatio ?? resolvedSubRatio
         self.outerQuotaRatio = outerQuotaRatio ?? resolvedSubRatio
         self.innerQuotaRatio = innerQuotaRatio ?? resolvedSubRatio
-        self.isNothingTheme = isNothingTheme
     }
 }
 
@@ -62,8 +59,7 @@ package struct MenuBarStatusItemContentBuilder {
         metrics: [MenuBarMetric],
         summary: MenuBarSummary,
         isRefreshing: Bool,
-        iconOnly: Bool = false,
-        isNothingTheme: Bool = false
+        iconOnly: Bool = false
     ) -> MenuBarStatusItemContent {
         // C183: 包豪斯单轨星规配额计算:
         // - 单轨与卫星点: 映射整体订阅剩余额度 (summary.averageRemainingQuota ?? summary.minimumRemainingQuota)
@@ -75,9 +71,9 @@ package struct MenuBarStatusItemContentBuilder {
         let innerRatio = minQuotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
 
         let formattedMetrics = iconOnly ? [] : metrics.map { metric in
-            (metric, formatter.string(for: metric, summary: summary, uppercaseUnit: isNothingTheme))
+            (metric, formatter.string(for: metric, summary: summary, uppercaseUnit: true))
         }
-        let separator = isNothingTheme ? " / " : "  "
+        let separator = " / "
         let metricText = formattedMetrics
             .map { "\($0.1)" }
             .joined(separator: separator)
@@ -99,8 +95,7 @@ package struct MenuBarStatusItemContentBuilder {
             remainingQuotaRatio: subRatio ?? innerRatio,
             outerQuotaRatio: outerRatio,
             innerQuotaRatio: innerRatio,
-            subscriptionQuotaRatio: subRatio,
-            isNothingTheme: isNothingTheme
+            subscriptionQuotaRatio: subRatio
         )
     }
 

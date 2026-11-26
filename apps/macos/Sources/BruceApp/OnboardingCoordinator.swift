@@ -21,10 +21,8 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var refreshIntervalMinutes: Int
     /// 外观偏好, 与配置持久化同步; 面板和设置窗口据此覆盖 colorScheme.
     @Published private(set) var appearanceMode: AppearancePreference
-    /// 界面风格 (经典 / 液态玻璃), 与配置持久化同步; 低系统强制经典.
+    /// 界面风格 (C271 起唯一 Nothing), 与配置持久化同步.
     @Published private(set) var interfaceStyle: InterfaceStylePreference
-    /// 模糊风格偏好, 与配置持久化同步; 仅液态玻璃模式下驱动渲染.
-    @Published private(set) var glassStyle: GlassStylePreference
     /// 全局快捷键 (打开/关闭仪表盘), 与配置持久化同步; nil 表示未设置.
     @Published private(set) var dashboardHotkey: GlobalHotkey?
     /// Bruce 自有 Keychain 项目是否已完成访问配置.
@@ -47,8 +45,6 @@ final class OnboardingCoordinator: ObservableObject {
     /// 国家分组及其专用代理端口，不包含凭据。
     @Published private(set) var egressGroups: EgressCountryGroups
     @Published var requestedEgressSettings = false
-    /// 可注入的能力探测 (测试); 默认读系统.
-    var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
     /// 可注入的系统「减弱动态效果」读取 (测试), 默认读系统; C145.
     var systemReduceMotion: () -> Bool = {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -62,14 +58,8 @@ final class OnboardingCoordinator: ObservableObject {
         motionPreference.suppressesMotion(systemReduceMotion: systemReduceMotion())
     }
 
-    /// 当前解析主题 (界面 + 模糊 + 是否用玻璃 API); 始终按能力回落.
-    var resolvedTheme: ResolvedTheme {
-        ThemeResolution.resolve(
-            interfaceStyle: interfaceStyle,
-            glassStyle: glassStyle,
-            isSupported: liquidGlassSupported()
-        )
-    }
+    /// C271: 运行态主题恒为 Nothing.
+    var resolvedTheme: ResolvedTheme { .nothing }
 
     /// 订阅 provider 展示顺序 (转发 SubscriptionService, 保持 Settings 观察入口).
     var subscriptionProviderOrder: [SubscriptionProviderID] {
@@ -166,15 +156,8 @@ final class OnboardingCoordinator: ObservableObject {
         self.refreshIntervalMinutes = resolvedInterval
         scheduler.updateRefreshInterval(TimeInterval(resolvedInterval * 60))
         self.appearanceMode = config?.resolvedAppearanceMode ?? .system
-        let supported = LiquidGlassCapability.isSupported
-        let theme = ThemeResolution.resolve(
-            interfaceStyle: config?.interfaceStyle,
-            glassStyle: config?.glassStyle,
-            isSupported: supported
-        )
-        // UI 绑定使用解析后的界面风格 (不支持时为 classic); 模糊风格保留磁盘/默认.
+        let theme = ThemeResolution.resolve(interfaceStyle: config?.interfaceStyle)
         self.interfaceStyle = theme.interfaceStyle
-        self.glassStyle = theme.glassStyle
         self.dashboardHotkey = config?.resolvedDashboardHotkey
         self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
         self.keychainAccessState = resolvedKeychainAccessController.policy.state
@@ -652,46 +635,6 @@ final class OnboardingCoordinator: ObservableObject {
             return
         }
         appearanceMode = mode
-        model.setSettingsError(nil)
-    }
-
-    /// 用户变更界面风格: 不支持液态玻璃时拒绝 liquidGlass (fail-closed).
-    func setInterfaceStyle(_ style: InterfaceStylePreference) {
-        if style == .liquidGlass, !liquidGlassSupported() {
-            model.setSettingsError("液态玻璃需要 macOS 26 或更高版本")
-            return
-        }
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存界面风格")
-            return
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.interfaceStyle = style
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("界面风格保存失败")
-            return
-        }
-        interfaceStyle = style
-        model.setSettingsError(nil)
-    }
-
-    /// 用户变更模糊风格 (仅液态玻璃模式下有意义): 先持久化再发布.
-    func setGlassStyle(_ style: GlassStylePreference) {
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存模糊风格")
-            return
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.glassStyle = style
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("模糊风格保存失败")
-            return
-        }
-        glassStyle = style
         model.setSettingsError(nil)
     }
 

@@ -1691,13 +1691,14 @@ document.getElementById("foot-settings").addEventListener("click", async () => {
 document.getElementById("foot-quit").addEventListener("click", async () => {
   try { await invoke("quit_app"); } catch (error) { showError(error); }
 });
-function applyTheme(theme) {
-  document.body.classList.toggle("theme-nothing", theme === "nothing");
-  document.body.classList.toggle("theme-fluent", theme !== "nothing");
+// C271: 界面风格产品级收敛为 Nothing; theme-fluent 不再作为可达样式.
+function applyTheme() {
+  document.body.classList.add("theme-nothing");
+  document.body.classList.remove("theme-fluent");
 }
 function applySettings(settings) {
   currentSettings = settings;
-  applyTheme(settings.theme);
+  applyTheme();
   // C145: 动效偏好变更后立即刷新 <html data-motion>, 无需重启.
   applyMotionPreference();
   // 设置变更可能影响卡片顺序/启用集合/布局: 强制重建一次。
