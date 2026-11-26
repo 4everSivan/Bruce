@@ -4,7 +4,7 @@
   "title": "看板 Nothing-only 收敛：界面风格收窄、Tab 页标题上移与 Hero 静态辉光",
   "version": "0.19.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "feat/C271-nothing-only",
   "is_hotfix": false,
   "target": {
@@ -120,7 +120,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "518b5d6bf2aee4d0d82e67fee1d2e5511aa58b35",
     "tag": ""
   },
   "gate": {
@@ -128,8 +128,8 @@
     "version": "1.8.1",
     "ran_at": "2026-11-26",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified",
+    "from_status": "verified",
+    "target_status": "closed",
     "signed_quote": "确认签收，提交并推送",
     "signed_rejection_count": 0
   }

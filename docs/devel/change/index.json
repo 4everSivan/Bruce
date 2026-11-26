@@ -266,7 +266,7 @@
     },
     "C271": {
       "title": "看板 Nothing-only 收敛：界面风格收窄、Tab 页标题上移与 Hero 静态辉光",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C271-nothing-only",
       "topic": "MenuBarIndicator",
       "file": "docs/devel/change/C271.json"
