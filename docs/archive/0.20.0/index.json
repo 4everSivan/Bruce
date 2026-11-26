@@ -200,6 +200,15 @@
       "topic": "RequestLog",
       "version": "0.20.0",
       "file": "docs/archive/0.20.0/change/C272.json"
+    },
+    "C273": {
+      "title": "请求日志重放跳过改用请求行内容签名",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C273-replay-content-signature",
+      "topic": "RequestLog",
+      "version": "0.20.0",
+      "file": "docs/archive/0.20.0/change/C273.json"
     }
   },
   "tasks": {
@@ -325,7 +334,8 @@
         "C249",
         "C250",
         "C257",
-        "C272"
+        "C272",
+        "C273"
       ],
       "tasks": [
         "T35",

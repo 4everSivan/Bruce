@@ -66,9 +66,7 @@
     },
     "RequestLog": {
       "design_doc": "docs/devel/design/14-Agent请求日志.md",
-      "changes": [
-        "C273"
-      ]
+      "changes": []
     },
     "AntigravityUsage": {
       "design_doc": "docs/devel/design/15-Antigravity接入.md",
@@ -96,13 +94,6 @@
       "branch": "fix/C270-swiftpm-test-targets",
       "topic": "SystemOverview",
       "file": "docs/devel/change/C270.json"
-    },
-    "C273": {
-      "title": "请求日志重放跳过改用请求行内容签名",
-      "status": "verified",
-      "branch": "fix/C273-replay-content-signature",
-      "topic": "RequestLog",
-      "file": "docs/devel/change/C273.json"
     }
   }
 }

@@ -26,6 +26,7 @@
 - **官网数据同步与仓库整理（[C267](docs/archive/0.20.0/change/C267.json)）**：官网同步 11 Agents / 11 Providers（补 Antigravity、Grok Bot，修正 Kimi 路径与 StepFun 计费类型）并开放 Windows 安装包下载，契约测试同步；km 产物（`.cards` / `.staging`）按维护者口径继续入库（TD-013 关闭）；清理 3 个无引用的 Windows 预览 demo。
 
 ### Fixed
+- **请求日志重放跳过改用请求行内容签名（[C273](docs/archive/0.20.0/change/C273.json)）**：C272 之后 Windows CI 仍偶发失败，失败信息中的重放标记与本地完全一致，根因是 `request_log_sources_changed(scan_stats)` 把共享缓存目录上的瞬时读取失败 / 校验失败 / 删除误判为「来源已变化」。现 `source_signature` 改为逐请求行哈希 key / 时间 / 模型 / 工程 / 5 组 Token / 保真度 / 耗时（标记 schema 1→2，升级后重放一次），跳过判定只看内容签名与价卡指纹，不再依赖缓存事件计数；新增「行数不变但内容变化必须重放」回归用例，缓存噪声不再触发无谓重放。
 - **请求日志重放标记读写加固（[C272](docs/archive/0.20.0/change/C272.json)）**：重放标记改为同目录临时文件 + `rename` 原子替换，读写遇 Windows Defender / 索引器瞬时占用时最多重试 3 次（15ms 退避，`NotFound` 立即判定），修复 Windows CI 上 `request_log_rows_are_idempotent_and_keep_aggregate_parity` 偶发失败（重放跳过指标 0≠1）；标记仍为性能提示，最终失败只导致下一轮重放，不产生诊断或数据错误。
 - **请求日志模块评审收紧（[C249](docs/archive/0.20.0/change/C249.json)）**：
   - **查询调度**：Mac 请求日志页原以 `guard !isLoading` 丢弃并发查询，后台 30s / artifact 刷新进行中切换 Agent、模型、页码或页大小时新查询被静默丢弃，界面显示新筛选而表格仍是旧数据；改为按代次后发先至——用户查询总会发出并使旧结果作废，后台刷新在忙时跳过；总量收缩使当前页越界时回到最后一页再查。视图模型下沉到 `BruceAppCore`，`RequestLogHarness` 覆盖后发先至、忙时跳过与越界回退。
